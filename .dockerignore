@@ -1,0 +1,9 @@
+**/node_modules
+**/target
+**/dist
+**/data
+apps/website
+.git
+.idea
+.vscode
+*.log

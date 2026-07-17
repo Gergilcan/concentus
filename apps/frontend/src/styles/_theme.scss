@@ -1,0 +1,19 @@
+// Design tokens shared across modules via `@use '.../theme' as t;`
+$bg: #0e1117;
+$panel: #161b22;
+$panel-2: #1c2230;
+$border: #2a3140;
+$text: #e6edf3;
+$muted: #8b949e;
+
+$accent: #6ea8fe;
+$agent: #6ea8fe;
+$coordinator: #b98cff;
+$mcp: #63e6be;
+$repo: #ffd43b;
+$sql: #ff922b;
+
+$danger: #ff6b6b;
+$ok: #51cf66;
+
+$radius: 8px;

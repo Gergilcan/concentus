@@ -1,0 +1,22 @@
+# Java / Maven
+apps/backend/target/
+*.class
+
+# Node
+node_modules/
+apps/frontend/dist/
+.pnpm-store/
+
+# App data (persisted flows)
+data/
+apps/backend/data/
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json

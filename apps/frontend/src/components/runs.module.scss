@@ -1,0 +1,191 @@
+@use '../styles/theme' as t;
+
+.runs {
+  height: 300px;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  border-top: 1px solid t.$border;
+  background: t.$panel;
+  min-height: 0;
+}
+
+.runList {
+  border-right: 1px solid t.$border;
+  overflow: auto;
+  padding: 12px;
+}
+
+.h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$muted;
+}
+
+.muted {
+  color: t.$muted;
+  font-size: 12px;
+  padding: 8px 0;
+}
+
+.runItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  color: t.$text;
+  padding: 7px 8px;
+  border-radius: 6px;
+  text-align: left;
+  margin-bottom: 2px;
+
+  &:hover {
+    background: t.$panel-2;
+  }
+}
+
+.active {
+  background: t.$panel-2;
+  border-color: t.$border;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: t.$muted;
+  flex: 0 0 auto;
+}
+
+.s_STARTING {
+  background: t.$repo;
+}
+.s_RUNNING {
+  background: t.$accent;
+}
+.s_IDLE {
+  background: t.$ok;
+}
+.s_ERROR {
+  background: t.$danger;
+}
+.s_TERMINATED {
+  background: t.$muted;
+}
+
+.runName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trigger {
+  font-size: 9px;
+  color: t.$ok;
+  border: 1px solid t.$border;
+  border-radius: 6px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+.runStatus {
+  font-size: 10px;
+  color: t.$muted;
+}
+
+.runMain {
+  min-height: 0;
+  display: flex;
+}
+
+.console {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.log {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+  font-family: ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.logMuted {
+  color: t.$muted;
+}
+
+.line {
+  display: flex;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.lts {
+  color: t.$muted;
+  flex: 0 0 72px;
+}
+
+.ltext {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.t_agent_message .ltext {
+  color: t.$text;
+}
+.t_system .ltext {
+  color: t.$mcp;
+}
+.t_status .ltext {
+  color: t.$muted;
+}
+.t_tool_use .ltext {
+  color: t.$repo;
+}
+.t_error .ltext {
+  color: t.$danger;
+}
+
+.err {
+  color: t.$danger;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.cmdRow {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid t.$border;
+
+  input {
+    flex: 1;
+    background: t.$bg;
+    border: 1px solid t.$border;
+    color: t.$text;
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+
+  button {
+    background: t.$accent;
+    border: 1px solid t.$accent;
+    color: #08111f;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-weight: 600;
+  }
+}
+
+.stopBtn {
+  background: transparent !important;
+  border-color: t.$danger !important;
+  color: t.$danger !important;
+}

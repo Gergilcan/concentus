@@ -1,0 +1,26 @@
+Concentus is deployed.
+
+{{- if .Values.publicNginx.enabled }}
+
+Public entrypoint: the "{{ include "concentus.nginxName" . }}" Service (type {{ .Values.publicNginx.service.type }}).
+{{- if eq .Values.publicNginx.service.type "LoadBalancer" }}
+  Get the external address:
+    kubectl get svc {{ include "concentus.nginxName" . }} -n {{ .Release.Namespace }} -w
+{{- else if eq .Values.publicNginx.service.type "NodePort" }}
+  Reach it on any node IP at nodePort {{ .Values.publicNginx.service.nodePort | default "(auto-assigned)" }}.
+{{- end }}
+{{- else if .Values.ingress.enabled }}
+
+Ingress host: http://{{ .Values.ingress.host }}
+{{- else }}
+
+No public entrypoint enabled. Port-forward to try it locally:
+  kubectl port-forward svc/{{ include "concentus.frontendName" . }} 8080:{{ .Values.frontend.port }} -n {{ .Release.Namespace }}
+Then open http://localhost:8080
+{{- end }}
+
+{{- if not (or .Values.backend.existingSecret (include "concentus.hasManagedSecret" .)) }}
+
+WARNING: No Claude auth configured. Set backend.claudeOAuthToken (from `claude setup-token`)
+or backend.existingSecret, otherwise agents can't run. Runs will report "Not signed in".
+{{- end }}

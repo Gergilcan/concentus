@@ -1,0 +1,45 @@
+@use './theme' as t;
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: t.$bg;
+  color: t.$text;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  outline: none;
+
+  &:focus {
+    border-color: t.$accent;
+  }
+}
+
+// React Flow attribution: keep it (free license) but tone it down
+.react-flow__attribution {
+  background: rgba(0, 0, 0, 0.4);
+
+  a {
+    color: t.$muted;
+  }
+}

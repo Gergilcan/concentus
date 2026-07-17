@@ -1,0 +1,268 @@
+@use '../styles/theme' as t;
+
+.palette,
+.inspector {
+  background: t.$panel;
+  padding: 14px;
+  overflow: auto;
+}
+
+.inspector {
+  border-left: 1px solid t.$border;
+}
+
+.palette {
+  border-right: 1px solid t.$border;
+}
+
+.h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$muted;
+}
+
+.addBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: t.$panel-2;
+  border: 1px solid t.$border;
+  color: t.$text;
+  padding: 8px 10px;
+  border-radius: t.$radius;
+  margin-bottom: 8px;
+
+  &:hover {
+    border-color: t.$accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.addInput span {
+  color: t.$ok;
+}
+.addAgent span {
+  color: t.$agent;
+}
+.addMcp span {
+  color: t.$mcp;
+}
+.addRepo span {
+  color: t.$repo;
+}
+.addSql span {
+  color: t.$sql;
+}
+
+.previewBtn {
+  background: t.$panel-2;
+  border: 1px solid t.$border;
+  color: t.$text;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+
+  &:hover {
+    border-color: t.$sql;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.previewTable {
+  font-size: 11px;
+  border: 1px solid t.$border;
+  border-radius: 6px;
+  overflow: auto;
+  max-height: 180px;
+  margin-bottom: 8px;
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  th,
+  td {
+    border: 1px solid t.$border;
+    padding: 3px 6px;
+    text-align: left;
+    white-space: nowrap;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  th {
+    background: t.$panel-2;
+    color: t.$muted;
+    position: sticky;
+    top: 0;
+  }
+}
+
+.previewErr {
+  color: t.$danger;
+  font-size: 11px;
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+.previewMeta {
+  color: t.$muted;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.hint {
+  color: t.$muted;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  font-size: 12px;
+
+  span {
+    color: t.$muted;
+  }
+
+  input,
+  select,
+  textarea {
+    background: t.$bg;
+    border: 1px solid t.$border;
+    color: t.$text;
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+}
+
+.empty {
+  color: t.$muted;
+  font-size: 13px;
+}
+
+.libraryField {
+  padding-bottom: 12px;
+  border-bottom: 1px dashed t.$border;
+  margin-bottom: 14px;
+
+  select {
+    border-color: t.$agent;
+  }
+}
+
+.inspectorHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.del {
+  background: transparent;
+  border: 1px solid t.$danger;
+  color: t.$danger;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.rag {
+  margin-top: 18px;
+  border-top: 1px dashed t.$border;
+  padding-top: 14px;
+}
+
+.soon {
+  font-size: 9px;
+  background: t.$border;
+  color: t.$muted;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.ragMsg {
+  color: t.$muted;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+
+.mcpActions {
+  border-top: 1px dashed t.$border;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.mcpStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: t.$muted;
+  margin-bottom: 10px;
+}
+
+.sDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: t.$muted;
+  flex: 0 0 auto;
+}
+.sOk {
+  background: t.$ok;
+}
+.sWarn {
+  background: t.$repo;
+}
+.sErr {
+  background: t.$danger;
+}
+
+.mcpBtns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.linkBtn {
+  background: transparent;
+  border: 1px solid t.$border;
+  color: t.$muted;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+
+  &:hover {
+    border-color: t.$accent;
+    color: t.$text;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

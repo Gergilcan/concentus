@@ -1,0 +1,38 @@
+# Concentus — backend (Spring Boot + claude CLI) and frontend (nginx).
+# The marketing website (apps/website) is intentionally NOT included.
+#
+# Auth: runs on your Claude *subscription*, no API key. Provide the login one of two ways:
+#   A) Recommended — mint a long-lived token on the host once:  claude setup-token
+#      then put it in a .env file next to this compose file:    CLAUDE_CODE_OAUTH_TOKEN=...
+#   B) Mount your existing host login instead (uncomment the volumes below).
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ANTHROPIC_AUTH_MODE: local
+      CLAUDE_COMMAND: claude
+      APP_DATA_DIR: /data
+      # A) token from `claude setup-token` (read from .env). Not an API key.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+    volumes:
+      - concentus-data:/data
+      # B) OR mount the host Claude login (read-write so it can refresh). Comment out (A) if used.
+      # - ${USERPROFILE:-${HOME}}/.claude:/root/.claude
+      # - ${USERPROFILE:-${HOME}}/.claude.json:/root/.claude.json
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  concentus-data:

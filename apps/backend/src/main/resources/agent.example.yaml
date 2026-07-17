@@ -1,0 +1,75 @@
+# =============================================================================
+# Example agent specification.
+#
+# Copy this file, edit it, and pass it to the app:
+#   java -jar target/concentus-backend.jar my-agent.yaml "Summarize the open issues"
+#
+# Secrets are NEVER written here. Fields ending in `Env` name an environment
+# variable that holds the token; the app reads the value at runtime.
+# =============================================================================
+
+# Which runner drives the agent loop:
+#   managed -> Anthropic hosts the loop + a sandbox (skills, native repo mounts,
+#              MCP). Caching / compaction / context-swapping are AUTOMATIC, so the
+#              `cache:` and `context:` blocks below are informational in this mode.
+#   local   -> This JVM runs the loop against the Claude API. The `cache:` and
+#              `context:` blocks are REAL knobs here.
+mode: managed                 # managed | local
+
+name: "Repo Assistant"
+
+model:
+  id: claude-opus-4-8         # see README for the current model list
+  maxTokens: 16000
+  effort: high                # low | medium | high | xhigh | max  (applied in local mode)
+
+systemPrompt: |
+  You are a senior engineer assisting with the configured repositories.
+  Cite file paths and be concise. Prefer reading code before proposing changes.
+
+# Anthropic-managed or custom skills (managed mode only).
+skills:
+  - type: anthropic
+    id: xlsx
+  # - type: custom
+  #   id: skill_abc123
+  #   version: latest
+
+# GitHub / GitLab exposed as MCP servers so the agent gets API tools.
+# In managed mode, authenticated MCP calls require a vault (see README);
+# unauthenticated / public servers work as-is.
+mcpServers:
+  - name: github
+    url: https://api.githubcopilot.com/mcp/
+    tokenEnv: GITHUB_MCP_TOKEN     # optional bearer token env var
+  - name: gitlab
+    url: https://gitlab.com/api/v4/mcp/
+    tokenEnv: GITLAB_MCP_TOKEN
+
+# Native repository mounts. Managed mode clones github repos into the sandbox
+# filesystem (git access). GitLab has no native mount -> use the MCP server above.
+repositories:
+  - provider: github               # github | gitlab
+    url: https://github.com/owner/repo
+    tokenEnv: GITHUB_TOKEN
+    mountPath: /workspace/repo
+    branch: main
+
+# "nvcache" == prompt caching. Real in local mode; informational in managed mode.
+cache:
+  enabled: true
+  ttl: 1h                    # 5m | 1h
+  minTokens: 4096            # min cacheable prefix (model-dependent; advisory only)
+  breakpoints: system        # system | tools-and-system  (where cache_control is placed)
+
+# Context-swapping strategy for long runs (local mode).
+context:
+  strategy: compaction       # none | compaction | context-editing
+  triggerTokens: 150000      # compaction trigger threshold
+  clearToolResults: true     # context-editing: clear old tool results
+  clearToolInputs: false     # context-editing: also clear tool_use inputs
+
+# Sandbox environment (managed mode).
+environment:
+  name: repo-agent-env
+  networking: unrestricted    # unrestricted | limited

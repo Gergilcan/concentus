@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Concentus — visual multi-agent orchestration</title>
+<meta name="description" content="A visual canvas for multi-agent orchestration. Design agent flows, wire in MCP tools and databases, and run them on your Claude subscription — or the cloud. No API key needed to start." />
+<meta name="theme-color" content="#0b0e14" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Concentus" />
+<meta property="og:description" content="Wire up a team of AI agents on a canvas and run them on your own Claude. Local or cloud, MCP tools, database RAG." />
+<meta property="og:site_name" content="Concentus" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Concentus" />
+<meta name="twitter:description" content="Visual multi-agent orchestration you run on your own Claude login." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cpath d='M25 16 L20.5 23.8 L11.5 23.8 L7 16 L11.5 8.2 L20.5 8.2 Z' fill='none' stroke='%236ea8fe' stroke-width='2.6' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<style>
+  /* ============================ tokens ============================ */
+  :root {
+    color-scheme: dark;
+    --bg: #0b0e14;
+    --bg-grid: #141a26;
+    --panel: #141a24;
+    --panel-2: #1a2130;
+    --line: #232c3b;
+    --line-2: #313d51;
+    --text: #e9eff8;
+    --muted: #93a0b4;
+    --faint: #5c6879;
+
+    --accent: #6ea8fe;   /* agent / primary */
+    --coord: #b98cff;    /* coordinator */
+    --mcp: #63e6be;      /* mcp */
+    --repo: #ffd43b;     /* repo */
+    --sql: #ff922b;      /* sql */
+
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+
+    --maxw: 1140px;
+    --r: 14px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; letter-spacing: -0.02em; line-height: 1.08; }
+  p { margin: 0; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+  /* dotted canvas grid + ambient glows */
+  .bg {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background-color: var(--bg);
+    background-image: radial-gradient(var(--bg-grid) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .bg::after {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(620px 420px at 78% -6%, rgba(110, 168, 254, 0.16), transparent 70%),
+      radial-gradient(560px 380px at 8% 8%, rgba(185, 140, 255, 0.12), transparent 70%),
+      radial-gradient(700px 500px at 100% 40%, rgba(99, 230, 190, 0.06), transparent 70%);
+  }
+
+  .wrap { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+
+  /* ============================ nav ============================ */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(12px);
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-in { display: flex; align-items: center; gap: 24px; height: 62px; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
+  .brand .hex { color: var(--accent); font-size: 19px; }
+  .nav-links { display: flex; gap: 6px; margin-left: 12px; }
+  .nav-links a {
+    font-family: var(--mono); font-size: 13px; color: var(--muted);
+    padding: 7px 12px; border-radius: 8px;
+  }
+  .nav-links a:hover { color: var(--text); background: var(--panel); }
+  .nav-cta { margin-left: auto; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 14px; font-weight: 600;
+    padding: 10px 18px; border-radius: 10px; cursor: pointer;
+    border: 1px solid transparent; transition: transform .12s ease, background .15s ease, border-color .15s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--accent); color: #071018; box-shadow: 0 8px 24px rgba(110, 168, 254, 0.28); }
+  .btn-primary:hover { background: #8bbaff; }
+  .btn-ghost { border-color: var(--line-2); color: var(--text); background: color-mix(in srgb, var(--panel) 60%, transparent); }
+  .btn-ghost:hover { border-color: var(--accent); }
+  .btn-sm { padding: 8px 14px; font-size: 13px; }
+
+  /* ============================ hero ============================ */
+  .hero { padding: clamp(48px, 9vw, 108px) 0 64px; }
+  .hero-grid {
+    display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center;
+  }
+  .hero h1 { font-size: clamp(2.5rem, 5.4vw, 4.1rem); font-weight: 800; margin: 20px 0 0; }
+  .hero h1 .grad {
+    background: linear-gradient(100deg, var(--accent), var(--coord) 60%, var(--mcp));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero .lede { color: var(--muted); font-size: clamp(1.05rem, 1.6vw, 1.22rem); margin-top: 22px; max-width: 34ch; }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 32px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 30px; }
+  .chip {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; background: color-mix(in srgb, var(--panel) 50%, transparent);
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--mcp); }
+
+  /* ---------- hero flow diagram ---------- */
+  .stage-wrap { display: flex; justify-content: center; }
+  .stage {
+    position: relative; width: 520px; height: 460px; flex: 0 0 auto;
+  }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .wire { fill: none; stroke-width: 2; stroke-linecap: round; opacity: 0.9; }
+  .wire.flow { stroke-dasharray: 5 9; animation: dash 1.1s linear infinite; }
+  @keyframes dash { to { stroke-dashoffset: -14; } }
+
+  .node {
+    position: absolute; width: 156px; padding: 10px 12px 11px 14px;
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--line-2); border-radius: 11px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  }
+  .node::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--nc, var(--accent)); }
+  .node .nt { display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+  .node .nt .g { color: var(--nc, var(--accent)); }
+  .node .badge { margin-left: auto; font-size: 9px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--faint); border: 1px solid var(--line-2); border-radius: 8px; padding: 1px 6px; }
+  .node .ns { color: var(--muted); font-size: 11px; margin-top: 4px; font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .node .port { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--bg); border: 2px solid var(--line-2); top: calc(50% - 5px); }
+  .node .port.l { left: -5px; } .node .port.r { right: -5px; }
+
+  .n-coord { left: 178px; top: 26px; --nc: var(--coord); }
+  .n-mcp   { left: 2px;   top: 168px; --nc: var(--mcp); }
+  .n-be    { left: 356px; top: 150px; --nc: var(--accent); }
+  .n-fe    { left: 356px; top: 262px; --nc: var(--accent); }
+  .n-db    { left: 150px; top: 348px; --nc: var(--sql); }
+  .n-coord.pulse { animation: glow 3.4s ease-in-out infinite; }
+  @keyframes glow {
+    0%, 100% { box-shadow: 0 10px 30px rgba(0,0,0,0.45), 0 0 0 1px rgba(185,140,255,0.0); }
+    50% { box-shadow: 0 10px 30px rgba(0,0,0,0.45), 0 0 26px rgba(185,140,255,0.35); }
+  }
+
+  /* ============================ sections ============================ */
+  section { position: relative; }
+  .band { padding: 88px 0; }
+  .band-head { max-width: 640px; }
+  .band-head h2 { font-size: clamp(1.7rem, 3.2vw, 2.5rem); font-weight: 750; margin-top: 14px; }
+  .band-head p { color: var(--muted); margin-top: 16px; }
+
+  .strip { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 22px 0; }
+  .strip .wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .strip span { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .strip b { color: var(--text); font-weight: 600; }
+  .strip .sep { color: var(--faint); }
+
+  /* features bento */
+  .bento { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-top: 44px; }
+  .card {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 80%, transparent), color-mix(in srgb, var(--bg) 60%, transparent));
+    border: 1px solid var(--line); border-radius: var(--r); padding: 22px;
+    grid-column: span 2; transition: border-color .15s ease, transform .15s ease;
+  }
+  .card:hover { border-color: var(--line-2); transform: translateY(-2px); }
+  .card.wide { grid-column: span 3; }
+  .card .ic { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; margin-bottom: 14px;
+    background: color-mix(in srgb, var(--cc, var(--accent)) 16%, transparent); border: 1px solid color-mix(in srgb, var(--cc, var(--accent)) 40%, transparent); }
+  .card .ic svg { width: 18px; height: 18px; stroke: var(--cc, var(--accent)); }
+  .card h3 { font-size: 1.12rem; font-weight: 700; }
+  .card p { color: var(--muted); font-size: 0.97rem; margin-top: 8px; }
+  .card .k { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--cc, var(--accent)); }
+
+  /* run-anywhere split */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 44px; }
+  .lane { border: 1px solid var(--line); border-radius: var(--r); padding: 28px; background: color-mix(in srgb, var(--panel) 55%, transparent); position: relative; overflow: hidden; }
+  .lane .tag { font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }
+  .lane.local .tag { color: var(--mcp); }
+  .lane.cloud .tag { color: var(--accent); }
+  .lane h3 { font-size: 1.4rem; font-weight: 750; margin-top: 10px; }
+  .lane p { color: var(--muted); margin-top: 12px; font-size: 0.98rem; }
+  .lane ul { list-style: none; padding: 0; margin: 18px 0 0; display: flex; flex-direction: column; gap: 10px; }
+  .lane li { display: flex; gap: 10px; font-size: 0.95rem; color: var(--text); align-items: flex-start; }
+  .lane li svg { width: 16px; height: 16px; flex: 0 0 auto; margin-top: 4px; stroke: var(--lc); }
+  .lane.local { --lc: var(--mcp); }
+  .lane.cloud { --lc: var(--accent); }
+  .lane .glowline { position: absolute; inset: 0 0 auto 0; height: 2px; background: linear-gradient(90deg, transparent, var(--lc), transparent); opacity: .6; }
+
+  /* steps */
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 44px; counter-reset: s; }
+  .step { border: 1px solid var(--line); border-radius: var(--r); padding: 24px; background: color-mix(in srgb, var(--panel) 45%, transparent); }
+  .step .num { font-family: var(--mono); font-size: 13px; color: var(--accent); border: 1px solid var(--line-2); width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; margin-bottom: 16px; }
+  .step h3 { font-size: 1.06rem; font-weight: 700; }
+  .step p { color: var(--muted); font-size: 0.93rem; margin-top: 8px; }
+
+  /* use cases */
+  .uses { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 44px; }
+  .use { border: 1px solid var(--line); border-radius: var(--r); padding: 24px; background: color-mix(in srgb, var(--panel) 45%, transparent); }
+  .use .flowline { font-family: var(--mono); font-size: 12px; color: var(--faint); margin-bottom: 14px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .use .pill { color: var(--pc, var(--accent)); border: 1px solid color-mix(in srgb, var(--pc, var(--accent)) 40%, transparent); border-radius: 6px; padding: 1px 7px; }
+  .use .arr { color: var(--faint); }
+  .use h3 { font-size: 1.1rem; font-weight: 700; }
+  .use p { color: var(--muted); font-size: 0.95rem; margin-top: 8px; }
+
+  /* cta */
+  .cta { text-align: center; padding: 96px 0; }
+  .cta h2 { font-size: clamp(1.9rem, 4vw, 3rem); font-weight: 800; }
+  .cta p { color: var(--muted); margin: 16px auto 0; max-width: 46ch; }
+  .cta .row { display: flex; gap: 14px; justify-content: center; margin-top: 30px; flex-wrap: wrap; }
+
+  /* install */
+  .methods { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 34px; }
+  @media (max-width: 760px) { .methods { grid-template-columns: 1fr; } }
+  .method { background: #12161f; border: 1px solid rgba(255,255,255,.08); border-radius: 16px; padding: 22px; }
+  .method .k { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .method h3 { margin: .35rem 0 .15rem; font-size: 1.15rem; }
+  .method p { color: var(--muted); font-size: .92rem; margin: .2rem 0 .9rem; }
+  .method pre { background: #0b0e14; border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: 12px 14px; overflow-x: auto; font-size: .8rem; line-height: 1.5; margin: 0; }
+  .method pre code { color: #cdd6e4; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+  .method .note { font-size: .8rem; color: var(--muted); margin-top: 10px; }
+
+  /* footer */
+  footer { border-top: 1px solid var(--line); padding: 44px 0 56px; }
+  .foot { display: flex; justify-content: space-between; gap: 32px; flex-wrap: wrap; }
+  .foot .col h4 { font-family: var(--mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--faint); margin: 0 0 12px; }
+  .foot .col a { display: block; color: var(--muted); font-size: 14px; padding: 4px 0; }
+  .foot .col a:hover { color: var(--text); }
+  .foot .about { max-width: 280px; }
+  .foot .about p { color: var(--muted); font-size: 14px; margin-top: 12px; }
+  .foot .fine { font-family: var(--mono); font-size: 12px; color: var(--faint); margin-top: 28px; }
+
+  /* reveal */
+  [data-reveal] { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s ease; }
+  [data-reveal].in { opacity: 1; transform: none; }
+
+  @media (max-width: 940px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 8px; }
+    .hero .lede { max-width: 52ch; }
+    .stage-wrap { margin-top: 20px; }
+    .bento { grid-template-columns: repeat(2, 1fr); }
+    .card, .card.wide { grid-column: span 1; }
+    .split, .steps, .uses { grid-template-columns: 1fr 1fr; }
+    .nav-links { display: none; }
+  }
+  @media (max-width: 620px) {
+    body { font-size: 16px; }
+    .split, .steps, .uses, .bento { grid-template-columns: 1fr; }
+    .stage { transform: scale(0.82); }
+    .stage-wrap { height: 400px; align-items: flex-start; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation: none !important; transition: none !important; }
+    [data-reveal] { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg"></div>
+
+<!-- ============================ nav ============================ -->
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top"><span class="hex">⬡</span> Concentus</a>
+    <nav class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#run">Run anywhere</a>
+      <a href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a href="#" data-gh>GitHub</a>
+    </nav>
+    <a class="btn btn-primary btn-sm nav-cta" href="#" data-gh>GitHub</a>
+  </div>
+</header>
+
+<!-- ============================ hero ============================ -->
+<main id="top">
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">Visual multi-agent orchestration</span>
+        <h1>Wire up a team of AI agents.<br><span class="grad">Run them on your own Claude.</span></h1>
+        <p class="lede">A visual canvas for building multi-agent flows. Design them, connect your tools and databases, and run on your Claude subscription — or the cloud. No API key needed to start.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#install">Get started
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <a class="btn btn-ghost" href="#" data-gh>View on GitHub</a>
+        </div>
+        <div class="chips">
+          <span class="chip"><span class="dot"></span>Runs on your Claude login</span>
+          <span class="chip"><span class="dot" style="background:var(--accent)"></span>MCP&nbsp;+&nbsp;databases</span>
+          <span class="chip"><span class="dot" style="background:var(--sql)"></span>Local or cloud</span>
+          <span class="chip"><span class="dot" style="background:var(--coord)"></span>Steer&nbsp;live</span>
+        </div>
+      </div>
+
+      <div class="stage-wrap">
+        <div class="stage" role="img" aria-label="A flow diagram: a coordinator agent delegating to backend and frontend sub-agents, with a Linear MCP server and a Postgres database wired into the flow, data pulsing along the connections.">
+          <svg viewBox="0 0 520 460" aria-hidden="true">
+            <!-- mcp -> coordinator -->
+            <path class="wire" d="M150 194 C182 194 176 78 178 60" stroke="var(--mcp)" opacity="0.28"/>
+            <path class="wire flow" d="M150 194 C182 194 176 78 178 60" stroke="var(--mcp)"/>
+            <!-- coordinator -> backend -->
+            <path class="wire" d="M334 52 C372 52 356 176 356 176" stroke="var(--accent)" opacity="0.28"/>
+            <path class="wire flow" d="M334 52 C372 52 356 176 356 176" stroke="var(--accent)" style="animation-delay:-.3s"/>
+            <!-- coordinator -> frontend -->
+            <path class="wire" d="M256 82 C256 220 356 288 356 288" stroke="var(--accent)" opacity="0.28"/>
+            <path class="wire flow" d="M256 82 C256 220 356 288 356 288" stroke="var(--accent)" style="animation-delay:-.6s"/>
+            <!-- db -> backend -->
+            <path class="wire" d="M306 374 C368 374 356 210 356 194" stroke="var(--sql)" opacity="0.28"/>
+            <path class="wire flow" d="M306 374 C368 374 356 210 356 194" stroke="var(--sql)" style="animation-delay:-.15s"/>
+          </svg>
+
+          <div class="node n-coord pulse">
+            <div class="nt"><span class="g">★</span> Tech Lead <span class="badge">coordinator</span></div>
+            <div class="ns">claude-opus-4-8</div>
+            <span class="port l"></span><span class="port r"></span>
+          </div>
+          <div class="node n-mcp">
+            <div class="nt"><span class="g">⚙</span> linear <span class="badge">mcp</span></div>
+            <div class="ns">mcp.linear.app</div>
+            <span class="port r"></span>
+          </div>
+          <div class="node n-be">
+            <div class="nt"><span class="g">◆</span> Backend <span class="badge">agent</span></div>
+            <div class="ns">claude-sonnet-5</div>
+            <span class="port l"></span>
+          </div>
+          <div class="node n-fe">
+            <div class="nt"><span class="g">◆</span> Frontend <span class="badge">agent</span></div>
+            <div class="ns">claude-sonnet-5</div>
+            <span class="port l"></span>
+          </div>
+          <div class="node n-db">
+            <div class="nt"><span class="g">🗄</span> postgres <span class="badge">sql</span></div>
+            <div class="ns">SELECT … as context</div>
+            <span class="port r"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ strip ============================ -->
+  <section class="strip">
+    <div class="wrap">
+      <span>Powered by <b>Claude</b></span><span class="sep">/</span>
+      <span><b>Opus 4.8</b> &amp; <b>Sonnet 5</b></span><span class="sep">/</span>
+      <span>the <b>Claude CLI</b></span><span class="sep">/</span>
+      <span>Anthropic <b>Managed Agents</b></span>
+    </div>
+  </section>
+
+  <!-- ============================ features ============================ -->
+  <section id="features" class="band">
+    <div class="wrap">
+      <div class="band-head" data-reveal>
+        <span class="eyebrow">What's inside</span>
+        <h2>Everything an agent pipeline needs — on one canvas.</h2>
+        <p>Draw the flow, wire in your tools and data, and run it. No glue code, no orchestration boilerplate.</p>
+      </div>
+
+      <div class="bento">
+        <div class="card wide" data-reveal style="--cc:var(--accent)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/></svg></div>
+          <div class="k">Canvas</div>
+          <h3>Canvas, not config</h3>
+          <p>Drop agents, tools and data sources onto a canvas and connect them. The flow you draw is exactly the flow that runs — nothing hidden in YAML.</p>
+        </div>
+        <div class="card wide" data-reveal style="--cc:var(--coord)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><path d="M12 7.5v4M12 11.5 6.5 17M12 11.5 17.5 17"/></svg></div>
+          <div class="k">Orchestration</div>
+          <h3>A coordinator and a crew</h3>
+          <p>One coordinator plans the work and delegates to specialized sub-agents that run in parallel — then reconciles their results.</p>
+        </div>
+
+        <div class="card" data-reveal style="--cc:var(--mcp)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 3v18M5 8l7-5 7 5M5 16l7 5 7-5"/></svg></div>
+          <div class="k">Your Claude</div>
+          <h3>Run on your subscription</h3>
+          <p>Executes locally through the Claude CLI on your Pro or Max plan. Add an API key only when you want the cloud.</p>
+        </div>
+        <div class="card" data-reveal style="--cc:var(--mcp)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg></div>
+          <div class="k">Tools</div>
+          <h3>Bring your world in</h3>
+          <p>Connect MCP servers like GitHub and Linear. Studio registers and authorizes them for you.</p>
+        </div>
+        <div class="card" data-reveal style="--cc:var(--sql)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+          <div class="k">Data</div>
+          <h3>Answers from your database</h3>
+          <p>Point a SQL node at any JDBC database; its rows are retrieved and injected into agent context at run time.</p>
+        </div>
+
+        <div class="card" data-reveal style="--cc:var(--repo)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/></svg></div>
+          <div class="k">Library</div>
+          <h3>Reusable resources</h3>
+          <p>Save agents, MCP servers, and database connections once — then select them in any flow.</p>
+        </div>
+        <div class="card" data-reveal style="--cc:var(--accent)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></div>
+          <div class="k">Control</div>
+          <h3>Steer it live</h3>
+          <p>Watch output stream in and send commands to a running flow — without stopping it.</p>
+        </div>
+        <div class="card" data-reveal style="--cc:var(--coord)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="4"/></svg></div>
+          <div class="k">Efficiency</div>
+          <h3>Lean by default</h3>
+          <p>Cheaper models for volume, stronger ones for judgment, and prompts written to spend tokens carefully.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ run anywhere ============================ -->
+  <section id="run" class="band">
+    <div class="wrap">
+      <div class="band-head" data-reveal>
+        <span class="eyebrow">Run anywhere</span>
+        <h2>Your subscription today. The cloud when you need it.</h2>
+        <p>The same flow runs both ways — flip the switch with a single environment variable.</p>
+      </div>
+
+      <div class="split">
+        <div class="lane local" data-reveal>
+          <div class="glowline"></div>
+          <div class="tag">Local · default</div>
+          <h3>On your Claude subscription</h3>
+          <p>Runs through the <code>claude</code> CLI you already use. Your prompts, code, and data stay on your machine — only the model calls go to Anthropic.</p>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> No API key, no per-token bill</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> Sub-agents map to Claude Code subagents</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> MCP servers auto-registered &amp; authorized</li>
+          </ul>
+        </div>
+        <div class="lane cloud" data-reveal>
+          <div class="glowline"></div>
+          <div class="tag">Cloud · optional</div>
+          <h3>In a managed sandbox</h3>
+          <p>Set an API key and the same flow runs as an Anthropic Managed Agents session — a hosted sandbox that clones repos, runs tools, and scales past your laptop.</p>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> One coordinator + a versioned sub-agent roster</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> Repos mounted, tools sandboxed</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> Same canvas, no rewrite</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ how it works ============================ -->
+  <section id="how" class="band">
+    <div class="wrap">
+      <div class="band-head" data-reveal>
+        <span class="eyebrow">How it works</span>
+        <h2>From blank canvas to running crew in four moves.</h2>
+      </div>
+      <div class="steps">
+        <div class="step" data-reveal>
+          <div class="num">1</div>
+          <h3>Design</h3>
+          <p>Drop agent, MCP, database, and repo nodes and connect them. Mark one agent the coordinator.</p>
+        </div>
+        <div class="step" data-reveal>
+          <div class="num">2</div>
+          <h3>Connect</h3>
+          <p>Pick tools and data from your resource library — or add a new one in a couple of fields.</p>
+        </div>
+        <div class="step" data-reveal>
+          <div class="num">3</div>
+          <h3>Run</h3>
+          <p>Launch on your subscription or in the cloud. Output streams into the console live.</p>
+        </div>
+        <div class="step" data-reveal>
+          <div class="num">4</div>
+          <h3>Steer</h3>
+          <p>Send commands mid-run, review what each agent did, and iterate without restarting.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ use cases ============================ -->
+  <section id="build" class="band">
+    <div class="wrap">
+      <div class="band-head" data-reveal>
+        <span class="eyebrow">Use cases</span>
+        <h2>Wire the crew for the job.</h2>
+      </div>
+      <div class="uses">
+        <div class="use" data-reveal style="--pc:var(--coord)">
+          <div class="flowline"><span class="pill" style="--pc:var(--mcp)">linear</span><span class="arr">→</span><span class="pill">lead</span><span class="arr">→</span><span class="pill" style="--pc:var(--accent)">be</span><span class="pill" style="--pc:var(--accent)">fe</span></div>
+          <h3>Ship from a ticket</h3>
+          <p>Pull a story from Linear, split the backend and frontend work across sub-agents, and push the changes.</p>
+        </div>
+        <div class="use" data-reveal style="--pc:var(--accent)">
+          <div class="flowline"><span class="pill" style="--pc:var(--repo)">repo</span><span class="arr">→</span><span class="pill">reviewer</span></div>
+          <h3>Audit a diff</h3>
+          <p>A reviewer agent sweeps changed files for correctness bugs and security issues, ranked by severity.</p>
+        </div>
+        <div class="use" data-reveal style="--pc:var(--sql)">
+          <div class="flowline"><span class="pill" style="--pc:var(--sql)">postgres</span><span class="arr">→</span><span class="pill">agent</span></div>
+          <h3>Data-aware answers</h3>
+          <p>An agent queries your database and answers with the real numbers — not a guess from training data.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ install ============================ -->
+  <section id="install" class="band">
+    <div class="wrap">
+      <div class="band-head" data-reveal>
+        <span class="eyebrow">Install</span>
+        <h2>Run it your way — laptop to cluster.</h2>
+        <p>Open source. Clone the repo and pick a method. Every path runs on your Claude subscription — no API key required.</p>
+      </div>
+
+      <div class="methods">
+        <div class="method" data-reveal>
+          <div class="k">Local dev</div>
+          <h3>Two terminals</h3>
+          <p>The designer and API start with no credentials. Sign in to Claude once to run flows.</p>
+          <pre><code>claude            # sign in once (subscription)
+cd apps/backend && mvn spring-boot:run
+pnpm install &amp;&amp; pnpm dev   # http://localhost:5173</code></pre>
+        </div>
+
+        <div class="method" data-reveal>
+          <div class="k">Docker</div>
+          <h3>Compose up</h3>
+          <p>Backend (with the Claude CLI baked in) + frontend. Mint a subscription token once, no API key.</p>
+          <pre><code>claude setup-token        # prints a token
+echo "CLAUDE_CODE_OAUTH_TOKEN=..." &gt; .env
+docker compose up --build # :3000</code></pre>
+        </div>
+
+        <div class="method" data-reveal>
+          <div class="k">Kubernetes</div>
+          <h3>Helm chart</h3>
+          <p>One release for backend + frontend, with an optional public nginx entrypoint.</p>
+          <pre><code>helm install concentus deploy/helm/concentus \
+  --set backend.claudeOAuthToken=$TOKEN \
+  --set publicNginx.enabled=true</code></pre>
+        </div>
+
+        <div class="method" data-reveal>
+          <div class="k">Kubernetes</div>
+          <h3>Kustomize</h3>
+          <p>Plain manifests. The <code>public</code> overlay adds the optional nginx to expose it externally.</p>
+          <pre><code>kubectl apply -k deploy/kustomize/base
+# or, with the public nginx entrypoint:
+kubectl apply -k deploy/kustomize/overlays/public</code></pre>
+        </div>
+      </div>
+
+      <p class="note" data-reveal style="text-align:center;margin-top:22px">
+        Full walkthrough, values, and the webhook setup are in the
+        <a href="#" data-gh="/blob/HEAD/README.md#deploy">README</a>.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================ cta ============================ -->
+  <section id="start" class="cta">
+    <div class="wrap">
+      <h2 data-reveal>Build your first flow in minutes.</h2>
+      <p data-reveal>Sign in to Claude once, open the canvas, and run a multi-agent flow on your own subscription — no API key, no setup tax.</p>
+      <div class="row" data-reveal>
+        <a class="btn btn-primary" href="#" data-gh>View on GitHub</a>
+        <a class="btn btn-ghost" href="#install">Installation methods</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ============================ footer ============================ -->
+<footer>
+  <div class="wrap foot">
+    <div class="col about">
+      <a class="brand" href="#top"><span class="hex">⬡</span> Concentus</a>
+      <p>A visual canvas for multi-agent orchestration — run on your Claude login, or in the cloud.</p>
+    </div>
+    <div class="col">
+      <h4>Product</h4>
+      <a href="#features">Features</a>
+      <a href="#run">Run anywhere</a>
+      <a href="#build">Use cases</a>
+    </div>
+    <div class="col">
+      <h4>Build</h4>
+      <a href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a href="#" data-gh="/blob/HEAD/README.md">Documentation</a>
+      <a href="#" data-gh>Source</a>
+    </div>
+    <div class="col">
+      <h4>Runs on</h4>
+      <a href="#">Claude · Opus 4.8</a>
+      <a href="#">Claude · Sonnet 5</a>
+      <a href="#">Managed Agents</a>
+    </div>
+  </div>
+  <div class="wrap"><p class="fine">Concentus · Built on the Claude platform · <span id="yr"></span></p></div>
+</footer>
+
+<script>
+  // scroll reveal
+  (function () {
+    var els = document.querySelectorAll('[data-reveal]');
+    if (!('IntersectionObserver' in window)) { els.forEach(function (e) { e.classList.add('in'); }); return; }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.14, rootMargin: '0px 0px -40px 0px' });
+    els.forEach(function (e) { io.observe(e); });
+  })();
+  var yr = document.getElementById('yr'); if (yr) { yr.textContent = new Date().getFullYear(); }
+
+  // Single place to set the repo URL — every [data-gh] link points here.
+  var GITHUB_URL = 'https://github.com/Gergilcan/consentus';
+  document.querySelectorAll('[data-gh]').forEach(function (a) {
+    var suffix = a.getAttribute('data-gh');
+    a.setAttribute('href', suffix ? GITHUB_URL + suffix : GITHUB_URL);
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener');
+  });
+</script>
+</body>
+</html>

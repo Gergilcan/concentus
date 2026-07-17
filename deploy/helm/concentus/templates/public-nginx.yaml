@@ -1,0 +1,93 @@
+{{- if .Values.publicNginx.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "concentus.nginxName" . }}
+  labels:
+    {{- include "concentus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: public-nginx
+data:
+  default.conf: |
+    server {
+      listen 80;
+      server_name _;
+
+      # API + WebSocket straight to the backend.
+      location /api/ {
+        proxy_pass http://{{ include "concentus.backendName" . }}:{{ .Values.backend.port }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 300s;
+      }
+      location /ws/ {
+        proxy_pass http://{{ include "concentus.backendName" . }}:{{ .Values.backend.port }};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_read_timeout 3600s;
+      }
+
+      # Everything else to the frontend.
+      location / {
+        proxy_pass http://{{ include "concentus.frontendName" . }}:{{ .Values.frontend.port }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "concentus.nginxName" . }}
+  labels:
+    {{- include "concentus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: public-nginx
+spec:
+  replicas: {{ .Values.publicNginx.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: public-nginx
+  template:
+    metadata:
+      labels:
+        {{- include "concentus.labels" . | nindent 8 }}
+        app.kubernetes.io/component: public-nginx
+    spec:
+      containers:
+        - name: nginx
+          image: "{{ .Values.publicNginx.image.repository }}:{{ .Values.publicNginx.image.tag }}"
+          imagePullPolicy: {{ .Values.publicNginx.image.pullPolicy }}
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+          resources:
+            {{- toYaml .Values.publicNginx.resources | nindent 12 }}
+      volumes:
+        - name: conf
+          configMap:
+            name: {{ include "concentus.nginxName" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "concentus.nginxName" . }}
+  labels:
+    {{- include "concentus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: public-nginx
+spec:
+  type: {{ .Values.publicNginx.service.type }}
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: public-nginx
+  ports:
+    - port: {{ .Values.publicNginx.service.port }}
+      targetPort: 80
+      {{- if and (eq .Values.publicNginx.service.type "NodePort") .Values.publicNginx.service.nodePort }}
+      nodePort: {{ .Values.publicNginx.service.nodePort }}
+      {{- end }}
+{{- end }}

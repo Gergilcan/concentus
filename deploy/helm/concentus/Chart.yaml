@@ -1,0 +1,11 @@
+apiVersion: v2
+name: concentus
+description: Concentus — visual multi-agent flow builder (backend + frontend), with an optional public nginx proxy.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://github.com/Gergilcan/consentus
+sources:
+  - https://github.com/Gergilcan/consentus
+maintainers:
+  - name: Concentus

@@ -1,0 +1,26 @@
+@use '../styles/theme' as t;
+
+.edgeDelete {
+  position: absolute;
+  pointer-events: all;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid t.$border;
+  background: t.$panel;
+  color: t.$muted;
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0.55;
+  transition: opacity 0.1s ease;
+
+  &:hover {
+    opacity: 1;
+    color: t.$danger;
+    border-color: t.$danger;
+  }
+}

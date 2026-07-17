@@ -1,0 +1,62 @@
+nameOverride: ""
+fullnameOverride: ""
+
+backend:
+  image:
+    repository: concentus/backend
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 8080
+  # local  = run on your Claude subscription (token below), no API key
+  # api-key = use the Anthropic cloud API (set anthropicApiKey)
+  # auto    = api key if present, else local
+  authMode: local
+  # Long-lived subscription token from `claude setup-token` (NOT an API key).
+  # If set, a Secret is created for it. Leave blank to use existingSecret instead.
+  claudeOAuthToken: ""
+  # Optional: use the cloud API instead of the subscription.
+  anthropicApiKey: ""
+  # Reference a pre-created Secret (keys: CLAUDE_CODE_OAUTH_TOKEN and/or ANTHROPIC_API_KEY)
+  # instead of putting secrets in values.
+  existingSecret: ""
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+  resources: {}
+  extraEnv: []
+
+frontend:
+  image:
+    repository: concentus/frontend
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 80
+  service:
+    type: ClusterIP
+  resources: {}
+
+# Optional public-facing nginx reverse proxy: a single external entrypoint that routes
+# /api and /ws to the backend and everything else to the frontend. A good place to add TLS.
+publicNginx:
+  enabled: false
+  replicas: 1
+  image:
+    repository: nginx
+    tag: "1.27-alpine"
+    pullPolicy: IfNotPresent
+  service:
+    type: LoadBalancer   # LoadBalancer | NodePort | ClusterIP
+    port: 80
+    nodePort: ""         # only used when type: NodePort
+  resources: {}
+
+# Optional Ingress (alternative to publicNginx if you already run an ingress controller).
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: concentus.local
+  tls: []

@@ -1,0 +1,50 @@
+@use '../styles/theme' as t;
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 14px;
+  background: t.$bg;
+  border-bottom: 1px solid t.$border;
+}
+
+.brand {
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.logo {
+  color: t.$accent;
+  font-size: 18px;
+}
+
+.nav {
+  display: flex;
+  gap: 4px;
+
+  button {
+    background: transparent;
+    border: 1px solid transparent;
+    color: t.$muted;
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+
+    &:hover {
+      color: t.$text;
+    }
+  }
+
+  .active {
+    background: t.$panel-2;
+    border-color: t.$border;
+    color: t.$text;
+  }
+}
+
+.spacer {
+  flex: 1;
+}

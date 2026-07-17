@@ -1,0 +1,91 @@
+@use '../../styles/theme' as t;
+
+.node {
+  background: t.$panel-2;
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
+  padding: 8px 10px;
+  width: 190px;
+  color: t.$text;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  font-size: 12px;
+}
+
+.selected {
+  outline: 2px solid t.$accent;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon {
+  font-size: 13px;
+}
+
+.title {
+  font-weight: 600;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  font-size: 10px;
+  background: t.$border;
+  padding: 1px 6px;
+  border-radius: 10px;
+  color: t.$muted;
+  text-transform: uppercase;
+}
+
+.badgeCoord {
+  background: t.$coordinator;
+  color: #1a1030;
+}
+
+.meta {
+  color: t.$muted;
+  margin-top: 4px;
+}
+
+.snippet {
+  color: t.$muted;
+  margin-top: 4px;
+  font-size: 11px;
+  max-height: 32px;
+  overflow: hidden;
+}
+
+.snippetMuted {
+  @extend .snippet;
+  font-style: italic;
+  opacity: 0.6;
+}
+
+.agent {
+  border-left: 3px solid t.$agent;
+}
+
+.coordinator {
+  border-left: 3px solid t.$coordinator;
+}
+
+.mcp {
+  border-left: 3px solid t.$mcp;
+}
+
+.repo {
+  border-left: 3px solid t.$repo;
+}
+
+.sql {
+  border-left: 3px solid t.$sql;
+}
+
+.input {
+  border-left: 3px solid t.$ok;
+}
