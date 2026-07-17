@@ -4,8 +4,8 @@ description: Concentus — visual multi-agent flow builder (backend + frontend),
 type: application
 version: 0.1.0
 appVersion: "1.0.0"
-home: https://github.com/Gergilcan/consentus
+home: https://github.com/Gergilcan/concentus
 sources:
-  - https://github.com/Gergilcan/consentus
+  - https://github.com/Gergilcan/concentus
 maintainers:
   - name: Concentus
