@@ -89,3 +89,35 @@
 .input {
   border-left: 3px solid t.$ok;
 }
+
+/* live run status + tokens shown on a node */
+.execBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  font-size: 10px;
+  text-transform: capitalize;
+  color: t.$muted;
+  border: 1px solid t.$border;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.ebDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.eb_running {
+  color: t.$repo;
+  border-color: t.$repo;
+}
+.eb_passed {
+  color: t.$ok;
+  border-color: t.$ok;
+}
+.eb_failed {
+  color: t.$danger;
+  border-color: t.$danger;
+}

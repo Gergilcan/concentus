@@ -9,8 +9,11 @@ import org.springframework.stereotype.Component;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -21,6 +24,19 @@ import java.util.regex.Pattern;
 public class McpRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(McpRegistry.class);
+
+    /**
+     * Server names accepted by the sign-in flow: letters, digits, space, dot, dash, underscore
+     * (1–64 chars). Spaces are allowed because real MCP servers use them ("claude.ai Google Drive"),
+     * but every shell/batch metacharacter ({@code " & | ; ` % $ < > ( ) newline}) is excluded, so a
+     * name can never break out of quoting in a spawned terminal. Validated at the controller
+     * boundary and re-checked here.
+     */
+    private static final Pattern SAFE_NAME = Pattern.compile("[A-Za-z0-9 ._-]{1,64}");
+
+    public static boolean isSafeName(String name) {
+        return name != null && SAFE_NAME.matcher(name).matches();
+    }
     // "Rovo: https://mcp.atlassian.com/v1/mcp - ! Needs authentication"
     // "Linear: https://mcp.linear.app/mcp (HTTP) - ✔ Connected"   (note the "(HTTP)" transport marker)
     private static final Pattern LINE =
@@ -82,35 +98,77 @@ public class McpRegistry {
         String cmd = support.command().orElse(null);
         if (cmd == null) return "claude CLI not found";
         if (name == null || name.isBlank()) return "missing name";
+        // Defence in depth: the controller rejects unsafe names, but never build a terminal
+        // command around one that slipped through another caller.
+        if (!isSafeName(name)) return "invalid server name";
 
         String os = System.getProperty("os.name", "").toLowerCase();
         try {
             if (os.contains("win")) {
+                // The script text carries no untrusted data — it refers to the login name only
+                // through the batch parameter %~1 (~ strips the quotes ProcessBuilder adds around
+                // an argument containing spaces). The name is handed over as a discrete argv entry.
                 Path script = Files.createTempFile("mcp-login-", ".cmd");
                 String body = "@echo off\r\n"
-                        + "title Authorize " + name + " - MCP sign-in\r\n"
-                        + "echo Signing in to \"" + name + "\". A browser will open; approve access,\r\n"
+                        + "title Authorize %~1 - MCP sign-in\r\n"
+                        + "echo Signing in to \"%~1\". A browser will open; approve access,\r\n"
                         + "echo then paste the redirect URL back here if prompted.\r\n"
                         + "echo.\r\n"
-                        + "\"" + cmd + "\" mcp login \"" + name + "\"\r\n"
+                        + "\"" + cmd + "\" mcp login \"%~1\"\r\n"
                         + "echo.\r\n"
                         + "echo Done - return to Concentus and click \"Recheck\".\r\n"
-                        + "pause\r\n";
+                        + "pause\r\n"
+                        + "del \"%~f0\"\r\n";
                 Files.writeString(script, body);
-                new ProcessBuilder("cmd.exe", "/c", "start", "", "cmd.exe", "/c", script.toString()).start();
+                script.toFile().deleteOnExit();
+                new ProcessBuilder(
+                        "cmd.exe", "/c", "start", "", "cmd.exe", "/c", script.toString(), name)
+                        .start();
                 return "A terminal window opened — finish the sign-in there, then click Recheck.";
             }
             if (os.contains("mac")) {
-                String inner = cmd + " mcp login \\\"" + name + "\\\"";
-                new ProcessBuilder("osascript", "-e",
-                        "tell application \"Terminal\" to do script \"" + inner + "\"").start();
+                // Same rule as Windows: the name never appears in script text. It is written to a
+                // sibling data file the script reads at run time, and Terminal is launched with
+                // `open` (argv) rather than an interpolated AppleScript string.
+                Path nameFile = Files.createTempFile("mcp-login-", ".name");
+                Files.writeString(nameFile, name);
+                Path script = Files.createTempFile("mcp-login-", ".command");
+                String body = "#!/bin/sh\n"
+                        + "NAME=$(cat " + shellQuote(nameFile.toString()) + ")\n"
+                        + "printf 'Signing in to %s. A browser will open; approve access,\\n' \"$NAME\"\n"
+                        + "printf 'then paste the redirect URL back here if prompted.\\n\\n'\n"
+                        + shellQuote(cmd) + " mcp login \"$NAME\"\n"
+                        + "printf '\\nDone - return to Concentus and click \"Recheck\".\\n'\n"
+                        + "rm -f " + shellQuote(nameFile.toString()) + " \"$0\"\n";
+                Files.writeString(script, body);
+                makeExecutable(script);
+                nameFile.toFile().deleteOnExit();
+                script.toFile().deleteOnExit();
+                new ProcessBuilder("open", "-a", "Terminal", script.toString()).start();
                 return "A Terminal window opened — finish the sign-in there, then click Recheck.";
             }
-            // Linux / other: no reliable terminal to spawn — hand back the command.
+            // Linux / other: no reliable terminal to spawn — hand back the command as text.
             return "Run `" + cmd + " mcp login \"" + name + "\"` in a terminal, then click Recheck.";
         } catch (Exception e) {
             log.warn("could not launch login terminal for {}: {}", name, e.toString());
             return "Couldn't open a terminal — run `claude mcp login \"" + name + "\"` manually, then Recheck.";
+        }
+    }
+
+    /** Single-quotes a value for POSIX sh, escaping any embedded single quotes. */
+    private static String shellQuote(String s) {
+        return "'" + s.replace("'", "'\\''") + "'";
+    }
+
+    private static void makeExecutable(Path script) {
+        try {
+            Set<PosixFilePermission> perms = EnumSet.of(
+                    PosixFilePermission.OWNER_READ,
+                    PosixFilePermission.OWNER_WRITE,
+                    PosixFilePermission.OWNER_EXECUTE);
+            Files.setPosixFilePermissions(script, perms);
+        } catch (Exception e) {
+            log.debug("could not chmod {}: {}", script, e.getMessage());
         }
     }
 

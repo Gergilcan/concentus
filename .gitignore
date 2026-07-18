@@ -11,6 +11,11 @@ apps/frontend/dist/
 data/
 apps/backend/data/
 
+# Secrets — .env.example is the tracked template
+.env
+.env.local
+!.env.example
+
 # Logs & OS
 *.log
 .DS_Store

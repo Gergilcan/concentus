@@ -4,10 +4,15 @@
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "dev": "pnpm --filter frontend dev",
+    "dev": "concurrently -n backend,frontend -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\"",
+    "dev:backend": "cd apps/backend && mvn -q spring-boot:run",
+    "dev:frontend": "pnpm --filter frontend dev",
     "build": "pnpm --filter frontend build",
-    "preview": "pnpm --filter frontend preview",
     "backend": "cd apps/backend && mvn spring-boot:run",
-    "backend:build": "cd apps/backend && mvn -q clean package"
+    "backend:build": "cd apps/backend && mvn -q clean package",
+    "preview": "pnpm --filter frontend preview"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }

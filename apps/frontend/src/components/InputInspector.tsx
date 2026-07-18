@@ -12,10 +12,8 @@ export function InputInspector({ data, set }: Props) {
   const flowId = useFlowStore((s) => s.flowId)
   const [copied, setCopied] = useState(false)
 
-  const webhookUrl =
-    flowId && data.secret
-      ? `${location.origin}/api/webhooks/${flowId}?token=${encodeURIComponent(data.secret)}`
-      : null
+  // No token in the URL: Linear authenticates by signing the body, not by echoing a secret back.
+  const webhookUrl = flowId ? `${location.origin}/api/webhooks/${flowId}` : null
 
   const copy = async () => {
     if (!webhookUrl) return
@@ -27,8 +25,6 @@ export function InputInspector({ data, set }: Props) {
       /* clipboard blocked — the field is selectable anyway */
     }
   }
-
-  const regen = () => set({ secret: globalThis.crypto?.randomUUID?.() ?? String(Date.now()) })
 
   return (
     <>
@@ -68,14 +64,32 @@ export function InputInspector({ data, set }: Props) {
       {data.mode === 'webhook' && (
         <>
           <label className={styles.field}>
-            <span>Secret token</span>
-            <input value={data.secret} onChange={(e) => set({ secret: e.target.value })} />
+            <span>Validation parameter</span>
+            <input
+              value={data.authParam}
+              placeholder="Linear-Signature"
+              onChange={(e) => set({ authParam: e.target.value })}
+            />
           </label>
-          <div className={styles.mcpBtns}>
-            <button className={styles.linkBtn} onClick={regen}>
-              Regenerate secret
-            </button>
-          </div>
+          <p className={styles.hint}>
+            Header (or query parameter) the provider sends the proof in. E.g.{' '}
+            <code>Linear-Signature</code>, <code>X-Hub-Signature-256</code> for GitHub, or{' '}
+            <code>token</code> for a plain shared token.
+          </p>
+
+          <label className={styles.field}>
+            <span>Secret</span>
+            <input
+              value={data.secret}
+              placeholder="Copy from the provider's webhook page"
+              onChange={(e) => set({ secret: e.target.value })}
+            />
+          </label>
+          {!data.secret && (
+            <p className={styles.hint}>
+              Required — without it every delivery is rejected with <b>401</b>.
+            </p>
+          )}
 
           <label className={styles.field}>
             <span>Webhook URL</span>
@@ -94,10 +108,14 @@ export function InputInspector({ data, set }: Props) {
           )}
 
           <p className={styles.hint}>
-            <b>Linear:</b> Settings → API → Webhooks → New webhook. Paste this URL, and enable the
-            events you want (e.g. <b>Issues</b>, <b>Comments</b>). Each matching event starts a run with
-            the event JSON as input. The URL must be reachable from the internet (deploy it, or use a
-            tunnel like ngrok for local testing).
+            The value is accepted if it's an HMAC-SHA256 of the request body signed with the secret, or
+            the secret itself — so signed and plain-token providers both work with no extra setup.
+          </p>
+          <p className={styles.hint}>
+            <b>Linear:</b> Settings → API → Webhooks → New webhook. Paste this URL and enable the events
+            you want (e.g. <b>Issues</b>, <b>Comments</b>). Linear then shows a <b>signing secret</b> on
+            the webhook's page — copy it into the Secret field. The URL must be reachable from the
+            internet (deploy it, or tunnel with ngrok for local testing).
           </p>
         </>
       )}

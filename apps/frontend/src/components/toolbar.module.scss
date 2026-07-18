@@ -21,6 +21,22 @@
   font-size: 18px;
 }
 
+.back {
+  background: transparent;
+  border: 1px solid t.$border;
+  color: t.$muted;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    color: t.$text;
+    border-color: t.$accent;
+  }
+}
+
 .name {
   background: t.$bg;
   border: 1px solid t.$border;

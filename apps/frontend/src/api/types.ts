@@ -13,6 +13,9 @@ export interface RunSummary {
   agentIds?: string[] | null
   error?: string | null
   trigger?: string | null
+  totalInputTokens?: number
+  totalOutputTokens?: number
+  estimatedCostUsd?: number
 }
 
 export type RunEventType = 'system' | 'status' | 'agent_message' | 'tool_use' | 'error'
@@ -29,6 +32,31 @@ export interface RunDetail {
   events: RunEvent[]
 }
 
+export type NodeExecStatus = 'pending' | 'running' | 'passed' | 'failed'
+
+export interface NodeExec {
+  nodeId: string
+  kind: string
+  label: string
+  status: NodeExecStatus
+  input?: string | null
+  output?: string | null
+  format?: 'text' | 'markdown' | 'table'
+  columns?: string[] | null
+  rows?: string[][] | null
+  error?: string | null
+  inputTokens: number
+  outputTokens: number
+  startedAt: number
+  endedAt: number
+}
+
+export interface NodeExecReport {
+  nodes: NodeExec[]
+  totalInputTokens: number
+  totalOutputTokens: number
+}
+
 // ---- Flow / node data (canvas) ----
 // `type` aliases (not interfaces) so they satisfy React Flow's
 // `Record<string, unknown>` node-data constraint.
@@ -40,7 +68,10 @@ export type InputNodeData = {
   mode: 'manual' | 'prompt' | 'cron' | 'webhook'
   prompt: string
   cron: string
+  /** Secret issued by the provider; we verify against it, we never mint it. */
   secret: string
+  /** Header (or query param) carrying the signature/token, e.g. `Linear-Signature`. */
+  authParam: string
 }
 
 export type AgentNodeData = {
@@ -110,6 +141,18 @@ export interface BackendFlow {
   mode: 'managed' | 'local'
   nodes: BackendFlowNode[]
   edges: BackendFlowEdge[]
+  /** false pauses scheduled (cron) execution without removing the trigger */
+  enabled?: boolean
+  tags?: string[]
+  favorite?: boolean
+  /** URL POSTed when a run of this flow fails (Slack-compatible payload) */
+  notifyWebhook?: string
+}
+
+export interface FlowVersionInfo {
+  version: number
+  name: string
+  createdAt: number
 }
 
 export interface RagStatus {

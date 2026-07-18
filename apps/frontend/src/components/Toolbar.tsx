@@ -1,12 +1,12 @@
 import { api } from '../api/client.ts'
-import type { BackendFlow, RunSummary } from '../api/types.ts'
+import type { RunSummary } from '../api/types.ts'
 import { useFlowStore } from '../state/store.ts'
 import styles from './toolbar.module.scss'
 
 interface Props {
-  flows: BackendFlow[]
   onFlowsChanged: () => void
   onRunStarted: (r: RunSummary) => void
+  onBackToFlows: () => void
   pushError: (m: string) => void
 }
 
@@ -14,12 +14,11 @@ function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-export function Toolbar({ flows, onFlowsChanged, onRunStarted, pushError }: Props) {
+export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError }: Props) {
   const name = useFlowStore((s) => s.name)
   const setName = useFlowStore((s) => s.setName)
   const mode = useFlowStore((s) => s.mode)
   const setMode = useFlowStore((s) => s.setMode)
-  const flowId = useFlowStore((s) => s.flowId)
   const newFlow = useFlowStore((s) => s.newFlow)
   const loadBackendFlow = useFlowStore((s) => s.loadBackendFlow)
 
@@ -42,20 +41,12 @@ export function Toolbar({ flows, onFlowsChanged, onRunStarted, pushError }: Prop
     }
   }
 
-  const openFlow = async (id: string) => {
-    if (!id) {
-      newFlow()
-      return
-    }
-    try {
-      loadBackendFlow(await api.getFlow(id))
-    } catch (e) {
-      pushError(msg(e))
-    }
-  }
-
   return (
     <header className={styles.toolbar}>
+      <button className={styles.back} onClick={onBackToFlows} title="Back to all flows">
+        ← Flows
+      </button>
+
       <input
         className={styles.name}
         value={name}
@@ -71,15 +62,6 @@ export function Toolbar({ flows, onFlowsChanged, onRunStarted, pushError }: Prop
       >
         <option value="managed">managed</option>
         <option value="local">local</option>
-      </select>
-
-      <select className={styles.select} value={flowId ?? ''} onChange={(e) => openFlow(e.target.value)}>
-        <option value="">— open flow —</option>
-        {flows.map((f) => (
-          <option key={f.id} value={f.id}>
-            {f.name}
-          </option>
-        ))}
       </select>
 
       <div className={styles.spacer} />

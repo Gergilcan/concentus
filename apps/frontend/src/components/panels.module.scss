@@ -174,8 +174,26 @@
 
 .inspectorHead {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 6px;
+
+  .h3 {
+    margin-right: auto;
+  }
+}
+
+.dup {
+  background: transparent;
+  border: 1px solid t.$border;
+  color: t.$muted;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+
+  &:hover {
+    border-color: t.$accent;
+    color: t.$accent;
+  }
 }
 
 .del {
@@ -265,4 +283,93 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
+}
+
+/* ---- exec tabs (Properties / Input / Output) ---- */
+.execTabs {
+  display: flex;
+  gap: 4px;
+  margin: 4px 0 14px;
+  border-bottom: 1px solid t.$border;
+}
+.execTab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: t.$muted;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$text;
+  }
+}
+.execTabActive {
+  color: t.$text;
+  border-bottom-color: t.$accent;
+}
+
+.execHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.statusPill {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid t.$border;
+  color: t.$muted;
+}
+.st_pending {
+  color: t.$muted;
+}
+.st_running {
+  color: t.$repo;
+  border-color: t.$repo;
+}
+.st_passed {
+  color: t.$ok;
+  border-color: t.$ok;
+}
+.st_failed {
+  color: t.$danger;
+  border-color: t.$danger;
+}
+
+.tokenLine {
+  font-family: monospace;
+  font-size: 11px;
+  color: t.$muted;
+}
+
+.execText {
+  background: t.$bg;
+  border: 1px solid t.$border;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 420px;
+  overflow: auto;
+  margin: 10px 0 0;
+}
+
+.execError {
+  background: color-mix(in srgb, t.$danger 12%, transparent);
+  border: 1px solid t.$danger;
+  color: t.$danger;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  margin-bottom: 10px;
+  word-break: break-word;
 }

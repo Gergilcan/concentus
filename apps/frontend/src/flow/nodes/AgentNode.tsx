@@ -1,8 +1,9 @@
 import { Handle, type NodeProps, Position } from '@xyflow/react'
 import type { AgentRFNode } from '../nodeTypes.ts'
+import { NodeStatusBadge } from './NodeStatusBadge.tsx'
 import styles from './nodes.module.scss'
 
-export function AgentNode({ data, selected }: NodeProps<AgentRFNode>) {
+export function AgentNode({ id, data, selected }: NodeProps<AgentRFNode>) {
   const isCoordinator = data.role === 'coordinator'
   return (
     <div
@@ -24,6 +25,7 @@ export function AgentNode({ data, selected }: NodeProps<AgentRFNode>) {
       ) : (
         <div className={styles.snippetMuted}>no system prompt</div>
       )}
+      <NodeStatusBadge id={id} />
       <Handle type="source" position={Position.Right} />
     </div>
   )

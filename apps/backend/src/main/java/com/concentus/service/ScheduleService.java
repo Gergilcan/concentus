@@ -45,6 +45,10 @@ public class ScheduleService {
         for (FlowGraph flow : flows.list()) {
             TriggerSpec t = TriggerSpec.from(flow);
             if (flow.id() == null || !t.scheduled()) continue;
+            if (!flow.isEnabled()) {
+                log.info("Flow '{}' is paused — not scheduling.", flow.name());
+                continue;
+            }
             try {
                 String flowId = flow.id();
                 ScheduledFuture<?> f = scheduler.schedule(() -> fire(flowId), new CronTrigger(normalize(t.cron())));

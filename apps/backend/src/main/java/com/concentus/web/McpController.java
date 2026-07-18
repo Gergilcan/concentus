@@ -40,23 +40,39 @@ public class McpController {
         return Map.of("name", spec.name, "status", status);
     }
 
-    /** Launches a terminal window to run the interactive OAuth sign-in for a server. */
+    /**
+     * Launches a terminal window to run the interactive OAuth sign-in for a server.
+     *
+     * <p>The name reaches a spawned console, so it is validated here first: letters, digits,
+     * space, dot, dash and underscore only (1–64 chars). That admits every real server name
+     * ("Linear", "claude.ai Google Drive") while excluding the shell/batch metacharacters an
+     * injected command would need. Anything else is rejected with 400.
+     */
     @PostMapping("/servers/login")
     public Map<String, String> login(@RequestBody Map<String, String> body) {
+        String name = requireName(body);
+        if (!McpRegistry.isSafeName(name)) {
+            throw new IllegalArgumentException(
+                    "name may only contain letters, digits, spaces, dots, dashes or underscores (max 64).");
+        }
+        return Map.of("name", name, "status", registry.login(name));
+    }
+
+    private static String requireName(Map<String, String> body) {
         String name = body == null ? null : body.get("name");
+        if (name != null) name = name.trim();
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("name is required.");
         }
-        return Map.of("name", name, "status", registry.login(name));
+        return name;
     }
 
     /** Removes a server from the Claude Code list (used to clear duplicates/broken entries). */
     @PostMapping("/servers/remove")
     public Map<String, String> remove(@RequestBody Map<String, String> body) {
-        String name = body == null ? null : body.get("name");
-        if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("name is required.");
-        }
+        // `remove` passes the name to the CLI as a discrete argv entry (never through a shell),
+        // so it isn't charset-restricted — an already-registered server must stay removable.
+        String name = requireName(body);
         return Map.of("name", name, "status", registry.remove(name));
     }
 }

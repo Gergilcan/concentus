@@ -33,6 +33,11 @@ export function Palette() {
         Drag a node to move it. To remove a connection, hover it and click the <b>×</b>, or select it and
         press <b>Delete</b>.
       </p>
+      <p className={styles.hint}>
+        Copy blocks with <b>Ctrl/⌘+C</b> and paste with <b>Ctrl/⌘+V</b> — you can paste into a different
+        flow too. <b>Ctrl/⌘+D</b> duplicates the selection in place. Shift-drag to select several blocks at
+        once; connections between copied blocks are kept.
+      </p>
 
       <RagPanel />
     </aside>

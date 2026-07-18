@@ -10,10 +10,14 @@ import java.util.Map;
  *   <li>{@code prompt}  — the run auto-starts with {@link #prompt} as the initial input.</li>
  *   <li>{@code cron}    — as {@code prompt}, and also runs automatically on {@link #cron}.</li>
  *   <li>{@code webhook} — an external POST (e.g. a Linear event) starts a run; the payload is the
- *       input, prefixed by {@link #prompt}. Protected by {@link #secret}.</li>
+ *       input, prefixed by {@link #prompt}. Authenticated with {@link #secret}, presented in the
+ *       request parameter named {@link #authParam}.</li>
  * </ul>
  */
-public record TriggerSpec(String mode, String prompt, String cron, String secret) {
+public record TriggerSpec(String mode, String prompt, String cron, String secret, String authParam) {
+
+    /** Used when a flow doesn't name one, so existing Linear webhooks keep working untouched. */
+    public static final String DEFAULT_AUTH_PARAM = "Linear-Signature";
 
     public static TriggerSpec from(FlowGraph flow) {
         for (FlowNode n : flow.nodesOrEmpty()) {
@@ -23,10 +27,11 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
                         str(d, "mode", "manual"),
                         str(d, "prompt", ""),
                         str(d, "cron", ""),
-                        str(d, "secret", ""));
+                        str(d, "secret", ""),
+                        str(d, "authParam", DEFAULT_AUTH_PARAM));
             }
         }
-        return new TriggerSpec("manual", "", "", "");
+        return new TriggerSpec("manual", "", "", "", DEFAULT_AUTH_PARAM);
     }
 
     /** The run should immediately fire {@link #prompt} as its first turn (Run button / prompt & cron modes). */

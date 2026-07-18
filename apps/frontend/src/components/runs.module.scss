@@ -109,6 +109,16 @@
   min-height: 0;
 }
 
+.tokenBar {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-bottom: 1px solid t.$border;
+  font-family: ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: t.$muted;
+  background: t.$panel-2;
+}
+
 .log {
   flex: 1;
   overflow: auto;
@@ -188,4 +198,15 @@
   background: transparent !important;
   border-color: t.$danger !important;
   color: t.$danger !important;
+}
+
+.retryBtn {
+  background: transparent !important;
+  border-color: t.$border !important;
+  color: t.$muted !important;
+
+  &:hover {
+    border-color: t.$accent !important;
+    color: t.$text !important;
+  }
 }

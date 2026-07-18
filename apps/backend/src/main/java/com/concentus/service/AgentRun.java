@@ -1,9 +1,14 @@
 package com.concentus.service;
 
+import com.concentus.model.NodeExec;
 import com.concentus.model.RunEvent;
 import com.concentus.model.RunSummary;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
@@ -16,7 +21,10 @@ public class AgentRun {
     public final String flowId;
     public final String flowName;
     public final String mode;
-    public final long createdAt = System.currentTimeMillis();
+    /** Settable so restored runs keep their original ordering timestamp. */
+    public volatile long createdAt = System.currentTimeMillis();
+    /** FlowGraph snapshot (JSON) used to recompile and continue this run after a restart. */
+    public volatile String flowJson;
 
     public volatile String status = "STARTING"; // STARTING | RUNNING | IDLE | ERROR | TERMINATED
     public volatile String sessionId;
@@ -26,10 +34,17 @@ public class AgentRun {
     /** "cloud" (Managed Agents / API key) or "local" (claude CLI / subscription). */
     public volatile String backend = "cloud";
 
-    /** How this execution was triggered: "manual" | "prompt" | "cron". */
+    /** How this execution was triggered: "manual" | "prompt" | "cron" | "webhook". */
     public volatile String trigger = "manual";
     /** Initial input to fire automatically once the run is ready (null = wait for the user). */
     public volatile String pendingPrompt;
+    /** The first input this run was given — replayed when the execution is retried. */
+    public volatile String initialPrompt;
+    /** Flow's failure-notification URL, copied at start so it survives flow edits. */
+    public volatile String notifyWebhook;
+    /** USD per million tokens, used for the cost estimate shown in the UI. */
+    public volatile double inputUsdPerMTok;
+    public volatile double outputUsdPerMTok;
 
     /** Open event stream (cloud), stored so {@code stop()} can break the loop. */
     public volatile AutoCloseable stream;
@@ -42,6 +57,51 @@ public class AgentRun {
 
     private final CopyOnWriteArrayList<RunEvent> buffer = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<Consumer<RunEvent>> listeners = new CopyOnWriteArrayList<>();
+
+    // --- per-node execution state (Input/Output tabs, step status, tokens) ---
+    private final Map<String, NodeExec> nodeExecs = new LinkedHashMap<>();
+    /** toolUseId of a Task call -> the sub-agent node it spawned (to attribute its output/tokens). */
+    public final Map<String, String> taskToNode = new ConcurrentHashMap<>();
+    public volatile long totalInputTokens;
+    public volatile long totalOutputTokens;
+
+    /** Get or create the execution record for a node. Returns null if nodeId is unknown. */
+    public NodeExec nodeExec(String nodeId, String kind, String label) {
+        if (nodeId == null || nodeId.isBlank()) return null;
+        synchronized (nodeExecs) {
+            return nodeExecs.computeIfAbsent(nodeId, k -> {
+                NodeExec n = new NodeExec();
+                n.nodeId = nodeId;
+                n.kind = kind;
+                n.label = label;
+                n.startedAt = System.currentTimeMillis();
+                return n;
+            });
+        }
+    }
+
+    public List<NodeExec> nodeExecList() {
+        synchronized (nodeExecs) {
+            return new ArrayList<>(nodeExecs.values());
+        }
+    }
+
+    /** Repopulate buffer from persisted events (no listeners, no re-persist). */
+    public void restoreEvents(List<RunEvent> events) {
+        if (events == null) return;
+        buffer.addAll(events);
+        while (buffer.size() > MAX_BUFFER) buffer.remove(0);
+    }
+
+    /** Repopulate node execs from persisted state. */
+    public void restoreNodeExecs(List<NodeExec> execs) {
+        if (execs == null) return;
+        synchronized (nodeExecs) {
+            for (NodeExec n : execs) {
+                if (n.nodeId != null) nodeExecs.put(n.nodeId, n);
+            }
+        }
+    }
 
     public AgentRun(String id, String flowId, String flowName, String mode) {
         this.id = id;
@@ -77,6 +137,9 @@ public class AgentRun {
     }
 
     public RunSummary toSummary() {
-        return new RunSummary(id, flowId, flowName, mode, status, createdAt, sessionId, agentIds, error, trigger);
+        double cost = (totalInputTokens / 1_000_000d) * inputUsdPerMTok
+                + (totalOutputTokens / 1_000_000d) * outputUsdPerMTok;
+        return new RunSummary(id, flowId, flowName, mode, status, createdAt, sessionId, agentIds, error,
+                trigger, totalInputTokens, totalOutputTokens, Math.round(cost * 10_000d) / 10_000d);
     }
 }

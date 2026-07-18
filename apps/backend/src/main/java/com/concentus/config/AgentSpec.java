@@ -1,9 +1,14 @@
 package com.concentus.config;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Root of the YAML agent specification. Sub-specs are nested static classes so the
@@ -16,6 +21,8 @@ public class AgentSpec {
     /** managed | local */
     public String mode = "managed";
     public String name = "agent";
+    /** Canvas node id this spec came from (for per-node execution reporting). */
+    public String nodeId;
     /** When (and for what) the coordinator should delegate to this agent — its routing signal. */
     public String description = "";
     public String systemPrompt = "";
@@ -59,6 +66,45 @@ public class AgentSpec {
 
     private static void require(boolean cond, String message) {
         if (!cond) throw new IllegalArgumentException("Invalid agent spec: " + message);
+    }
+
+    // ------------------------------------------------------- env-var allowlist (WIR-7)
+
+    // AgentSpec instances are plain Jackson POJOs (deserialized from YAML/JSON, not
+    // Spring-managed), so they can't take @Value config directly. EnvAllowlistConfig is a
+    // tiny bean that wires the config-driven allowlist from application.properties into this
+    // static holder at startup. Without this, any caller that can set `passwordEnv`/`tokenEnv`
+    // (e.g. the unauthenticated RAG preview endpoint) could read an arbitrary server env var,
+    // such as ANTHROPIC_API_KEY, by naming it.
+    private static volatile Set<String> allowedEnvVars = Set.of();
+    private static volatile Set<String> allowedEnvVarPrefixes = Set.of("WIREJ_DB_");
+
+    @Component
+    static class EnvAllowlistConfig {
+        EnvAllowlistConfig(
+                @Value("${rag.allowed-env-vars:}") String allowedEnvVarsCsv,
+                @Value("${rag.allowed-env-var-prefixes:WIREJ_DB_}") String allowedEnvVarPrefixesCsv) {
+            allowedEnvVars = toSet(allowedEnvVarsCsv);
+            allowedEnvVarPrefixes = toSet(allowedEnvVarPrefixesCsv);
+        }
+
+        private static Set<String> toSet(String csv) {
+            if (csv == null || csv.isBlank()) return Set.of();
+            return Arrays.stream(csv.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toUnmodifiableSet());
+        }
+    }
+
+    /** True if {@code name} may be resolved via {@link System#getenv(String)} by a RAG/SQL spec. */
+    static boolean isEnvVarAllowed(String name) {
+        if (name == null || name.isBlank()) return false;
+        if (allowedEnvVars.contains(name)) return true;
+        for (String prefix : allowedEnvVarPrefixes) {
+            if (!prefix.isEmpty() && name.startsWith(prefix)) return true;
+        }
+        return false;
     }
 
     // ---------------------------------------------------------------- enums
@@ -109,14 +155,24 @@ public class AgentSpec {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class McpServerSpec {
+        /** Canvas node id this spec came from (for per-node execution reporting). */
+        public String nodeId;
         public String name;
         public String url;
         /** Name of an env var holding a bearer token (optional). */
         public String tokenEnv;
 
-        /** Resolves the token from the environment, or null if none configured/set. */
+        /**
+         * Resolves the token from the environment, or null if none configured/set. Only names on
+         * the config-driven allowlist ({@code rag.allowed-env-vars} / {@code
+         * rag.allowed-env-var-prefixes}) are ever read — a non-allowlisted name silently yields no
+         * value rather than the actual env var (e.g. {@code tokenEnv=ANTHROPIC_API_KEY} sent to an
+         * attacker-controlled MCP {@code url} via the unauthenticated {@code /api/mcp/servers}
+         * endpoint must not exfiltrate the real key).
+         */
         public String resolveToken() {
-            return (tokenEnv == null || tokenEnv.isBlank()) ? null : emptyToNull(System.getenv(tokenEnv));
+            if (tokenEnv == null || tokenEnv.isBlank() || !isEnvVarAllowed(tokenEnv)) return null;
+            return emptyToNull(System.getenv(tokenEnv));
         }
     }
 
@@ -132,14 +188,18 @@ public class AgentSpec {
             return RepoProvider.from(provider);
         }
 
+        /** Same allowlist guard as {@link McpServerSpec#resolveToken()} — see its javadoc. */
         public String resolveToken() {
-            return (tokenEnv == null || tokenEnv.isBlank()) ? null : emptyToNull(System.getenv(tokenEnv));
+            if (tokenEnv == null || tokenEnv.isBlank() || !isEnvVarAllowed(tokenEnv)) return null;
+            return emptyToNull(System.getenv(tokenEnv));
         }
     }
 
     /** A generic JDBC-backed RAG source: run a SQL query and inject the rows into agent context. */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class SqlSourceSpec {
+        /** Canvas node id this spec came from (for per-node execution reporting). */
+        public String nodeId;
         public String label;
         /** Any JDBC URL, e.g. jdbc:postgresql://host:5432/db (driver must be on the classpath). */
         public String jdbcUrl;
@@ -153,8 +213,22 @@ public class AgentSpec {
             return (label == null || label.isBlank()) ? "sql" : label;
         }
 
+        /**
+         * Resolves the DB password from the environment. Only names on the config-driven
+         * allowlist ({@code rag.allowed-env-vars} / {@code rag.allowed-env-var-prefixes}) are
+         * ever read; a non-allowlisted name silently yields no value rather than the actual
+         * env var. Callers should check {@link #hasDisallowedPasswordEnv()} before connecting
+         * to reject with a clear error instead of silently authenticating with no password.
+         */
         public String resolvePassword() {
-            return (passwordEnv == null || passwordEnv.isBlank()) ? null : emptyToNull(System.getenv(passwordEnv));
+            if (passwordEnv == null || passwordEnv.isBlank()) return null;
+            if (!isEnvVarAllowed(passwordEnv)) return null;
+            return emptyToNull(System.getenv(passwordEnv));
+        }
+
+        /** True if {@code passwordEnv} is set but not on the allowlist (used to reject with a clear 400). */
+        public boolean hasDisallowedPasswordEnv() {
+            return passwordEnv != null && !passwordEnv.isBlank() && !isEnvVarAllowed(passwordEnv);
         }
     }
 

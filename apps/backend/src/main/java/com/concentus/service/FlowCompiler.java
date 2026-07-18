@@ -64,6 +64,7 @@ public class FlowCompiler {
         Map<String, Object> d = node.dataOrEmpty();
         AgentSpec s = new AgentSpec();
         s.mode = flow.modeOrDefault();
+        s.nodeId = node.id();
         s.name = str(d, "name", node.id());
         s.description = str(d, "description", "");
         s.systemPrompt = str(d, "systemPrompt", "");
@@ -77,6 +78,7 @@ public class FlowCompiler {
             if (connected(flow.edgesOrEmpty(), node.id(), mcp.id())) {
                 Map<String, Object> md = mcp.dataOrEmpty();
                 McpServerSpec spec = new McpServerSpec();
+                spec.nodeId = mcp.id();
                 spec.name = str(md, "name", mcp.id());
                 spec.url = str(md, "url", "");
                 spec.tokenEnv = str(md, "tokenEnv", null);
@@ -99,6 +101,7 @@ public class FlowCompiler {
             if (connected(flow.edgesOrEmpty(), node.id(), sql.id())) {
                 Map<String, Object> qd = sql.dataOrEmpty();
                 SqlSourceSpec spec = new SqlSourceSpec();
+                spec.nodeId = sql.id();
                 spec.label = str(qd, "label", sql.id());
                 spec.jdbcUrl = str(qd, "jdbcUrl", "");
                 spec.username = str(qd, "username", null);

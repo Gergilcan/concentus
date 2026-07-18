@@ -46,9 +46,20 @@ concentus/
   - **Prompt** — pressing Run auto-sends a fixed prompt.
   - **Automatic (cron)** — saved flows run on a schedule.
   - **Webhook** — an external POST (e.g. a Linear issue/comment) starts a run with the event
-    payload as input, guarded by a per-flow secret token.
+    payload as input. Authentication is provider-agnostic: you name the **validation parameter**
+    the provider sends its proof in, and paste the **secret** the provider issued (we never mint
+    one). See [Webhook authentication](#webhook-authentication).
 - **Executions** are the runs a flow produces (manual, prompt, cron, or webhook), listed with their
-  trigger in the bottom panel.
+  trigger in the bottom panel. Outcomes are colour-coded: green succeeded, red failed, blue running,
+  and **grey stopped** — a run you stopped by hand is neither a success nor a failure, so it is
+  excluded from the success-rate figures rather than counted either way.
+- **Editing the canvas** — `Ctrl/⌘+C` / `Ctrl/⌘+V` copy and paste the selected blocks (shift-drag to
+  select several), and `Ctrl/⌘+D` duplicates them in place; the Inspector also has a **Duplicate**
+  button. Connections *between* copied blocks are kept, and the clipboard survives switching flows so
+  you can lift blocks from one flow into another. Copies get a fresh identity — a duplicated
+  coordinator becomes a sub-agent (a flow may only have one coordinator), names are made unique, and
+  a copied webhook node starts with an empty secret. Flows themselves duplicate from the ⧉ button on
+  their dashboard card.
 - **Run** — how a flow executes depends on your credential:
   - **Local (subscription):** the `claude` CLI runs the coordinator + sub-agents (mapped to Claude
     Code subagents via `--agents`/`.claude/agents`) on your machine. Each command is a turn in the
@@ -145,8 +156,38 @@ The optional public nginx lives as a Kustomize **component**
 overlay enables it. Both Helm's `publicNginx` and this component route `/api` + `/ws` to the backend
 and everything else to the frontend — a single external entrypoint and a natural place to terminate TLS.
 
-> **Webhooks** need the public entrypoint (or ingress) reachable from the internet so Linear can POST
-> to `/api/webhooks/{flowId}?token=…`.
+> **Webhooks** need the public entrypoint (or ingress) reachable from the internet so the provider
+> can POST to `/api/webhooks/{flowId}`.
+
+## Webhook authentication
+
+A webhook Input node has two fields, and the same rule serves every provider — there is no
+per-provider code path:
+
+| Field | Meaning |
+|---|---|
+| **Validation parameter** | Name of the header (or query parameter) carrying the proof. E.g. `Linear-Signature`, `X-Hub-Signature-256` (GitHub), or `token` for a plain shared token. |
+| **Secret** | The secret **the provider issued**. Concentus never generates one. |
+
+The parameter is read from the request headers, falling back to the query string, and the request is
+accepted if its value is **either**:
+
+- a hex HMAC-SHA256 of the **raw request body** signed with the secret — bare hex, or the
+  `sha256=<hex>` form some providers use; **or**
+- the secret itself, for providers that just echo a static token back.
+
+Notes:
+
+- **Linear** — Settings → API → Webhooks → New webhook. Paste `/api/webhooks/{flowId}` as the URL,
+  then copy the **signing secret** Linear shows on the webhook's detail page into the Secret field
+  and leave the parameter as `Linear-Signature`.
+  ([Linear docs](https://linear.app/developers/webhooks#securing-webhooks))
+- **Replay protection** — a signature stays valid forever, so payloads carrying a `webhookTimestamp`
+  are rejected if it is more than 60s from the server's clock. Payloads without one still pass.
+- **A blank secret rejects every delivery with `401`.** This endpoint starts agent runs, so it is
+  never left unauthenticated.
+- Comparisons are constant-time, and the HMAC covers the exact bytes received (the body is never
+  re-encoded before verification).
 
 ## API surface (backend)
 
@@ -163,7 +204,15 @@ and everything else to the frontend — a single external entrypoint and a natur
 | GET/POST | `/api/agents`, `/api/databases`, `/api/mcp-defs` | reusable resource definitions (Resources page) |
 | GET/POST | `/api/mcp/servers` | list / register MCP servers in Claude Code |
 | POST | `/api/mcp/servers/login`, `/api/mcp/servers/remove` | launch OAuth sign-in / remove a server |
-| POST | `/api/webhooks/{flowId}?token=…` | inbound webhook that starts a run with the event payload |
+
+> **MCP name validation** — `/api/mcp/servers/login` spawns a terminal window, so the server `name`
+> is restricted to letters, digits, spaces, dots, dashes and underscores (1–64 chars); anything else
+> is rejected with `400`. That admits every real server name (`Linear`, `claude.ai Google Drive`)
+> while excluding the shell/batch metacharacters an injected command would need. The name is passed
+> to the spawned console as a discrete argument (`%~1` on Windows, a data file on macOS) and never
+> interpolated into script text. `remove` is not charset-restricted — it goes straight to the CLI
+> as argv, so servers registered under any name stay removable.
+| POST | `/api/webhooks/{flowId}` | inbound webhook that starts a run with the event payload ([auth](#webhook-authentication)) |
 | GET | `/api/rag/status` · POST `/api/rag/preview` | RAG capabilities / preview a SQL source's rows |
 
 Flows persist as JSON under `apps/backend/data/flows` (override with `APP_DATA_DIR`).

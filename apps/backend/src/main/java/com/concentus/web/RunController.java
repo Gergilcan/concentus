@@ -2,6 +2,7 @@ package com.concentus.web;
 
 import com.concentus.model.CommandRequest;
 import com.concentus.model.FlowGraph;
+import com.concentus.model.NodeExecReport;
 import com.concentus.model.RunDetail;
 import com.concentus.model.RunSummary;
 import com.concentus.service.AgentRun;
@@ -41,6 +42,28 @@ public class RunController {
         return new RunDetail(run.toSummary(), run.bufferedEvents());
     }
 
+    /**
+     * The exact flow this run executed (snapshot taken at launch). Lets the UI put the right
+     * blocks on the canvas when you open an execution — including ad-hoc runs of unsaved flows,
+     * and runs whose flow has since been edited or deleted.
+     */
+    @GetMapping("/{id}/flow")
+    public FlowGraph flow(@PathVariable String id) {
+        AgentRun run = runService.get(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run"));
+        return runService.flowOf(run)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "This run has no stored flow snapshot."));
+    }
+
+    /** Per-node execution state (Input/Output, status, per-box tokens) + run token totals. */
+    @GetMapping("/{id}/nodes")
+    public NodeExecReport nodes(@PathVariable String id) {
+        AgentRun run = runService.get(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run"));
+        return new NodeExecReport(run.nodeExecList(), run.totalInputTokens, run.totalOutputTokens);
+    }
+
     /** Launch an ad-hoc (unsaved) flow. */
     @PostMapping
     public RunSummary start(@RequestBody FlowGraph flow) {
@@ -60,5 +83,11 @@ public class RunController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void stop(@PathVariable String id) {
         runService.stop(id);
+    }
+
+    /** Re-runs this execution's flow with the same initial input, as a new execution. */
+    @PostMapping("/{id}/retry")
+    public RunSummary retry(@PathVariable String id) {
+        return runService.retry(id);
     }
 }

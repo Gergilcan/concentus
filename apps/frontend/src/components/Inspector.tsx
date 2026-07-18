@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import type { AppNodeData } from '../api/types.ts'
 import { useFlowStore } from '../state/store.ts'
 import { AgentInspector } from './AgentInspector.tsx'
 import { InputInspector } from './InputInspector.tsx'
+import { InputView, OutputView } from './NodeExecView.tsx'
 import { McpInspector } from './McpInspector.tsx'
 import { SqlInspector } from './SqlInspector.tsx'
 import styles from './panels.module.scss'
@@ -14,11 +16,17 @@ function title(data: AppNodeData): string {
   return 'Repository'
 }
 
+type Tab = 'properties' | 'input' | 'output'
+
 export function Inspector() {
   const selectedId = useFlowStore((s) => s.selectedId)
   const node = useFlowStore((s) => s.nodes.find((n) => n.id === selectedId) ?? null)
   const update = useFlowStore((s) => s.updateNodeData)
   const remove = useFlowStore((s) => s.deleteNode)
+  const duplicate = useFlowStore((s) => s.duplicateNode)
+  const activeRunId = useFlowStore((s) => s.activeRunId)
+  const exec = useFlowStore((s) => (selectedId ? s.runExecByNode[selectedId] : undefined))
+  const [tab, setTab] = useState<Tab>('properties')
 
   if (!node) {
     return (
@@ -31,25 +39,58 @@ export function Inspector() {
   const id = node.id
   const data = node.data
   const set = (patch: Record<string, unknown>) => update(id, patch)
+  // Input/Output tabs only make sense for boxes that execute.
+  const hasExecTabs = data.kind === 'agent' || data.kind === 'sql' || data.kind === 'mcp'
+  const shownTab: Tab = hasExecTabs ? tab : 'properties'
 
   return (
     <aside className={styles.inspector}>
       <div className={styles.inspectorHead}>
         <h3 className={styles.h3}>{title(data)}</h3>
+        <button className={styles.dup} onClick={() => duplicate(id)} title="Duplicate this node (Ctrl+D)">
+          Duplicate
+        </button>
         <button className={styles.del} onClick={() => remove(id)}>
           Delete
         </button>
       </div>
 
-      {data.kind === 'agent' && <AgentInspector data={data} set={set} />}
+      {hasExecTabs && (
+        <div className={styles.execTabs}>
+          {(['properties', 'input', 'output'] as Tab[]).map((t) => (
+            <button
+              key={t}
+              className={`${styles.execTab} ${shownTab === t ? styles.execTabActive : ''}`}
+              onClick={() => setTab(t)}
+            >
+              {t === 'properties' ? 'Properties' : t === 'input' ? 'Input' : 'Output'}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {data.kind === 'input' && <InputInspector data={data} set={set} />}
+      {shownTab === 'input' && (
+        <>
+          {!activeRunId && <div className={styles.empty}>Select a run below to see its data.</div>}
+          <InputView exec={exec} />
+        </>
+      )}
+      {shownTab === 'output' && (
+        <>
+          {!activeRunId && <div className={styles.empty}>Select a run below to see its data.</div>}
+          <OutputView exec={exec} />
+        </>
+      )}
 
-      {data.kind === 'mcp' && <McpInspector data={data} set={set} />}
+      {shownTab === 'properties' && data.kind === 'agent' && <AgentInspector data={data} set={set} />}
 
-      {data.kind === 'sql' && <SqlInspector data={data} set={set} />}
+      {shownTab === 'properties' && data.kind === 'input' && <InputInspector data={data} set={set} />}
 
-      {data.kind === 'repo' && (
+      {shownTab === 'properties' && data.kind === 'mcp' && <McpInspector data={data} set={set} />}
+
+      {shownTab === 'properties' && data.kind === 'sql' && <SqlInspector data={data} set={set} />}
+
+      {shownTab === 'properties' && data.kind === 'repo' && (
         <>
           <label className={styles.field}>
             <span>Provider</span>

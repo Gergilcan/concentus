@@ -1,0 +1,772 @@
+@use '../styles/theme' as t;
+
+.page {
+  flex: 1;
+  overflow: auto;
+  background:
+    radial-gradient(900px 420px at 78% -10%, rgba(110, 168, 254, 0.08), transparent 70%),
+    radial-gradient(700px 380px at 5% 0%, rgba(185, 140, 255, 0.06), transparent 70%);
+}
+
+.inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 26px 40px;
+}
+
+/* ---------------- header ---------------- */
+
+.pageHead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+
+.title {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  color: t.$muted;
+  font-size: 13px;
+  max-width: 60ch;
+}
+
+.headActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.search,
+.sort {
+  background: t.$panel;
+  border: 1px solid t.$border;
+  color: t.$text;
+  border-radius: t.$radius;
+  padding: 8px 10px;
+  font-size: 13px;
+
+  &:focus {
+    outline: none;
+    border-color: t.$accent;
+  }
+}
+
+.search {
+  width: 200px;
+}
+
+.primary {
+  background: t.$accent;
+  color: #071018;
+  border: none;
+  border-radius: t.$radius;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    filter: brightness(1.08);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.ghost {
+  background: t.$panel;
+  border: 1px solid t.$border;
+  color: t.$text;
+  border-radius: t.$radius;
+  padding: 8px 13px;
+  font-size: 13px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+/* ---------------- tag filter bar ---------------- */
+
+.tagBar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: -8px 0 20px;
+}
+
+.tagChip {
+  background: transparent;
+  border: 1px solid t.$border;
+  color: t.$muted;
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 11px;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$text;
+    border-color: t.$accent;
+  }
+}
+
+.tagActive {
+  background: color-mix(in srgb, t.$accent 18%, transparent);
+  border-color: t.$accent;
+  color: t.$text;
+}
+
+/* ---------------- kpis ---------------- */
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 900px) {
+  .kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.kpi {
+  background: t.$panel;
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
+  padding: 12px 14px;
+}
+
+.kpiLabel {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$muted;
+}
+
+.kpiValue {
+  font-size: 22px;
+  font-weight: 700;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi_ok {
+  color: t.$ok;
+}
+.kpi_warn {
+  color: t.$repo;
+}
+.kpi_active {
+  color: t.$accent;
+}
+
+/* ---------------- layout ---------------- */
+
+.body {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1040px) {
+  .body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: 14px;
+}
+
+/* ---------------- flow card ---------------- */
+
+.card {
+  position: relative;
+  background: linear-gradient(180deg, t.$panel-2, t.$panel);
+  border: 1px solid t.$border;
+  border-radius: 12px;
+  padding: 14px 16px 12px;
+  overflow: hidden;
+  transition:
+    transform 0.12s ease,
+    border-color 0.15s ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--tone, #{t.$accent});
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, t.$accent 50%, t.$border);
+  }
+}
+
+.t_manual {
+  --tone: #{t.$muted};
+}
+.t_prompt {
+  --tone: #{t.$accent};
+}
+.t_cron {
+  --tone: #{t.$sql};
+}
+.t_webhook {
+  --tone: #{t.$ok};
+}
+
+.paused {
+  opacity: 0.72;
+}
+
+.cardHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.star {
+  background: transparent;
+  border: none;
+  color: t.$muted;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+
+  &:hover {
+    color: t.$repo;
+  }
+}
+
+.starOn {
+  color: t.$repo;
+}
+
+.cardTags {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.cardTag {
+  background: t.$bg;
+  border: 1px solid t.$border;
+  color: t.$muted;
+  border-radius: 5px;
+  padding: 1px 7px;
+  font-size: 10px;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$text;
+    border-color: t.$accent;
+  }
+}
+
+.b_paused {
+  color: t.$repo;
+  border-color: color-mix(in srgb, t.$repo 55%, transparent);
+}
+
+.cardName {
+  margin: 0;
+  font-size: 15px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mode {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$muted;
+  border: 1px solid t.$border;
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-size: 10px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  border: 1px solid t.$border;
+  color: t.$muted;
+  white-space: nowrap;
+}
+
+.b_prompt {
+  color: t.$accent;
+  border-color: color-mix(in srgb, t.$accent 55%, transparent);
+}
+.b_cron {
+  color: t.$sql;
+  border-color: color-mix(in srgb, t.$sql 55%, transparent);
+}
+.b_webhook {
+  color: t.$ok;
+  border-color: color-mix(in srgb, t.$ok 55%, transparent);
+}
+
+.meta {
+  font-size: 11px;
+  color: t.$muted;
+}
+
+.lastRun {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.lastText {
+  color: t.$text;
+}
+
+.neverRun {
+  color: t.$muted;
+  font-size: 12px;
+}
+
+.tok {
+  margin-left: auto;
+  font-size: 10px;
+  color: t.$muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: t.$muted;
+}
+
+.k_ok {
+  background: t.$ok;
+}
+.k_fail {
+  background: t.$danger;
+}
+// Stopped by hand: grey reads as "cancelled", and matches RunsPanel's TERMINATED dot.
+.k_stopped {
+  background: t.$muted;
+}
+.k_active {
+  background: t.$accent;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* run history bars */
+.history {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 12px;
+  min-height: 16px;
+}
+
+.bar {
+  width: 6px;
+  height: 14px;
+  border-radius: 2px;
+  background: t.$border;
+  flex: 0 0 auto;
+
+  &.k_ok {
+    background: color-mix(in srgb, t.$ok 75%, transparent);
+  }
+  &.k_fail {
+    background: t.$danger;
+  }
+  &.k_stopped {
+    background: color-mix(in srgb, t.$muted 60%, transparent);
+  }
+  &.k_active {
+    background: t.$accent;
+  }
+}
+
+.barsEmpty {
+  font-size: 10px;
+  color: t.$muted;
+}
+
+.rate {
+  margin-left: auto;
+  font-size: 10px;
+  color: t.$muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 11px;
+  border-top: 1px solid t.$border;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.open,
+.run {
+  background: t.$panel-2;
+  border: 1px solid t.$border;
+  color: t.$text;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$accent;
+  }
+}
+
+.run {
+  color: t.$ok;
+
+  &:hover {
+    border-color: t.$ok;
+  }
+}
+
+.icon {
+  background: transparent;
+  border: 1px solid transparent;
+  color: t.$muted;
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$border;
+    color: t.$text;
+  }
+}
+
+.danger:hover {
+  color: t.$danger;
+  border-color: t.$danger;
+}
+
+/* ---------------- empty ---------------- */
+
+.emptyCard {
+  background: t.$panel;
+  border: 1px dashed t.$border;
+  border-radius: 12px;
+  padding: 48px 24px;
+  text-align: center;
+
+  h3 {
+    margin: 12px 0 6px;
+    font-size: 16px;
+  }
+
+  p {
+    margin: 0 0 18px;
+    color: t.$muted;
+    font-size: 13px;
+  }
+}
+
+.emptyIcon {
+  font-size: 30px;
+  color: t.$accent;
+}
+
+/* ---------------- recent executions ---------------- */
+
+.sideCol {
+  background: t.$panel;
+  border: 1px solid t.$border;
+  border-radius: 12px;
+  padding: 14px;
+  position: sticky;
+  top: 14px;
+}
+
+.sideTitle {
+  margin: 0 0 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$muted;
+}
+
+.sideEmpty {
+  color: t.$muted;
+  font-size: 12px;
+}
+
+.runList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.runRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 8px;
+  color: t.$text;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    background: t.$panel-2;
+  }
+}
+
+.runFlow {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runTrigger {
+  font-size: 9px;
+  color: t.$muted;
+  border: 1px solid t.$border;
+  border-radius: 5px;
+  padding: 0 5px;
+}
+
+.runTime {
+  font-size: 10px;
+  color: t.$muted;
+  white-space: nowrap;
+}
+
+.runItem {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.retry {
+  background: transparent;
+  border: 1px solid transparent;
+  color: t.$muted;
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  cursor: pointer;
+  flex: 0 0 auto;
+
+  &:hover {
+    color: t.$accent;
+    border-color: t.$border;
+  }
+}
+
+/* ---------------- modals ---------------- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  padding: 20px;
+}
+
+.modal {
+  background: t.$panel;
+  border: 1px solid t.$border;
+  border-radius: 12px;
+  padding: 18px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+
+.modalHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+
+  h3 {
+    margin: 0;
+    font-size: 15px;
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 12px;
+  font-size: 12px;
+
+  span {
+    color: t.$muted;
+  }
+
+  input {
+    background: t.$bg;
+    border: 1px solid t.$border;
+    color: t.$text;
+    border-radius: 6px;
+    padding: 7px 9px;
+    font-size: 13px;
+
+    &:focus {
+      outline: none;
+      border-color: t.$accent;
+    }
+  }
+}
+
+.toggleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: t.$text;
+  cursor: pointer;
+
+  input {
+    margin-top: 2px;
+  }
+}
+
+.modalHint {
+  color: t.$muted;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0 0 16px;
+
+  code {
+    background: t.$bg;
+    border-radius: 4px;
+    padding: 1px 4px;
+  }
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.versionList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.versionRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid t.$border;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.versionNum {
+  font-family: monospace;
+  color: t.$accent;
+  flex: 0 0 auto;
+}
+
+.versionName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.versionTime {
+  color: t.$muted;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.versionCurrent {
+  font-size: 10px;
+  color: t.$ok;
+  border: 1px solid color-mix(in srgb, t.$ok 55%, transparent);
+  border-radius: 5px;
+  padding: 1px 6px;
+}

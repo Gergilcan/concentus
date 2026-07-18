@@ -7,6 +7,7 @@ import {
   ReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { useEffect } from 'react'
 import { useFlowStore } from '../state/store.ts'
 import { DeletableEdge } from './DeletableEdge.tsx'
 import { nodeTypes } from './nodeTypes.ts'
@@ -21,6 +22,13 @@ function nodeColor(type?: string): string {
 
 const edgeTypes: EdgeTypes = { deletable: DeletableEdge }
 
+/** True while the user is typing, so we never hijack their real copy/paste. */
+function isTextEntry(el: EventTarget | null): boolean {
+  const node = el as HTMLElement | null
+  if (!node) return false
+  return node.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(node.tagName)
+}
+
 export function FlowCanvas() {
   const nodes = useFlowStore((s) => s.nodes)
   const edges = useFlowStore((s) => s.edges)
@@ -28,6 +36,31 @@ export function FlowCanvas() {
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange)
   const onConnect = useFlowStore((s) => s.onConnect)
   const selectNode = useFlowStore((s) => s.selectNode)
+  const copySelection = useFlowStore((s) => s.copySelection)
+  const paste = useFlowStore((s) => s.paste)
+  const duplicateSelection = useFlowStore((s) => s.duplicateSelection)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return
+      if (isTextEntry(e.target)) return
+      switch (e.key.toLowerCase()) {
+        case 'c':
+          if (copySelection()) e.preventDefault()
+          break
+        case 'v':
+          paste()
+          e.preventDefault()
+          break
+        case 'd':
+          duplicateSelection()
+          e.preventDefault() // Ctrl+D would otherwise bookmark the page
+          break
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [copySelection, paste, duplicateSelection])
 
   return (
     <ReactFlow

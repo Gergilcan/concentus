@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, openRunSocket } from '../api/client.ts'
+import { api, openRunSocket, type RunSocketStatus } from '../api/client.ts'
 import type { RunEvent } from '../api/types.ts'
+import { useFlowStore } from '../state/store.ts'
 import styles from './runs.module.scss'
 
 function fmt(ts: number): string {
@@ -12,12 +13,14 @@ export function Console({ runId }: { runId: string }) {
   const [cmd, setCmd] = useState('')
   const [sending, setSending] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [connStatus, setConnStatus] = useState<RunSocketStatus>('connecting')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setEvents([])
-    const ws = openRunSocket(runId, (e) => setEvents((prev) => [...prev, e]))
-    return () => ws.close()
+    setConnStatus('connecting')
+    const handle = openRunSocket(runId, (e) => setEvents((prev) => [...prev, e]), setConnStatus)
+    return () => handle.close()
   }, [runId])
 
   useEffect(() => {
@@ -47,10 +50,35 @@ export function Console({ runId }: { runId: string }) {
     }
   }
 
+  const retry = async () => {
+    setErr(null)
+    try {
+      await api.retryRun(runId)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const totals = useFlowStore((s) => s.runTotals)
+  const hasTotals = totals.input > 0 || totals.output > 0
+
   return (
     <div className={styles.console}>
+      {hasTotals && (
+        <div className={styles.tokenBar}>
+          Σ execution tokens · in ≈{totals.input.toLocaleString()} · out {totals.output.toLocaleString()}
+        </div>
+      )}
       <div className={styles.log}>
-        {events.length === 0 && <div className={styles.logMuted}>Waiting for output…</div>}
+        {events.length === 0 && (
+          <div className={styles.logMuted}>
+            {connStatus === 'reconnecting'
+              ? 'Reconnecting…'
+              : connStatus === 'disconnected'
+                ? 'Disconnected from run output.'
+                : 'Waiting for output…'}
+          </div>
+        )}
         {events.map((e, i) => (
           <div key={i} className={`${styles.line} ${styles['t_' + e.type]}`}>
             <span className={styles.lts}>{fmt(e.ts)}</span>
@@ -59,6 +87,13 @@ export function Console({ runId }: { runId: string }) {
         ))}
         <div ref={bottomRef} />
       </div>
+
+      {connStatus === 'reconnecting' && events.length > 0 && (
+        <div className={styles.err}>Connection lost — reconnecting…</div>
+      )}
+      {connStatus === 'disconnected' && events.length > 0 && (
+        <div className={styles.err}>Disconnected from run output.</div>
+      )}
 
       {err && <div className={styles.err}>{err}</div>}
 
@@ -76,6 +111,13 @@ export function Console({ runId }: { runId: string }) {
         </button>
         <button className={styles.stopBtn} onClick={() => void stop()}>
           Stop
+        </button>
+        <button
+          className={styles.retryBtn}
+          title="Re-run this execution's flow with the same initial input"
+          onClick={() => void retry()}
+        >
+          ⟳ Retry
         </button>
       </div>
     </div>
