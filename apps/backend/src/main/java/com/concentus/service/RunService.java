@@ -51,12 +51,13 @@ public class RunService {
     private final NotificationService notifier;
     private final ExecutorService exec;
     private final int maxRetainedRuns;
+    private final PricingTable pricing;
     private final double inputUsdPerMTok;
     private final double outputUsdPerMTok;
     private final ConcurrentHashMap<String, AgentRun> runs = new ConcurrentHashMap<>();
 
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
-                      ManagedFlowLauncher launcher, LocalClaudeExecutor localExecutor,
+                      ManagedFlowLauncher launcher, LocalClaudeExecutor localExecutor, PricingTable pricing,
                       CloudStreamEventHandler cloudEvents,
                       RunStore runStore, com.fasterxml.jackson.databind.ObjectMapper mapper,
                       NotificationService notifier,
@@ -69,6 +70,7 @@ public class RunService {
         this.compiler = compiler;
         this.launcher = launcher;
         this.localExecutor = localExecutor;
+        this.pricing = pricing;
         this.cloudEvents = cloudEvents;
         this.runStore = runStore;
         this.mapper = mapper;
@@ -134,7 +136,8 @@ public class RunService {
         run.compiled = compiled;
         run.flowJson = toJson(flow);
         run.notifyWebhook = flow.notifyWebhook();
-        run.inputUsdPerMTok = inputUsdPerMTok;
+        run.pricing = pricing;
+                run.inputUsdPerMTok = inputUsdPerMTok;
         run.outputUsdPerMTok = outputUsdPerMTok;
         run.trigger = trigger.mode() == null ? "manual" : trigger.mode().toLowerCase();
         run.pendingPrompt = initialPromptOverride != null
@@ -376,6 +379,7 @@ public class RunService {
                 run.flowJson = row.flowJson();
                 run.initialPrompt = row.initialPrompt();
                 run.notifyWebhook = row.notifyWebhook();
+                run.pricing = pricing;
                 run.inputUsdPerMTok = inputUsdPerMTok;
                 run.outputUsdPerMTok = outputUsdPerMTok;
                 run.restoreEvents(row.events());

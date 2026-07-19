@@ -61,7 +61,17 @@ public class RunController {
     public NodeExecReport nodes(@PathVariable String id) {
         AgentRun run = runService.get(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run"));
-        return new NodeExecReport(run.nodeExecList(), run.totalInputTokens, run.totalOutputTokens);
+        // Cost is filled in at read time rather than stored, so a pricing change applies to
+        // existing runs instead of freezing whatever the rates happened to be when they ran.
+        var nodes = run.nodeExecList();
+        if (run.pricing != null) {
+            for (var n : nodes) {
+                n.estimatedCostUsd = run.pricing.costUsd(
+                        n.model, n.inputTokens, n.cacheReadTokens, n.cacheWriteTokens, n.outputTokens);
+            }
+        }
+        return new NodeExecReport(nodes, run.totalInputTokens, run.totalOutputTokens,
+                run.estimatedCostUsd());
     }
 
     /** Launch an ad-hoc (unsaved) flow. */

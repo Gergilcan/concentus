@@ -24,6 +24,7 @@ export function TokenLine({ exec }: { exec?: NodeExec }) {
   // re-reads the whole history from cache each turn, so cache reads dwarf everything else while
   // costing about a tenth as much. Summing them into "in" made runs look far more expensive.
   const cached = (exec.cacheReadTokens ?? 0) + (exec.cacheWriteTokens ?? 0)
+  const cost = exec.estimatedCostUsd
   return (
     <div className={styles.tokenLine}>
       tokens · in {fmt(exec.inputTokens)} · out {fmt(exec.outputTokens)}
@@ -32,8 +33,25 @@ export function TokenLine({ exec }: { exec?: NodeExec }) {
           {' '}· cached {fmt(cached)}
         </span>
       )}
+      {cost !== undefined && cost !== null && (
+        <span
+          title={
+            `Estimated at ${exec.model ?? 'the configured'} rates, with cached tokens weighted. ` +
+            `Runs on a Claude subscription have no per-token bill — treat this as equivalent usage.`
+          }
+        >
+          {' '}· ≈{usd(cost)}
+        </span>
+      )}
     </div>
   )
+}
+
+/** Sub-cent costs are common per block, so don't round them away to $0.00. */
+export function usd(n: number): string {
+  if (!n) return '$0'
+  if (n < 0.01) return '<$0.01'
+  return `$${n.toFixed(2)}`
 }
 
 export function InputView({ exec }: { exec?: NodeExec }) {

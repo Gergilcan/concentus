@@ -1,6 +1,7 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { api, openRunSocket, type RunSocketStatus } from '../api/client.ts'
 import { useFlowStore } from '../state/store.ts'
+import { usd } from './NodeExecView.tsx'
 import { agentKey } from '../utils/agentKey.ts'
 import { cx } from '../utils/cx.ts'
 import styles from './runs.module.scss'
@@ -100,7 +101,12 @@ export function Console({ runId }: { runId: string }) {
     <div className={styles.console}>
       {hasTotals && (
         <div className={styles.tokenBar}>
-          Σ execution tokens · in ≈{totals.input.toLocaleString()} · out {totals.output.toLocaleString()}
+          Σ execution tokens · in {totals.input.toLocaleString()} · out {totals.output.toLocaleString()}
+          {totals.costUsd > 0 && (
+            <span title="Sum of each block priced at its own model's rate, with cached tokens weighted. Runs on a Claude subscription have no per-token bill — treat this as equivalent usage.">
+              {' '}· ≈{usd(totals.costUsd)}
+            </span>
+          )}
         </div>
       )}
       {agents.length > 1 && (

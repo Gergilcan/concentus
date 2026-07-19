@@ -54,6 +54,10 @@ export interface NodeExec {
   /** Prompt tokens served from cache (~0.1x price) / written to it (~1.25x). */
   cacheReadTokens?: number
   cacheWriteTokens?: number
+  /** USD estimate for this block, priced at its own model's rate. */
+  estimatedCostUsd?: number
+  /** Model this block ran on. */
+  model?: string | null
   startedAt: number
   endedAt: number
 }
@@ -62,6 +66,8 @@ export interface NodeExecReport {
   nodes: NodeExec[]
   totalInputTokens: number
   totalOutputTokens: number
+  /** Sum of the per-block estimates. */
+  totalCostUsd?: number
 }
 
 // ---- Flow / node data (canvas) ----

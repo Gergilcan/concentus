@@ -46,6 +46,8 @@ public class AgentRun {
     /** USD per million tokens, used for the cost estimate shown in the UI. */
     public volatile double inputUsdPerMTok;
     public volatile double outputUsdPerMTok;
+    /** Per-model rates; set at launch so a run prices each block by the model it actually used. */
+    public volatile PricingTable pricing;
 
     /** Open event stream (cloud), stored so {@code stop()} can break the loop. */
     public volatile AutoCloseable stream;
@@ -177,12 +179,24 @@ public class AgentRun {
     }
 
     public RunSummary toSummary() {
-        // Cache reads bill at ~0.1x the input rate and cache writes at ~1.25x, so each is weighted
-        // rather than counted as ordinary input.
-        double billableInput = totalInputTokens + (cacheReadTokens * 0.1) + (cacheWriteTokens * 1.25);
-        double cost = (billableInput / 1_000_000d) * inputUsdPerMTok
-                + (totalOutputTokens / 1_000_000d) * outputUsdPerMTok;
         return new RunSummary(id, flowId, flowName, mode, status, createdAt, sessionId, agentIds, error,
-                trigger, totalInputTokens, totalOutputTokens, Math.round(cost * 10_000d) / 10_000d);
+                trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd());
+    }
+
+    /**
+     * Sum of each block's cost, so the run and its blocks are priced the same way — per model,
+     * with cached tokens weighted. Summing blocks rather than pricing the run's totals at one flat
+     * rate is what makes a mixed-model flow (an Opus coordinator delegating to Sonnet sub-agents)
+     * add up.
+     */
+    public double estimatedCostUsd() {
+        PricingTable table = pricing;
+        if (table == null) return 0d;
+        double total = 0d;
+        for (NodeExec n : nodeExecList()) {
+            total += table.costUsd(n.model, n.inputTokens, n.cacheReadTokens, n.cacheWriteTokens,
+                    n.outputTokens);
+        }
+        return PricingTable.round(total);
     }
 }

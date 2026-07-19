@@ -388,7 +388,7 @@ describe('useFlowStore live run overlay', () => {
 
     const state = useFlowStore.getState()
     expect(state.runExecByNode.n1).toMatchObject({ status: 'passed', outputTokens: 20 })
-    expect(state.runTotals).toEqual({ input: 10, output: 20 })
+    expect(state.runTotals).toEqual({ input: 10, output: 20, costUsd: 0 })
   })
 
   it('setRunExec(null) clears the overlay back to empty', () => {
@@ -404,7 +404,7 @@ describe('useFlowStore live run overlay', () => {
     useFlowStore.getState().setRunExec(null)
 
     expect(useFlowStore.getState().runExecByNode).toEqual({})
-    expect(useFlowStore.getState().runTotals).toEqual({ input: 0, output: 0 })
+    expect(useFlowStore.getState().runTotals).toEqual({ input: 0, output: 0, costUsd: 0 })
   })
 
   it('re-setting the SAME active run id does not wipe the overlay just built for it', () => {
@@ -421,7 +421,7 @@ describe('useFlowStore live run overlay', () => {
 
     const state = useFlowStore.getState()
     expect(state.runExecByNode.n1).toBeDefined()
-    expect(state.runTotals).toEqual({ input: 5, output: 0 })
+    expect(state.runTotals).toEqual({ input: 5, output: 0, costUsd: 0 })
   })
 
   it('switching to a DIFFERENT active run id clears the stale overlay', () => {
@@ -439,7 +439,7 @@ describe('useFlowStore live run overlay', () => {
     const state = useFlowStore.getState()
     expect(state.activeRunId).toBe('run-2')
     expect(state.runExecByNode).toEqual({})
-    expect(state.runTotals).toEqual({ input: 0, output: 0 })
+    expect(state.runTotals).toEqual({ input: 0, output: 0, costUsd: 0 })
   })
 })
 

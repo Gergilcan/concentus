@@ -214,14 +214,49 @@ class LocalStreamEventHandlerTest {
 
     @Test
     void costWeightsCachedTokensBelowFreshInput() {
-        run.inputUsdPerMTok = 3.0;
-        run.outputUsdPerMTok = 15.0;
-        handler.handleLine(run, """
-                {"type":"result","usage":{"input_tokens":0,"output_tokens":0,
-                 "cache_read_input_tokens":1000000,"cache_creation_input_tokens":0}}""");
+        // Coordinator on Opus ($5/M in), sub-agent on Sonnet ($3/M in) — a flat rate would
+        // misprice one of them.
+        run.pricing = new PricingTable("claude-opus-4-8:5:25,claude-sonnet-5:3:15", 3.0, 15.0);
+        run.compiled = new CompiledFlow(
+                agentWithModel(COORD_NODE, "Coordinator", "claude-opus-4-8"),
+                List.of(agentWithModel(SUB_NODE, "Researcher", "claude-sonnet-5")));
 
-        // 1M cache-read tokens bill as 100k input-equivalent: $0.30, not $3.00.
-        assertThat(run.toSummary().estimatedCostUsd()).isEqualTo(0.30);
+        handler.handleLine(run, """
+                {"type":"assistant","parent_tool_use_id":null,
+                 "message":{"usage":{"cache_read_input_tokens":1000000},
+                            "content":[{"type":"text","text":"x"}]}}""");
+
+        // 1M cache-read tokens on Opus bill as 100k input-equivalent: $0.50, not $5.00.
+        assertThat(exec(COORD_NODE).cacheReadTokens).isEqualTo(1_000_000L);
+        assertThat(run.estimatedCostUsd()).isEqualTo(0.50);
+    }
+
+    @Test
+    void eachBlockIsPricedByItsOwnModel() {
+        run.pricing = new PricingTable("claude-opus-4-8:5:25,claude-sonnet-5:3:15", 3.0, 15.0);
+        run.compiled = new CompiledFlow(
+                agentWithModel(COORD_NODE, "Coordinator", "claude-opus-4-8"),
+                List.of(agentWithModel(SUB_NODE, "Researcher", "claude-sonnet-5")));
+
+        // 1M fresh input tokens on each: Opus $5, Sonnet $3.
+        handler.handleLine(run, """
+                {"type":"assistant","parent_tool_use_id":null,
+                 "message":{"usage":{"input_tokens":1000000},"content":[{"type":"text","text":"a"}]}}""");
+        handler.handleLine(run, taskCall("tool_1", "researcher", "go"));
+        handler.handleLine(run, """
+                {"type":"assistant","parent_tool_use_id":"tool_1",
+                 "message":{"usage":{"input_tokens":1000000},"content":[{"type":"text","text":"b"}]}}""");
+
+        assertThat(exec(COORD_NODE).model).isEqualTo("claude-opus-4-8");
+        assertThat(exec(SUB_NODE).model).isEqualTo("claude-sonnet-5");
+        assertThat(run.estimatedCostUsd()).isEqualTo(8.00);
+    }
+
+    private static AgentSpec agentWithModel(String nodeId, String name, String model) {
+        AgentSpec s = agent(nodeId, name);
+        s.model = new AgentSpec.ModelSpec();
+        s.model.id = model;
+        return s;
     }
 
     @Test

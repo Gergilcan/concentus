@@ -185,7 +185,7 @@ interface FlowState {
   // Live execution overlay for the currently-inspected run.
   activeRunId: string | null
   runExecByNode: Record<string, NodeExec>
-  runTotals: { input: number; output: number }
+  runTotals: { input: number; output: number; costUsd: number }
   setActiveRun: (id: string | null) => void
   setRunExec: (report: NodeExecReport | null) => void
   /**
@@ -230,7 +230,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
   activeRunId: null,
   runExecByNode: {},
-  runTotals: { input: 0, output: 0 },
+  runTotals: { input: 0, output: 0, costUsd: 0 },
   runEvents: [],
   // Bounded so a long-running flow can't grow this array without limit; the backend keeps the
   // authoritative buffer and replays it on reconnect.
@@ -246,18 +246,22 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     set((s) =>
       s.activeRunId === id
         ? {}
-        : { activeRunId: id, runExecByNode: {}, runTotals: { input: 0, output: 0 }, runEvents: [] },
+        : { activeRunId: id, runExecByNode: {}, runTotals: { input: 0, output: 0, costUsd: 0 }, runEvents: [] },
     ),
   setRunExec: (report) => {
     if (!report) {
-      set({ runExecByNode: {}, runTotals: { input: 0, output: 0 } })
+      set({ runExecByNode: {}, runTotals: { input: 0, output: 0, costUsd: 0 } })
       return
     }
     const byNode: Record<string, NodeExec> = {}
     for (const n of report.nodes) byNode[n.nodeId] = n
     set({
       runExecByNode: byNode,
-      runTotals: { input: report.totalInputTokens, output: report.totalOutputTokens },
+      runTotals: {
+        input: report.totalInputTokens,
+        output: report.totalOutputTokens,
+        costUsd: report.totalCostUsd ?? 0,
+      },
     })
   },
 
