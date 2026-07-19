@@ -197,6 +197,48 @@ class LocalStreamEventHandlerTest {
     }
 
     @Test
+    void cachedPromptTokensAreTrackedApartFromFreshInput() {
+        // input_tokens is the UNCACHED remainder; the cached spans are reported separately and
+        // bill at ~0.1x (read) and ~1.25x (write). Summing all three as plain input made a
+        // resumed session — which re-sends the whole conversation from cache every turn — look
+        // roughly an order of magnitude more expensive than it is.
+        handler.handleLine(run, """
+                {"type":"result","usage":{"input_tokens":500,"output_tokens":200,
+                 "cache_read_input_tokens":40000,"cache_creation_input_tokens":2000}}""");
+
+        assertThat(run.totalInputTokens).isEqualTo(500L);
+        assertThat(run.cacheReadTokens).isEqualTo(40000L);
+        assertThat(run.cacheWriteTokens).isEqualTo(2000L);
+        assertThat(run.totalOutputTokens).isEqualTo(200L);
+    }
+
+    @Test
+    void costWeightsCachedTokensBelowFreshInput() {
+        run.inputUsdPerMTok = 3.0;
+        run.outputUsdPerMTok = 15.0;
+        handler.handleLine(run, """
+                {"type":"result","usage":{"input_tokens":0,"output_tokens":0,
+                 "cache_read_input_tokens":1000000,"cache_creation_input_tokens":0}}""");
+
+        // 1M cache-read tokens bill as 100k input-equivalent: $0.30, not $3.00.
+        assertThat(run.toSummary().estimatedCostUsd()).isEqualTo(0.30);
+    }
+
+    @Test
+    void sessionReadyLineReportsHowManyToolsAreInContext() {
+        // Tool schemas persist for the whole session, so a couple of big MCP servers can dwarf
+        // the actual task. Surfacing the count makes that cost visible instead of mysterious.
+        handler.handleLine(run, """
+                {"type":"system","subtype":"init","model":"claude-opus-4-8",
+                 "tools":["Read","Write","Bash","mcp__github__x","mcp__linear__y"],
+                 "mcp_servers":[{"name":"github"},{"name":"linear"}]}""");
+
+        assertThat(lastEvent().text())
+                .contains("5 tools loaded")
+                .contains("2 MCP server(s)");
+    }
+
+    @Test
     void tokensAccrueToTheAgentThatSpentThem() {
         handler.handleLine(run, taskCall("tool_1", "researcher", "go"));
         handler.handleLine(run, """

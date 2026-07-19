@@ -77,6 +77,14 @@ public class AgentRun {
     public final Map<String, String> threadToNode = new ConcurrentHashMap<>();
     public volatile long totalInputTokens;
     public volatile long totalOutputTokens;
+    /**
+     * Cached-prompt tokens, tracked apart from {@link #totalInputTokens} because they are not
+     * billed at the input rate: a cache read costs ~0.1x and a cache write ~1.25x. Resuming a
+     * session re-sends the whole conversation each turn, so these dominate the raw token count —
+     * folding them in at full price overstated cost by roughly an order of magnitude.
+     */
+    public volatile long cacheReadTokens;
+    public volatile long cacheWriteTokens;
 
     /** Get or create the execution record for a node. Returns null if nodeId is unknown. */
     public NodeExec nodeExec(String nodeId, String kind, String label) {
@@ -150,7 +158,10 @@ public class AgentRun {
     }
 
     public RunSummary toSummary() {
-        double cost = (totalInputTokens / 1_000_000d) * inputUsdPerMTok
+        // Cache reads bill at ~0.1x the input rate and cache writes at ~1.25x, so each is weighted
+        // rather than counted as ordinary input.
+        double billableInput = totalInputTokens + (cacheReadTokens * 0.1) + (cacheWriteTokens * 1.25);
+        double cost = (billableInput / 1_000_000d) * inputUsdPerMTok
                 + (totalOutputTokens / 1_000_000d) * outputUsdPerMTok;
         return new RunSummary(id, flowId, flowName, mode, status, createdAt, sessionId, agentIds, error,
                 trigger, totalInputTokens, totalOutputTokens, Math.round(cost * 10_000d) / 10_000d);

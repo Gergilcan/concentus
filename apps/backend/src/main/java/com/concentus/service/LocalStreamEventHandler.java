@@ -33,8 +33,19 @@ final class LocalStreamEventHandler {
         switch (node.path("type").asText("")) {
             case "system" -> {
                 if ("init".equals(node.path("subtype").asText())) {
-                    run.emit(RunEvent.of("system", "Local session ready (model "
-                            + node.path("model").asText("?") + ")."));
+                    // Report the tool count: every tool's schema sits in the prompt for the whole
+                    // session, so a couple of large MCP servers can dominate token usage before
+                    // the task is even read. Without this the cost is invisible.
+                    int tools = node.path("tools").isArray() ? node.path("tools").size() : 0;
+                    int mcp = node.path("mcp_servers").isArray() ? node.path("mcp_servers").size() : 0;
+                    StringBuilder msg = new StringBuilder("Local session ready (model ")
+                            .append(node.path("model").asText("?")).append(")");
+                    if (tools > 0) {
+                        msg.append(" — ").append(tools).append(" tools loaded");
+                        if (mcp > 0) msg.append(" from ").append(mcp).append(" MCP server(s)");
+                        msg.append("; every tool's schema stays in context all session");
+                    }
+                    run.emit(RunEvent.of("system", msg.append('.').toString()));
                 }
             }
             case "assistant" -> handleAssistant(run, node);
@@ -160,11 +171,16 @@ final class LocalStreamEventHandler {
         }
     }
 
+    /**
+     * Splits usage into the three prompt buckets the API bills differently. `input_tokens` is only
+     * the <em>uncached remainder</em> — the cached spans are reported separately and must not be
+     * folded into it at full price.
+     */
     private void accrueTotals(AgentRun run, JsonNode usage) {
         if (!usage.isObject()) return;
-        run.totalInputTokens += usage.path("input_tokens").asLong(0)
-                + usage.path("cache_read_input_tokens").asLong(0)
-                + usage.path("cache_creation_input_tokens").asLong(0);
+        run.totalInputTokens += usage.path("input_tokens").asLong(0);
+        run.cacheReadTokens += usage.path("cache_read_input_tokens").asLong(0);
+        run.cacheWriteTokens += usage.path("cache_creation_input_tokens").asLong(0);
         run.totalOutputTokens += usage.path("output_tokens").asLong(0);
     }
 
