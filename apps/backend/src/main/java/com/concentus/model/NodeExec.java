@@ -37,6 +37,10 @@ public class NodeExec {
     /** Prompt tokens served from cache (~0.1x input price) and written to it (~1.25x). */
     public volatile long cacheReadTokens;
     public volatile long cacheWriteTokens;
+    /** Model this block ran on — its rate, not a flow-wide one, prices this block. */
+    public volatile String model;
+    /** USD estimate for this block, filled in when the report is built. */
+    public volatile Double estimatedCostUsd;
 
     public volatile long startedAt;
     public volatile long endedAt;

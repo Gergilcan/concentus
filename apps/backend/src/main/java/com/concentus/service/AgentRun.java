@@ -1,5 +1,6 @@
 package com.concentus.service;
 
+import com.concentus.config.AgentSpec;
 import com.concentus.model.NodeExec;
 import com.concentus.model.RunEvent;
 import com.concentus.model.RunSummary;
@@ -95,10 +96,28 @@ public class AgentRun {
                 n.nodeId = nodeId;
                 n.kind = kind;
                 n.label = label;
+                // Resolved once here rather than at each of the dozen call sites, so a block is
+                // always priced at its own model's rate.
+                n.model = modelOf(nodeId);
                 n.startedAt = System.currentTimeMillis();
                 return n;
             });
         }
+    }
+
+    /** The model configured for an agent node, or null for non-agent nodes / unknown ids. */
+    private String modelOf(String nodeId) {
+        CompiledFlow flow = compiled;
+        if (flow == null) return null;
+        if (nodeId.equals(flow.coordinator().nodeId)) return modelId(flow.coordinator());
+        for (AgentSpec s : flow.subAgents()) {
+            if (nodeId.equals(s.nodeId)) return modelId(s);
+        }
+        return null;
+    }
+
+    private static String modelId(AgentSpec spec) {
+        return spec.model == null ? null : spec.model.id;
     }
 
     public List<NodeExec> nodeExecList() {
