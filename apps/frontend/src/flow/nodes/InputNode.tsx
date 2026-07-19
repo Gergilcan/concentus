@@ -28,7 +28,10 @@ export function InputNode({ data, selected }: NodeProps<InputRFNode>) {
       ) : data.mode === 'manual' ? (
         <div className={styles.snippetMuted}>you type the first message</div>
       ) : data.prompt ? (
-        <div className={styles.snippet}>{data.prompt.slice(0, 80)}</div>
+        // Full text, clamped by CSS — slicing here cut mid-word with nothing to show for it.
+        <div className={styles.snippet} title={data.prompt}>
+          {data.prompt}
+        </div>
       ) : (
         <div className={styles.snippetMuted}>no prompt set</div>
       )}

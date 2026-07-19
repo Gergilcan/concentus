@@ -56,8 +56,17 @@
   color: t.$muted;
   margin-top: 4px;
   font-size: 11px;
-  max-height: 32px;
+  line-height: 1.45;
+  // Clamped rather than height-capped: a hard max-height slices the last line in half, so the
+  // text looked cut off mid-stroke. Line-clamp ends on a whole line with an ellipsis, which
+  // reads as "there's more" instead of "this is broken". Hover shows the full text.
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  line-clamp: 5;
+  -webkit-box-orient: vertical;
   overflow: hidden;
+  // A pasted path or URL has no spaces to break on and would otherwise run past the edge.
+  overflow-wrap: anywhere;
 }
 
 .snippetMuted {

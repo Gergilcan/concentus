@@ -18,7 +18,9 @@ export function AgentNode({ id, data, selected }: NodeProps<AgentRFNode>) {
     >
       <div className={styles.meta}>{data.model}</div>
       {data.systemPrompt ? (
-        <div className={styles.snippet}>{data.systemPrompt.slice(0, 80)}</div>
+        <div className={styles.snippet} title={data.systemPrompt}>
+          {data.systemPrompt}
+        </div>
       ) : (
         <div className={styles.snippetMuted}>no system prompt</div>
       )}

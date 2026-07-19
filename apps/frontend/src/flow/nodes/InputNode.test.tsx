@@ -69,9 +69,15 @@ describe('InputNode', () => {
     expect(screen.getByText('you type the first message')).toBeInTheDocument()
   })
 
-  it('shows a truncated prompt snippet (80 chars) for prompt mode', () => {
-    renderInputNode({ data: inputData({ mode: 'prompt', prompt: 'x'.repeat(120) }) })
-    expect(screen.getByText('x'.repeat(80))).toBeInTheDocument()
+  it('renders the whole prompt, leaving the visible clamp to CSS', () => {
+    // Truncating in JS cut mid-word with nothing to indicate more text; the snippet is
+    // line-clamped in CSS instead, so the full string is in the DOM and reachable on hover.
+    const prompt = 'x'.repeat(120)
+    renderInputNode({ data: inputData({ mode: 'prompt', prompt }) })
+
+    const snippet = screen.getByText(prompt)
+    expect(snippet).toBeInTheDocument()
+    expect(snippet).toHaveAttribute('title', prompt)
   })
 
   it('shows a "no prompt set" placeholder for prompt mode with an empty prompt', () => {

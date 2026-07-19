@@ -66,12 +66,14 @@ describe('AgentNode', () => {
     expect(screen.getByText('Agent')).toBeInTheDocument()
   })
 
-  it('shows the model and a truncated system-prompt snippet', () => {
-    renderAgentNode({
-      data: agentData({ model: 'claude-3-5', systemPrompt: 'x'.repeat(120) }),
-    })
+  it('shows the model and the whole system prompt, leaving the clamp to CSS', () => {
+    const systemPrompt = 'x'.repeat(120)
+    renderAgentNode({ data: agentData({ model: 'claude-3-5', systemPrompt }) })
+
     expect(screen.getByText('claude-3-5')).toBeInTheDocument()
-    expect(screen.getByText('x'.repeat(80))).toBeInTheDocument()
+    const snippet = screen.getByText(systemPrompt)
+    expect(snippet).toBeInTheDocument()
+    expect(snippet).toHaveAttribute('title', systemPrompt)
   })
 
   it('shows the muted "no system prompt" placeholder when systemPrompt is empty', () => {
