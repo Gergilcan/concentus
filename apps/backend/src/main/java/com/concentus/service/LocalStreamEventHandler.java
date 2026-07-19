@@ -71,11 +71,15 @@ final class LocalStreamEventHandler {
     /** Attribute an assistant message's text, tool calls, and token usage to the right node. */
     private void handleAssistant(AgentRun run, JsonNode node) {
         String parent = node.path("parent_tool_use_id").asText("");
-        boolean isSub = !parent.isBlank() && run.taskToNode.containsKey(parent);
-        String targetNodeId = isSub ? run.taskToNode.get(parent) : coordNodeId(run);
+        // A non-blank parent means a sub-agent produced this, even if we never saw the Task
+        // that opened it (e.g. the run was resumed mid-flight). Falling back to the coordinator
+        // in that case would silently file another agent's work under the coordinator's box,
+        // so an unidentified sub-agent is left unattributed instead.
+        boolean fromSub = !parent.isBlank();
+        String targetNodeId = fromSub ? run.taskToNode.get(parent) : coordNodeId(run);
         // The real agent name, not a generic "subagent" — with several sub-agents running
         // concurrently the console is unreadable unless each line says who produced it.
-        String label = agentLabel(run, targetNodeId);
+        String label = targetNodeId != null ? agentLabel(run, targetNodeId) : "sub-agent";
         NodeExec target = run.nodeExec(targetNodeId, "agent", label);
 
         JsonNode usage = node.path("message").path("usage");

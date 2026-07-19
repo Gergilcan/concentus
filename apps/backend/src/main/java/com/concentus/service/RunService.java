@@ -45,6 +45,7 @@ public class RunService {
     private final FlowCompiler compiler;
     private final ManagedFlowLauncher launcher;
     private final LocalClaudeExecutor localExecutor;
+    private final CloudStreamEventHandler cloudEvents;
     private final RunStore runStore;
     private final com.fasterxml.jackson.databind.ObjectMapper mapper;
     private final NotificationService notifier;
@@ -56,6 +57,7 @@ public class RunService {
 
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
                       ManagedFlowLauncher launcher, LocalClaudeExecutor localExecutor,
+                      CloudStreamEventHandler cloudEvents,
                       RunStore runStore, com.fasterxml.jackson.databind.ObjectMapper mapper,
                       NotificationService notifier,
                       @Value("${runs.max-concurrent:8}") int maxConcurrent,
@@ -67,6 +69,7 @@ public class RunService {
         this.compiler = compiler;
         this.launcher = launcher;
         this.localExecutor = localExecutor;
+        this.cloudEvents = cloudEvents;
         this.runStore = runStore;
         this.mapper = mapper;
         this.notifier = notifier;
@@ -235,7 +238,7 @@ public class RunService {
             run.stream = stream;
             for (BetaManagedAgentsStreamSessionEvents ev :
                     (Iterable<BetaManagedAgentsStreamSessionEvents>) stream.stream()::iterator) {
-                forward(run, ev);
+                cloudEvents.handle(run, ev);
                 if (ev.isSessionStatusTerminated()) break;
             }
         } catch (Exception e) {
@@ -268,32 +271,6 @@ public class RunService {
             return mapper.writeValueAsString(o);
         } catch (Exception e) {
             return null;
-        }
-    }
-
-    private void forward(AgentRun run, BetaManagedAgentsStreamSessionEvents ev) {
-        if (ev.isAgentMessage()) {
-            StringBuilder sb = new StringBuilder();
-            ev.asAgentMessage().content().forEach(b -> sb.append(b.text()));
-            var coord = coordExec(run);
-            if (coord != null) coord.appendOutput(sb.toString());
-            run.emit(RunEvent.of("agent_message", sb.toString(), "coordinator"));
-        } else if (ev.isAgentThreadMessageReceived()) {
-            run.emit(RunEvent.of("system", "A sub-agent returned results to the coordinator."));
-        } else if (ev.isAgentToolUse()) {
-            run.emit(RunEvent.of("tool_use", ev.asAgentToolUse().name()));
-        } else if (ev.isAgentMcpToolUse()) {
-            run.emit(RunEvent.of("tool_use", "(MCP tool)"));
-        } else if (ev.isSessionThreadCreated()) {
-            run.emit(RunEvent.of("system", "Sub-agent thread started."));
-        } else if (ev.isSessionStatusRunning()) {
-            run.status = "RUNNING";
-            run.emit(RunEvent.of("status", "running"));
-        } else if (ev.isSessionStatusIdle()) {
-            run.status = "IDLE";
-            run.emit(RunEvent.of("status", "idle"));
-        } else if (ev.isSessionError()) {
-            run.emit(RunEvent.of("error", "Session reported an error."));
         }
     }
 

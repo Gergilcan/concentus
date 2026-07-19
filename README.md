@@ -67,6 +67,11 @@ concentus/
   - **Cloud (API key):** Anthropic hosts a Managed-Agents session — one agent per node, a coordinator
     with a `multiagent` roster, a sandbox mounting the GitHub repos.
   - Either way output streams live and you send explicit commands to the running session.
+  - **Per-agent tracking** — every console line is labelled with the agent that produced it, and
+    can be filtered to one agent. Each block carries its own **Input** (the instruction it was
+    delegated), **Output** (what it handed back), status and token count, so a sub-agent's work is
+    never folded into the coordinator's. Work that can't be traced to a specific agent is left
+    unattributed rather than blamed on the coordinator.
 - **Agent library** — drop reusable agent YAMLs in `apps/backend/data/agents/` (same `AgentSpec`
   format as the CLI; two examples are seeded). The agent node inspector's **Load from library**
   dropdown populates a node from one, so you can swap agents easily.

@@ -53,7 +53,8 @@ class RunServiceTest {
     }
 
     private RunService newService(int maxConcurrent, int queueCapacity, int maxRetainedRuns) {
-        RunService s = new RunService(clientProvider, compiler, launcher, localExecutor, runStore, mapper,
+        RunService s = new RunService(clientProvider, compiler, launcher, localExecutor,
+                new CloudStreamEventHandler(), runStore, mapper,
                 notifier, maxConcurrent, queueCapacity, maxRetainedRuns, 3.0, 15.0);
         created.add(s);
         return s;
