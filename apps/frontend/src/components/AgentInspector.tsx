@@ -75,6 +75,29 @@ export function AgentInspector({ data, set }: Props) {
         />
       )}
       <TextArea label="System prompt" rows={6} value={data.systemPrompt} onChange={(v) => set({ systemPrompt: v })} />
+
+      <TextArea
+        label="Context folders (one per line)"
+        rows={3}
+        placeholder={'C:\\Users\\me\\code\\wirej\nC:\\Users\\me\\code\\concentus'}
+        value={(data.contextFolders ?? []).join('\n')}
+        // Split on write, not on every keystroke's trimmed value — otherwise a half-typed
+        // line vanishes as soon as it is momentarily blank.
+        onChange={(v) => set({ contextFolders: v.split('\n').map((s) => s.trim()).filter(Boolean) })}
+      />
+      <Field
+        label="CLAUDE.md path (file or folder)"
+        placeholder="C:\Users\me\code\wirej"
+        value={data.claudeMdPath ?? ''}
+        onChange={(v) => set({ claudeMdPath: v })}
+      />
+      <p className={styles.hint}>
+        Folders this agent should treat as its source of truth — without them it only sees a scratch
+        workspace and guesses from names. Each path must sit under a directory configured in{' '}
+        <code>local.context-roots</code> on the backend, otherwise it's skipped and the reason is
+        shown in the run console. <b>Local (subscription) runs only</b> — cloud runs execute in a
+        sandbox with no access to your machine.
+      </p>
     </>
   )
 }

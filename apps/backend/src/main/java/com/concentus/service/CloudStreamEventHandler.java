@@ -40,7 +40,7 @@ public class CloudStreamEventHandler {
             String text = sb.toString();
             NodeExec coord = coordExec(run);
             if (coord != null) coord.appendOutput(text);
-            run.emit(RunEvent.of("agent_message", text, coordName(run)));
+            run.emit(RunEvent.of("agent_message", text, coordName(run), coordNodeId(run)));
 
         } else if (ev.isSessionThreadCreated()) {
             var e = ev.asSessionThreadCreated();
@@ -50,7 +50,7 @@ public class CloudStreamEventHandler {
                 NodeExec ne = run.nodeExec(nodeId, "agent", e.agentName());
                 if (ne != null && !"failed".equals(ne.status)) ne.status = "running";
             }
-            run.emit(RunEvent.of("system", "Sub-agent thread started.", e.agentName()));
+            run.emit(RunEvent.of("system", "Sub-agent thread started.", e.agentName(), nodeId));
 
         } else if (ev.isAgentThreadMessageSent()) {
             var e = ev.asAgentThreadMessageSent();
@@ -63,7 +63,7 @@ public class CloudStreamEventHandler {
                 ne.appendInput(text);
             }
             // Attributed to the receiving agent: this is the instruction it is about to work on.
-            run.emit(RunEvent.of("system", "→ " + text, labelFor(run, nodeId, name)));
+            run.emit(RunEvent.of("system", "→ " + text, labelFor(run, nodeId, name), nodeId));
 
         } else if (ev.isAgentThreadMessageReceived()) {
             var e = ev.asAgentThreadMessageReceived();
@@ -72,14 +72,15 @@ public class CloudStreamEventHandler {
             String text = receivedText(e.content());
             NodeExec ne = nodeExecFor(run, nodeId, name);
             if (ne != null) ne.appendOutput(text);
-            run.emit(RunEvent.of("agent_message", text, labelFor(run, nodeId, name)));
+            run.emit(RunEvent.of("agent_message", text, labelFor(run, nodeId, name), nodeId));
 
         } else if (ev.isAgentToolUse()) {
             var e = ev.asAgentToolUse();
-            run.emit(RunEvent.of("tool_use", e.name(), threadLabel(run, e.sessionThreadId().orElse(null))));
+            String toolNode = threadNodeId(run, e.sessionThreadId().orElse(null));
+            run.emit(RunEvent.of("tool_use", e.name(), labelFor(run, toolNode, null), toolNode));
 
         } else if (ev.isAgentMcpToolUse()) {
-            run.emit(RunEvent.of("tool_use", "(MCP tool)", coordName(run)));
+            run.emit(RunEvent.of("tool_use", "(MCP tool)", coordName(run), coordNodeId(run)));
 
         } else if (ev.isSessionThreadStatusIdle()) {
             // The sub-agent finished its turn. Exhausting its retries is a failure, not a
@@ -140,10 +141,15 @@ public class CloudStreamEventHandler {
         return run.nodeExec(nodeId, "agent", labelFor(run, nodeId, fallbackName));
     }
 
-    private static String threadLabel(AgentRun run, String threadId) {
-        if (threadId == null) return coordName(run);
+    /** The node behind a thread id; the coordinator when the event names no thread. */
+    private static String threadNodeId(AgentRun run, String threadId) {
+        if (threadId == null) return coordNodeId(run);
         String nodeId = run.threadToNode.get(threadId);
-        return nodeId == null ? coordName(run) : labelFor(run, nodeId, null);
+        return nodeId != null ? nodeId : coordNodeId(run);
+    }
+
+    private static String coordNodeId(AgentRun run) {
+        return run.compiled == null ? null : run.compiled.coordinator().nodeId;
     }
 
     /** Display name for a node, preferring the compiled flow's agent name. */

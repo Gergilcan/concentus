@@ -5,6 +5,7 @@ import { useFlowStore } from '../state/store.ts'
 import { AgentInspector } from './AgentInspector.tsx'
 import { InputInspector } from './InputInspector.tsx'
 import { InputView, OutputView } from './NodeExecView.tsx'
+import { NodeLogView } from './NodeLogView.tsx'
 import { McpInspector } from './McpInspector.tsx'
 import { RepoInspector } from './RepoInspector.tsx'
 import { SqlInspector } from './SqlInspector.tsx'
@@ -18,7 +19,14 @@ function title(data: AppNodeData): string {
   return 'Repository'
 }
 
-type Tab = 'properties' | 'input' | 'output'
+type Tab = 'properties' | 'input' | 'output' | 'logs'
+
+const TAB_LABEL: Record<Tab, string> = {
+  properties: 'Properties',
+  input: 'Input',
+  output: 'Output',
+  logs: 'Logs',
+}
 
 export function Inspector() {
   const selectedId = useFlowStore((s) => s.selectedId)
@@ -41,9 +49,13 @@ export function Inspector() {
   const id = node.id
   const data = node.data
   const set = (patch: Record<string, unknown>) => update(id, patch)
-  // Input/Output tabs only make sense for boxes that execute.
+  // Input/Output tabs only make sense for boxes that execute; only agents produce console
+  // output, so Logs is theirs alone.
   const hasExecTabs = data.kind === 'agent' || data.kind === 'sql' || data.kind === 'mcp'
-  const shownTab: Tab = hasExecTabs ? tab : 'properties'
+  const tabs: Tab[] = data.kind === 'agent'
+    ? ['properties', 'input', 'output', 'logs']
+    : ['properties', 'input', 'output']
+  const shownTab: Tab = hasExecTabs && tabs.includes(tab) ? tab : 'properties'
 
   return (
     <aside className={styles.inspector}>
@@ -59,13 +71,13 @@ export function Inspector() {
 
       {hasExecTabs && (
         <div className={styles.execTabs}>
-          {(['properties', 'input', 'output'] as Tab[]).map((t) => (
+          {tabs.map((t) => (
             <button
               key={t}
               className={cx(styles.execTab, shownTab === t && styles.execTabActive)}
               onClick={() => setTab(t)}
             >
-              {t === 'properties' ? 'Properties' : t === 'input' ? 'Input' : 'Output'}
+              {TAB_LABEL[t]}
             </button>
           ))}
         </div>
@@ -76,6 +88,9 @@ export function Inspector() {
           {!activeRunId && <div className={styles.empty}>Select a run below to see its data.</div>}
           <InputView exec={exec} />
         </>
+      )}
+      {shownTab === 'logs' && data.kind === 'agent' && (
+        <NodeLogView nodeId={id} label={data.name} />
       )}
       {shownTab === 'output' && (
         <>

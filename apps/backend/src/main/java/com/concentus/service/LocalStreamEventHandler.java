@@ -97,7 +97,7 @@ final class LocalStreamEventHandler {
                 String text = b.path("text").asText("");
                 if (!text.isBlank()) {
                     if (target != null) target.appendOutput(text);
-                    run.emit(RunEvent.of("agent_message", text, label));
+                    run.emit(RunEvent.of("agent_message", text, label, targetNodeId));
                 }
             } else if ("tool_use".equals(bt)) {
                 String name = b.path("name").asText("tool");
@@ -114,11 +114,11 @@ final class LocalStreamEventHandler {
                         }
                         run.taskToNode.put(b.path("id").asText(""), subNodeId);
                         // Attributed to the delegator (the coordinator), which is who ran the tool.
-                        run.emit(RunEvent.of("tool_use", "Task → " + subtype, label));
+                        run.emit(RunEvent.of("tool_use", "Task → " + subtype, label, targetNodeId));
                         continue;
                     }
                 }
-                run.emit(RunEvent.of("tool_use", name, label));
+                run.emit(RunEvent.of("tool_use", name, label, targetNodeId));
             }
         }
     }

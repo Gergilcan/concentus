@@ -159,6 +159,15 @@
   flex: 1;
 }
 
+// One agent's log inside the inspector: same line styling as the console, scrolled
+// within the panel rather than growing it.
+.nodeLog {
+  max-height: 340px;
+  overflow: auto;
+  font-family: ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
 .agentBar {
   display: flex;
   flex-wrap: wrap;

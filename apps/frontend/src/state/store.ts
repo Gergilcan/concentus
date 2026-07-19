@@ -16,6 +16,7 @@ import type {
   NodeExec,
   NodeExecReport,
   NodeKind,
+  RunEvent,
 } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL } from '../constants.ts'
 
@@ -31,6 +32,9 @@ function uid(prefix: string): string {
 
 /** Canvas offset applied to each successive paste so copies never land on the original. */
 const PASTE_OFFSET = 40
+
+/** Cap on retained console events; the backend keeps the authoritative buffer. */
+const MAX_RUN_EVENTS = 4000
 
 /** The field each node kind uses as its human-facing identifier, if it has one. */
 function nameKey(kind: NodeKind): 'name' | 'label' | null {
@@ -131,6 +135,8 @@ function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
         systemPrompt: '',
         maxTokens: DEFAULT_MAX_TOKENS,
         effort: 'high',
+        contextFolders: [],
+        claudeMdPath: '',
       }
     case 'mcp':
       return { kind: 'mcp', name: 'github', url: 'https://api.githubcopilot.com/mcp/', tokenEnv: 'GITHUB_MCP_TOKEN' }
@@ -182,6 +188,13 @@ interface FlowState {
   runTotals: { input: number; output: number }
   setActiveRun: (id: string | null) => void
   setRunExec: (report: NodeExecReport | null) => void
+  /**
+   * Live console events for the active run. Held here rather than inside Console so a node's
+   * inspector can show that one agent's lines without opening a second socket.
+   */
+  runEvents: RunEvent[]
+  addRunEvent: (e: RunEvent) => void
+  clearRunEvents: () => void
 
   onNodesChange: (changes: NodeChange<AppNode>[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
@@ -218,8 +231,23 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   activeRunId: null,
   runExecByNode: {},
   runTotals: { input: 0, output: 0 },
+  runEvents: [],
+  // Bounded so a long-running flow can't grow this array without limit; the backend keeps the
+  // authoritative buffer and replays it on reconnect.
+  addRunEvent: (e) =>
+    set((s) => ({
+      runEvents: s.runEvents.length >= MAX_RUN_EVENTS
+        ? [...s.runEvents.slice(s.runEvents.length - MAX_RUN_EVENTS + 1), e]
+        : [...s.runEvents, e],
+    })),
+  clearRunEvents: () => set({ runEvents: [] }),
+
   setActiveRun: (id) =>
-    set((s) => (s.activeRunId === id ? {} : { activeRunId: id, runExecByNode: {}, runTotals: { input: 0, output: 0 } })),
+    set((s) =>
+      s.activeRunId === id
+        ? {}
+        : { activeRunId: id, runExecByNode: {}, runTotals: { input: 0, output: 0 }, runEvents: [] },
+    ),
   setRunExec: (report) => {
     if (!report) {
       set({ runExecByNode: {}, runTotals: { input: 0, output: 0 } })

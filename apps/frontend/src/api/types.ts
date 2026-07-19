@@ -23,7 +23,10 @@ export type RunEventType = 'system' | 'status' | 'agent_message' | 'tool_use' | 
 export interface RunEvent {
   type: RunEventType
   text: string
+  /** Display name of the agent that produced this line. */
   agent?: string | null
+  /** Canvas node id of that agent — unique even when two agents share a name. */
+  agentId?: string | null
   ts: number
 }
 
@@ -83,6 +86,11 @@ export type AgentNodeData = {
   systemPrompt: string
   maxTokens: number
   effort: string
+  // Optional: flows saved before these existed simply omit them.
+  /** Host folders this agent should treat as its source of truth (CLI `--add-dir`). */
+  contextFolders?: string[]
+  /** Path to an existing CLAUDE.md, or a folder containing one, to load as context. */
+  claudeMdPath?: string
 }
 
 export type McpNodeData = {
