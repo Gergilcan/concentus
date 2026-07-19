@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.ts'
 import type { AgentNodeData, LibraryAgent } from '../api/types.ts'
+import { EFFORT_OPTIONS } from '../constants.ts'
+import { Field, SelectField, TextArea } from './fields.tsx'
 import styles from './panels.module.scss'
 
 interface Props {
@@ -34,71 +36,45 @@ export function AgentInspector({ data, set }: Props) {
   return (
     <>
       {library.length > 0 && (
-        <label className={`${styles.field} ${styles.libraryField}`}>
-          <span>Load from library</span>
-          <select value="" onChange={(e) => applyLibrary(e.target.value)}>
-            <option value="">— choose an agent —</option>
-            {library.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name} ({a.model})
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      <label className={styles.field}>
-        <span>Name</span>
-        <input value={data.name} onChange={(e) => set({ name: e.target.value })} />
-      </label>
-      <label className={styles.field}>
-        <span>Role</span>
-        <select value={data.role} onChange={(e) => set({ role: e.target.value })}>
-          <option value="coordinator">coordinator</option>
-          <option value="subagent">subagent</option>
-        </select>
-      </label>
-      <label className={styles.field}>
-        <span>Model</span>
-        <input value={data.model} onChange={(e) => set({ model: e.target.value })} />
-      </label>
-      <label className={styles.field}>
-        <span>Effort</span>
-        <select value={data.effort} onChange={(e) => set({ effort: e.target.value })}>
-          {['low', 'medium', 'high', 'xhigh', 'max'].map((v) => (
-            <option key={v} value={v}>
-              {v}
+        <SelectField label="Load from library" value="" onChange={applyLibrary} className={styles.libraryField}>
+          <option value="">— choose an agent —</option>
+          {library.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name} ({a.model})
             </option>
           ))}
-        </select>
-      </label>
-      <label className={styles.field}>
-        <span>Max tokens</span>
-        <input
-          type="number"
-          value={data.maxTokens}
-          onChange={(e) => set({ maxTokens: Number(e.target.value) })}
-        />
-      </label>
-      {data.role === 'subagent' && (
-        <label className={styles.field}>
-          <span>Delegate when… (routing)</span>
-          <textarea
-            rows={3}
-            placeholder="Use PROACTIVELY for backend/Java work. Give it only the backend part of the plan."
-            value={data.description ?? ''}
-            onChange={(e) => set({ description: e.target.value })}
-          />
-        </label>
+        </SelectField>
       )}
-      <label className={styles.field}>
-        <span>System prompt</span>
-        <textarea
-          rows={6}
-          value={data.systemPrompt}
-          onChange={(e) => set({ systemPrompt: e.target.value })}
+
+      <Field label="Name" value={data.name} onChange={(v) => set({ name: v })} />
+      <SelectField label="Role" value={data.role} onChange={(v) => set({ role: v })}>
+        <option value="coordinator">coordinator</option>
+        <option value="subagent">subagent</option>
+      </SelectField>
+      <Field label="Model" value={data.model} onChange={(v) => set({ model: v })} />
+      <SelectField label="Effort" value={data.effort} onChange={(v) => set({ effort: v })}>
+        {EFFORT_OPTIONS.map((v) => (
+          <option key={v} value={v}>
+            {v}
+          </option>
+        ))}
+      </SelectField>
+      <Field
+        label="Max tokens"
+        type="number"
+        value={data.maxTokens}
+        onChange={(v) => set({ maxTokens: Number(v) })}
+      />
+      {data.role === 'subagent' && (
+        <TextArea
+          label="Delegate when… (routing)"
+          rows={3}
+          placeholder="Use PROACTIVELY for backend/Java work. Give it only the backend part of the plan."
+          value={data.description ?? ''}
+          onChange={(v) => set({ description: v })}
         />
-      </label>
+      )}
+      <TextArea label="System prompt" rows={6} value={data.systemPrompt} onChange={(v) => set({ systemPrompt: v })} />
     </>
   )
 }

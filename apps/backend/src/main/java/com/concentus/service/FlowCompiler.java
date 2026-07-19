@@ -10,9 +10,13 @@ import com.concentus.model.FlowGraph;
 import com.concentus.model.FlowNode;
 import org.springframework.stereotype.Component;
 
+import static com.concentus.support.MapValues.lng;
+import static com.concentus.support.MapValues.str;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /** Compiles a {@link FlowGraph} into a coordinator + sub-agent {@link AgentSpec}s. */
 @Component
@@ -74,46 +78,54 @@ public class FlowCompiler {
         s.model.maxTokens = lng(d, "maxTokens", 16000);
         s.model.effort = str(d, "effort", "high");
 
-        for (FlowNode mcp : mcps) {
-            if (connected(flow.edgesOrEmpty(), node.id(), mcp.id())) {
-                Map<String, Object> md = mcp.dataOrEmpty();
-                McpServerSpec spec = new McpServerSpec();
-                spec.nodeId = mcp.id();
-                spec.name = str(md, "name", mcp.id());
-                spec.url = str(md, "url", "");
-                spec.tokenEnv = str(md, "tokenEnv", null);
-                s.mcpServers.add(spec);
-            }
-        }
-        for (FlowNode repo : repos) {
-            if (connected(flow.edgesOrEmpty(), node.id(), repo.id())) {
-                Map<String, Object> rd = repo.dataOrEmpty();
-                RepoSpec spec = new RepoSpec();
-                spec.provider = str(rd, "provider", "github");
-                spec.url = str(rd, "url", "");
-                spec.tokenEnv = str(rd, "tokenEnv", null);
-                spec.mountPath = str(rd, "mountPath", null);
-                spec.branch = str(rd, "branch", null);
-                s.repositories.add(spec);
-            }
-        }
-        for (FlowNode sql : sqls) {
-            if (connected(flow.edgesOrEmpty(), node.id(), sql.id())) {
-                Map<String, Object> qd = sql.dataOrEmpty();
-                SqlSourceSpec spec = new SqlSourceSpec();
-                spec.nodeId = sql.id();
-                spec.label = str(qd, "label", sql.id());
-                spec.jdbcUrl = str(qd, "jdbcUrl", "");
-                spec.username = str(qd, "username", null);
-                spec.passwordEnv = str(qd, "passwordEnv", null);
-                spec.query = str(qd, "query", "");
-                spec.maxRows = (int) lng(qd, "maxRows", 50);
-                s.ragSources.add(spec);
-            }
-        }
+        collectConnected(flow, node, mcps, s.mcpServers, mcp -> {
+            Map<String, Object> md = mcp.dataOrEmpty();
+            McpServerSpec spec = new McpServerSpec();
+            spec.nodeId = mcp.id();
+            spec.name = str(md, "name", mcp.id());
+            spec.url = str(md, "url", "");
+            spec.tokenEnv = str(md, "tokenEnv", null);
+            return spec;
+        });
+        collectConnected(flow, node, repos, s.repositories, repo -> {
+            Map<String, Object> rd = repo.dataOrEmpty();
+            RepoSpec spec = new RepoSpec();
+            spec.provider = str(rd, "provider", "github");
+            spec.url = str(rd, "url", "");
+            spec.tokenEnv = str(rd, "tokenEnv", null);
+            spec.mountPath = str(rd, "mountPath", null);
+            spec.branch = str(rd, "branch", null);
+            return spec;
+        });
+        collectConnected(flow, node, sqls, s.ragSources, sql -> {
+            Map<String, Object> qd = sql.dataOrEmpty();
+            SqlSourceSpec spec = new SqlSourceSpec();
+            spec.nodeId = sql.id();
+            spec.label = str(qd, "label", sql.id());
+            spec.jdbcUrl = str(qd, "jdbcUrl", "");
+            spec.username = str(qd, "username", null);
+            spec.passwordEnv = str(qd, "passwordEnv", null);
+            spec.query = str(qd, "query", "");
+            spec.maxRows = (int) lng(qd, "maxRows", 50);
+            return spec;
+        });
 
         s.validate();
         return s;
+    }
+
+    /**
+     * Shared iteration/connection-check for the three resource-node loops in {@link
+     * #buildAgentSpec}: for each candidate node wired to {@code node}, build a spec via {@code
+     * specBuilder} and append it to {@code target}.
+     */
+    private static <T> void collectConnected(FlowGraph flow, FlowNode node, List<FlowNode> candidates,
+                                              List<T> target, Function<FlowNode, T> specBuilder) {
+        for (FlowNode candidate : candidates) {
+            if (connected(flow.edgesOrEmpty(), node.id(), candidate.id())) {
+                target.add(specBuilder.apply(candidate));
+            }
+        }
     }
 
     private static List<FlowNode> byType(FlowGraph flow, String type) {
@@ -123,21 +135,5 @@ public class FlowCompiler {
     private static boolean connected(List<FlowEdge> edges, String a, String b) {
         return edges.stream().anyMatch(e ->
                 (a.equals(e.source()) && b.equals(e.target())) || (b.equals(e.source()) && a.equals(e.target())));
-    }
-
-    private static String str(Map<String, Object> d, String key, String fallback) {
-        Object v = d.get(key);
-        if (v == null) return fallback;
-        String s = String.valueOf(v);
-        return s.isBlank() ? fallback : s;
-    }
-
-    private static long lng(Map<String, Object> d, String key, long fallback) {
-        Object v = d.get(key);
-        if (v instanceof Number n) return n.longValue();
-        if (v instanceof String str && !str.isBlank()) {
-            try { return Long.parseLong(str.trim()); } catch (NumberFormatException ignored) { }
-        }
-        return fallback;
     }
 }

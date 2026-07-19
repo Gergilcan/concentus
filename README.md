@@ -77,7 +77,7 @@ concentus/
 ## Prerequisites
 
 - **Java 25 (JDK)** and **Maven** — backend
-- **Node 22+** and **pnpm** — frontend
+- **Node 24+** and **pnpm** — frontend
 - **To run a flow** (the designer and API start without any credentials; the toolbar shows which is active):
   - **Local, on your Claude subscription (default):** sign in once with **Claude Code** (`claude`),
     and flows run locally via the `claude` CLI — no API key. Badge: **Local (subscription)**.

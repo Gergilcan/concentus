@@ -8,16 +8,20 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useEffect } from 'react'
+import { NODE_COLORS } from '../constants.ts'
 import { useFlowStore } from '../state/store.ts'
 import { DeletableEdge } from './DeletableEdge.tsx'
 import { nodeTypes } from './nodeTypes.ts'
 
+// Minimap swatch per node kind. Deliberately narrower than NODE_COLORS: 'input' nodes
+// have no dedicated minimap color in the original design, so they fall through to the
+// same neutral default as any unrecognized kind.
 function nodeColor(type?: string): string {
-  if (type === 'agent') return '#6ea8fe'
-  if (type === 'mcp') return '#63e6be'
-  if (type === 'repo') return '#ffd43b'
-  if (type === 'sql') return '#ff922b'
-  return '#888'
+  if (type === 'agent') return NODE_COLORS.agent
+  if (type === 'mcp') return NODE_COLORS.mcp
+  if (type === 'repo') return NODE_COLORS.repo
+  if (type === 'sql') return NODE_COLORS.sql
+  return NODE_COLORS.default
 }
 
 const edgeTypes: EdgeTypes = { deletable: DeletableEdge }

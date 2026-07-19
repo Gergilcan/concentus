@@ -1,4 +1,5 @@
 import type { RunSummary } from '../api/types.ts'
+import { cx } from '../utils/cx.ts'
 import { Console } from './Console.tsx'
 import styles from './runs.module.scss'
 
@@ -25,10 +26,10 @@ export function RunsPanel({ runs, loading = false, selected, onSelect }: Props) 
           runs.map((r) => (
             <button
               key={r.id}
-              className={`${styles.runItem} ${selected === r.id ? styles.active : ''}`}
+              className={cx(styles.runItem, selected === r.id && styles.active)}
               onClick={() => onSelect(r.id)}
             >
-              <span className={`${styles.dot} ${styles['s_' + r.status]}`} />
+              <span className={cx(styles.dot, styles['s_' + r.status])} />
               <span className={styles.runName}>{r.flowName || 'flow'}</span>
               {r.trigger && r.trigger !== 'manual' && (
                 <span className={styles.trigger}>{r.trigger === 'cron' ? '⏱ auto' : '▶ prompt'}</span>

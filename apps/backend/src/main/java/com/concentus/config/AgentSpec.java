@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -107,6 +108,16 @@ public class AgentSpec {
         return false;
     }
 
+    /**
+     * Shared by {@link McpServerSpec#resolveToken()}, {@link RepoSpec#resolveToken()}, and {@link
+     * SqlSourceSpec#resolvePassword()}: resolves a named env var via {@code envLookup}, but only if
+     * it's on the allowlist (see {@link #isEnvVarAllowed}).
+     */
+    private static String resolveAllowedEnvVar(String envVarName, Function<String, String> envLookup) {
+        if (envVarName == null || envVarName.isBlank() || !isEnvVarAllowed(envVarName)) return null;
+        return emptyToNull(envLookup.apply(envVarName));
+    }
+
     // ---------------------------------------------------------------- enums
 
     public enum RunMode {
@@ -171,8 +182,12 @@ public class AgentSpec {
          * endpoint must not exfiltrate the real key).
          */
         public String resolveToken() {
-            if (tokenEnv == null || tokenEnv.isBlank() || !isEnvVarAllowed(tokenEnv)) return null;
-            return emptyToNull(System.getenv(tokenEnv));
+            return resolveToken(System::getenv);
+        }
+
+        /** Same as {@link #resolveToken()}, but resolving env vars via {@code envLookup} (for tests). */
+        public String resolveToken(Function<String, String> envLookup) {
+            return resolveAllowedEnvVar(tokenEnv, envLookup);
         }
     }
 
@@ -190,8 +205,12 @@ public class AgentSpec {
 
         /** Same allowlist guard as {@link McpServerSpec#resolveToken()} — see its javadoc. */
         public String resolveToken() {
-            if (tokenEnv == null || tokenEnv.isBlank() || !isEnvVarAllowed(tokenEnv)) return null;
-            return emptyToNull(System.getenv(tokenEnv));
+            return resolveToken(System::getenv);
+        }
+
+        /** Same as {@link #resolveToken()}, but resolving env vars via {@code envLookup} (for tests). */
+        public String resolveToken(Function<String, String> envLookup) {
+            return resolveAllowedEnvVar(tokenEnv, envLookup);
         }
     }
 
@@ -221,9 +240,12 @@ public class AgentSpec {
          * to reject with a clear error instead of silently authenticating with no password.
          */
         public String resolvePassword() {
-            if (passwordEnv == null || passwordEnv.isBlank()) return null;
-            if (!isEnvVarAllowed(passwordEnv)) return null;
-            return emptyToNull(System.getenv(passwordEnv));
+            return resolvePassword(System::getenv);
+        }
+
+        /** Same as {@link #resolvePassword()}, but resolving env vars via {@code envLookup} (for tests). */
+        public String resolvePassword(Function<String, String> envLookup) {
+            return resolveAllowedEnvVar(passwordEnv, envLookup);
         }
 
         /** True if {@code passwordEnv} is set but not on the allowlist (used to reject with a clear 400). */

@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.support.Ids;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,7 +15,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Stream;
 
 /** File-backed JSON store for id-keyed resource records (one file per record). */
@@ -76,7 +76,7 @@ public abstract class JsonStore<T> {
     }
 
     public synchronized T save(T item) {
-        String id = (idOf(item) == null || idOf(item).isBlank()) ? newId() : sanitize(idOf(item));
+        String id = (idOf(item) == null || idOf(item).isBlank()) ? newId() : Ids.sanitize(idOf(item), "Invalid id: ");
         T toSave = withId(item, id);
         try {
             writeAtomic(fileFor(id), mapper.writerWithDefaultPrettyPrinter().writeValueAsString(toSave));
@@ -115,17 +115,10 @@ public abstract class JsonStore<T> {
     }
 
     private Path fileFor(String id) {
-        return dir.resolve(sanitize(id) + ".json");
-    }
-
-    private static String sanitize(String id) {
-        if (id == null || !id.matches("[A-Za-z0-9_-]{1,64}")) {
-            throw new IllegalArgumentException("Invalid id: " + id);
-        }
-        return id;
+        return dir.resolve(Ids.sanitize(id, "Invalid id: ") + ".json");
     }
 
     private String newId() {
-        return idPrefix + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        return Ids.generate(idPrefix, 10);
     }
 }

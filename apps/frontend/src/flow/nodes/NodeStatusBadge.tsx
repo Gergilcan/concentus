@@ -1,3 +1,4 @@
+import { cx } from '../../utils/cx.ts'
 import { useFlowStore } from '../../state/store.ts'
 import styles from './nodes.module.scss'
 
@@ -7,7 +8,7 @@ export function NodeStatusBadge({ id }: { id: string }) {
   if (!exec) return null
   const tokens = exec.outputTokens ? ` · ${exec.outputTokens.toLocaleString()}t` : ''
   return (
-    <div className={`${styles.execBadge} ${styles['eb_' + exec.status]}`}>
+    <div className={cx(styles.execBadge, styles['eb_' + exec.status])}>
       <span className={styles.ebDot} />
       {exec.status}
       {tokens}

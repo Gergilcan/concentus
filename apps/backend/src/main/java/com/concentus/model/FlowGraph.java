@@ -1,5 +1,7 @@
 package com.concentus.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.util.List;
 
 /**
@@ -33,10 +35,12 @@ public record FlowGraph(String id, String name, String mode,
     }
 
     /** Flows are enabled unless explicitly disabled (flows saved before this existed have none). */
+    @JsonIgnore
     public boolean isEnabled() {
         return enabled == null || enabled;
     }
 
+    @JsonIgnore
     public boolean isFavorite() {
         return favorite != null && favorite;
     }

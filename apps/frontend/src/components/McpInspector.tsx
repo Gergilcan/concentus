@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.ts'
 import type { McpDef, McpNodeData, McpServerInfo } from '../api/types.ts'
+import { Field, SelectField } from './fields.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import styles from './panels.module.scss'
 
@@ -37,49 +38,40 @@ export function McpInspector({ data, set }: Props) {
   return (
     <>
       {defs.length > 0 && (
-        <label className={styles.field}>
-          <span>Use saved server (from Resources)</span>
-          <select value="" onChange={(e) => useSaved(e.target.value)}>
-            <option value="">— choose a saved MCP server —</option>
-            {defs.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SelectField label="Use saved server (from Resources)" value="" onChange={useSaved}>
+          <option value="">— choose a saved MCP server —</option>
+          {defs.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </SelectField>
       )}
 
       {servers.length > 0 && (
-        <label className={`${styles.field} ${styles.libraryField}`}>
-          <span>Select existing (from Claude Code)</span>
-          <select value="" onChange={(e) => selectExisting(e.target.value)}>
-            <option value="">— choose a configured server —</option>
-            {servers.map((s) => (
-              <option key={s.name} value={s.name}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SelectField
+          label="Select existing (from Claude Code)"
+          value=""
+          onChange={selectExisting}
+          className={styles.libraryField}
+        >
+          <option value="">— choose a configured server —</option>
+          {servers.map((s) => (
+            <option key={s.name} value={s.name}>
+              {s.name}
+            </option>
+          ))}
+        </SelectField>
       )}
 
-      <label className={styles.field}>
-        <span>Name</span>
-        <input value={data.name} onChange={(e) => set({ name: e.target.value })} />
-      </label>
-      <label className={styles.field}>
-        <span>URL</span>
-        <input value={data.url} onChange={(e) => set({ url: e.target.value })} />
-      </label>
-      <label className={styles.field}>
-        <span>Token env var (optional)</span>
-        <input
-          value={data.tokenEnv}
-          placeholder="LINEAR_MCP_TOKEN"
-          onChange={(e) => set({ tokenEnv: e.target.value })}
-        />
-      </label>
+      <Field label="Name" value={data.name} onChange={(v) => set({ name: v })} />
+      <Field label="URL" value={data.url} onChange={(v) => set({ url: v })} />
+      <Field
+        label="Token env var (optional)"
+        value={data.tokenEnv}
+        placeholder="LINEAR_MCP_TOKEN"
+        onChange={(v) => set({ tokenEnv: v })}
+      />
 
       <McpClaudeActions name={data.name} url={data.url} tokenEnv={data.tokenEnv} />
     </>

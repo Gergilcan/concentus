@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api/client.ts'
 import type { DatabaseDef, LibraryAgent, McpDef } from '../api/types.ts'
+import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, EFFORT_OPTIONS } from '../constants.ts'
 import { CrudPanel } from './CrudPanel.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import styles from './resources.module.scss'
@@ -33,14 +34,14 @@ export function ResourcesPage() {
             title="Agents"
             fields={[
               { key: 'name', label: 'Name' },
-              { key: 'model', label: 'Model', placeholder: 'claude-opus-4-8' },
-              { key: 'effort', label: 'Effort', type: 'select', options: ['low', 'medium', 'high', 'xhigh', 'max'] },
+              { key: 'model', label: 'Model', placeholder: DEFAULT_MODEL },
+              { key: 'effort', label: 'Effort', type: 'select', options: [...EFFORT_OPTIONS] },
               { key: 'maxTokens', label: 'Max tokens', type: 'number' },
               { key: 'systemPrompt', label: 'System prompt', type: 'textarea' },
             ]}
             labelOf={(a) => a.name}
             idOf={(a) => a.id}
-            empty={() => ({ name: '', model: 'claude-opus-4-8', effort: 'high', maxTokens: 16000, systemPrompt: '' })}
+            empty={() => ({ name: '', model: DEFAULT_MODEL, effort: 'high', maxTokens: DEFAULT_MAX_TOKENS, systemPrompt: '' })}
             load={api.listAgents}
             save={api.saveAgent}
             remove={api.deleteAgent}

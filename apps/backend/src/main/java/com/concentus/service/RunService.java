@@ -10,6 +10,7 @@ import com.concentus.model.RunSummary;
 import com.concentus.model.TriggerSpec;
 import com.concentus.store.RunStore;
 import com.concentus.support.AnthropicClientProvider;
+import com.concentus.support.Ids;
 import jakarta.annotation.PreDestroy;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -23,10 +24,12 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -79,9 +82,14 @@ public class RunService {
         // Bounded pool: each worker blocks for a full agent turn, so an unbounded cached pool
         // could exhaust host threads under load. Excess work queues up to queueCapacity, then
         // submissions throw RejectedExecutionException (caught at call sites) instead of
-        // spawning unbounded threads.
+        // spawning unbounded threads. A capacity of 0 means "no queueing" — LinkedBlockingQueue
+        // rejects a 0 capacity outright, so that case uses a SynchronousQueue (direct handoff)
+        // instead, which is the closest equivalent.
+        BlockingQueue<Runnable> queue = queueCapacity <= 0
+                ? new SynchronousQueue<>()
+                : new LinkedBlockingQueue<>(queueCapacity);
         this.exec = new ThreadPoolExecutor(maxConcurrent, maxConcurrent, 60L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(queueCapacity), threadFactory, new ThreadPoolExecutor.AbortPolicy());
+                queue, threadFactory, new ThreadPoolExecutor.AbortPolicy());
     }
 
     @PreDestroy
@@ -117,7 +125,7 @@ public class RunService {
                     + "subscription, or set ANTHROPIC_API_KEY to use the cloud API.");
         }
 
-        String runId = "run_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        String runId = Ids.generate("run_", 12);
         AgentRun run = new AgentRun(runId, flow.id(), flow.name(), flow.modeOrDefault());
         run.backend = backend;
         run.compiled = compiled;
@@ -143,11 +151,7 @@ public class RunService {
                 run.emit(RunEvent.of("system", "Local mode — auto-starting with the Input prompt."));
                 String prompt = run.pendingPrompt;
                 run.pendingPrompt = null;
-                try {
-                    exec.submit(() -> runLocalTurn(run, prompt));
-                } catch (RejectedExecutionException e) {
-                    fail(run, "Too many runs in progress right now. Please try again shortly.");
-                }
+                submitOrFail(run, () -> runLocalTurn(run, prompt));
             } else {
                 run.emit(RunEvent.of("system", "Local mode — running on your Claude subscription ("
                         + (compiled.subAgents().size() + 1) + " agents). Send a command to start."));
@@ -155,13 +159,18 @@ public class RunService {
         } else {
             run.emit(RunEvent.of("system", "Launching flow '" + flow.name() + "' in the cloud ("
                     + (compiled.subAgents().size() + 1) + " agents)…"));
-            try {
-                exec.submit(() -> execute(run, compiled));
-            } catch (RejectedExecutionException e) {
-                fail(run, "Too many runs in progress right now. Please try again shortly.");
-            }
+            submitOrFail(run, () -> execute(run, compiled));
         }
         return run.toSummary();
+    }
+
+    /** Submits work to the run-worker pool; if the queue is full, fails the run instead of blocking. */
+    private void submitOrFail(AgentRun run, Runnable task) {
+        try {
+            exec.submit(task);
+        } catch (RejectedExecutionException e) {
+            fail(run, "Too many runs in progress right now. Please try again shortly.");
+        }
     }
 
     /**
@@ -173,11 +182,15 @@ public class RunService {
         int overflow = runs.size() - maxRetainedRuns;
         if (overflow <= 0) return;
         runs.values().stream()
-                .filter(r -> "TERMINATED".equals(r.status) || "ERROR".equals(r.status))
+                .filter(r -> isTerminal(r.status))
                 .sorted(Comparator.comparingLong(r -> r.createdAt))
                 .limit(overflow)
                 .map(r -> r.id)
                 .forEach(runs::remove);
+    }
+
+    private static boolean isTerminal(String status) {
+        return "TERMINATED".equals(status) || "ERROR".equals(status);
     }
 
     private void execute(AgentRun run, CompiledFlow compiled) {
@@ -438,8 +451,7 @@ public class RunService {
     /** True if a non-terminal run for this flow already exists (used to avoid overlapping cron fires). */
     public boolean hasActiveRun(String flowId) {
         if (flowId == null) return false;
-        return runs.values().stream().anyMatch(r -> flowId.equals(r.flowId)
-                && !"TERMINATED".equals(r.status) && !"ERROR".equals(r.status));
+        return runs.values().stream().anyMatch(r -> flowId.equals(r.flowId) && !isTerminal(r.status));
     }
 
     private AgentRun require(String runId) {

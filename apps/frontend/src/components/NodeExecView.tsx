@@ -1,4 +1,5 @@
 import type { NodeExec, NodeExecStatus } from '../api/types.ts'
+import { cx } from '../utils/cx.ts'
 import styles from './panels.module.scss'
 
 const STATUS_LABEL: Record<NodeExecStatus, string> = {
@@ -10,7 +11,7 @@ const STATUS_LABEL: Record<NodeExecStatus, string> = {
 
 export function StatusBadge({ status }: { status?: NodeExecStatus }) {
   const s = status ?? 'pending'
-  return <span className={`${styles.statusPill} ${styles['st_' + s]}`}>{STATUS_LABEL[s]}</span>
+  return <span className={cx(styles.statusPill, styles['st_' + s])}>{STATUS_LABEL[s]}</span>
 }
 
 function fmt(n: number): string {

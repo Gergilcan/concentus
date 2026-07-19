@@ -2,6 +2,7 @@ package com.concentus.store;
 
 import com.concentus.config.AgentSpec;
 import com.concentus.model.LibraryAgent;
+import com.concentus.support.Ids;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -22,7 +23,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Stream;
 
 /**
@@ -65,7 +65,8 @@ public class AgentLibraryStore {
 
     /** Creates or updates a library agent, writing it as a YAML AgentSpec file. */
     public LibraryAgent save(LibraryAgent a) {
-        String id = (a.id() == null || a.id().isBlank()) ? newId() : sanitizeId(a.id());
+        String id = (a.id() == null || a.id().isBlank())
+                ? Ids.generate("agent_", 10) : Ids.sanitize(a.id(), "Invalid agent id: ");
         Map<String, Object> model = new LinkedHashMap<>();
         model.put("id", a.model() == null || a.model().isBlank() ? "claude-opus-4-8" : a.model());
         model.put("effort", a.effort() == null || a.effort().isBlank() ? "high" : a.effort());
@@ -81,12 +82,15 @@ public class AgentLibraryStore {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+        // Build the returned record from the normalized `doc`/`model` values, not the raw input, so
+        // save() and list() agree on every field (a null systemPrompt reads back as "" either way).
         return new LibraryAgent(id, (String) doc.get("name"), (String) model.get("id"),
-                (String) model.get("effort"), a.maxTokens() > 0 ? a.maxTokens() : 16000, a.systemPrompt());
+                (String) model.get("effort"), a.maxTokens() > 0 ? a.maxTokens() : 16000,
+                (String) doc.get("systemPrompt"));
     }
 
     public boolean delete(String id) {
-        String safe = sanitizeId(id);
+        String safe = Ids.sanitize(id, "Invalid agent id: ");
         try {
             boolean a = Files.deleteIfExists(dir.resolve(safe + ".yaml"));
             boolean b = Files.deleteIfExists(dir.resolve(safe + ".yml"));
@@ -94,17 +98,6 @@ public class AgentLibraryStore {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-    }
-
-    private static String sanitizeId(String id) {
-        if (id == null || !id.matches("[A-Za-z0-9_-]{1,64}")) {
-            throw new IllegalArgumentException("Invalid agent id: " + id);
-        }
-        return id;
-    }
-
-    private static String newId() {
-        return "agent_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
     }
 
     private LibraryAgent parse(Path p) throws IOException {

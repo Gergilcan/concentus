@@ -203,3 +203,278 @@ describe('useFlowStore copy / paste / duplicate', () => {
     expect(nodes[0].data).toMatchObject({ kind: 'sql', label: 'db copy' })
   })
 })
+
+// Direct node/edge editing used by the canvas toolbar and Inspector: updating a single
+// node's data, deleting nodes/edges, and the id/selection bookkeeping that goes with it.
+describe('useFlowStore node/edge mutations', () => {
+  beforeEach(() => {
+    useFlowStore.getState().newFlow()
+    useFlowStore.setState({ clipboard: null })
+  })
+
+  it('updateNodeData merges a patch into one node without touching others', () => {
+    const { addNode, updateNodeData } = useFlowStore.getState()
+    addNode('agent')
+    addNode('agent')
+    const [first, second] = useFlowStore.getState().nodes
+    const secondNameBefore = (second.data as { name: string }).name
+
+    updateNodeData(first.id, { name: 'Renamed' })
+
+    const state = useFlowStore.getState()
+    expect((state.nodes[0].data as { name: string }).name).toBe('Renamed')
+    expect((state.nodes[1].data as { name: string }).name).toBe(secondNameBefore)
+  })
+
+  it('deleteNode removes the node, any edges touching it, and clears selection if it was selected', () => {
+    const { addNode, onConnect, selectNode, deleteNode } = useFlowStore.getState()
+    addNode('agent')
+    addNode('mcp')
+    const [agent, mcp] = useFlowStore.getState().nodes
+    onConnect({ source: agent.id, target: mcp.id, sourceHandle: null, targetHandle: null })
+    selectNode(agent.id)
+
+    deleteNode(agent.id)
+
+    const state = useFlowStore.getState()
+    expect(state.nodes.map((n) => n.id)).toEqual([mcp.id])
+    expect(state.edges).toHaveLength(0)
+    expect(state.selectedId).toBeNull()
+  })
+
+  it('deleteNode leaves selection untouched when a different node is deleted', () => {
+    const { addNode, selectNode, deleteNode } = useFlowStore.getState()
+    addNode('agent')
+    addNode('mcp')
+    const [agent, mcp] = useFlowStore.getState().nodes
+    selectNode(agent.id)
+
+    deleteNode(mcp.id)
+
+    expect(useFlowStore.getState().selectedId).toBe(agent.id)
+  })
+
+  it('deleteEdge removes only the targeted edge', () => {
+    const { addNode, onConnect, deleteEdge } = useFlowStore.getState()
+    addNode('agent')
+    addNode('mcp')
+    addNode('sql')
+    const [agent, mcp, sql] = useFlowStore.getState().nodes
+    onConnect({ source: agent.id, target: mcp.id, sourceHandle: null, targetHandle: null })
+    onConnect({ source: agent.id, target: sql.id, sourceHandle: null, targetHandle: null })
+    const [edgeToRemove, keep] = useFlowStore.getState().edges
+
+    deleteEdge(edgeToRemove.id)
+
+    const { edges } = useFlowStore.getState()
+    expect(edges).toHaveLength(1)
+    expect(edges[0].id).toBe(keep.id)
+  })
+
+  it('onConnect assigns a unique "e_"-prefixed id to the new edge', () => {
+    const { addNode, onConnect } = useFlowStore.getState()
+    addNode('agent')
+    addNode('mcp')
+    const [agent, mcp] = useFlowStore.getState().nodes
+
+    onConnect({ source: agent.id, target: mcp.id, sourceHandle: null, targetHandle: null })
+
+    expect(useFlowStore.getState().edges[0].id).toMatch(/^e_/)
+  })
+
+  it('selectNode sets and clears selectedId', () => {
+    const { addNode, selectNode } = useFlowStore.getState()
+    addNode('agent')
+    const id = useFlowStore.getState().nodes[0].id
+
+    selectNode(id)
+    expect(useFlowStore.getState().selectedId).toBe(id)
+
+    selectNode(null)
+    expect(useFlowStore.getState().selectedId).toBeNull()
+  })
+
+  it('setMode switches between managed and local', () => {
+    useFlowStore.getState().setMode('local')
+    expect(useFlowStore.getState().mode).toBe('local')
+
+    useFlowStore.getState().setMode('managed')
+    expect(useFlowStore.getState().mode).toBe('managed')
+  })
+})
+
+// copySelection/duplicateSelection target either the multi-selection or, absent one, the
+// single inspected node (see `targetNodes`) — that fallback path wasn't exercised above
+// since the copy/paste tests always used an explicit multi-selection.
+describe('useFlowStore selection targeting for copy/duplicate', () => {
+  beforeEach(() => {
+    useFlowStore.getState().newFlow()
+    useFlowStore.setState({ clipboard: null })
+  })
+
+  it('copySelection returns 0 and leaves the clipboard untouched when nothing is selected or inspected', () => {
+    useFlowStore.getState().addNode('agent')
+    // addNode auto-selects via selectedId; clear it so neither targeting path matches.
+    useFlowStore.setState({ selectedId: null })
+
+    expect(useFlowStore.getState().copySelection()).toBe(0)
+    expect(useFlowStore.getState().clipboard).toBeNull()
+  })
+
+  it('copySelection falls back to the inspected (selectedId) node when no node has .selected', () => {
+    const { addNode, copySelection } = useFlowStore.getState()
+    addNode('agent')
+    expect(useFlowStore.getState().nodes[0].selected).toBeFalsy()
+
+    expect(copySelection()).toBe(1)
+    expect(useFlowStore.getState().clipboard?.nodes).toHaveLength(1)
+  })
+
+  it('duplicateSelection clones every selected node plus their internal edge in one shot', () => {
+    const { addNode, onConnect, duplicateSelection } = useFlowStore.getState()
+    addNode('agent')
+    addNode('mcp')
+    const [agent, mcp] = useFlowStore.getState().nodes
+    onConnect({ source: agent.id, target: mcp.id, sourceHandle: null, targetHandle: null })
+    useFlowStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: true })) }))
+
+    duplicateSelection()
+
+    const { nodes, edges } = useFlowStore.getState()
+    expect(nodes).toHaveLength(4)
+    const copies = nodes.slice(2)
+    expect(copies.every((n) => n.selected)).toBe(true)
+    const copyIds = new Set(copies.map((n) => n.id))
+    const internalEdges = edges.filter((e) => copyIds.has(e.source) && copyIds.has(e.target))
+    expect(internalEdges).toHaveLength(1)
+  })
+
+  it('duplicateSelection is a no-op when nothing is selected or inspected', () => {
+    useFlowStore.getState().addNode('agent')
+    useFlowStore.setState({ selectedId: null })
+
+    useFlowStore.getState().duplicateSelection()
+
+    expect(useFlowStore.getState().nodes).toHaveLength(1)
+  })
+})
+
+// Live execution overlay: RunPanel/canvas nodes read runExecByNode/runTotals while a run is
+// in flight. setActiveRun must reset the overlay on a genuine run switch but NOT wipe it out
+// from under an in-progress run just because the same id is set again (e.g. re-renders).
+describe('useFlowStore live run overlay', () => {
+  beforeEach(() => {
+    useFlowStore.getState().newFlow()
+  })
+
+  it('setRunExec indexes nodes by id and totals input/output tokens', () => {
+    useFlowStore.getState().setActiveRun('run-1')
+    useFlowStore.getState().setRunExec({
+      nodes: [
+        {
+          nodeId: 'n1',
+          kind: 'agent',
+          label: 'Coordinator',
+          status: 'passed',
+          inputTokens: 10,
+          outputTokens: 20,
+          startedAt: 0,
+          endedAt: 1,
+        },
+      ],
+      totalInputTokens: 10,
+      totalOutputTokens: 20,
+    })
+
+    const state = useFlowStore.getState()
+    expect(state.runExecByNode.n1).toMatchObject({ status: 'passed', outputTokens: 20 })
+    expect(state.runTotals).toEqual({ input: 10, output: 20 })
+  })
+
+  it('setRunExec(null) clears the overlay back to empty', () => {
+    useFlowStore.getState().setActiveRun('run-1')
+    useFlowStore.getState().setRunExec({
+      nodes: [
+        { nodeId: 'n1', kind: 'agent', label: 'A', status: 'passed', inputTokens: 1, outputTokens: 1, startedAt: 0, endedAt: 1 },
+      ],
+      totalInputTokens: 1,
+      totalOutputTokens: 1,
+    })
+
+    useFlowStore.getState().setRunExec(null)
+
+    expect(useFlowStore.getState().runExecByNode).toEqual({})
+    expect(useFlowStore.getState().runTotals).toEqual({ input: 0, output: 0 })
+  })
+
+  it('re-setting the SAME active run id does not wipe the overlay just built for it', () => {
+    useFlowStore.getState().setActiveRun('run-1')
+    useFlowStore.getState().setRunExec({
+      nodes: [
+        { nodeId: 'n1', kind: 'agent', label: 'A', status: 'running', inputTokens: 5, outputTokens: 0, startedAt: 0, endedAt: 0 },
+      ],
+      totalInputTokens: 5,
+      totalOutputTokens: 0,
+    })
+
+    useFlowStore.getState().setActiveRun('run-1')
+
+    const state = useFlowStore.getState()
+    expect(state.runExecByNode.n1).toBeDefined()
+    expect(state.runTotals).toEqual({ input: 5, output: 0 })
+  })
+
+  it('switching to a DIFFERENT active run id clears the stale overlay', () => {
+    useFlowStore.getState().setActiveRun('run-1')
+    useFlowStore.getState().setRunExec({
+      nodes: [
+        { nodeId: 'n1', kind: 'agent', label: 'A', status: 'passed', inputTokens: 5, outputTokens: 5, startedAt: 0, endedAt: 1 },
+      ],
+      totalInputTokens: 5,
+      totalOutputTokens: 5,
+    })
+
+    useFlowStore.getState().setActiveRun('run-2')
+
+    const state = useFlowStore.getState()
+    expect(state.activeRunId).toBe('run-2')
+    expect(state.runExecByNode).toEqual({})
+    expect(state.runTotals).toEqual({ input: 0, output: 0 })
+  })
+})
+
+// Flow-level metadata (enabled/tags/favorite/notifyWebhook) is edited from the Flows dashboard,
+// not the canvas, but must survive a load -> canvas-save round trip (toBackendFlow spreads
+// `flowMeta` back onto the payload).
+describe('useFlowStore flow metadata round-trip', () => {
+  it('loadBackendFlow captures dashboard metadata and toBackendFlow serializes it back out', () => {
+    const flow: BackendFlow = {
+      id: 'flow-9',
+      name: 'Meta flow',
+      mode: 'managed',
+      nodes: [],
+      edges: [],
+      enabled: false,
+      tags: ['prod', 'nightly'],
+      favorite: true,
+      notifyWebhook: 'https://hooks.example.com/x',
+    }
+
+    useFlowStore.getState().loadBackendFlow(flow)
+
+    expect(useFlowStore.getState().flowMeta).toEqual({
+      enabled: false,
+      tags: ['prod', 'nightly'],
+      favorite: true,
+      notifyWebhook: 'https://hooks.example.com/x',
+    })
+
+    const roundTripped = useFlowStore.getState().toBackendFlow()
+    expect(roundTripped).toMatchObject({
+      enabled: false,
+      tags: ['prod', 'nightly'],
+      favorite: true,
+      notifyWebhook: 'https://hooks.example.com/x',
+    })
+  })
+})

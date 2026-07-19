@@ -142,9 +142,47 @@
   flex: 0 0 72px;
 }
 
+// Who produced this line. Colour is derived from the agent name (see hueOf), so the
+// same agent stays the same colour across a run without a fixed palette.
+.who {
+  flex: 0 0 auto;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: hsl(var(--h, 210) 65% 68%);
+}
+
 .ltext {
   white-space: pre-wrap;
   word-break: break-word;
+  flex: 1;
+}
+
+.agentBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid t.$border;
+}
+
+.agentChip {
+  background: transparent;
+  border: 1px solid t.$border;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  color: hsl(var(--h, 210) 55% 70%);
+
+  &:hover {
+    border-color: hsl(var(--h, 210) 55% 55%);
+  }
+}
+
+.agentChipOn {
+  border-color: hsl(var(--h, 210) 60% 60%);
+  background: hsl(var(--h, 210) 60% 60% / 0.14);
 }
 
 .t_agent_message .ltext {
