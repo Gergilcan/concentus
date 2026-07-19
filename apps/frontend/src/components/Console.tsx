@@ -1,11 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { api, openRunSocket, type RunSocketStatus } from '../api/client.ts'
 import type { RunEvent } from '../api/types.ts'
 import { useFlowStore } from '../state/store.ts'
+import { cx } from '../utils/cx.ts'
 import styles from './runs.module.scss'
 
 function fmt(ts: number): string {
   return new Date(ts).toLocaleTimeString()
+}
+
+/** Stable hue per agent name, so an agent keeps the same colour for the whole run. */
+function hueOf(name: string): number {
+  let h = 0
+  for (let i = 0; i < name.length; i += 1) h = (h * 31 + name.charCodeAt(i)) % 360
+  return h
 }
 
 export function Console({ runId }: { runId: string }) {
@@ -16,12 +24,28 @@ export function Console({ runId }: { runId: string }) {
   const [connStatus, setConnStatus] = useState<RunSocketStatus>('connecting')
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  const [agentFilter, setAgentFilter] = useState<string | null>(null)
+
   useEffect(() => {
     setEvents([])
+    setAgentFilter(null)
     setConnStatus('connecting')
     const handle = openRunSocket(runId, (e) => setEvents((prev) => [...prev, e]), setConnStatus)
     return () => handle.close()
   }, [runId])
+
+  // Every agent seen so far. Built from the events themselves so an agent appears
+  // as soon as it produces output, without needing the compiled flow here.
+  const agents = useMemo(() => {
+    const seen = new Set<string>()
+    for (const e of events) if (e.agent) seen.add(e.agent)
+    return [...seen].sort()
+  }, [events])
+
+  const shown = useMemo(
+    () => (agentFilter ? events.filter((e) => e.agent === agentFilter) : events),
+    [events, agentFilter],
+  )
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -69,6 +93,26 @@ export function Console({ runId }: { runId: string }) {
           Σ execution tokens · in ≈{totals.input.toLocaleString()} · out {totals.output.toLocaleString()}
         </div>
       )}
+      {agents.length > 1 && (
+        <div className={styles.agentBar}>
+          <button
+            className={cx(styles.agentChip, !agentFilter && styles.agentChipOn)}
+            onClick={() => setAgentFilter(null)}
+          >
+            All agents
+          </button>
+          {agents.map((a) => (
+            <button
+              key={a}
+              className={cx(styles.agentChip, agentFilter === a && styles.agentChipOn)}
+              style={{ '--h': hueOf(a) } as CSSProperties}
+              onClick={() => setAgentFilter(agentFilter === a ? null : a)}
+            >
+              {a}
+            </button>
+          ))}
+        </div>
+      )}
       <div className={styles.log}>
         {events.length === 0 && (
           <div className={styles.logMuted}>
@@ -79,9 +123,17 @@ export function Console({ runId }: { runId: string }) {
                 : 'Waiting for output…'}
           </div>
         )}
-        {events.map((e, i) => (
-          <div key={i} className={`${styles.line} ${styles['t_' + e.type]}`}>
+        {agentFilter && shown.length === 0 && (
+          <div className={styles.logMuted}>No output from {agentFilter} yet.</div>
+        )}
+        {shown.map((e, i) => (
+          <div key={i} className={cx(styles.line, styles['t_' + e.type])}>
             <span className={styles.lts}>{fmt(e.ts)}</span>
+            {e.agent && (
+              <span className={styles.who} style={{ '--h': hueOf(e.agent) } as CSSProperties}>
+                {e.agent}
+              </span>
+            )}
             <span className={styles.ltext}>{e.text}</span>
           </div>
         ))}

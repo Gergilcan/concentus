@@ -17,6 +17,7 @@ import type {
   NodeExecReport,
   NodeKind,
 } from '../api/types.ts'
+import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL } from '../constants.ts'
 
 export type AppNode = Node<AppNodeData>
 
@@ -125,10 +126,10 @@ function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
         kind: 'agent',
         name: isFirstAgent ? 'Coordinator' : 'Sub-agent',
         role: isFirstAgent ? 'coordinator' : 'subagent',
-        model: 'claude-opus-4-8',
+        model: DEFAULT_MODEL,
         description: '',
         systemPrompt: '',
-        maxTokens: 16000,
+        maxTokens: DEFAULT_MAX_TOKENS,
         effort: 'high',
       }
     case 'mcp':

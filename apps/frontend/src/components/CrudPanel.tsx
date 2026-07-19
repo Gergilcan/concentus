@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react'
+import { cx } from '../utils/cx.ts'
 import styles from './resources.module.scss'
 
 export interface Field {
@@ -94,7 +95,7 @@ export function CrudPanel<T extends Record<string, unknown>>({
         {items.map((it) => (
           <button
             key={idOf(it)}
-            className={`${styles.crudItem} ${idOf(it) === idOf(draft) ? styles.active : ''}`}
+            className={cx(styles.crudItem, idOf(it) === idOf(draft) && styles.active)}
             onClick={() => {
               setDraft(it)
               setStatus(null)

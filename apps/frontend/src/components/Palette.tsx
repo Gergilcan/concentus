@@ -1,4 +1,5 @@
 import { useFlowStore } from '../state/store.ts'
+import { cx } from '../utils/cx.ts'
 import { RagPanel } from './RagPanel.tsx'
 import styles from './panels.module.scss'
 
@@ -7,19 +8,19 @@ export function Palette() {
   return (
     <aside className={styles.palette}>
       <h3 className={styles.h3}>Add node</h3>
-      <button className={`${styles.addBtn} ${styles.addInput}`} onClick={() => addNode('input')}>
+      <button className={cx(styles.addBtn, styles.addInput)} onClick={() => addNode('input')}>
         <span>▶</span> Input / trigger
       </button>
-      <button className={`${styles.addBtn} ${styles.addAgent}`} onClick={() => addNode('agent')}>
+      <button className={cx(styles.addBtn, styles.addAgent)} onClick={() => addNode('agent')}>
         <span>◆</span> Agent
       </button>
-      <button className={`${styles.addBtn} ${styles.addMcp}`} onClick={() => addNode('mcp')}>
+      <button className={cx(styles.addBtn, styles.addMcp)} onClick={() => addNode('mcp')}>
         <span>⚙</span> MCP server
       </button>
-      <button className={`${styles.addBtn} ${styles.addRepo}`} onClick={() => addNode('repo')}>
+      <button className={cx(styles.addBtn, styles.addRepo)} onClick={() => addNode('repo')}>
         <span>🐙</span> Repository
       </button>
-      <button className={`${styles.addBtn} ${styles.addSql}`} onClick={() => addNode('sql')}>
+      <button className={cx(styles.addBtn, styles.addSql)} onClick={() => addNode('sql')}>
         <span>🗄</span> SQL source (RAG)
       </button>
 

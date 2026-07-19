@@ -1,5 +1,7 @@
 package com.concentus.model;
 
+import static com.concentus.support.MapValues.str;
+
 import java.util.Map;
 
 /**
@@ -48,12 +50,5 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
     /** The flow is triggered by an inbound webhook. */
     public boolean webhook() {
         return "webhook".equalsIgnoreCase(mode);
-    }
-
-    private static String str(Map<String, Object> d, String key, String fallback) {
-        Object v = d.get(key);
-        if (v == null) return fallback;
-        String s = String.valueOf(v);
-        return s.isBlank() ? fallback : s;
     }
 }

@@ -1,32 +1,27 @@
-import { Handle, type NodeProps, Position } from '@xyflow/react'
+import type { NodeProps } from '@xyflow/react'
 import type { AgentRFNode } from '../nodeTypes.ts'
-import { NodeStatusBadge } from './NodeStatusBadge.tsx'
+import { NodeShell } from './NodeShell.tsx'
 import styles from './nodes.module.scss'
 
 export function AgentNode({ id, data, selected }: NodeProps<AgentRFNode>) {
   const isCoordinator = data.role === 'coordinator'
   return (
-    <div
-      className={`${styles.node} ${styles.agent} ${isCoordinator ? styles.coordinator : ''} ${
-        selected ? styles.selected : ''
-      }`}
+    <NodeShell
+      id={id}
+      variant="agent"
+      selected={selected}
+      coordinator={isCoordinator}
+      icon={isCoordinator ? '★' : '◆'}
+      title={data.name || 'Agent'}
+      badge={data.role}
+      showStatus
     >
-      <Handle type="target" position={Position.Left} />
-      <div className={styles.header}>
-        <span className={styles.icon}>{isCoordinator ? '★' : '◆'}</span>
-        <span className={styles.title}>{data.name || 'Agent'}</span>
-        <span className={`${styles.badge} ${isCoordinator ? styles.badgeCoord : ''}`}>
-          {data.role}
-        </span>
-      </div>
       <div className={styles.meta}>{data.model}</div>
       {data.systemPrompt ? (
         <div className={styles.snippet}>{data.systemPrompt.slice(0, 80)}</div>
       ) : (
         <div className={styles.snippetMuted}>no system prompt</div>
       )}
-      <NodeStatusBadge id={id} />
-      <Handle type="source" position={Position.Right} />
-    </div>
+    </NodeShell>
   )
 }

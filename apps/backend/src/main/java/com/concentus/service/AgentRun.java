@@ -62,6 +62,12 @@ public class AgentRun {
     private final Map<String, NodeExec> nodeExecs = new LinkedHashMap<>();
     /** toolUseId of a Task call -> the sub-agent node it spawned (to attribute its output/tokens). */
     public final Map<String, String> taskToNode = new ConcurrentHashMap<>();
+    /**
+     * Cloud analogue of {@link #taskToNode}: sessionThreadId -> the node whose agent owns that
+     * thread. Managed Agents names the agent only on the thread-created event, so every later
+     * event that carries a thread id is traced back to its node through this map.
+     */
+    public final Map<String, String> threadToNode = new ConcurrentHashMap<>();
     public volatile long totalInputTokens;
     public volatile long totalOutputTokens;
 

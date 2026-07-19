@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import type { AppNodeData } from '../api/types.ts'
+import { cx } from '../utils/cx.ts'
 import { useFlowStore } from '../state/store.ts'
 import { AgentInspector } from './AgentInspector.tsx'
 import { InputInspector } from './InputInspector.tsx'
 import { InputView, OutputView } from './NodeExecView.tsx'
 import { McpInspector } from './McpInspector.tsx'
+import { RepoInspector } from './RepoInspector.tsx'
 import { SqlInspector } from './SqlInspector.tsx'
 import styles from './panels.module.scss'
 
@@ -60,7 +62,7 @@ export function Inspector() {
           {(['properties', 'input', 'output'] as Tab[]).map((t) => (
             <button
               key={t}
-              className={`${styles.execTab} ${shownTab === t ? styles.execTabActive : ''}`}
+              className={cx(styles.execTab, shownTab === t && styles.execTabActive)}
               onClick={() => setTab(t)}
             >
               {t === 'properties' ? 'Properties' : t === 'input' ? 'Input' : 'Output'}
@@ -90,41 +92,7 @@ export function Inspector() {
 
       {shownTab === 'properties' && data.kind === 'sql' && <SqlInspector data={data} set={set} />}
 
-      {shownTab === 'properties' && data.kind === 'repo' && (
-        <>
-          <label className={styles.field}>
-            <span>Provider</span>
-            <select value={data.provider} onChange={(e) => set({ provider: e.target.value })}>
-              <option value="github">github</option>
-              <option value="gitlab">gitlab</option>
-            </select>
-          </label>
-          <label className={styles.field}>
-            <span>URL</span>
-            <input
-              value={data.url}
-              placeholder="https://github.com/owner/repo"
-              onChange={(e) => set({ url: e.target.value })}
-            />
-          </label>
-          <label className={styles.field}>
-            <span>Token env var</span>
-            <input value={data.tokenEnv} onChange={(e) => set({ tokenEnv: e.target.value })} />
-          </label>
-          <label className={styles.field}>
-            <span>Mount path</span>
-            <input
-              value={data.mountPath}
-              placeholder="/workspace/repo"
-              onChange={(e) => set({ mountPath: e.target.value })}
-            />
-          </label>
-          <label className={styles.field}>
-            <span>Branch</span>
-            <input value={data.branch} onChange={(e) => set({ branch: e.target.value })} />
-          </label>
-        </>
-      )}
+      {shownTab === 'properties' && data.kind === 'repo' && <RepoInspector data={data} set={set} />}
     </aside>
   )
 }

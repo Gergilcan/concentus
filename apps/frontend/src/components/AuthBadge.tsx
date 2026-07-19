@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.ts'
 import type { AuthStatus } from '../api/types.ts'
+import { AUTH_POLL_INTERVAL_MS } from '../constants.ts'
 import styles from './toolbar.module.scss'
 
 const LABELS: Record<string, string> = {
@@ -23,7 +24,7 @@ export function AuthBadge() {
         })
         .catch(() => {})
     load()
-    const t = setInterval(load, 15000)
+    const t = setInterval(load, AUTH_POLL_INTERVAL_MS)
     return () => {
       alive = false
       clearInterval(t)

@@ -5,7 +5,6 @@ import com.concentus.config.AgentSpec.McpServerSpec;
 import com.concentus.model.NodeExec;
 import com.concentus.model.RunEvent;
 import com.concentus.support.LocalClaudeSupport;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -35,7 +34,7 @@ public class LocalClaudeExecutor {
     private final LocalClaudeSupport support;
     private final RagContextInjector ragInjector;
     private final McpRegistry mcpRegistry;
-    private final ObjectMapper mapper;
+    private final LocalStreamEventHandler streamHandler;
     private final String permissionMode;
     private final String dataDir;
     private final boolean autoRegisterMcp;
@@ -48,7 +47,7 @@ public class LocalClaudeExecutor {
         this.support = support;
         this.ragInjector = ragInjector;
         this.mcpRegistry = mcpRegistry;
-        this.mapper = mapper;
+        this.streamHandler = new LocalStreamEventHandler(mapper);
         this.permissionMode = permissionMode;
         this.dataDir = dataDir;
         this.autoRegisterMcp = autoRegisterMcp;
@@ -108,7 +107,7 @@ public class LocalClaudeExecutor {
         try (BufferedReader reader = proc.inputReader()) {
             String line;
             while ((line = reader.readLine()) != null) {
-                handleLine(run, line);
+                streamHandler.handleLine(run, line);
             }
             proc.waitFor();
         } catch (Exception e) {
@@ -221,17 +220,11 @@ public class LocalClaudeExecutor {
             String key = m.name.toLowerCase();
             if (!handled.add(key)) continue;
             if (existing.contains(key)) {
-                if (ne != null) { ne.status = "passed"; ne.output = "already configured"; ne.endedAt = System.currentTimeMillis(); }
+                markMcpResult(ne, "already configured");
                 continue; // already configured — stay quiet
             }
             String status = mcpRegistry.add(m.name, m.url, m.resolveToken());
-            if (ne != null) {
-                boolean bad = status != null && status.toLowerCase().contains("fail");
-                ne.status = bad ? "failed" : "passed";
-                ne.output = status;
-                if (bad) ne.error = status;
-                ne.endedAt = System.currentTimeMillis();
-            }
+            markMcpResult(ne, status);
             if ("already configured".equals(status)) {
                 continue; // registered concurrently / list was stale — stay quiet
             }
@@ -239,157 +232,14 @@ public class LocalClaudeExecutor {
         }
     }
 
-    // ------------------------------------------------------------- stream-json
-
-    private void handleLine(AgentRun run, String line) {
-        String t = line.trim();
-        if (t.isEmpty()) return;
-        JsonNode node;
-        try {
-            node = mapper.readTree(t);
-        } catch (Exception e) {
-            run.emit(RunEvent.of("system", t)); // non-JSON progress / error text
-            return;
-        }
-        switch (node.path("type").asText("")) {
-            case "system" -> {
-                if ("init".equals(node.path("subtype").asText())) {
-                    run.emit(RunEvent.of("system", "Local session ready (model "
-                            + node.path("model").asText("?") + ")."));
-                }
-            }
-            case "assistant" -> handleAssistant(run, node);
-            case "user" -> handleUser(run, node);
-            case "result" -> {
-                accrueTotals(run, node.path("usage"));
-                NodeExec coordExec = coordExec(run);
-                if (node.path("is_error").asBoolean(false)) {
-                    String err = node.path("result").asText("run failed");
-                    if (coordExec != null) { coordExec.status = "failed"; coordExec.error = err; coordExec.endedAt = System.currentTimeMillis(); }
-                    // Mark the run itself failed so it shows as failed and triggers notifications.
-                    run.status = "ERROR";
-                    run.error = err;
-                    run.emit(RunEvent.of("error", err));
-                } else {
-                    if (coordExec != null && !"failed".equals(coordExec.status)) {
-                        coordExec.status = "passed";
-                        coordExec.endedAt = System.currentTimeMillis();
-                    }
-                    run.emit(RunEvent.of("status", "idle"));
-                }
-            }
-            case "rate_limit_event" -> {
-                String status = node.path("rate_limit_info").path("status").asText("");
-                if (!status.isEmpty() && !"allowed".equals(status)) {
-                    run.emit(RunEvent.of("system", "Rate limit: " + status));
-                }
-            }
-            default -> {
-                // stream_event / etc. — ignored for the console
-            }
-        }
-    }
-
-    /** Attribute an assistant message's text, tool calls, and token usage to the right node. */
-    private void handleAssistant(AgentRun run, JsonNode node) {
-        String parent = node.path("parent_tool_use_id").asText("");
-        boolean isSub = !parent.isBlank() && run.taskToNode.containsKey(parent);
-        String targetNodeId = isSub ? run.taskToNode.get(parent) : coordNodeId(run);
-        String label = isSub ? "subagent" : "coordinator";
-        NodeExec target = run.nodeExec(targetNodeId, "agent", agentLabel(run, targetNodeId));
-
-        JsonNode usage = node.path("message").path("usage");
-        if (target != null && usage.isObject()) {
-            target.outputTokens += usage.path("output_tokens").asLong(0);
-            target.inputTokens += usage.path("input_tokens").asLong(0)
-                    + usage.path("cache_read_input_tokens").asLong(0);
-        }
-
-        JsonNode content = node.path("message").path("content");
-        if (!content.isArray()) return;
-        for (JsonNode b : content) {
-            String bt = b.path("type").asText("");
-            if ("text".equals(bt)) {
-                String text = b.path("text").asText("");
-                if (!text.isBlank()) {
-                    if (target != null) target.appendOutput(text);
-                    run.emit(RunEvent.of("agent_message", text, label));
-                }
-            } else if ("tool_use".equals(bt)) {
-                String name = b.path("name").asText("tool");
-                if ("Task".equals(name)) {
-                    String subtype = b.path("input").path("subagent_type").asText("");
-                    String subNodeId = subNodeIdByAgentName(run, subtype);
-                    if (subNodeId != null) {
-                        NodeExec sub = run.nodeExec(subNodeId, "agent", agentLabel(run, subNodeId));
-                        if (sub != null) {
-                            sub.status = "running";
-                            String brief = b.path("input").path("prompt").asText(
-                                    b.path("input").path("description").asText(""));
-                            sub.appendInput(brief);
-                        }
-                        run.taskToNode.put(b.path("id").asText(""), subNodeId);
-                        run.emit(RunEvent.of("tool_use", "Task → " + subtype));
-                        continue;
-                    }
-                }
-                run.emit(RunEvent.of("tool_use", name));
-            }
-        }
-    }
-
-    /** A user event may carry tool_result blocks — a Task result closes out that sub-agent node. */
-    private void handleUser(AgentRun run, JsonNode node) {
-        JsonNode content = node.path("message").path("content");
-        if (!content.isArray()) return;
-        for (JsonNode b : content) {
-            if ("tool_result".equals(b.path("type").asText(""))) {
-                String id = b.path("tool_use_id").asText("");
-                String subNodeId = run.taskToNode.get(id);
-                if (subNodeId != null) {
-                    NodeExec sub = run.nodeExec(subNodeId, "agent", agentLabel(run, subNodeId));
-                    if (sub != null && !"failed".equals(sub.status)) {
-                        sub.status = b.path("is_error").asBoolean(false) ? "failed" : "passed";
-                        if (b.path("is_error").asBoolean(false)) sub.error = "sub-agent reported an error";
-                        sub.endedAt = System.currentTimeMillis();
-                    }
-                }
-            }
-        }
-    }
-
-    private void accrueTotals(AgentRun run, JsonNode usage) {
-        if (!usage.isObject()) return;
-        run.totalInputTokens += usage.path("input_tokens").asLong(0)
-                + usage.path("cache_read_input_tokens").asLong(0)
-                + usage.path("cache_creation_input_tokens").asLong(0);
-        run.totalOutputTokens += usage.path("output_tokens").asLong(0);
-    }
-
-    private static String coordNodeId(AgentRun run) {
-        return run.compiled == null ? null : run.compiled.coordinator().nodeId;
-    }
-
-    private NodeExec coordExec(AgentRun run) {
-        String id = coordNodeId(run);
-        return id == null ? null : run.nodeExec(id, "agent", run.compiled.coordinator().name);
-    }
-
-    private static String agentLabel(AgentRun run, String nodeId) {
-        if (run.compiled == null || nodeId == null) return nodeId;
-        if (nodeId.equals(run.compiled.coordinator().nodeId)) return run.compiled.coordinator().name;
-        for (AgentSpec s : run.compiled.subAgents()) {
-            if (nodeId.equals(s.nodeId)) return s.name;
-        }
-        return nodeId;
-    }
-
-    private static String subNodeIdByAgentName(AgentRun run, String sanitizedName) {
-        if (run.compiled == null || sanitizedName == null || sanitizedName.isBlank()) return null;
-        for (AgentSpec s : run.compiled.subAgents()) {
-            if (sanitize(s.name).equals(sanitizedName)) return s.nodeId;
-        }
-        return null;
+    /** Records an MCP registration outcome on its node execution; a no-op if {@code ne} is null. */
+    private static void markMcpResult(NodeExec ne, String status) {
+        if (ne == null) return;
+        boolean bad = status != null && status.toLowerCase().contains("fail");
+        ne.status = bad ? "failed" : "passed";
+        ne.output = status;
+        if (bad) ne.error = status;
+        ne.endedAt = System.currentTimeMillis();
     }
 
     private void fail(AgentRun run, String message) {
@@ -421,7 +271,7 @@ public class LocalClaudeExecutor {
         return id;
     }
 
-    private static String sanitize(String s) {
+    static String sanitize(String s) {
         if (s == null || s.isBlank()) return "agent";
         return s.trim().toLowerCase().replaceAll("[^a-z0-9_-]+", "-");
     }

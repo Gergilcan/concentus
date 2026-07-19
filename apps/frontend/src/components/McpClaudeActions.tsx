@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.ts'
 import type { McpServerInfo } from '../api/types.ts'
+import { cx } from '../utils/cx.ts'
 import styles from './panels.module.scss'
 
 interface Props {
@@ -92,7 +93,7 @@ export function McpClaudeActions({ name, url, tokenEnv }: Props) {
   return (
     <div className={styles.mcpActions}>
       <div className={styles.mcpStatus}>
-        <span className={`${styles.sDot} ${dotClass}`} />
+        <span className={cx(styles.sDot, dotClass)} />
         {statusText}
       </div>
 

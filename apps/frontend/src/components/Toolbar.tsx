@@ -1,6 +1,7 @@
 import { api } from '../api/client.ts'
 import type { RunSummary } from '../api/types.ts'
 import { useFlowStore } from '../state/store.ts'
+import { cx } from '../utils/cx.ts'
 import styles from './toolbar.module.scss'
 
 interface Props {
@@ -72,7 +73,7 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
       <button className={styles.btn} onClick={save}>
         Save
       </button>
-      <button className={`${styles.btn} ${styles.run}`} onClick={run}>
+      <button className={cx(styles.btn, styles.run)} onClick={run}>
         ▶ Run
       </button>
     </header>

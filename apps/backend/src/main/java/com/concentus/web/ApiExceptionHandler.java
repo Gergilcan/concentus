@@ -31,7 +31,11 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> generic(Exception e) {
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", safe(e)));
+        // Unlike badRequest/conflict above (whose messages come from our own validate() calls and
+        // are safe to show), an unhandled Exception here may carry internals (stack details, driver
+        // errors, etc.) that shouldn't reach the client — so this path never forwards e.getMessage().
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Internal server error"));
     }
 
     private static String safe(Exception e) {

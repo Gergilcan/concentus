@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { InputNodeData } from '../api/types.ts'
 import { useFlowStore } from '../state/store.ts'
+import { Field, SelectField, TextArea } from './fields.tsx'
 import styles from './panels.module.scss'
 
 interface Props {
@@ -28,77 +29,63 @@ export function InputInspector({ data, set }: Props) {
 
   return (
     <>
-      <label className={styles.field}>
-        <span>Execution type</span>
-        <select value={data.mode} onChange={(e) => set({ mode: e.target.value })}>
-          <option value="manual">Manual — you send the first message</option>
-          <option value="prompt">Prompt — auto-start with a fixed prompt</option>
-          <option value="cron">Automatic — run on a cron schedule</option>
-          <option value="webhook">Webhook — start on an external event</option>
-        </select>
-      </label>
+      <SelectField label="Execution type" value={data.mode} onChange={(v) => set({ mode: v })}>
+        <option value="manual">Manual — you send the first message</option>
+        <option value="prompt">Prompt — auto-start with a fixed prompt</option>
+        <option value="cron">Automatic — run on a cron schedule</option>
+        <option value="webhook">Webhook — start on an external event</option>
+      </SelectField>
 
       {data.mode !== 'manual' && (
-        <label className={styles.field}>
-          <span>{data.mode === 'webhook' ? 'Instruction (prepended to the event)' : 'Execution prompt'}</span>
-          <textarea
-            rows={4}
-            placeholder={
-              data.mode === 'webhook'
-                ? 'A Linear issue/comment event arrived. Triage it and take the right action.'
-                : 'Build the login page: backend endpoint + React form, wired to the DB.'
-            }
-            value={data.prompt}
-            onChange={(e) => set({ prompt: e.target.value })}
-          />
-        </label>
+        <TextArea
+          label={data.mode === 'webhook' ? 'Instruction (prepended to the event)' : 'Execution prompt'}
+          rows={4}
+          placeholder={
+            data.mode === 'webhook'
+              ? 'A Linear issue/comment event arrived. Triage it and take the right action.'
+              : 'Build the login page: backend endpoint + React form, wired to the DB.'
+          }
+          value={data.prompt}
+          onChange={(v) => set({ prompt: v })}
+        />
       )}
 
       {data.mode === 'cron' && (
-        <label className={styles.field}>
-          <span>Cron expression</span>
-          <input value={data.cron} placeholder="0 9 * * *" onChange={(e) => set({ cron: e.target.value })} />
-        </label>
+        <Field label="Cron expression" value={data.cron} placeholder="0 9 * * *" onChange={(v) => set({ cron: v })} />
       )}
 
       {data.mode === 'webhook' && (
         <>
-          <label className={styles.field}>
-            <span>Validation parameter</span>
-            <input
-              value={data.authParam}
-              placeholder="Linear-Signature"
-              onChange={(e) => set({ authParam: e.target.value })}
-            />
-          </label>
+          <Field
+            label="Validation parameter"
+            value={data.authParam}
+            placeholder="Linear-Signature"
+            onChange={(v) => set({ authParam: v })}
+          />
           <p className={styles.hint}>
             Header (or query parameter) the provider sends the proof in. E.g.{' '}
             <code>Linear-Signature</code>, <code>X-Hub-Signature-256</code> for GitHub, or{' '}
             <code>token</code> for a plain shared token.
           </p>
 
-          <label className={styles.field}>
-            <span>Secret</span>
-            <input
-              value={data.secret}
-              placeholder="Copy from the provider's webhook page"
-              onChange={(e) => set({ secret: e.target.value })}
-            />
-          </label>
+          <Field
+            label="Secret"
+            value={data.secret}
+            placeholder="Copy from the provider's webhook page"
+            onChange={(v) => set({ secret: v })}
+          />
           {!data.secret && (
             <p className={styles.hint}>
               Required — without it every delivery is rejected with <b>401</b>.
             </p>
           )}
 
-          <label className={styles.field}>
-            <span>Webhook URL</span>
-            {webhookUrl ? (
-              <input readOnly value={webhookUrl} onFocus={(e) => e.currentTarget.select()} />
-            ) : (
-              <input readOnly value="Save the flow first to generate the URL." />
-            )}
-          </label>
+          <Field
+            label="Webhook URL"
+            value={webhookUrl ?? 'Save the flow first to generate the URL.'}
+            readOnly
+            onFocus={webhookUrl ? (e) => e.currentTarget.select() : undefined}
+          />
           {webhookUrl && (
             <div className={styles.mcpBtns}>
               <button className={styles.previewBtn} onClick={() => void copy()}>

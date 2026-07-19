@@ -121,7 +121,17 @@ public class SqlRagRetriever {
         if (host == null || host.isBlank()) {
             throw new IllegalArgumentException("`jdbcUrl` must include a host.");
         }
-        if (!allowedHosts.contains(host.toLowerCase(Locale.ROOT)) && isBlockedHost(host)) {
+        String lowerHost = host.toLowerCase(Locale.ROOT);
+        // ALWAYS_BLOCKED_HOSTS must hold no matter what — checked before, and independently of,
+        // the allowedHosts allowlist below. Otherwise an operator adding a host to
+        // rag.allowed-jdbc-hosts that happens to be the cloud metadata IP would silently bypass
+        // this block, contradicting the "regardless of allowlist config" guarantee documented on
+        // ALWAYS_BLOCKED_HOSTS.
+        if (ALWAYS_BLOCKED_HOSTS.contains(lowerHost)) {
+            throw new IllegalArgumentException(
+                    "Host '" + host + "' is not allowed (cloud metadata hosts are always blocked).");
+        }
+        if (!allowedHosts.contains(lowerHost) && isBlockedHost(host)) {
             throw new IllegalArgumentException(
                     "Host '" + host + "' is not allowed (localhost, link-local and cloud metadata hosts are "
                             + "blocked by default — see rag.allowed-jdbc-hosts).");
