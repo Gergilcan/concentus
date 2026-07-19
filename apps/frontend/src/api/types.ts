@@ -48,8 +48,12 @@ export interface NodeExec {
   columns?: string[] | null
   rows?: string[][] | null
   error?: string | null
+  /** Fresh (uncached) input tokens. */
   inputTokens: number
   outputTokens: number
+  /** Prompt tokens served from cache (~0.1x price) / written to it (~1.25x). */
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
   startedAt: number
   endedAt: number
 }

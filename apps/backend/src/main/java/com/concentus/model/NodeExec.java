@@ -27,9 +27,16 @@ public class NodeExec {
 
     public volatile String error;
 
-    /** Output tokens are exact (from the model's usage); input tokens are an approximate sum. */
+    /**
+     * Fresh (uncached) input tokens. Cached prompt tokens are counted separately below — folding
+     * them in here made a resumed session, which re-reads its whole history from cache each turn,
+     * look enormously more expensive than it is.
+     */
     public volatile long inputTokens;
     public volatile long outputTokens;
+    /** Prompt tokens served from cache (~0.1x input price) and written to it (~1.25x). */
+    public volatile long cacheReadTokens;
+    public volatile long cacheWriteTokens;
 
     public volatile long startedAt;
     public volatile long endedAt;

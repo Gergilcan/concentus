@@ -20,9 +20,18 @@ function fmt(n: number): string {
 
 export function TokenLine({ exec }: { exec?: NodeExec }) {
   if (!exec) return null
+  // Cached tokens are shown apart from fresh input rather than added into it: resuming a session
+  // re-reads the whole history from cache each turn, so cache reads dwarf everything else while
+  // costing about a tenth as much. Summing them into "in" made runs look far more expensive.
+  const cached = (exec.cacheReadTokens ?? 0) + (exec.cacheWriteTokens ?? 0)
   return (
     <div className={styles.tokenLine}>
-      tokens · in ≈{fmt(exec.inputTokens)} · out {fmt(exec.outputTokens)}
+      tokens · in {fmt(exec.inputTokens)} · out {fmt(exec.outputTokens)}
+      {cached > 0 && (
+        <span title="Prompt re-read from cache each turn — billed at roughly a tenth of the input rate">
+          {' '}· cached {fmt(cached)}
+        </span>
+      )}
     </div>
   )
 }

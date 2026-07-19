@@ -100,8 +100,10 @@ final class LocalStreamEventHandler {
         JsonNode usage = node.path("message").path("usage");
         if (target != null && usage.isObject()) {
             target.outputTokens += usage.path("output_tokens").asLong(0);
-            target.inputTokens += usage.path("input_tokens").asLong(0)
-                    + usage.path("cache_read_input_tokens").asLong(0);
+            // Same split as accrueTotals: input_tokens is the uncached remainder only.
+            target.inputTokens += usage.path("input_tokens").asLong(0);
+            target.cacheReadTokens += usage.path("cache_read_input_tokens").asLong(0);
+            target.cacheWriteTokens += usage.path("cache_creation_input_tokens").asLong(0);
         }
 
         JsonNode content = node.path("message").path("content");
