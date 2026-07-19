@@ -24,6 +24,19 @@ public class AgentSpec {
     public String name = "agent";
     /** Canvas node id this spec came from (for per-node execution reporting). */
     public String nodeId;
+    /**
+     * Name this agent is registered under with the CLI: sanitized and made unique across the flow.
+     * Two canvas nodes may legitimately share a display name ("Code Reviewer" for backend and for
+     * frontend); they must not share this, or they would overwrite each other's definition file
+     * and become indistinguishable in the logs.
+     */
+    public String cliName;
+    /**
+     * The agents this one may hand work to, by {@link #cliName} — its directly linked downstream
+     * agents. Lets a sub-agent run its own review step on just its own output, instead of every
+     * agent being a peer under the coordinator.
+     */
+    public List<String> delegatesTo = new ArrayList<>();
     /** When (and for what) the coordinator should delegate to this agent — its routing signal. */
     public String description = "";
     public String systemPrompt = "";

@@ -160,4 +160,93 @@ class FlowCompilerTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("url");
     }
+// ---------------------------------------------- nested delegation (review chains)
+
+    @Test
+    void anAgentWiredBehindASubAgentIsStillPartOfTheRun() {
+        // Tech Lead -> Backend Engineer -> Code Reviewer. The reviewer is deliberately NOT wired
+        // to the coordinator: it reviews that engineer's work, not the flow's work in general.
+        FlowNode coord = agent("c1", "coordinator", "Tech Lead");
+        FlowNode backend = agent("s1", "subagent", "Backend Engineer");
+        FlowNode reviewer = agent("s2", "subagent", "Code Reviewer");
+        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+                List.of(coord, backend, reviewer),
+                List.of(edge("c1", "s1"), edge("s1", "s2")),
+                null, List.<String>of(), null, null);
+
+        CompiledFlow compiled = compiler.compile(flow);
+
+        // Previously the reviewer was dropped, so it had no definition file and delegating to it
+        // silently fell back to a built-in agent.
+        assertThat(compiled.subAgents()).extracting(s -> s.nodeId).containsExactly("s1", "s2");
+    }
+
+    @Test
+    void eachAgentDelegatesOnlyToTheAgentsWiredBehindIt() {
+        FlowNode coord = agent("c1", "coordinator", "Tech Lead");
+        FlowNode backend = agent("s1", "subagent", "Backend Engineer");
+        FlowNode frontend = agent("s2", "subagent", "Frontend Engineer");
+        FlowNode backendReviewer = agent("s3", "subagent", "Backend Reviewer");
+        FlowNode frontendReviewer = agent("s4", "subagent", "Frontend Reviewer");
+        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+                List.of(coord, backend, frontend, backendReviewer, frontendReviewer),
+                List.of(edge("c1", "s1"), edge("c1", "s2"),
+                        edge("s1", "s3"), edge("s2", "s4")),
+                null, List.<String>of(), null, null);
+
+        CompiledFlow compiled = compiler.compile(flow);
+
+        assertThat(compiled.coordinator().delegatesTo)
+                .containsExactlyInAnyOrder("backend-engineer", "frontend-engineer");
+        // Each reviewer belongs to its own engineer, not to the coordinator and not to each other.
+        assertThat(specFor(compiled, "s1").delegatesTo).containsExactly("backend-reviewer");
+        assertThat(specFor(compiled, "s2").delegatesTo).containsExactly("frontend-reviewer");
+        assertThat(specFor(compiled, "s3").delegatesTo).isEmpty();
+    }
+
+    @Test
+    void agentsSharingADisplayNameGetDistinctCliNames() {
+        // Two "Code Reviewer" nodes is a reasonable thing to draw, but they cannot share a
+        // definition file — one would overwrite the other and their logs would be identical.
+        FlowNode coord = agent("c1", "coordinator", "Tech Lead");
+        FlowNode backend = agent("s1", "subagent", "Backend Engineer");
+        FlowNode frontend = agent("s2", "subagent", "Frontend Engineer");
+        FlowNode r1 = agent("s3", "subagent", "Code Reviewer");
+        FlowNode r2 = agent("s4", "subagent", "Code Reviewer");
+        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+                List.of(coord, backend, frontend, r1, r2),
+                List.of(edge("c1", "s1"), edge("c1", "s2"),
+                        edge("s1", "s3"), edge("s2", "s4")),
+                null, List.<String>of(), null, null);
+
+        CompiledFlow compiled = compiler.compile(flow);
+
+        String a = specFor(compiled, "s3").cliName;
+        String b = specFor(compiled, "s4").cliName;
+        assertThat(a).isNotEqualTo(b);
+        assertThat(List.of(a, b)).containsExactlyInAnyOrder("code-reviewer", "code-reviewer-2");
+        // and each engineer points at its own reviewer
+        assertThat(specFor(compiled, "s1").delegatesTo).containsExactly(a);
+        assertThat(specFor(compiled, "s2").delegatesTo).containsExactly(b);
+    }
+
+    @Test
+    void aCycleBetweenAgentsTerminates() {
+        FlowNode coord = agent("c1", "coordinator", "Tech Lead");
+        FlowNode a1 = agent("s1", "subagent", "A");
+        FlowNode a2 = agent("s2", "subagent", "B");
+        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+                List.of(coord, a1, a2),
+                List.of(edge("c1", "s1"), edge("s1", "s2"), edge("s2", "s1")),
+                null, List.<String>of(), null, null);
+
+        CompiledFlow compiled = compiler.compile(flow);
+
+        assertThat(compiled.subAgents()).extracting(s -> s.nodeId).containsExactly("s1", "s2");
+    }
+
+    private static AgentSpec specFor(CompiledFlow compiled, String nodeId) {
+        return compiled.subAgents().stream()
+                .filter(s -> nodeId.equals(s.nodeId)).findFirst().orElseThrow();
+    }
 }

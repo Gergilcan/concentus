@@ -38,9 +38,29 @@ concentus/
 
 - A **flow** is a multi-agent orchestration graph. **Agent** nodes (one marked *coordinator*),
   plus **MCP**, **Repository**, and **SQL** capability nodes. Connect a capability to an agent to
-  grant access. The coordinator delegates **only to the sub-agents you link to it** — draw an edge
-  from the coordinator to each agent it may hand work to. Each sub-agent's *Delegate when…*
-  description is what the coordinator uses to route, and it receives only its own slice of the plan.
+  grant access. Each sub-agent's *Delegate when…* description is what its delegator uses to route,
+  and it receives only its own slice of the plan.
+- **Delegation chains** — an agent delegates to the agents wired *behind* it, so hierarchies work,
+  not just a flat roster under the coordinator:
+
+  ```
+  Tech Lead ──► Backend Engineer  ──► Backend Reviewer
+            └─► Frontend Engineer ──► Frontend Reviewer
+  ```
+
+  Here each reviewer reviews only its own engineer's work. Wiring both reviewers to the coordinator
+  instead would make them general-purpose peers reviewing everything.
+
+  The hierarchy is worked out by walking outwards from the coordinator, so **edge direction doesn't
+  matter** — whichever agent reaches another first becomes its delegator. Agents not reachable from
+  the coordinator are left out of the run entirely. Two nodes may share a display name (two
+  *Code Reviewer*s); they're registered under distinct names (`code-reviewer`, `code-reviewer-2`)
+  so their definitions and logs stay separate.
+
+  Scoping is guidance, not enforcement: every agent in the flow is registered with the CLI, so an
+  agent is *told* which agents are its own to call, but nothing physically prevents it reaching
+  another. If a delegation targets an agent that isn't in the flow, the console says so instead of
+  failing silently.
 - An **Input / trigger** node sets how a flow starts:
   - **Manual** — run starts idle; you type the first message.
   - **Prompt** — pressing Run auto-sends a fixed prompt.

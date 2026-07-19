@@ -156,6 +156,7 @@ public class LocalClaudeExecutor {
             claudeMd.append(coord.systemPrompt).append('\n');
         }
         appendContextFolderNote(coord, claudeMd);
+        appendDelegationRoster(coord, claudeMd);
         if (!claudeMd.isEmpty()) {
             Files.writeString(workdir.resolve("CLAUDE.md"), claudeMd.toString());
         }
@@ -165,11 +166,14 @@ public class LocalClaudeExecutor {
             Path agentsDir = workdir.resolve(".claude").resolve("agents");
             Files.createDirectories(agentsDir);
             for (AgentSpec sub : flow.subAgents()) {
-                String name = sanitize(sub.name);
+                // cliName, not sanitize(name): the compiler already made it unique, so two nodes
+                // both called "Code Reviewer" get their own file instead of one clobbering the other.
+                String name = sub.cliName;
                 StringBuilder body = new StringBuilder();
                 appendReferencedClaudeMd(run, sub, body);
                 if (sub.systemPrompt != null) body.append(sub.systemPrompt).append('\n');
                 appendContextFolderNote(sub, body);
+                appendDelegationRoster(sub, body);
                 String md = "---\n"
                         + "name: " + name + "\n"
                         + "description: " + delegationDescription(sub) + "\n"
@@ -197,6 +201,25 @@ public class LocalClaudeExecutor {
             run.emit(RunEvent.of("system",
                     "CLAUDE.md could not be read for " + spec.name + ": " + e.getMessage()));
         }
+    }
+
+    /**
+     * Tells an agent which agents it may hand work to.
+     *
+     * <p>Every agent in the flow is registered with the CLI, so technically any of them can call
+     * any other. This is what makes a reviewer wired behind one engineer review <em>that</em>
+     * engineer's work rather than acting as a general-purpose peer: the roster is scoped to the
+     * edges drawn from this agent. Like the context-folder note, it steers rather than enforces.
+     */
+    private static void appendDelegationRoster(AgentSpec spec, StringBuilder out) {
+        if (spec.delegatesTo == null || spec.delegatesTo.isEmpty()) return;
+        out.append("\n## Agents you can delegate to\n\n");
+        for (String name : spec.delegatesTo) {
+            out.append("- `").append(name).append("`\n");
+        }
+        out.append("\nUse the Task tool with `subagent_type` set to one of these exact names, and"
+                + " give it only the part of the work it needs. Other agents exist in this session"
+                + " but are not yours to call — they belong to other parts of the flow.\n");
     }
 
     /**

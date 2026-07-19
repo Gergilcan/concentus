@@ -206,7 +206,9 @@ final class LocalStreamEventHandler {
         if (run.compiled == null || subagentType == null || subagentType.isBlank()) return null;
         String wanted = LocalClaudeExecutor.sanitize(subagentType);
         for (AgentSpec s : run.compiled.subAgents()) {
-            if (LocalClaudeExecutor.sanitize(s.name).equals(wanted)) return s.nodeId;
+            // cliName is what the agent was registered under, so it is what the CLI reports back.
+            String registered = s.cliName != null ? s.cliName : LocalClaudeExecutor.sanitize(s.name);
+            if (registered.equals(wanted)) return s.nodeId;
         }
         return null;
     }
@@ -217,7 +219,7 @@ final class LocalStreamEventHandler {
         StringBuilder sb = new StringBuilder();
         for (AgentSpec s : run.compiled.subAgents()) {
             if (!sb.isEmpty()) sb.append(", ");
-            sb.append(s.name).append(" → ").append(LocalClaudeExecutor.sanitize(s.name));
+            sb.append(s.name).append(" → ").append(s.cliName != null ? s.cliName : LocalClaudeExecutor.sanitize(s.name));
         }
         return sb.toString();
     }
