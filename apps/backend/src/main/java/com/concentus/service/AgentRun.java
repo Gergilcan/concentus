@@ -63,6 +63,13 @@ public class AgentRun {
     /** toolUseId of a Task call -> the sub-agent node it spawned (to attribute its output/tokens). */
     public final Map<String, String> taskToNode = new ConcurrentHashMap<>();
     /**
+     * toolUseId -> the {@code subagent_type} the CLI reported, for Task calls that matched no
+     * agent node (a built-in subagent, or a renamed one). Their output still belongs to a distinct
+     * agent, so it is labelled with the name the CLI actually used rather than lumped under one
+     * generic "sub-agent" bucket.
+     */
+    public final Map<String, String> taskToLabel = new ConcurrentHashMap<>();
+    /**
      * Cloud analogue of {@link #taskToNode}: sessionThreadId -> the node whose agent owns that
      * thread. Managed Agents names the agent only on the thread-created event, so every later
      * event that carries a thread id is traced back to its node through this map.

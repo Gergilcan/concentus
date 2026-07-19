@@ -79,7 +79,11 @@ final class LocalStreamEventHandler {
         String targetNodeId = fromSub ? run.taskToNode.get(parent) : coordNodeId(run);
         // The real agent name, not a generic "subagent" — with several sub-agents running
         // concurrently the console is unreadable unless each line says who produced it.
-        String label = targetNodeId != null ? agentLabel(run, targetNodeId) : "sub-agent";
+        // Prefer the node's name; else the subagent_type the CLI reported for this Task, so
+        // unmatched sub-agents still show under their own name instead of one shared bucket.
+        String label = targetNodeId != null
+                ? agentLabel(run, targetNodeId)
+                : (fromSub ? run.taskToLabel.getOrDefault(parent, "sub-agent") : null);
         NodeExec target = run.nodeExec(targetNodeId, "agent", label);
 
         JsonNode usage = node.path("message").path("usage");
@@ -114,6 +118,20 @@ final class LocalStreamEventHandler {
                         }
                         run.taskToNode.put(b.path("id").asText(""), subNodeId);
                         // Attributed to the delegator (the coordinator), which is who ran the tool.
+                        run.emit(RunEvent.of("tool_use", "Task → " + subtype, label, targetNodeId));
+                        continue;
+                    }
+                    // Delegated to something that isn't one of this flow's agents — a built-in
+                    // subagent, or a name that no longer matches the canvas. Remember the name the
+                    // CLI used so its output is still attributed to it, and say so plainly: this
+                    // used to fail silently and every sub-agent collapsed into one bucket.
+                    if (!subtype.isBlank()) {
+                        run.taskToLabel.put(b.path("id").asText(""), subtype);
+                        run.emit(RunEvent.of("system",
+                                "Delegated to '" + subtype + "', which matches no agent in this flow"
+                                        + " (agents: " + subAgentNames(run) + "). Its output is"
+                                        + " labelled '" + subtype + "' and not tied to a block.",
+                                label, targetNodeId));
                         run.emit(RunEvent.of("tool_use", "Task → " + subtype, label, targetNodeId));
                         continue;
                     }
@@ -176,11 +194,31 @@ final class LocalStreamEventHandler {
         return nodeId;
     }
 
-    private static String subNodeIdByAgentName(AgentRun run, String sanitizedName) {
-        if (run.compiled == null || sanitizedName == null || sanitizedName.isBlank()) return null;
+    /**
+     * Matches the CLI's {@code subagent_type} to an agent node.
+     *
+     * <p>Both sides are sanitized before comparing: the value is normally already sanitized (it
+     * comes from the {@code .claude/agents/<name>.md} filename we wrote), but comparing raw
+     * against sanitized silently failed for any agent whose UI name had capitals or spaces —
+     * and a failed match is invisible, it just collapses every sub-agent into one label.
+     */
+    private static String subNodeIdByAgentName(AgentRun run, String subagentType) {
+        if (run.compiled == null || subagentType == null || subagentType.isBlank()) return null;
+        String wanted = LocalClaudeExecutor.sanitize(subagentType);
         for (AgentSpec s : run.compiled.subAgents()) {
-            if (LocalClaudeExecutor.sanitize(s.name).equals(sanitizedName)) return s.nodeId;
+            if (LocalClaudeExecutor.sanitize(s.name).equals(wanted)) return s.nodeId;
         }
         return null;
+    }
+
+    /** Sub-agent names as configured on the canvas, for diagnosing a failed match. */
+    private static String subAgentNames(AgentRun run) {
+        if (run.compiled == null || run.compiled.subAgents().isEmpty()) return "none";
+        StringBuilder sb = new StringBuilder();
+        for (AgentSpec s : run.compiled.subAgents()) {
+            if (!sb.isEmpty()) sb.append(", ");
+            sb.append(s.name).append(" → ").append(LocalClaudeExecutor.sanitize(s.name));
+        }
+        return sb.toString();
     }
 }

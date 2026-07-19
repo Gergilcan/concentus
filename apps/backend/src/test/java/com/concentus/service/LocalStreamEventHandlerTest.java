@@ -132,6 +132,54 @@ class LocalStreamEventHandlerTest {
     }
 
     @Test
+    void anAgentNamedWithCapitalsOrSpacesStillMatches() {
+        // The CLI reports the sanitized name it was given, but comparing it raw against the
+        // canvas name failed for anything that wasn't already lowercase-and-hyphenated — and
+        // a failed match is invisible: every sub-agent collapses into one generic label.
+        run.compiled = new CompiledFlow(
+                agent(COORD_NODE, "Coordinator"), List.of(agent(SUB_NODE, "Backend Dev")));
+
+        handler.handleLine(run, taskCall("tool_1", "backend-dev", "go"));
+        handler.handleLine(run, assistantText("done", "tool_1"));
+
+        assertThat(exec(SUB_NODE).output).contains("done");
+        assertThat(lastEvent().agent()).isEqualTo("Backend Dev");
+    }
+
+    @Test
+    void delegationToAnUnknownAgentIsLabelledAndReported() {
+        // e.g. a Claude Code built-in subagent, or a node renamed since the run started.
+        handler.handleLine(run, taskCall("tool_1", "general-purpose", "go"));
+
+        assertThat(run.taskToLabel).containsEntry("tool_1", "general-purpose");
+        // The mismatch is stated outright rather than silently swallowed...
+        assertThat(run.bufferedEvents())
+                .anySatisfy(e -> assertThat(e.text()).contains("matches no agent in this flow"));
+        // ...and names both sides so the fix is obvious.
+        assertThat(run.bufferedEvents())
+                .anySatisfy(e -> assertThat(e.text()).contains("Researcher → researcher"));
+    }
+
+    @Test
+    void anUnknownSubAgentKeepsItsOwnNameInsteadOfOneSharedBucket() {
+        handler.handleLine(run, taskCall("tool_1", "general-purpose", "go"));
+        handler.handleLine(run, taskCall("tool_2", "code-reviewer", "review"));
+        handler.handleLine(run, assistantText("from A", "tool_1"));
+        handler.handleLine(run, assistantText("from B", "tool_2"));
+
+        // Two distinct agents, two distinct labels — not both "sub-agent".
+        var events = run.bufferedEvents();
+        assertThat(events).anySatisfy(e -> {
+            assertThat(e.text()).isEqualTo("from A");
+            assertThat(e.agent()).isEqualTo("general-purpose");
+        });
+        assertThat(events).anySatisfy(e -> {
+            assertThat(e.text()).isEqualTo("from B");
+            assertThat(e.agent()).isEqualTo("code-reviewer");
+        });
+    }
+
+    @Test
     void twoSubAgentsKeepTheirOutputSeparate() {
         run.compiled = new CompiledFlow(
                 agent(COORD_NODE, "Coordinator"),
