@@ -450,6 +450,19 @@
           <h3>Copy, paste, duplicate</h3>
           <p>Build a pattern once and reuse it. Copy blocks with the connections between them intact, paste them into another flow, or duplicate a whole flow from its card. Copies come back wired up and ready to edit — never sharing an identity with the original.</p>
         </div>
+
+        <div class="card wide" data-reveal style="--cc:var(--coord)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="12" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.5 6h4a3 3 0 0 1 3 3v.5M8.5 18h4a3 3 0 0 0 3-3v-.5"/></svg></div>
+          <div class="k">Delegation</div>
+          <h3>Chains, not just a flat roster</h3>
+          <p>An agent hands work to whatever you wire behind it. Put a reviewer behind one engineer and it reviews that engineer's output — not everything the flow does. Nest as deep as the job needs; each agent is told exactly which agents are its own to call.</p>
+        </div>
+        <div class="card wide" data-reveal style="--cc:var(--accent)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 6h10M4 12h16M4 18h7"/><circle cx="19" cy="6" r="2"/></svg></div>
+          <div class="k">Visibility</div>
+          <h3>See every agent's own work</h3>
+          <p>Each block keeps its own input, output, status and token count, and every console line is tagged with the agent that wrote it. Filter to one agent, or open a sub-agent and read just its log — no more guessing which part of a wall of output came from where.</p>
+        </div>
       </div>
     </div>
   </section>
@@ -473,6 +486,7 @@
             <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> No API key, no per-token bill</li>
             <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> Sub-agents map to Claude Code subagents</li>
             <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> MCP servers auto-registered &amp; authorized</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> Point agents at real folders on your machine</li>
           </ul>
         </div>
         <div class="lane cloud" data-reveal>
@@ -561,11 +575,11 @@
       <div class="methods">
         <div class="method" data-reveal>
           <div class="k">Local dev</div>
-          <h3>Two terminals</h3>
+          <h3>One command</h3>
           <p>The designer and API start with no credentials. Sign in to Claude once to run flows.</p>
-          <pre><code>claude            # sign in once (subscription)
-cd apps/backend && mvn spring-boot:run
-pnpm install &amp;&amp; pnpm dev   # http://localhost:5173</code></pre>
+          <pre><code>claude                  # sign in once (subscription)
+pnpm install
+pnpm dev                # API + UI → http://localhost:5173</code></pre>
         </div>
 
         <div class="method" data-reveal>

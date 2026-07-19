@@ -110,19 +110,22 @@ concentus/
   - `ANTHROPIC_AUTH_MODE` = `auto` (default: key set → cloud, else local) | `local` | `api-key`.
   - Repo / MCP / DB tokens come from the env vars named in each node.
 
-## Run it (two terminals)
+## Run it
 
 ```bash
-# 1) Backend  (http://localhost:8080)
-cd apps/backend
-#   sign in once with Claude Code so flows run on your subscription:   claude   (then /login)
-#   or, to use the cloud API instead:                                  export ANTHROPIC_API_KEY=sk-ant-...
-mvn spring-boot:run
-#   or: mvn -q clean package && java -jar target/concentus-backend.jar
+# once: sign in with Claude Code so flows run on your subscription
+claude                # then /login
+#   or, to use the cloud API instead:  export ANTHROPIC_API_KEY=sk-ant-...
 
-# 2) Frontend (http://localhost:5173, proxies /api + /ws to :8080)
 pnpm install          # once, from the repo root
-pnpm dev              # = pnpm --filter frontend dev
+pnpm dev              # backend :8080 + frontend :5173, together
+```
+
+`pnpm dev` runs both, interleaving their logs under `backend`/`frontend` prefixes. To run just one:
+
+```bash
+pnpm dev:backend      # = cd apps/backend && mvn spring-boot:run
+pnpm dev:frontend     # = pnpm --filter frontend dev  (proxies /api + /ws to :8080)
 ```
 
 Open http://localhost:5173, drop an **Agent** node (auto-marked coordinator), add more agents +
@@ -324,5 +327,11 @@ java -cp target/concentus-backend.jar com.concentus.Main path/to/agent.yaml "you
   are persistent, versioned resources created once.
 - Managed-mode **MCP auth** needs a vault; MCP servers are declared without credentials for now
   (public/unauthenticated MCP and native GitHub repo mounts work as-is).
-- Run state is in-memory (restarting the backend drops running-session handles).
+- Runs, events and per-node output are persisted (see [Persistence](#persistence-postgresql)), but
+  the live handles to a running session are not — restarting the backend leaves history intact and
+  drops anything mid-flight.
+- **Agent scoping steers, it doesn't isolate.** A local run is one CLI process for the whole flow,
+  so context folders and delegation rosters are written into each agent's instructions rather than
+  enforced: an agent is told which folders and which agents are its own, but can still reach the
+  others. Real isolation needs a process per agent.
 - Built against `anthropic-java` 2.34.0 and Spring Boot 3.5.x on Java 25.
