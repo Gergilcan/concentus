@@ -1,7 +1,7 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { api, openRunSocket, type RunSocketStatus } from '../api/client.ts'
-import type { RunEvent } from '../api/types.ts'
 import { useFlowStore } from '../state/store.ts'
+import { agentKey } from '../utils/agentKey.ts'
 import { cx } from '../utils/cx.ts'
 import styles from './runs.module.scss'
 
@@ -17,7 +17,11 @@ function hueOf(name: string): number {
 }
 
 export function Console({ runId }: { runId: string }) {
-  const [events, setEvents] = useState<RunEvent[]>([])
+  // Events live in the store so a node's inspector can render its own agent's slice
+  // of the same stream — one socket, many views.
+  const events = useFlowStore((s) => s.runEvents)
+  const addRunEvent = useFlowStore((s) => s.addRunEvent)
+  const clearRunEvents = useFlowStore((s) => s.clearRunEvents)
   const [cmd, setCmd] = useState('')
   const [sending, setSending] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -27,25 +31,31 @@ export function Console({ runId }: { runId: string }) {
   const [agentFilter, setAgentFilter] = useState<string | null>(null)
 
   useEffect(() => {
-    setEvents([])
+    clearRunEvents()
     setAgentFilter(null)
     setConnStatus('connecting')
-    const handle = openRunSocket(runId, (e) => setEvents((prev) => [...prev, e]), setConnStatus)
+    const handle = openRunSocket(runId, addRunEvent, setConnStatus)
     return () => handle.close()
-  }, [runId])
+  }, [runId, addRunEvent, clearRunEvents])
 
-  // Every agent seen so far. Built from the events themselves so an agent appears
-  // as soon as it produces output, without needing the compiled flow here.
+  // Every agent seen so far, keyed by node id so two agents sharing a display name stay
+  // separate. Built from the events themselves, so an agent appears as soon as it speaks.
   const agents = useMemo(() => {
-    const seen = new Set<string>()
-    for (const e of events) if (e.agent) seen.add(e.agent)
-    return [...seen].sort()
+    const byId = new Map<string, string>()
+    for (const e of events) {
+      const id = agentKey(e)
+      if (id) byId.set(id, e.agent ?? id)
+    }
+    return [...byId.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name))
   }, [events])
 
   const shown = useMemo(
-    () => (agentFilter ? events.filter((e) => e.agent === agentFilter) : events),
+    () => (agentFilter ? events.filter((e) => agentKey(e) === agentFilter) : events),
     [events, agentFilter],
   )
+  const filteredName = agents.find((a) => a.id === agentFilter)?.name ?? agentFilter
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -103,12 +113,12 @@ export function Console({ runId }: { runId: string }) {
           </button>
           {agents.map((a) => (
             <button
-              key={a}
-              className={cx(styles.agentChip, agentFilter === a && styles.agentChipOn)}
-              style={{ '--h': hueOf(a) } as CSSProperties}
-              onClick={() => setAgentFilter(agentFilter === a ? null : a)}
+              key={a.id}
+              className={cx(styles.agentChip, agentFilter === a.id && styles.agentChipOn)}
+              style={{ '--h': hueOf(a.name) } as CSSProperties}
+              onClick={() => setAgentFilter(agentFilter === a.id ? null : a.id)}
             >
-              {a}
+              {a.name}
             </button>
           ))}
         </div>
@@ -124,7 +134,7 @@ export function Console({ runId }: { runId: string }) {
           </div>
         )}
         {agentFilter && shown.length === 0 && (
-          <div className={styles.logMuted}>No output from {agentFilter} yet.</div>
+          <div className={styles.logMuted}>No output from {filteredName} yet.</div>
         )}
         {shown.map((e, i) => (
           <div key={i} className={cx(styles.line, styles['t_' + e.type])}>

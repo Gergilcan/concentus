@@ -23,7 +23,10 @@ export type RunEventType = 'system' | 'status' | 'agent_message' | 'tool_use' | 
 export interface RunEvent {
   type: RunEventType
   text: string
+  /** Display name of the agent that produced this line. */
   agent?: string | null
+  /** Canvas node id of that agent — unique even when two agents share a name. */
+  agentId?: string | null
   ts: number
 }
 
