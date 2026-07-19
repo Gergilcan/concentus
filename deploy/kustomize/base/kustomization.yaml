@@ -11,6 +11,9 @@ resources:
   - backend.yaml
   - frontend.yaml
   - secret.yaml
+  # Bundled PostgreSQL. Remove this line to use a hosted database instead, and set the
+  # PERSIST_DB_* env vars on the backend to point at it.
+  - postgres.yaml
 
 images:
   - name: concentus/backend

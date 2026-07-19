@@ -27,6 +27,43 @@ backend:
   resources: {}
   extraEnv: []
 
+# Bundled PostgreSQL for run/flow-version persistence. The backend creates its own schema on
+# startup, so an empty database is all it needs — nothing to migrate or seed.
+#
+# Using a hosted database (Neon, RDS, Cloud SQL)? Set enabled: false and fill in
+# externalDatabase below.
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "17-alpine"
+    pullPolicy: IfNotPresent
+  database: concentus
+  username: concentus
+  # Leave blank to generate one on first install and reuse it on every upgrade.
+  password: ""
+  # Or reference a pre-created Secret holding the password (e.g. a SealedSecret).
+  existingSecret: ""
+  existingSecretKey: password
+  persistence:
+    size: 5Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+# Hosted database, used when postgresql.enabled is false.
+externalDatabase:
+  # Full JDBC URL, e.g.
+  #   jdbc:postgresql://ep-xxx.eu-west-2.aws.neon.tech/neondb?sslmode=require
+  url: ""
+  username: ""
+  # Prefer existingSecret over putting the password in values.
+  password: ""
+  existingSecret: ""
+  existingSecretKey: password
+
 frontend:
   image:
     repository: concentus/frontend

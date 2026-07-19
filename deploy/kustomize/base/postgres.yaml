@@ -1,0 +1,102 @@
+# Bundled PostgreSQL for run/flow-version persistence.
+#
+# The backend creates its own schema on startup (`create table if not exists`), so an empty
+# database is all this needs — no init scripts, no migrations to run.
+#
+# Using a hosted database instead (Neon, RDS, Cloud SQL)? Drop this file from
+# kustomization.yaml's `resources` and point PERSIST_DB_URL / PERSIST_DB_USER /
+# PERSIST_DB_PASSWORD at it — see deploy/README.md.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: concentus-db
+  labels:
+    app.kubernetes.io/name: concentus-db
+type: Opaque
+stringData:
+  # CHANGE THIS before applying anywhere real, or replace this Secret with a SealedSecret /
+  # external-secret. It is the database password for both Postgres and the backend.
+  POSTGRES_PASSWORD: "REPLACE_WITH_A_STRONG_PASSWORD"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: concentus-db
+  labels:
+    app.kubernetes.io/name: concentus-db
+spec:
+  # Headless: a StatefulSet pod is addressed directly and there is only ever one replica.
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: concentus-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: concentus-db
+  labels:
+    app.kubernetes.io/name: concentus-db
+spec:
+  serviceName: concentus-db
+  # Postgres is not clustered here; more than one replica would corrupt the data directory.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: concentus-db
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: concentus-db
+    spec:
+      securityContext:
+        # The alpine image's postgres user; set at pod level so the mounted volume is writable.
+        fsGroup: 70
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: concentus
+            - name: POSTGRES_USER
+              value: concentus
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: concentus-db
+                  key: POSTGRES_PASSWORD
+            # The image initialises the cluster in this directory; a subdirectory of the mount
+            # keeps it clear of any lost+found a PVC may come with.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "concentus", "-d", "concentus"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "concentus", "-d", "concentus"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi

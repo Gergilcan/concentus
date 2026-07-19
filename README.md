@@ -164,6 +164,38 @@ and everything else to the frontend — a single external entrypoint and a natur
 > **Webhooks** need the public entrypoint (or ingress) reachable from the internet so the provider
 > can POST to `/api/webhooks/{flowId}`.
 
+## Persistence (PostgreSQL)
+
+Runs, their events, node outputs and session ids are stored in PostgreSQL so they survive a
+restart and can be continued. The backend **creates its own schema on startup**
+(`create table if not exists`), so an empty database is all it ever needs — no migrations, no
+seed scripts.
+
+A database ships with every deployment path, so there is nothing to provision to get started:
+
+| | What you get | Point it elsewhere |
+|---|---|---|
+| **docker-compose** | A `db` service on the compose network | Delete the service, set `PERSIST_DB_*` in `.env` |
+| **Helm** | A Postgres StatefulSet + PVC (`postgresql.enabled: true`) | `postgresql.enabled: false` and fill in `externalDatabase.*` |
+| **Kustomize** | `base/postgres.yaml` StatefulSet + PVC | Drop it from `resources`, override `PERSIST_DB_*` on the backend |
+
+Using a hosted database (Neon, RDS, Cloud SQL) is just three env vars:
+
+```bash
+PERSIST_DB_URL=jdbc:postgresql://ep-xxx.eu-west-2.aws.neon.tech/neondb?sslmode=require
+PERSIST_DB_USER=neondb_owner
+PERSIST_DB_PASSWORD=...
+```
+
+Notes:
+
+- **Set a real password before deploying anywhere shared.** Kustomize's `base/postgres.yaml` ships
+  a placeholder you must replace; Helm generates one on first install and reuses it on upgrade.
+- `PERSIST_ENABLED=false` runs without a database entirely — everything stays in memory and is
+  lost on restart.
+- The backend tolerates a briefly unreachable database at startup rather than crash-looping
+  (`initialization-fail-timeout=-1`), so a slow database doesn't take the app down with it.
+
 ## Context folders
 
 Local runs execute in a scratch workspace (`<APP_DATA_DIR>/local/<runId>`), **not** in your project.

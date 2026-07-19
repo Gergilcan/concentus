@@ -42,6 +42,17 @@ spec:
               value: claude
             - name: APP_DATA_DIR
               value: /data
+            # Persistence. Points at the bundled StatefulSet (postgres.yaml); override these
+            # to use a hosted database (Neon, RDS, Cloud SQL) and drop postgres.yaml.
+            - name: PERSIST_DB_URL
+              value: jdbc:postgresql://concentus-db:5432/concentus
+            - name: PERSIST_DB_USER
+              value: concentus
+            - name: PERSIST_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: concentus-db
+                  key: POSTGRES_PASSWORD
           envFrom:
             - secretRef:
                 name: concentus-auth

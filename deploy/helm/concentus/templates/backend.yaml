@@ -47,6 +47,36 @@ spec:
               value: claude
             - name: APP_DATA_DIR
               value: /data
+            {{- if .Values.postgresql.enabled }}
+            - name: PERSIST_DB_URL
+              value: jdbc:postgresql://{{ include "concentus.fullname" . }}-db:5432/{{ .Values.postgresql.database }}
+            - name: PERSIST_DB_USER
+              value: {{ .Values.postgresql.username | quote }}
+            - name: PERSIST_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "concentus.dbSecretName" . }}
+                  key: {{ .Values.postgresql.existingSecretKey | default "password" }}
+            {{- else if .Values.externalDatabase.url }}
+            - name: PERSIST_DB_URL
+              value: {{ .Values.externalDatabase.url | quote }}
+            - name: PERSIST_DB_USER
+              value: {{ .Values.externalDatabase.username | quote }}
+            {{- if .Values.externalDatabase.existingSecret }}
+            - name: PERSIST_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalDatabase.existingSecret }}
+                  key: {{ .Values.externalDatabase.existingSecretKey | default "password" }}
+            {{- else if .Values.externalDatabase.password }}
+            - name: PERSIST_DB_PASSWORD
+              value: {{ .Values.externalDatabase.password | quote }}
+            {{- end }}
+            {{- else }}
+            # No database configured — runs are kept in memory only and lost on restart.
+            - name: PERSIST_ENABLED
+              value: "false"
+            {{- end }}
             {{- with .Values.backend.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

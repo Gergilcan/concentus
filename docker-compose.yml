@@ -7,6 +7,30 @@
 #   B) Mount your existing host login instead (uncomment the volumes below).
 
 services:
+  # Run/flow-version persistence. The backend creates its own schema on startup, so an empty
+  # database is all this needs. To use a hosted database (Neon, RDS, Cloud SQL) instead, delete
+  # this service and point PERSIST_DB_* at it.
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: concentus
+      POSTGRES_USER: concentus
+      POSTGRES_PASSWORD: ${PERSIST_DB_PASSWORD:-concentus}
+    volumes:
+      - concentus-db:/var/lib/postgresql/data
+    healthcheck:
+      # -U/-d so the check uses the app's own role rather than the implicit "postgres" one,
+      # which this image doesn't create when POSTGRES_USER is set.
+      test: ["CMD-SHELL", "pg_isready -U concentus -d concentus"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    # Not published to the host by default: nothing outside the compose network needs it.
+    # Uncomment to inspect it with psql/a GUI from your machine.
+    # ports:
+    #   - "5432:5432"
+
   backend:
     build:
       context: .
@@ -19,6 +43,15 @@ services:
       APP_DATA_DIR: /data
       # A) token from `claude setup-token` (read from .env). Not an API key.
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # Persistence — "db" is the service above, resolved on the compose network.
+      PERSIST_DB_URL: jdbc:postgresql://db:5432/concentus
+      PERSIST_DB_USER: concentus
+      PERSIST_DB_PASSWORD: ${PERSIST_DB_PASSWORD:-concentus}
+    depends_on:
+      db:
+        # Wait for the database to accept connections; the backend tolerates a missing DB
+        # (it falls back to memory) and would otherwise start up unpersisted.
+        condition: service_healthy
     volumes:
       - concentus-data:/data
       # B) OR mount the host Claude login (read-write so it can refresh). Comment out (A) if used.
@@ -36,3 +69,4 @@ services:
 
 volumes:
   concentus-data:
+  concentus-db:
