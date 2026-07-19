@@ -33,6 +33,14 @@ public class AgentSpec {
     public List<McpServerSpec> mcpServers = new ArrayList<>();
     public List<RepoSpec> repositories = new ArrayList<>();
     public List<SqlSourceSpec> ragSources = new ArrayList<>();
+    /**
+     * Local host folders this agent should read as context, passed to the CLI as {@code --add-dir}.
+     * Without these an agent only sees its scratch workspace and has to guess from names — which
+     * is how a "WireJ" agent ends up assuming some other checkout is the WireJ one.
+     */
+    public List<String> contextFolders = new ArrayList<>();
+    /** Path to an existing CLAUDE.md (or a folder containing one) to load as project context. */
+    public String claudeMdPath = "";
     public CacheSpec cache = new CacheSpec();
     public ContextSpec context = new ContextSpec();
     public EnvironmentSpec environment = new EnvironmentSpec();

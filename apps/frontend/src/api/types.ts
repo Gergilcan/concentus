@@ -83,6 +83,11 @@ export type AgentNodeData = {
   systemPrompt: string
   maxTokens: number
   effort: string
+  // Optional: flows saved before these existed simply omit them.
+  /** Host folders this agent should treat as its source of truth (CLI `--add-dir`). */
+  contextFolders?: string[]
+  /** Path to an existing CLAUDE.md, or a folder containing one, to load as context. */
+  claudeMdPath?: string
 }
 
 export type McpNodeData = {

@@ -17,6 +17,8 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 
 /**
  * Runs a flow locally by driving the {@code claude} CLI (Claude Code) on the user's
@@ -35,18 +37,21 @@ public class LocalClaudeExecutor {
     private final RagContextInjector ragInjector;
     private final McpRegistry mcpRegistry;
     private final LocalStreamEventHandler streamHandler;
+    private final ContextFolderResolver contextFolders;
     private final String permissionMode;
     private final String dataDir;
     private final boolean autoRegisterMcp;
 
     public LocalClaudeExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
-                               McpRegistry mcpRegistry, ObjectMapper mapper,
+                               McpRegistry mcpRegistry, ContextFolderResolver contextFolders,
+                               ObjectMapper mapper,
                                @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                                @Value("${app.data-dir}") String dataDir,
                                @Value("${local.auto-register-mcp:true}") boolean autoRegisterMcp) {
         this.support = support;
         this.ragInjector = ragInjector;
         this.mcpRegistry = mcpRegistry;
+        this.contextFolders = contextFolders;
         this.streamHandler = new LocalStreamEventHandler(mapper);
         this.permissionMode = permissionMode;
         this.dataDir = dataDir;
@@ -81,7 +86,9 @@ public class LocalClaudeExecutor {
             coordExec.status = "running";
         }
 
-        List<String> args = buildArgs(cmd, run, workdir, first, userText);
+        // Rejections are reported on the first turn only, so a resumed session doesn't repeat them.
+        List<Path> contextDirs = resolveContextDirs(run, flow, first);
+        List<String> args = buildArgs(cmd, run, workdir, first, userText, contextDirs);
         run.status = "RUNNING";
         run.emit(RunEvent.of("system", "› " + userText));
 
@@ -139,10 +146,18 @@ public class LocalClaudeExecutor {
             ragInjector.inject(sub, run, m -> run.emit(RunEvent.of("system", m)));
         }
 
-        // Coordinator instructions -> CLAUDE.md (auto-loaded as project context).
+        // Coordinator instructions -> CLAUDE.md (auto-loaded as project context). A referenced
+        // CLAUDE.md is inlined rather than relied on for discovery: the CLI's cwd is this scratch
+        // workspace, not the user's project, so it would never be found by walking up from here.
         AgentSpec coord = flow.coordinator();
+        StringBuilder claudeMd = new StringBuilder();
+        appendReferencedClaudeMd(run, coord, claudeMd);
         if (coord.systemPrompt != null && !coord.systemPrompt.isBlank()) {
-            Files.writeString(workdir.resolve("CLAUDE.md"), coord.systemPrompt);
+            claudeMd.append(coord.systemPrompt).append('\n');
+        }
+        appendContextFolderNote(coord, claudeMd);
+        if (!claudeMd.isEmpty()) {
+            Files.writeString(workdir.resolve("CLAUDE.md"), claudeMd.toString());
         }
 
         // Sub-agents -> .claude/agents/<name>.md (auto-discovered custom subagents).
@@ -151,12 +166,16 @@ public class LocalClaudeExecutor {
             Files.createDirectories(agentsDir);
             for (AgentSpec sub : flow.subAgents()) {
                 String name = sanitize(sub.name);
+                StringBuilder body = new StringBuilder();
+                appendReferencedClaudeMd(run, sub, body);
+                if (sub.systemPrompt != null) body.append(sub.systemPrompt).append('\n');
+                appendContextFolderNote(sub, body);
                 String md = "---\n"
                         + "name: " + name + "\n"
                         + "description: " + delegationDescription(sub) + "\n"
                         + "model: " + modelAlias(sub.model.id) + "\n"
                         + "---\n"
-                        + (sub.systemPrompt == null ? "" : sub.systemPrompt) + "\n";
+                        + body;
                 Files.writeString(agentsDir.resolve(name + ".md"), md);
             }
             run.emit(RunEvent.of("system", flow.subAgents().size() + " sub-agent(s) available for delegation."));
@@ -165,12 +184,82 @@ public class LocalClaudeExecutor {
         registerMcpServers(run);
     }
 
-    private List<String> buildArgs(String cmd, AgentRun run, Path workdir, boolean first, String userText) {
+    /** Inlines the agent's referenced CLAUDE.md, if it names one and it passes the allowlist. */
+    private void appendReferencedClaudeMd(AgentRun run, AgentSpec spec, StringBuilder out) {
+        Path file = contextFolders.resolveClaudeMd(spec.claudeMdPath,
+                (path, reason) -> run.emit(RunEvent.of("system",
+                        "CLAUDE.md ignored for " + spec.name + " — " + path + ": " + reason)));
+        if (file == null) return;
+        try {
+            out.append(Files.readString(file)).append("\n\n");
+            run.emit(RunEvent.of("system", "Loaded CLAUDE.md for " + spec.name + " from " + file));
+        } catch (IOException e) {
+            run.emit(RunEvent.of("system",
+                    "CLAUDE.md could not be read for " + spec.name + ": " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Names the agent's folders in its own instructions. {@code --add-dir} grants the union to the
+     * whole session, so this is what actually tells an agent which checkout is <em>its</em> one —
+     * the guidance that stops a "WireJ" agent working in some other repo it can also see.
+     */
+    private static void appendContextFolderNote(AgentSpec spec, StringBuilder out) {
+        if (spec.contextFolders == null || spec.contextFolders.isEmpty()) return;
+        out.append("\n## Your context folders\n\n")
+                .append("Use these paths as the source of truth for your work:\n");
+        for (String f : spec.contextFolders) {
+            out.append("- ").append(f).append('\n');
+        }
+        out.append("\nOther directories may be readable in this session but belong to other agents. "
+                + "Do not assume a folder is yours because its name looks related — work only in "
+                + "the paths listed above.\n");
+    }
+
+    /**
+     * The folders every agent in this flow is allowed to read, de-duplicated.
+     *
+     * <p>Local mode runs a <b>single</b> CLI process — sub-agents are Claude Code subagents inside
+     * that one session — so {@code --add-dir} is necessarily session-wide and cannot be scoped per
+     * agent. The union is granted here and the per-agent split is written into each sub-agent's
+     * definition as instruction text (see {@link #prepareWorkspace}), which steers the agent but
+     * does not enforce isolation.
+     */
+    private List<Path> resolveContextDirs(AgentRun run, CompiledFlow flow, boolean report) {
+        BiConsumer<String, String> onRejected = (path, reason) -> {
+            if (report) run.emit(RunEvent.of("system", "Context folder ignored — " + path + ": " + reason));
+        };
+        List<Path> all = new ArrayList<>();
+        for (AgentSpec spec : allAgents(flow)) {
+            for (Path p : contextFolders.resolve(spec.contextFolders, onRejected)) {
+                if (!all.contains(p)) all.add(p);
+            }
+        }
+        if (report && !all.isEmpty()) {
+            run.emit(RunEvent.of("system", "Context folders: "
+                    + all.stream().map(Path::toString).collect(Collectors.joining(", "))));
+        }
+        return all;
+    }
+
+    private static List<AgentSpec> allAgents(CompiledFlow flow) {
+        List<AgentSpec> all = new ArrayList<>();
+        all.add(flow.coordinator());
+        all.addAll(flow.subAgents());
+        return all;
+    }
+
+    private List<String> buildArgs(String cmd, AgentRun run, Path workdir, boolean first, String userText,
+                                   List<Path> contextDirs) {
         AgentSpec coord = run.compiled.coordinator();
         List<String> a = new ArrayList<>();
         a.add(cmd);
         a.add("-p");
         a.add(userText);
+        for (Path dir : contextDirs) {
+            a.add("--add-dir");
+            a.add(dir.toString());
+        }
         a.add("--output-format");
         a.add("stream-json");
         a.add("--verbose");

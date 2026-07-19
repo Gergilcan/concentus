@@ -1,5 +1,7 @@
 package com.concentus.support;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -17,6 +19,27 @@ public final class MapValues {
         if (v == null) return fallback;
         String s = String.valueOf(v);
         return s.isBlank() ? fallback : s;
+    }
+
+    /**
+     * A list of non-blank strings. Accepts either a real list or a single string (which a
+     * hand-edited or imported flow may carry), and drops blanks so a trailing empty row in the
+     * editor doesn't become an entry.
+     */
+    public static List<String> strList(Map<String, Object> d, String key) {
+        Object v = d.get(key);
+        List<String> out = new ArrayList<>();
+        if (v instanceof Iterable<?> it) {
+            for (Object o : it) {
+                if (o == null) continue;
+                String s = String.valueOf(o).trim();
+                if (!s.isBlank()) out.add(s);
+            }
+        } else if (v != null) {
+            String s = String.valueOf(v).trim();
+            if (!s.isBlank()) out.add(s);
+        }
+        return out;
     }
 
     public static long lng(Map<String, Object> d, String key, long fallback) {

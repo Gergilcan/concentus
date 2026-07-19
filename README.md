@@ -164,6 +164,40 @@ and everything else to the frontend — a single external entrypoint and a natur
 > **Webhooks** need the public entrypoint (or ingress) reachable from the internet so the provider
 > can POST to `/api/webhooks/{flowId}`.
 
+## Context folders
+
+Local runs execute in a scratch workspace (`<APP_DATA_DIR>/local/<runId>`), **not** in your project.
+An agent therefore can't see your code unless you tell it where to look — and given only names to go
+on it will guess, happily treating one checkout as another.
+
+Each Agent node has two fields for this:
+
+| Field | Meaning |
+|---|---|
+| **Context folders** | Host directories this agent should treat as its source of truth. Passed to the CLI as `--add-dir`, and listed in the agent's own instructions so it knows which folder is *its* one. |
+| **CLAUDE.md path** | An existing `CLAUDE.md`, or a folder containing one. Its contents are inlined into the run's context — discovery can't find it on its own, since the CLI's cwd is the scratch workspace. |
+
+Both are gated by an allowlist you must configure:
+
+```properties
+local.context-roots=C:\Users\me\code        # or LOCAL_CONTEXT_ROOTS=/home/me/code
+```
+
+- **The allowlist is required.** While `local.context-roots` is empty, every context folder is
+  rejected. A flow is editable over HTTP and can be fired by a public webhook, so an unguarded path
+  list would let anyone reachable read the host filesystem.
+- Paths are checked after resolving `..` and symlinks, so neither can escape a root.
+- A rejected folder is skipped with the reason shown in the run console; the rest of the run
+  continues rather than failing outright.
+
+Two limits worth knowing:
+
+- **Local (subscription) runs only.** Cloud runs execute in Anthropic's sandbox with no access to
+  your machine; use a Repository node there instead.
+- **Per-agent folders are guidance, not isolation.** Local mode runs one CLI process for the whole
+  flow, so `--add-dir` grants the union of every agent's folders to the session. Each agent is told
+  which folders are its own, which steers it, but a determined agent can still read the others.
+
 ## Webhook authentication
 
 A webhook Input node has two fields, and the same rule serves every provider — there is no

@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import static com.concentus.support.MapValues.lng;
 import static com.concentus.support.MapValues.str;
+import static com.concentus.support.MapValues.strList;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -72,6 +73,8 @@ public class FlowCompiler {
         s.name = str(d, "name", node.id());
         s.description = str(d, "description", "");
         s.systemPrompt = str(d, "systemPrompt", "");
+        s.contextFolders = strList(d, "contextFolders");
+        s.claudeMdPath = str(d, "claudeMdPath", "");
 
         s.model = new ModelSpec();
         s.model.id = str(d, "model", "claude-opus-4-8");

@@ -131,6 +131,8 @@ function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
         systemPrompt: '',
         maxTokens: DEFAULT_MAX_TOKENS,
         effort: 'high',
+        contextFolders: [],
+        claudeMdPath: '',
       }
     case 'mcp':
       return { kind: 'mcp', name: 'github', url: 'https://api.githubcopilot.com/mcp/', tokenEnv: 'GITHUB_MCP_TOKEN' }
