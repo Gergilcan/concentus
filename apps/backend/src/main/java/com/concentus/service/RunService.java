@@ -8,6 +8,7 @@ import com.concentus.model.FlowGraph;
 import com.concentus.model.RunEvent;
 import com.concentus.model.RunSummary;
 import com.concentus.model.TriggerSpec;
+import com.concentus.llm.ProviderRegistry;
 import com.concentus.store.RunStore;
 import com.concentus.support.AnthropicClientProvider;
 import com.concentus.support.Ids;
@@ -52,12 +53,15 @@ public class RunService {
     private final ExecutorService exec;
     private final int maxRetainedRuns;
     private final PricingTable pricing;
+    private final ProviderRegistry apiProviders;
+    private final ApiAgentExecutor apiExecutor;
     private final double inputUsdPerMTok;
     private final double outputUsdPerMTok;
     private final ConcurrentHashMap<String, AgentRun> runs = new ConcurrentHashMap<>();
 
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
                       ManagedFlowLauncher launcher, LocalClaudeExecutor localExecutor, PricingTable pricing,
+                      ProviderRegistry apiProviders, ApiAgentExecutor apiExecutor,
                       CloudStreamEventHandler cloudEvents,
                       RunStore runStore, com.fasterxml.jackson.databind.ObjectMapper mapper,
                       NotificationService notifier,
@@ -71,6 +75,8 @@ public class RunService {
         this.launcher = launcher;
         this.localExecutor = localExecutor;
         this.pricing = pricing;
+        this.apiProviders = apiProviders;
+        this.apiExecutor = apiExecutor;
         this.cloudEvents = cloudEvents;
         this.runStore = runStore;
         this.mapper = mapper;
@@ -124,10 +130,15 @@ public class RunService {
         CompiledFlow compiled = compiler.compile(flow);
         TriggerSpec trigger = TriggerSpec.from(flow);
 
-        String backend = clientProvider.backend();
+        // The coordinator's model picks the backend: a non-Claude model with a configured provider
+        // runs on the api backend, so choosing e.g. a GPT model is all it takes — no extra switch.
+        String backend = apiProviders.forModel(compiled.coordinator().model.id).isPresent()
+                ? "api"
+                : clientProvider.backend();
         if ("none".equals(backend)) {
             throw new IllegalStateException("Not signed in. Sign in to Claude Code (`claude`) to run on your "
-                    + "subscription, or set ANTHROPIC_API_KEY to use the cloud API.");
+                    + "subscription, set ANTHROPIC_API_KEY to use the cloud API, or pick a model from "
+                    + "another configured provider (see llm.* settings).");
         }
 
         String runId = Ids.generate("run_", 12);
@@ -258,9 +269,14 @@ public class RunService {
     }
 
     /** Runs one local turn, then snapshots the run and notifies if it failed. */
+    /** One turn on whichever turn-based backend this run uses. */
     private void runLocalTurn(AgentRun run, String prompt) {
         try {
-            localExecutor.runTurn(run, run.compiled, prompt);
+            if ("api".equals(run.backend)) {
+                apiExecutor.runTurn(run, run.compiled, prompt);
+            } else {
+                localExecutor.runTurn(run, run.compiled, prompt);
+            }
         } finally {
             runStore.persist(run);
             if ("ERROR".equals(run.status)) {
@@ -308,7 +324,7 @@ public class RunService {
             run.initialPrompt = text;
         }
 
-        if ("local".equals(run.backend)) {
+        if ("local".equals(run.backend) || "api".equals(run.backend)) {
             if (run.compiled == null) {
                 throw new IllegalStateException("Run is not ready yet.");
             }
@@ -338,8 +354,14 @@ public class RunService {
     public void stop(String runId) {
         AgentRun run = require(runId);
 
-        if ("local".equals(run.backend)) {
-            localExecutor.stop(run);
+        if ("local".equals(run.backend) || "api".equals(run.backend)) {
+            // The api backend has no child process to kill — the loop checks the run status
+            // between turns, so marking it terminated is what stops it.
+            if ("local".equals(run.backend)) {
+                localExecutor.stop(run);
+            } else {
+                run.status = "TERMINATED";
+            }
             run.emit(RunEvent.of("status", "terminated"));
             runStore.persist(run);
             return;

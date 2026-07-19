@@ -44,6 +44,8 @@ class RunServiceTest {
     private final RunStore runStore = mock(RunStore.class);
     private final NotificationService notifier = mock(NotificationService.class);
     private final ObjectMapper mapper = new ObjectMapper();
+    private final com.concentus.llm.ProviderRegistry apiProviders = mock(com.concentus.llm.ProviderRegistry.class);
+    private final ApiAgentExecutor apiExecutor = mock(ApiAgentExecutor.class);
 
     private final List<RunService> created = new ArrayList<>();
 
@@ -54,6 +56,7 @@ class RunServiceTest {
 
     private RunService newService(int maxConcurrent, int queueCapacity, int maxRetainedRuns) {
         RunService s = new RunService(clientProvider, compiler, launcher, localExecutor, new PricingTable("", 3.0, 15.0),
+                apiProviders, apiExecutor,
                 new CloudStreamEventHandler(), runStore, mapper,
                 notifier, maxConcurrent, queueCapacity, maxRetainedRuns, 3.0, 15.0);
         created.add(s);

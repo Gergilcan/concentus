@@ -52,6 +52,13 @@ public class AgentRun {
     /** Open event stream (cloud), stored so {@code stop()} can break the loop. */
     public volatile AutoCloseable stream;
 
+    /**
+     * Whether the api backend has injected SQL/RAG context yet. Injection is once per run, not
+     * per turn — re-running the query each turn would re-read the database and append the same
+     * rows to the prompt again.
+     */
+    public volatile boolean apiContextPrepared = false;
+
     // --- local (claude CLI) run state ---
     public volatile CompiledFlow compiled;
     public volatile String localSessionId;
