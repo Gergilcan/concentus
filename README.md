@@ -215,9 +215,18 @@ backend has neither, so it implements delegation itself and has no sandbox:
 | **MCP servers** | ✅ | ✅ | ❌ |
 | **Context folders** | ✅ | ❌ | ❌ |
 
-**A flow that edits files must stay on a Claude backend.** File editing, bash and MCP come from
-Claude Code's sandbox; there is no portable equivalent, and adding one means building a
-code-execution surface — a security decision, not an implementation detail.
+**A flow that edits files must stay on a Claude backend — for now.** The ❌ rows are *not built*
+rather than impossible; every provider supports function calling, so each is reachable as a tool:
+
+- **MCP** is an open protocol. It reads as Claude-only here only because this implementation
+  registers servers through `claude mcp add`. A native MCP client would serve any provider.
+- **File editing** needs `read`/`write`/`edit` tools scoped to an allowlist — the same containment
+  [context folders](#context-folders) already use.
+- **Bash** is the one held back deliberately. Flows can be triggered by public webhooks, so
+  model-generated shell commands on the host is a remote-code-execution path. Claude Code carries
+  its own permission model and a trust boundary you accepted when installing it; neither transfers
+  when this app spawns the process. That wants an explicit decision (container per run, command
+  allowlist, approval gate), not a default.
 
 ### Configuring providers
 

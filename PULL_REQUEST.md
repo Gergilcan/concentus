@@ -42,20 +42,30 @@ reviews that engineer's work, not the flow's work in general.
 **No new switch.** The coordinator's model picks the engine: put `gpt-5` on it and the flow runs on
 OpenAI; put `claude-opus-4-8` and it runs on your subscription.
 
-## What this does not do
+## What this does not do — and why
 
-**File editing, bash and MCP are not supported on non-Claude models, by design.**
+File editing, bash and MCP don't work on non-Claude models here. **These are "not built", not
+"impossible"** — every provider supports function calling, so each is reachable as a tool. The
+reasons differ, and only one is a real blocker:
 
-Those come from Claude Code's sandbox. There is no portable equivalent, and adding one means
-building a code-execution surface driven by model output — that's a security decision for you to
-take deliberately, not something to land unattended overnight.
+- **MCP** — an open protocol, not an Anthropic feature. It looks Claude-only here purely because
+  this implementation registers servers via `claude mcp add`. A native MCP client (JSON-RPC over
+  stdio/HTTP) would serve any provider. Scoped out for time, not portability.
+- **File editing** — needs `read`/`write`/`edit` tools confined to an allowlist. The containment
+  already exists (`ContextFolderResolver`, with `toRealPath()` so `..` and symlinks can't escape),
+  so this is a small change.
+- **Bash** — held back deliberately. Flows are triggerable by **public webhooks**, so
+  model-generated shell commands on the host is a remote-code-execution path. Claude Code carries
+  its own permission model and a trust boundary you accepted when installing it; neither transfers
+  when this app spawns the process. Same class of decision as the context-folder allowlist, with a
+  much larger blast radius — so it wants your call (container per run, command allowlist, approval
+  gate), not a default I pick unattended.
 
-**Concretely: your `Test` flow would not work on GPT or Gemini.** It edits `RsqlParser.java`, and
-this backend cannot edit files. Flows that modify files must stay on a Claude backend. Flows that
-reason, delegate, and read SQL context work fine.
+**Concretely: your `Test` flow would not work on GPT or Gemini today.** It edits
+`RsqlParser.java`. Flows that reason, delegate and read SQL context work fine.
 
-If you want the sandbox, say so and I'll write up options (container-per-run, allowlisted commands,
-approval gates) rather than pick one for you.
+Say which of the three you want and I'll build it — file tools and MCP are straightforward; bash
+I'd want to design with you first.
 
 ## Provider coverage
 

@@ -27,10 +27,13 @@ import java.util.List;
  * delegation chains drawn on the canvas work here exactly as they do locally — a reviewer behind
  * an engineer reviews that engineer's work, not the flow's work in general.
  *
- * <p><b>Deliberately not supported:</b> file editing, bash, and MCP. Those come from Claude Code's
- * sandbox and have no portable equivalent; adding them would mean building a code-execution
- * surface, which is a security decision rather than an implementation detail. Flows that need to
- * modify files should stay on a Claude backend.
+ * <p><b>Not supported yet:</b> file editing, bash and MCP — none of which is impossible here, since
+ * every provider supports function calling. MCP is an open protocol and reads as Claude-only only
+ * because the existing implementation registers servers through {@code claude mcp add}; file tools
+ * would reuse the containment {@link ContextFolderResolver} already provides. Bash is the one held
+ * back on purpose: flows can be triggered by public webhooks, so model-generated shell commands on
+ * the host is a remote-code-execution path, and that wants an explicit design decision rather than
+ * a default.
  */
 @Component
 public class ApiAgentExecutor {
