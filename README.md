@@ -187,6 +187,64 @@ and everything else to the frontend — a single external entrypoint and a natur
 > **Webhooks** need the public entrypoint (or ingress) reachable from the internet so the provider
 > can POST to `/api/webhooks/{flowId}`.
 
+## Model providers
+
+A flow names a **model**; the engine follows from it. There is no extra switch — put
+`gpt-5` on the coordinator and the flow runs on OpenAI, put `claude-opus-4-8` and it runs on your
+Claude subscription.
+
+| Model | Backend | Engine |
+|---|---|---|
+| `claude-*` | `local` | the `claude` CLI on your subscription |
+| `claude-*` + `ANTHROPIC_API_KEY` | `cloud` | Anthropic Managed Agents |
+| everything else | `api` | the provider's chat-completions API, orchestrated here |
+
+### What each backend can do
+
+The Claude backends get their orchestration *and their tools* from Anthropic products. The `api`
+backend has neither, so it implements delegation itself and has no sandbox:
+
+| | local (Claude) | cloud (Claude) | api (others) |
+|---|:---:|:---:|:---:|
+| Multi-agent + delegation chains | ✅ | ✅ | ✅ |
+| Per-agent input/output/logs/status | ✅ | ✅ | ✅ |
+| Tokens + cost per block | ✅ | ✅ | ✅ |
+| SQL / RAG context | ✅ | ✅ | ✅ |
+| Webhooks, cron, versions, retries | ✅ | ✅ | ✅ |
+| **File editing / bash** | ✅ | ✅ | ❌ |
+| **MCP servers** | ✅ | ✅ | ❌ |
+| **Context folders** | ✅ | ❌ | ❌ |
+
+**A flow that edits files must stay on a Claude backend.** File editing, bash and MCP come from
+Claude Code's sandbox; there is no portable equivalent, and adding one means building a
+code-execution surface — a security decision, not an implementation detail.
+
+### Configuring providers
+
+```bash
+OPENAI_API_KEY=sk-...
+DEEPSEEK_API_KEY=sk-...
+GEMINI_API_KEY=...
+# Vertex AI: project + region + an OAuth token (gcloud auth print-access-token)
+VERTEX_PROJECT=my-project
+VERTEX_ACCESS_TOKEN=ya29....
+```
+
+Anything else speaking the OpenAI shape — Groq, Mistral, xAI, OpenRouter, Together, or a local
+Ollama / vLLM — needs no code, just config:
+
+```bash
+LLM_OPENAI_COMPATIBLE=groq|https://api.groq.com/openai/v1|gsk-...,ollama|http://localhost:11434/v1|
+LLM_MODEL_PREFIXES=llama-:groq,qwen:ollama
+```
+
+A provider with no credential is **not registered at all**, so naming its model fails at launch
+with a message saying which key is missing — rather than as an HTTP error mid-run.
+`GET /api/llm/providers` lists what is configured.
+
+Add rates for any new model to `pricing.models` (`id:inputPerMTok:outputPerMTok`) so cost stays
+accurate; unlisted models fall back to the flat pair.
+
 ## Persistence (PostgreSQL)
 
 Runs, their events, node outputs and session ids are stored in PostgreSQL so they survive a

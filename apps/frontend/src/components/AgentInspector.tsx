@@ -52,6 +52,12 @@ export function AgentInspector({ data, set }: Props) {
         <option value="subagent">subagent</option>
       </SelectField>
       <Field label="Model" value={data.model} onChange={(v) => set({ model: v })} />
+      <p className={styles.hint}>
+        The model chooses the engine. <b>claude-*</b> runs on your Claude subscription or the cloud
+        API, with file editing, bash and MCP. Any other configured model (<code>gpt-*</code>,{' '}
+        <code>gemini-*</code>, <code>deepseek-*</code>, …) runs on the API backend, which does
+        reasoning, delegation and SQL context but <b>not</b> file editing, bash or MCP.
+      </p>
       <SelectField label="Effort" value={data.effort} onChange={(v) => set({ effort: v })}>
         {EFFORT_OPTIONS.map((v) => (
           <option key={v} value={v}>
