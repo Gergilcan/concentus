@@ -27,13 +27,29 @@ public class OpenAiCompatibleProvider implements LlmProvider {
     private final String id;
     private final String baseUrl;
     private final String apiKey;
+    /** Header carrying the credential. Azure OpenAI uses {@code api-key}, not {@code Authorization}. */
+    private final String authHeader;
+    private final String authPrefix;
     private final ObjectMapper mapper;
     private final HttpClient http;
 
     public OpenAiCompatibleProvider(String id, String baseUrl, String apiKey, ObjectMapper mapper) {
+        this(id, baseUrl, apiKey, "Authorization", mapper);
+    }
+
+    /**
+     * @param authHeader header to put the credential in — {@code Authorization} for OpenAI-style
+     *                   vendors, {@code api-key} for Azure OpenAI. Anything other than
+     *                   {@code Authorization} is sent as a bare value, since the {@code Bearer}
+     *                   prefix is specific to that header.
+     */
+    public OpenAiCompatibleProvider(String id, String baseUrl, String apiKey, String authHeader,
+                                    ObjectMapper mapper) {
         this.id = id;
         this.baseUrl = baseUrl == null ? "" : baseUrl.replaceAll("/+$", "");
         this.apiKey = apiKey;
+        this.authHeader = authHeader == null || authHeader.isBlank() ? "Authorization" : authHeader;
+        this.authPrefix = "Authorization".equalsIgnoreCase(this.authHeader) ? "Bearer " : "";
         this.mapper = mapper;
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
     }
@@ -63,7 +79,7 @@ public class OpenAiCompatibleProvider implements LlmProvider {
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)));
             if (apiKey != null && !apiKey.isBlank()) {
-                b.header("Authorization", "Bearer " + apiKey);
+                b.header(authHeader, authPrefix + apiKey);
             }
             HttpResponse<String> res = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() / 100 != 2) {

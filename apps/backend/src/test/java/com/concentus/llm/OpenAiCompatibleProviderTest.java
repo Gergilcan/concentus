@@ -30,6 +30,7 @@ class OpenAiCompatibleProviderTest {
     private HttpServer server;
     private final AtomicReference<String> lastRequestBody = new AtomicReference<>();
     private final AtomicReference<String> lastAuthHeader = new AtomicReference<>();
+    private final AtomicReference<String> lastApiKeyHeader = new AtomicReference<>();
     private volatile int status = 200;
     private volatile String responseBody = "{}";
 
@@ -39,6 +40,7 @@ class OpenAiCompatibleProviderTest {
         server.createContext("/v1/chat/completions", exchange -> {
             lastRequestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             lastAuthHeader.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            lastApiKeyHeader.set(exchange.getRequestHeaders().getFirst("api-key"));
             byte[] out = responseBody.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(status, out.length);
             try (OutputStream os = exchange.getResponseBody()) {
@@ -159,6 +161,21 @@ class OpenAiCompatibleProviderTest {
                 .hasMessageContaining("openai")
                 .hasMessageContaining("429")
                 .hasMessageContaining("rate limited");
+    }
+
+    @Test
+    void azureStyleVendorsCarryTheKeyInAnApiKeyHeaderNotAuthorization() throws Exception {
+        // Azure OpenAI rejects `Authorization: Bearer <key>` for key auth — it wants a bare
+        // `api-key` header, and the Bearer prefix must not be added to it.
+        responseBody = "{\"choices\":[{\"message\":{\"content\":\"hi\"}}],\"usage\":{}}";
+        OpenAiCompatibleProvider azure = new OpenAiCompatibleProvider("azure",
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1", "azure-key",
+                "api-key", mapper);
+
+        azure.chat(req(null, List.of(ChatTypes.ChatMessage.user("hi")), List.of()));
+
+        assertThat(lastApiKeyHeader.get()).isEqualTo("azure-key");
+        assertThat(lastAuthHeader.get()).isNull();
     }
 
     @Test

@@ -242,13 +242,53 @@ VERTEX_PROJECT=my-project
 VERTEX_ACCESS_TOKEN=ya29....
 ```
 
-Anything else speaking the OpenAI shape — Groq, Mistral, xAI, OpenRouter, Together, or a local
-Ollama / vLLM — needs no code, just config:
+Anything else speaking the OpenAI shape — Groq, Mistral, xAI, OpenRouter, Together, GitHub Models,
+Azure OpenAI, or a local Ollama / vLLM — needs no code, just config. The format is
+`id|baseUrl|apiKey|authHeader`, the last field optional:
 
 ```bash
 LLM_OPENAI_COMPATIBLE=groq|https://api.groq.com/openai/v1|gsk-...,ollama|http://localhost:11434/v1|
 LLM_MODEL_PREFIXES=llama-:groq,qwen:ollama
 ```
+
+**Azure OpenAI** carries its key in an `api-key` header rather than `Authorization`, and its
+`model` field names *your deployment*, not the upstream model:
+
+```bash
+LLM_OPENAI_COMPATIBLE=azure|https://YOUR-RESOURCE.openai.azure.com/openai/v1|<key>|api-key
+LLM_MODEL_PREFIXES=my-deployment:azure
+```
+
+Use the **v1** path shown above — it needs no `api-version` and takes a plain OpenAI-shaped body.
+(Microsoft's older `azure-ai-inference` SDK is deprecated and retires 2026-08-26; don't build on it.)
+
+**GitHub Models** is OpenAI-compatible with a plain Bearer PAT and vendor-prefixed model names:
+
+```bash
+LLM_OPENAI_COMPATIBLE=ghmodels|https://models.github.ai/inference|<PAT with models scope>
+LLM_MODEL_PREFIXES=openai/:ghmodels
+```
+
+GitHub frames Models as a surface to "learn, try, and test", so treat it as a prototyping path
+rather than something to run production flows on.
+
+### GitHub Copilot
+
+A Copilot subscription **does** grant programmatic agent access — unlike ChatGPT Plus. Two surfaces
+exist, and neither is wired up here yet:
+
+- **Copilot CLI** (`copilot -p '…' -s`) runs an agentic loop locally much as the `claude` CLI does —
+  file edits, shell, MCP, subagents. It has **no structured output mode**, though, so driving it
+  would give us the final text and none of the per-agent attribution, token counts or tool events
+  the rest of the UI is built on.
+- **Copilot SDK** speaks JSON-RPC to the CLI running headless (`copilot --headless --port …`). That
+  is the proper integration and would preserve those events, but it is a third execution backend
+  rather than a config entry. Note Microsoft's own caveat: there is **no built-in auth between SDK
+  and CLI**, so the network path has to be isolated.
+
+Calling Copilot's internal editor endpoints (the `copilot_internal` shims floating around) is not
+permitted and risks account suspension — and is now pointless, since the SDK is the sanctioned
+route to the same capability.
 
 A provider with no credential is **not registered at all**, so naming its model fails at launch
 with a message saying which key is missing — rather than as an HTTP error mid-run.

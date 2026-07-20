@@ -55,13 +55,16 @@ public class ProviderRegistry {
         if (!vertexProject.isBlank()) {
             register(GeminiProvider.vertex(vertexProject, vertexRegion, () -> vertexToken, mapper));
         }
-        // Anything else speaking the OpenAI shape: id|baseUrl|apiKey, comma-separated. Covers
-        // Groq, Mistral, xAI, OpenRouter, Together, Ollama, vLLM without code changes.
+        // Anything else speaking the OpenAI shape: id|baseUrl|apiKey[|authHeader], comma-separated.
+        // Covers Groq, Mistral, xAI, OpenRouter, Together, GitHub Models, Ollama and vLLM with no
+        // code change. The optional fourth field exists for Azure OpenAI, which carries its key in
+        // an `api-key` header rather than `Authorization`.
         for (String entry : split(extraCompatible)) {
             String[] parts = entry.split("\\|", -1);
             if (parts.length < 2) continue;
             register(new OpenAiCompatibleProvider(parts[0].trim(), parts[1].trim(),
-                    parts.length > 2 ? parts[2].trim() : "", mapper));
+                    parts.length > 2 ? parts[2].trim() : "",
+                    parts.length > 3 ? parts[3].trim() : "Authorization", mapper));
         }
 
         Map<String, String> prefixes = new LinkedHashMap<>(DEFAULT_PREFIXES);
