@@ -254,8 +254,23 @@ A provider with no credential is **not registered at all**, so naming its model 
 with a message saying which key is missing — rather than as an HTTP error mid-run.
 `GET /api/llm/providers` lists what is configured.
 
-Add rates for any new model to `pricing.models` (`id:inputPerMTok:outputPerMTok`) so cost stays
-accurate; unlisted models fall back to the flat pair.
+### Costs
+
+The model picker shows each model's rate, and a run reports estimated cost per block and in total —
+all read from `pricing.models` (`id:inputPerMTok:outputPerMTok`), so the number you see while
+choosing is the one the estimate uses.
+
+**Only Claude and Gemini rates ship configured**, because those were verified against published
+pricing. Add your own for OpenAI, DeepSeek or anything else:
+
+```properties
+PRICING_MODELS=...,gpt-5:<in>:<out>,deepseek-chat:<in>:<out>
+```
+
+An unlisted model falls back to the flat `pricing.input-usd-per-mtok` / `output-usd-per-mtok` pair,
+and the picker says so rather than showing a figure that isn't real. Runs on a Claude subscription
+have no per-token bill at all — there the figure is an equivalent-usage estimate for comparing
+runs, not a charge.
 
 ## Persistence (PostgreSQL)
 

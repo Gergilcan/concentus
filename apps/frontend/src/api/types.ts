@@ -62,6 +62,21 @@ export interface NodeExec {
   endedAt: number
 }
 
+/** USD per million tokens. */
+export interface ModelRate {
+  input: number
+  output: number
+}
+
+export interface ProvidersResponse {
+  /** Providers with a credential configured, so usable right now. */
+  configured: string[]
+  /** Rates for models named in `pricing.models`, keyed by model id. */
+  pricing: Record<string, ModelRate>
+  /** Rate applied to any model not listed above. */
+  fallback: ModelRate
+}
+
 export interface NodeExecReport {
   nodes: NodeExec[]
   totalInputTokens: number

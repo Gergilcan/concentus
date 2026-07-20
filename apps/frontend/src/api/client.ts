@@ -7,6 +7,7 @@ import type {
   McpDef,
   McpServerInfo,
   NodeExecReport,
+  ProvidersResponse,
   RagStatus,
   RunDetail,
   RunEvent,
@@ -121,8 +122,11 @@ export const api = {
   // auth
   authStatus: () => req<AuthStatus>('/auth/status'),
 
-  /** Model providers with a credential configured. Never includes the credentials themselves. */
-  listProviders: () => req<{ configured: string[] }>('/llm/providers'),
+  /**
+   * Configured providers plus the per-model rates the cost estimate uses. Never includes the
+   * credentials themselves.
+   */
+  listProviders: () => req<ProvidersResponse>('/llm/providers'),
 
   // rag
   ragStatus: () => req<RagStatus>('/rag/status'),

@@ -57,6 +57,19 @@ public class PricingTable {
         return Map.copyOf(out);
     }
 
+    /**
+     * The configured per-model rates, so the designer can show the same numbers the cost estimate
+     * uses. A separate copy in the UI would drift from this and quietly contradict the totals.
+     */
+    public Map<String, Rate> configuredRates() {
+        return byModel;
+    }
+
+    /** The rate applied to any model not listed. */
+    public Rate fallbackRate() {
+        return fallback;
+    }
+
     /** The configured rate for a model, or the global fallback when it isn't listed. */
     public Rate rateFor(String model) {
         if (model == null || model.isBlank()) return fallback;

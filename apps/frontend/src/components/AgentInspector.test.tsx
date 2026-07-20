@@ -10,7 +10,8 @@ vi.mock('../api/client.ts', () => ({
   api: {
     listAgents: (...args: unknown[]) => listAgentsMock(...(args as [])),
     // The model picker probes this to flag providers with no credential configured.
-    listProviders: () => Promise.resolve({ configured: [] as string[] }),
+    listProviders: () =>
+      Promise.resolve({ configured: [] as string[], pricing: {}, fallback: { input: 3, output: 15 } }),
   },
 }))
 
