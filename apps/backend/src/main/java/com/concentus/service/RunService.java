@@ -160,17 +160,21 @@ public class RunService {
         trackForPersistence(run);
         runStore.persist(run);
 
-        if ("local".equals(backend)) {
-            // Local: agents run via the claude CLI on the subscription.
+        // Turn-based backends (the claude CLI and the api providers) sit idle until given a first
+        // instruction. Only the cloud backend launches a hosted session up front.
+        if ("local".equals(backend) || "api".equals(backend)) {
             run.localSessionId = UUID.randomUUID().toString();
             run.status = "IDLE";
+            String where = "local".equals(backend)
+                    ? "Local mode — running on your Claude subscription"
+                    : "API mode — running on " + compiled.coordinator().model.id;
             if (run.pendingPrompt != null) {
-                run.emit(RunEvent.of("system", "Local mode — auto-starting with the Input prompt."));
+                run.emit(RunEvent.of("system", where + "; auto-starting with the Input prompt."));
                 String prompt = run.pendingPrompt;
                 run.pendingPrompt = null;
                 submitOrFail(run, () -> runLocalTurn(run, prompt));
             } else {
-                run.emit(RunEvent.of("system", "Local mode — running on your Claude subscription ("
+                run.emit(RunEvent.of("system", where + " ("
                         + (compiled.subAgents().size() + 1) + " agents). Send a command to start."));
             }
         } else {

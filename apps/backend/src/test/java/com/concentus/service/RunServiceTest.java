@@ -499,4 +499,76 @@ class RunServiceTest {
             throw new RuntimeException(e);
         }
     }
+
+    // ------------------------------------------------- backend selection (regression guards)
+
+    /** A real registry, so these exercise actual routing rather than a stubbed answer. */
+    private RunService serviceWithRealRegistry(String openaiKey) {
+        com.concentus.llm.ProviderRegistry real = new com.concentus.llm.ProviderRegistry(
+                mapper, openaiKey, "https://api.openai.com/v1", "", "https://api.deepseek.com/v1",
+                "", "", "us-central1", "", "", "");
+        RunService s = new RunService(clientProvider, compiler, launcher, localExecutor,
+                new PricingTable("", 3.0, 15.0), real, apiExecutor,
+                new CloudStreamEventHandler(), runStore, mapper, notifier, 4, 8, 10, 3.0, 15.0);
+        created.add(s);
+        return s;
+    }
+
+    private static CompiledFlow flowOnModel(String modelId) {
+        AgentSpec c = coordinatorSpec();
+        c.model = new AgentSpec.ModelSpec();
+        c.model.id = modelId;
+        return new CompiledFlow(c, List.of());
+    }
+
+    @Test
+    void withNoProviderKeysAtAllAClaudeFlowStillRunsOnTheSubscription() {
+        // The whole point: adding multi-provider support must not require any new configuration
+        // for existing users.
+        when(compiler.compile(any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(clientProvider.backend()).thenReturn("local");
+
+        RunSummary summary = serviceWithRealRegistry("").start(flow("f1"));
+
+        assertThat(summary.status()).isEqualTo("IDLE");
+        verifyNoInteractions(launcher);
+    }
+
+    @Test
+    void configuringOpenAiDoesNotHijackClaudeFlows() {
+        // claude- routes to a provider this backend never serves, so it must fall through to the
+        // subscription rather than landing on whichever provider happens to have a key.
+        when(compiler.compile(any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(clientProvider.backend()).thenReturn("local");
+
+        RunService svc = serviceWithRealRegistry("sk-openai");
+        RunSummary summary = svc.start(flow("f1"));
+
+        assertThat(svc.get(summary.id()).orElseThrow().backend).isEqualTo("local");
+    }
+
+    @Test
+    void aGptFlowRunsOnTheApiBackendAndNeverLaunchesACloudSession() {
+        when(compiler.compile(any())).thenReturn(flowOnModel("gpt-5"));
+        when(clientProvider.backend()).thenReturn("local");
+
+        RunService svc = serviceWithRealRegistry("sk-openai");
+        RunSummary summary = svc.start(flow("f1"));
+
+        assertThat(svc.get(summary.id()).orElseThrow().backend).isEqualTo("api");
+        // Falling through to the cloud branch would try to start an Anthropic session for a
+        // GPT flow.
+        verifyNoInteractions(launcher);
+    }
+
+    @Test
+    void aGptModelWithNoKeyFallsBackRatherThanClaimingTheApiBackend() {
+        when(compiler.compile(any())).thenReturn(flowOnModel("gpt-5"));
+        when(clientProvider.backend()).thenReturn("local");
+
+        RunService svc = serviceWithRealRegistry("");
+        RunSummary summary = svc.start(flow("f1"));
+
+        assertThat(svc.get(summary.id()).orElseThrow().backend).isEqualTo("local");
+    }
 }
