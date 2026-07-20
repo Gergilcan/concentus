@@ -58,6 +58,12 @@ public class AgentRun {
      * rows to the prompt again.
      */
     public volatile boolean apiContextPrepared = false;
+    /**
+     * MCP clients for the api backend, one per server, kept for the life of the run. The MCP
+     * handshake is per session, so reconnecting each turn would pay it repeatedly and churn
+     * sessions server-side.
+     */
+    public final Map<String, com.concentus.llm.McpClient> mcpClients = new ConcurrentHashMap<>();
 
     // --- local (claude CLI) run state ---
     public volatile CompiledFlow compiled;

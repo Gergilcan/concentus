@@ -4,6 +4,7 @@ import com.concentus.config.AgentSpec;
 import com.concentus.llm.ChatTypes;
 import com.concentus.llm.LlmException;
 import com.concentus.llm.LlmProvider;
+import com.concentus.llm.McpClient;
 import com.concentus.llm.ProviderRegistry;
 import com.concentus.model.NodeExec;
 import com.concentus.model.RunEvent;
@@ -13,8 +14,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Runs a compiled flow against any chat-completions provider.
@@ -27,13 +31,14 @@ import java.util.List;
  * delegation chains drawn on the canvas work here exactly as they do locally — a reviewer behind
  * an engineer reviews that engineer's work, not the flow's work in general.
  *
- * <p><b>Not supported yet:</b> file editing, bash and MCP — none of which is impossible here, since
- * every provider supports function calling. MCP is an open protocol and reads as Claude-only only
- * because the existing implementation registers servers through {@code claude mcp add}; file tools
- * would reuse the containment {@link ContextFolderResolver} already provides. Bash is the one held
- * back on purpose: flows can be triggered by public webhooks, so model-generated shell commands on
- * the host is a remote-code-execution path, and that wants an explicit design decision rather than
- * a default.
+ * <p>Agents also get file tools (confined to their context folders) and their MCP servers' tools,
+ * both as ordinary function calls.
+ *
+ * <p><b>Bash is deliberately absent.</b> Flows can be triggered by public webhooks, so
+ * model-generated shell commands on the host is a remote-code-execution path. Claude Code carries
+ * its own permission model and a trust boundary the user accepted by installing it; neither
+ * transfers when this app spawns the process. Doing it safely needs an isolation boundary, which
+ * is a design decision rather than a default.
  */
 @Component
 public class ApiAgentExecutor {
@@ -46,14 +51,19 @@ public class ApiAgentExecutor {
     private final ProviderRegistry providers;
     private final RagContextInjector ragInjector;
     private final ObjectMapper mapper;
+    private final FileTools fileTools;
+    private final ContextFolderResolver contextFolders;
     private final int maxTurns;
 
     public ApiAgentExecutor(ProviderRegistry providers, RagContextInjector ragInjector,
-                            ObjectMapper mapper,
+                            ObjectMapper mapper, FileTools fileTools,
+                            ContextFolderResolver contextFolders,
                             @Value("${llm.max-turns-per-agent:12}") int maxTurns) {
         this.providers = providers;
         this.ragInjector = ragInjector;
         this.mapper = mapper;
+        this.fileTools = fileTools;
+        this.contextFolders = contextFolders;
         this.maxTurns = maxTurns > 0 ? maxTurns : MAX_TURNS_PER_AGENT;
     }
 
@@ -115,9 +125,13 @@ public class ApiAgentExecutor {
         LlmProvider provider = providers.forModel(spec.model.id)
                 .orElseThrow(() -> new LlmException("none", unconfiguredMessage(spec.model.id)));
 
-        List<ChatTypes.ToolSpec> tools = depth >= MAX_DELEGATION_DEPTH
-                ? List.of()
-                : delegationTools(flow, spec);
+        // Delegation is capped by depth; file and MCP tools are not — an agent deep in a chain
+        // still needs to do its own work.
+        List<ChatTypes.ToolSpec> tools = new ArrayList<>();
+        if (depth < MAX_DELEGATION_DEPTH) tools.addAll(delegationTools(flow, spec));
+        List<Path> folders = contextFoldersFor(run, spec);
+        tools.addAll(fileTools.toolsFor(folders));
+        Map<String, McpClient> mcpByTool = mcpToolsFor(run, spec, tools);
 
         List<ChatTypes.ChatMessage> messages = new ArrayList<>();
         messages.add(ChatTypes.ChatMessage.user(task));
@@ -139,7 +153,7 @@ public class ApiAgentExecutor {
 
             messages.add(ChatTypes.ChatMessage.assistant(reply.text(), reply.toolCalls()));
             for (ChatTypes.ToolCall call : reply.toolCalls()) {
-                String result = executeDelegation(run, flow, spec, call, depth);
+                String result = executeTool(run, flow, spec, call, depth, folders, mcpByTool);
                 messages.add(ChatTypes.ChatMessage.toolResult(call.id(), result));
             }
         }
@@ -149,6 +163,77 @@ public class ApiAgentExecutor {
                 spec.name + " stopped after " + maxTurns + " turns without finishing.",
                 spec.name, spec.nodeId));
         return lastText;
+    }
+
+    /**
+     * Routes one tool call to whichever kind of tool it is.
+     *
+     * <p>Every branch returns text rather than throwing: a tool the model got wrong should let it
+     * correct itself on the next turn, not end the run.
+     */
+    private String executeTool(AgentRun run, CompiledFlow flow, AgentSpec spec,
+                               ChatTypes.ToolCall call, int depth, List<Path> folders,
+                               Map<String, McpClient> mcpByTool) {
+        if (fileTools.isFileTool(call.name())) {
+            if (folders.isEmpty()) {
+                return "No context folders are configured for this agent, so file tools are unavailable.";
+            }
+            run.emit(RunEvent.of("tool_use", call.name(), spec.name, spec.nodeId));
+            return fileTools.execute(call.name(), call.argumentsJson(), folders);
+        }
+
+        McpClient mcp = mcpByTool.get(call.name());
+        if (mcp != null) {
+            run.emit(RunEvent.of("tool_use", mcp.serverName() + " · " + call.name(),
+                    spec.name, spec.nodeId));
+            try {
+                return mcp.callTool(call.name(), call.argumentsJson());
+            } catch (LlmException e) {
+                return "That tool failed: " + e.getMessage();
+            }
+        }
+
+        return executeDelegation(run, flow, spec, call, depth);
+    }
+
+    /**
+     * The folders this agent may read and write, filtered through the same allowlist the local
+     * backend uses — a model cannot widen its own workspace by asking.
+     */
+    private List<Path> contextFoldersFor(AgentRun run, AgentSpec spec) {
+        return contextFolders.resolve(spec.contextFolders,
+                (path, reason) -> run.emit(RunEvent.of("system",
+                        "Context folder ignored — " + path + ": " + reason, spec.name, spec.nodeId)));
+    }
+
+    /**
+     * Connects to this agent's MCP servers and appends their tools, returning a map from tool
+     * name back to the server that owns it.
+     *
+     * <p>Clients are cached per run: the handshake is per session, so reconnecting every turn
+     * would pay it repeatedly and churn server-side sessions. A server that can't be reached is
+     * reported and skipped — one bad server shouldn't cost the agent its other tools.
+     */
+    private Map<String, McpClient> mcpToolsFor(AgentRun run, AgentSpec spec,
+                                               List<ChatTypes.ToolSpec> tools) {
+        Map<String, McpClient> byTool = new LinkedHashMap<>();
+        for (AgentSpec.McpServerSpec server : spec.mcpServers) {
+            if (server.url == null || server.url.isBlank()) continue;
+            try {
+                McpClient client = run.mcpClients.computeIfAbsent(server.name,
+                        k -> new McpClient(server.name, server.url, server.resolveToken(), mapper));
+                for (ChatTypes.ToolSpec tool : client.listTools()) {
+                    tools.add(tool);
+                    byTool.put(tool.name(), client);
+                }
+            } catch (RuntimeException e) {
+                run.mcpClients.remove(server.name);
+                run.emit(RunEvent.of("system",
+                        "MCP server '" + server.name + "' unavailable: " + e.getMessage(),
+                        spec.name, spec.nodeId));
+            }
+        }
+        return byTool;
     }
 
     /** Runs the delegate named by a tool call and returns its answer as the tool result. */

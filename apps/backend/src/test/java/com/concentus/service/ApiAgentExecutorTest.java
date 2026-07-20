@@ -85,7 +85,11 @@ class ApiAgentExecutorTest {
         when(registry.providerIdForModel(any())).thenReturn(Optional.of("scripted"));
 
         RagContextInjector rag = mock(RagContextInjector.class);
-        executor = new ApiAgentExecutor(registry, rag, new ObjectMapper(), 12);
+        ObjectMapper mapper = new ObjectMapper();
+        // No context roots configured, so file tools stay off for these tests — delegation is
+        // what's under test here; FileToolsTest covers the file side.
+        executor = new ApiAgentExecutor(registry, rag, mapper, new FileTools(mapper),
+                new ContextFolderResolver(""), 12);
 
         run = new AgentRun("run1", "f1", "Flow", "api");
         run.pricing = new PricingTable("", 3.0, 15.0);
@@ -302,7 +306,9 @@ class ApiAgentExecutorTest {
     @Test
     void ragContextIsInjectedOnceNotOnEveryTurn() {
         RagContextInjector rag = mock(RagContextInjector.class);
-        ApiAgentExecutor exec2 = new ApiAgentExecutor(registry, rag, new ObjectMapper(), 12);
+        ObjectMapper m = new ObjectMapper();
+        ApiAgentExecutor exec2 = new ApiAgentExecutor(registry, rag, m, new FileTools(m),
+                new ContextFolderResolver(""), 12);
         run.compiled = flowWithOneSub();
         provider.push(text("a"));
         provider.push(text("b"));

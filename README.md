@@ -211,22 +211,25 @@ backend has neither, so it implements delegation itself and has no sandbox:
 | Tokens + cost per block | ✅ | ✅ | ✅ |
 | SQL / RAG context | ✅ | ✅ | ✅ |
 | Webhooks, cron, versions, retries | ✅ | ✅ | ✅ |
-| **File editing / bash** | ✅ | ✅ | ❌ |
-| **MCP servers** | ✅ | ✅ | ❌ |
-| **Context folders** | ✅ | ❌ | ❌ |
+| **File read / write / edit** | ✅ | ✅ | ✅ |
+| **MCP servers** | ✅ | ✅ | ✅ |
+| **Context folders** | ✅ | ❌ | ✅ |
+| **Bash / arbitrary commands** | ✅ | ✅ | ❌ |
 
-**A flow that edits files must stay on a Claude backend — for now.** The ❌ rows are *not built*
-rather than impossible; every provider supports function calling, so each is reachable as a tool:
+On the `api` backend, file tools and MCP work through ordinary function calling:
 
-- **MCP** is an open protocol. It reads as Claude-only here only because this implementation
-  registers servers through `claude mcp add`. A native MCP client would serve any provider.
-- **File editing** needs `read`/`write`/`edit` tools scoped to an allowlist — the same containment
-  [context folders](#context-folders) already use.
-- **Bash** is the one held back deliberately. Flows can be triggered by public webhooks, so
-  model-generated shell commands on the host is a remote-code-execution path. Claude Code carries
-  its own permission model and a trust boundary you accepted when installing it; neither transfers
-  when this app spawns the process. That wants an explicit decision (container per run, command
-  allowlist, approval gate), not a default.
+- **File tools** (`read_file`, `write_file`, `edit_file`, `list_files`) are offered only to agents
+  that have **context folders**, and every path is checked against them on the real path — so `..`
+  and symlinks can't escape the workspace. An agent with no folders gets no file tools at all,
+  rather than tools that always refuse.
+- **MCP** is an open protocol, so a native client fetches each server's tools and forwards calls.
+  The Claude backends reach the same servers through the CLI instead.
+
+**Bash is deliberately not available on the `api` backend.** Flows can be triggered by public
+webhooks, so model-generated shell commands on the host is a remote-code-execution path. Claude
+Code carries its own permission model and a trust boundary you accepted when installing it;
+neither transfers when this app spawns the process. Doing it safely means an isolation boundary
+(container per run, or a command allowlist) — a design decision rather than a default.
 
 ### Configuring providers
 
