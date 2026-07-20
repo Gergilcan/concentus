@@ -23,25 +23,36 @@ public class ProviderController {
 
     private final ProviderRegistry registry;
     private final PricingTable pricing;
+    private final com.concentus.execution.ExecutionBackends backends;
 
-    public ProviderController(ProviderRegistry registry, PricingTable pricing) {
+    public ProviderController(ProviderRegistry registry, PricingTable pricing,
+                              com.concentus.execution.ExecutionBackends backends) {
         this.registry = registry;
         this.pricing = pricing;
+        this.backends = backends;
     }
 
     /** USD per million tokens for one model. */
     public record ModelRate(double input, double output) {
     }
 
+    /** An execution backend and whether it can run right now. */
+    public record BackendStatus(String id, String name, boolean available) {
+    }
+
     /**
-     * Configured providers plus the per-model rates. Never includes credentials.
+     * Configured providers, the per-model rates, and which execution backends are live. Never
+     * includes credentials.
      *
      * @param pricing  rates for models named in {@code pricing.models}
      * @param fallback the rate applied to any model not listed there
+     * @param backends execution backends and their availability, so the designer can avoid
+     *                 offering models this deployment cannot actually run
      */
     public record ProvidersResponse(List<String> configured,
                                     Map<String, ModelRate> pricing,
-                                    ModelRate fallback) {
+                                    ModelRate fallback,
+                                    List<BackendStatus> backends) {
     }
 
     @GetMapping("/providers")
@@ -50,7 +61,12 @@ public class ProviderController {
         pricing.configuredRates().forEach((model, rate) ->
                 rates.put(model, new ModelRate(rate.inputUsdPerMTok(), rate.outputUsdPerMTok())));
         PricingTable.Rate fb = pricing.fallbackRate();
+
+        List<BackendStatus> status = backends.all().stream()
+                .map(b -> new BackendStatus(b.id(), b.displayName(), b.isAvailable()))
+                .toList();
+
         return new ProvidersResponse(registry.available(), rates,
-                new ModelRate(fb.inputUsdPerMTok(), fb.outputUsdPerMTok()));
+                new ModelRate(fb.inputUsdPerMTok(), fb.outputUsdPerMTok()), status);
     }
 }

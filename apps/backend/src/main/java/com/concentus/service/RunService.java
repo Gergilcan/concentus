@@ -27,6 +27,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import com.concentus.execution.ExecutionBackends;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
@@ -45,7 +47,7 @@ public class RunService {
     private final AnthropicClientProvider clientProvider;
     private final FlowCompiler compiler;
     private final ManagedFlowLauncher launcher;
-    private final LocalClaudeExecutor localExecutor;
+    private final ExecutionBackends backends;
     private final CloudStreamEventHandler cloudEvents;
     private final RunStore runStore;
     private final com.fasterxml.jackson.databind.ObjectMapper mapper;
@@ -54,14 +56,13 @@ public class RunService {
     private final int maxRetainedRuns;
     private final PricingTable pricing;
     private final ProviderRegistry apiProviders;
-    private final ApiAgentExecutor apiExecutor;
     private final double inputUsdPerMTok;
     private final double outputUsdPerMTok;
     private final ConcurrentHashMap<String, AgentRun> runs = new ConcurrentHashMap<>();
 
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
-                      ManagedFlowLauncher launcher, LocalClaudeExecutor localExecutor, PricingTable pricing,
-                      ProviderRegistry apiProviders, ApiAgentExecutor apiExecutor,
+                      ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
+                      ProviderRegistry apiProviders,
                       CloudStreamEventHandler cloudEvents,
                       RunStore runStore, com.fasterxml.jackson.databind.ObjectMapper mapper,
                       NotificationService notifier,
@@ -73,10 +74,9 @@ public class RunService {
         this.clientProvider = clientProvider;
         this.compiler = compiler;
         this.launcher = launcher;
-        this.localExecutor = localExecutor;
+        this.backends = backends;
         this.pricing = pricing;
         this.apiProviders = apiProviders;
-        this.apiExecutor = apiExecutor;
         this.cloudEvents = cloudEvents;
         this.runStore = runStore;
         this.mapper = mapper;
@@ -272,15 +272,15 @@ public class RunService {
         }
     }
 
-    /** Runs one local turn, then snapshots the run and notifies if it failed. */
     /** One turn on whichever turn-based backend this run uses. */
     private void runLocalTurn(AgentRun run, String prompt) {
         try {
-            if ("api".equals(run.backend)) {
-                apiExecutor.runTurn(run, run.compiled, prompt);
-            } else {
-                localExecutor.runTurn(run, run.compiled, prompt);
-            }
+            // Dispatched through the registry rather than an if-chain, so adding a backend — or
+            // moving one behind a network call — does not mean editing this method.
+            backends.byId(run.backend)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "No execution backend '" + run.backend + "' is registered."))
+                    .runTurn(run, run.compiled, prompt);
         } finally {
             runStore.persist(run);
             if ("ERROR".equals(run.status)) {
@@ -359,13 +359,11 @@ public class RunService {
         AgentRun run = require(runId);
 
         if ("local".equals(run.backend) || "api".equals(run.backend)) {
-            // The api backend has no child process to kill — the loop checks the run status
-            // between turns, so marking it terminated is what stops it.
-            if ("local".equals(run.backend)) {
-                localExecutor.stop(run);
-            } else {
-                run.status = "TERMINATED";
-            }
+            // Each backend knows how to stop itself: the CLI kills a child process, while the api
+            // backend has none and relies on the loop seeing TERMINATED between turns.
+            backends.byId(run.backend).ifPresentOrElse(
+                    b -> b.stop(run),
+                    () -> run.status = "TERMINATED");
             run.emit(RunEvent.of("status", "terminated"));
             runStore.persist(run);
             return;

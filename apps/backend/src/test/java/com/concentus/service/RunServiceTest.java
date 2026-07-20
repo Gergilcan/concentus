@@ -49,14 +49,26 @@ class RunServiceTest {
 
     private final List<RunService> created = new ArrayList<>();
 
+    /**
+     * The real adapters over the mocked executors, so these tests still assert on what actually
+     * gets executed rather than on the registry indirection in front of it.
+     */
+    private com.concentus.execution.ExecutionBackends backendsOver(com.concentus.llm.ProviderRegistry providers) {
+        com.concentus.support.LocalClaudeSupport support = mock(com.concentus.support.LocalClaudeSupport.class);
+        when(support.command()).thenReturn(java.util.Optional.of("claude"));
+        return new com.concentus.execution.ExecutionBackends(List.of(
+                new com.concentus.execution.ClaudeCliExecutionBackend(localExecutor, support),
+                new com.concentus.execution.ApiExecutionBackend(providers, apiExecutor)));
+    }
+
     @AfterEach
     void shutdownAll() {
         created.forEach(RunService::shutdown);
     }
 
     private RunService newService(int maxConcurrent, int queueCapacity, int maxRetainedRuns) {
-        RunService s = new RunService(clientProvider, compiler, launcher, localExecutor, new PricingTable("", 3.0, 15.0),
-                apiProviders, apiExecutor,
+        RunService s = new RunService(clientProvider, compiler, launcher, backendsOver(apiProviders),
+                new PricingTable("", 3.0, 15.0), apiProviders,
                 new CloudStreamEventHandler(), runStore, mapper,
                 notifier, maxConcurrent, queueCapacity, maxRetainedRuns, 3.0, 15.0);
         created.add(s);
@@ -507,8 +519,8 @@ class RunServiceTest {
         com.concentus.llm.ProviderRegistry real = new com.concentus.llm.ProviderRegistry(
                 mapper, openaiKey, "https://api.openai.com/v1", "", "https://api.deepseek.com/v1",
                 "", "", "us-central1", "", "", "");
-        RunService s = new RunService(clientProvider, compiler, launcher, localExecutor,
-                new PricingTable("", 3.0, 15.0), real, apiExecutor,
+        RunService s = new RunService(clientProvider, compiler, launcher, backendsOver(real),
+                new PricingTable("", 3.0, 15.0), real,
                 new CloudStreamEventHandler(), runStore, mapper, notifier, 4, 8, 10, 3.0, 15.0);
         created.add(s);
         return s;
