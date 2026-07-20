@@ -121,6 +121,9 @@ export const api = {
   // auth
   authStatus: () => req<AuthStatus>('/auth/status'),
 
+  /** Model providers with a credential configured. Never includes the credentials themselves. */
+  listProviders: () => req<{ configured: string[] }>('/llm/providers'),
+
   // rag
   ragStatus: () => req<RagStatus>('/rag/status'),
   ragPreview: (source: SqlSourceInput) =>

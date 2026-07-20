@@ -3,6 +3,7 @@ import { api } from '../api/client.ts'
 import type { AgentNodeData, LibraryAgent } from '../api/types.ts'
 import { EFFORT_OPTIONS } from '../constants.ts'
 import { Field, SelectField, TextArea } from './fields.tsx'
+import { ModelField } from './ModelField.tsx'
 import styles from './panels.module.scss'
 
 interface Props {
@@ -51,14 +52,7 @@ export function AgentInspector({ data, set }: Props) {
         <option value="coordinator">coordinator</option>
         <option value="subagent">subagent</option>
       </SelectField>
-      <Field label="Model" value={data.model} onChange={(v) => set({ model: v })} />
-      <p className={styles.hint}>
-        The model chooses the engine. <b>claude-*</b> runs on your Claude subscription or the cloud
-        API. Any other configured model (<code>gpt-*</code>, <code>gemini-*</code>,{' '}
-        <code>deepseek-*</code>, …) runs on the API backend, which supports delegation, SQL context,
-        MCP servers, and file read/write/edit within this agent's <b>context folders</b> — but{' '}
-        <b>not bash</b>.
-      </p>
+      <ModelField value={data.model} onChange={(v) => set({ model: v })} />
       <SelectField label="Effort" value={data.effort} onChange={(v) => set({ effort: v })}>
         {EFFORT_OPTIONS.map((v) => (
           <option key={v} value={v}>
@@ -102,8 +96,9 @@ export function AgentInspector({ data, set }: Props) {
         Folders this agent should treat as its source of truth — without them it only sees a scratch
         workspace and guesses from names. Each path must sit under a directory configured in{' '}
         <code>local.context-roots</code> on the backend, otherwise it's skipped and the reason is
-        shown in the run console. <b>Local (subscription) runs only</b> — cloud runs execute in a
-        sandbox with no access to your machine.
+        shown in the run console. Used by <b>Claude local</b> and <b>API</b> runs; on API runs these
+        folders are also what the agent's file tools may read and write. Cloud runs execute in
+        Anthropic's sandbox with no access to your machine.
       </p>
     </>
   )

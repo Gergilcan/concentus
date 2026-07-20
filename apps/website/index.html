@@ -196,11 +196,12 @@
   .card .k { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--cc, var(--accent)); }
 
   /* run-anywhere split */
-  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 44px; }
+  .split { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; }
   .lane { border: 1px solid var(--line); border-radius: var(--r); padding: 28px; background: color-mix(in srgb, var(--panel) 55%, transparent); position: relative; overflow: hidden; }
   .lane .tag { font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }
   .lane.local .tag { color: var(--mcp); }
   .lane.cloud .tag { color: var(--accent); }
+  .lane.byo .tag { color: var(--repo); }
   .lane h3 { font-size: 1.4rem; font-weight: 750; margin-top: 10px; }
   .lane p { color: var(--muted); margin-top: 12px; font-size: 0.98rem; }
   .lane ul { list-style: none; padding: 0; margin: 18px 0 0; display: flex; flex-direction: column; gap: 10px; }
@@ -370,10 +371,11 @@
   <!-- ============================ strip ============================ -->
   <section class="strip">
     <div class="wrap">
-      <span>Powered by <b>Claude</b></span><span class="sep">/</span>
-      <span><b>Opus 4.8</b> &amp; <b>Sonnet 5</b></span><span class="sep">/</span>
-      <span>the <b>Claude CLI</b></span><span class="sep">/</span>
-      <span>Anthropic <b>Managed Agents</b></span>
+      <span>Runs on <b>Claude</b></span><span class="sep">/</span>
+      <span><b>GPT</b></span><span class="sep">/</span>
+      <span><b>Gemini</b></span><span class="sep">/</span>
+      <span><b>DeepSeek</b></span><span class="sep">/</span>
+      <span>or a model on <b>your own hardware</b></span>
     </div>
   </section>
 
@@ -472,8 +474,8 @@
     <div class="wrap">
       <div class="band-head" data-reveal>
         <span class="eyebrow">Run anywhere</span>
-        <h2>Your subscription today. The cloud when you need it.</h2>
-        <p>The same flow runs both ways — flip the switch with a single environment variable.</p>
+        <h2>Your subscription, the cloud, or any model you like.</h2>
+        <p>The same flow runs every way — the model you pick on the coordinator decides which.</p>
       </div>
 
       <div class="split">
@@ -498,6 +500,18 @@
             <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> One coordinator + a versioned sub-agent roster</li>
             <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> Repos mounted, tools sandboxed</li>
             <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> Same canvas, no rewrite</li>
+          </ul>
+        </div>
+        <div class="lane byo" data-reveal>
+          <div class="glowline"></div>
+          <div class="tag">Any model · optional</div>
+          <h3>GPT, Gemini, DeepSeek — or a model on your own box</h3>
+          <p>Name a different model on an agent and the flow runs against that provider's API instead. Ollama and vLLM speak the same protocol, so open-weight models run entirely on your hardware.</p>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> Delegation chains, SQL context, MCP, file edits</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> Mix models in one flow — cheap workers, strong lead</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> Local models need no API key at all</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> Bash stays Claude-only, by design</li>
           </ul>
         </div>
       </div>
