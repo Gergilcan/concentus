@@ -43,6 +43,17 @@ services:
       APP_DATA_DIR: /data
       # A) token from `claude setup-token` (read from .env). Not an API key.
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # Other model providers. Only variables named here reach the container, so a key set in
+      # .env but not listed would silently do nothing.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      VERTEX_PROJECT: ${VERTEX_PROJECT:-}
+      VERTEX_REGION: ${VERTEX_REGION:-us-central1}
+      VERTEX_ACCESS_TOKEN: ${VERTEX_ACCESS_TOKEN:-}
+      LLM_OPENAI_COMPATIBLE: ${LLM_OPENAI_COMPATIBLE:-}
+      LLM_MODEL_PREFIXES: ${LLM_MODEL_PREFIXES:-}
       # Persistence — "db" is the service above, resolved on the compose network.
       PERSIST_DB_URL: jdbc:postgresql://db:5432/concentus
       PERSIST_DB_USER: concentus
