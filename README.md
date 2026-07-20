@@ -260,12 +260,17 @@ The model picker shows each model's rate, and a run reports estimated cost per b
 all read from `pricing.models` (`id:inputPerMTok:outputPerMTok`), so the number you see while
 choosing is the one the estimate uses.
 
-**Only Claude and Gemini rates ship configured**, because those were verified against published
-pricing. Add your own for OpenAI, DeepSeek or anything else:
+Rates for Claude, OpenAI, Gemini and DeepSeek ship configured, taken from each vendor's published
+pricing. **They change** — re-check rather than trusting them indefinitely, and add anything you
+use that isn't listed:
 
 ```properties
-PRICING_MODELS=...,gpt-5:<in>:<out>,deepseek-chat:<in>:<out>
+PRICING_MODELS=...,my-model:<inputPerMTok>:<outputPerMTok>
 ```
+
+One known imprecision: a cache read is weighted at 0.1× input, which matches Anthropic and OpenAI
+exactly. DeepSeek's cache hits are far cheaper (~0.02×), so cached DeepSeek usage is over-estimated
+rather than under.
 
 An unlisted model falls back to the flat `pricing.input-usd-per-mtok` / `output-usd-per-mtok` pair,
 and the picker says so rather than showing a figure that isn't real. Runs on a Claude subscription

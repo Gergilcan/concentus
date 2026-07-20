@@ -31,19 +31,35 @@ export const MODEL_GROUPS: {
     label: 'OpenAI — API key, billed per token',
     providerId: 'openai',
     hint: 'Needs OPENAI_API_KEY. A ChatGPT subscription does not grant API access.',
-    models: ['gpt-5', 'gpt-5-mini', 'o3'],
+    models: [
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+      'gpt-5.5',
+      'gpt-5.4',
+      'gpt-5.4-mini',
+      'gpt-5.4-nano',
+    ],
   },
   {
     label: 'Google Gemini — API key, billed per token',
     providerId: 'gemini',
     hint: 'Needs GEMINI_API_KEY (or VERTEX_* for Vertex AI).',
-    models: ['gemini-3.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+    models: [
+      'gemini-3.5-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-2.5-pro',
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+    ],
   },
   {
+    // deepseek-chat / deepseek-reasoner retire on 2026-07-24, so they are deliberately not
+    // offered — picking one today would break within days.
     label: 'DeepSeek — API key, billed per token',
     providerId: 'deepseek',
-    hint: 'Needs DEEPSEEK_API_KEY.',
-    models: ['deepseek-chat', 'deepseek-reasoner'],
+    hint: 'Needs DEEPSEEK_API_KEY. Cache hits are far cheaper than the estimate assumes, so real cost runs below the figure shown.',
+    models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
   },
 ]
 
