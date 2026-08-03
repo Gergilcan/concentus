@@ -29,7 +29,7 @@ class McpDefStoreTest {
 
     @Test
     void savingWithNoIdAssignsOneWithTheMcpPrefix() {
-        McpDef saved = store.save(new McpDef(null, "GitHub", "https://mcp.example.com", "GH_TOKEN"));
+        McpDef saved = store.save(new McpDef(null, "GitHub", "https://mcp.example.com", "GH_TOKEN", null));
 
         assertThat(saved.id()).startsWith("mcp_");
         assertThat(store.get(saved.id())).contains(saved);
@@ -37,8 +37,8 @@ class McpDefStoreTest {
 
     @Test
     void savingWithAnExistingIdUpdatesInPlaceRatherThanCreatingANewRecord() {
-        McpDef saved = store.save(new McpDef(null, "GitHub", "https://a.example.com", null));
-        McpDef updated = store.save(new McpDef(saved.id(), "GitHub v2", "https://b.example.com", null));
+        McpDef saved = store.save(new McpDef(null, "GitHub", "https://a.example.com", null, null));
+        McpDef updated = store.save(new McpDef(saved.id(), "GitHub v2", "https://b.example.com", null, null));
 
         assertThat(updated.id()).isEqualTo(saved.id());
         assertThat(store.list()).hasSize(1);
@@ -47,8 +47,8 @@ class McpDefStoreTest {
 
     @Test
     void listIsSortedByNameCaseInsensitively() {
-        store.save(new McpDef(null, "zebra", "https://z.example.com", null));
-        store.save(new McpDef(null, "Apple", "https://a.example.com", null));
+        store.save(new McpDef(null, "zebra", "https://z.example.com", null, null));
+        store.save(new McpDef(null, "Apple", "https://a.example.com", null, null));
 
         List<String> names = store.list().stream().map(McpDef::name).toList();
         assertThat(names).containsExactly("Apple", "zebra");
@@ -56,7 +56,7 @@ class McpDefStoreTest {
 
     @Test
     void deleteRemovesTheRecord() {
-        McpDef saved = store.save(new McpDef(null, "GitHub", "https://a.example.com", null));
+        McpDef saved = store.save(new McpDef(null, "GitHub", "https://a.example.com", null, null));
 
         assertThat(store.delete(saved.id())).isTrue();
         assertThat(store.get(saved.id())).isEmpty();

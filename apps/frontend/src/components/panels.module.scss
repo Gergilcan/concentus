@@ -373,3 +373,60 @@
   margin-bottom: 10px;
   word-break: break-word;
 }
+
+.checkField {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  font-size: 12px;
+  color: t.$text;
+  cursor: pointer;
+
+  input {
+    width: 14px;
+    height: 14px;
+    accent-color: t.$accent;
+    cursor: pointer;
+  }
+}
+
+// Results of browsing a group/organization. Scrolls: an org can have hundreds of repos and the
+// inspector is a narrow column.
+.repoList {
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid t.$border;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.repoItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(42, 49, 64, 0.6);
+  color: t.$text;
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background: t.$panel-2;
+  }
+}
+
+.repoMeta {
+  color: t.$muted;
+  font-size: 11px;
+  white-space: nowrap;
+}

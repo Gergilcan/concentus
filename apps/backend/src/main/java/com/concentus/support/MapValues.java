@@ -42,6 +42,22 @@ public final class MapValues {
         return out;
     }
 
+    /**
+     * A boolean. Accepts a real boolean or the string form a hand-edited flow may carry; anything
+     * unrecognised falls back rather than silently reading as false, so a typo in a checkbox
+     * doesn't quietly disable a condition.
+     */
+    public static boolean bool(Map<String, Object> d, String key, boolean fallback) {
+        Object v = d.get(key);
+        if (v instanceof Boolean b) return b;
+        if (v instanceof String s && !s.isBlank()) {
+            String t = s.trim();
+            if (t.equalsIgnoreCase("true")) return true;
+            if (t.equalsIgnoreCase("false")) return false;
+        }
+        return fallback;
+    }
+
     public static long lng(Map<String, Object> d, String key, long fallback) {
         Object v = d.get(key);
         if (v instanceof Number n) return n.longValue();

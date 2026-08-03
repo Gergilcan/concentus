@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.ts'
-import type { McpServerInfo } from '../api/types.ts'
+import type { McpCapabilities, McpServerInfo } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
 import styles from './panels.module.scss'
 
 interface Props {
   name: string
   url: string
-  tokenEnv?: string
+  credentialId?: string
+  authHeader?: string
 }
 
 /**
@@ -15,8 +16,9 @@ interface Props {
  * "Add & authorize" — no terminal needed. Used by the MCP node inspector and the
  * Resources → MCP Servers panel.
  */
-export function McpClaudeActions({ name, url, tokenEnv }: Props) {
+export function McpClaudeActions({ name, url, credentialId, authHeader }: Props) {
   const [servers, setServers] = useState<McpServerInfo[]>([])
+  const [caps, setCaps] = useState<McpCapabilities | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -27,6 +29,20 @@ export function McpClaudeActions({ name, url, tokenEnv }: Props) {
       .catch(() => setServers([]))
   }
   useEffect(load, [])
+
+  // Whether an OAuth sign-in can complete here at all. False in a container, where there is no
+  // terminal and no browser — offering the button anyway produces a sign-in that appears to start
+  // and silently never finishes.
+  useEffect(() => {
+    let alive = true
+    void api
+      .mcpCapabilities()
+      .then((c) => alive && setCaps(c))
+      .catch(() => alive && setCaps({ interactiveLogin: false, hint: "" }))
+    return () => {
+      alive = false
+    }
+  }, [])
 
   const current = servers.find((s) => s.name.toLowerCase() === name.trim().toLowerCase())
   const listed = !!current
@@ -40,7 +56,7 @@ export function McpClaudeActions({ name, url, tokenEnv }: Props) {
     setBusy(true)
     setStatus(null)
     try {
-      const r = await api.addMcpServer({ name, url, tokenEnv })
+      const r = await api.addMcpServer({ name, url, credentialId, authHeader })
       setStatus(r.status)
       load()
     } catch (e) {
@@ -54,7 +70,7 @@ export function McpClaudeActions({ name, url, tokenEnv }: Props) {
     setBusy(true)
     setStatus('Starting sign-in…')
     try {
-      if (!listed) await api.addMcpServer({ name, url, tokenEnv })
+      if (!listed) await api.addMcpServer({ name, url, credentialId, authHeader })
       const r = await api.loginMcpServer(name)
       setStatus(r.status)
       load()
@@ -98,14 +114,21 @@ export function McpClaudeActions({ name, url, tokenEnv }: Props) {
       </div>
 
       <div className={styles.mcpBtns}>
-        {!connected && (
+        {/* The OAuth button only exists where a sign-in can actually complete. In a container it
+            would start something that never finishes, so the token route becomes the primary
+            action instead of a fallback. */}
+        {!connected && caps?.interactiveLogin && (
           <button className={styles.previewBtn} onClick={() => void authorize()} disabled={busy || !canAct}>
             {busy ? 'Working…' : listed ? 'Authorize (OAuth)' : 'Add & authorize'}
           </button>
         )}
         {!listed && (
-          <button className={styles.linkBtn} onClick={() => void add()} disabled={busy || !canAct}>
-            Add without sign-in
+          <button
+            className={caps?.interactiveLogin ? styles.linkBtn : styles.previewBtn}
+            onClick={() => void add()}
+            disabled={busy || !canAct}
+          >
+            {caps?.interactiveLogin ? 'Add without sign-in' : busy ? 'Working…' : 'Add with token'}
           </button>
         )}
         {listed && (
@@ -118,10 +141,15 @@ export function McpClaudeActions({ name, url, tokenEnv }: Props) {
         </button>
       </div>
 
+      {caps && !caps.interactiveLogin && (
+        <div className={styles.previewMeta}>
+          {caps.hint || 'No desktop here, so OAuth cannot complete — use an access token.'}
+        </div>
+      )}
       {failed && (
         <div className={styles.previewMeta}>
-          Some servers (e.g. GitHub) don't support OAuth sign-in — they need a token instead. Set a
-          Token env var above and use “Add without sign-in”.
+          GitHub and GitLab both issue long-lived access tokens that need no sign-in. Store one
+          under <b>Resources → Credentials</b>, select it above, and use “Add with token”.
         </div>
       )}
       {status && <div className={styles.previewMeta}>{status}</div>}

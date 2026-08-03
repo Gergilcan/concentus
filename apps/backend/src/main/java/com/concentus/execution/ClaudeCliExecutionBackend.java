@@ -38,9 +38,10 @@ public class ClaudeCliExecutionBackend implements ExecutionBackend {
 
     @Override
     public boolean isAvailable() {
-        // Reported from whether the CLI is actually resolvable, so a missing install shows up in
-        // the designer rather than as a failed run.
-        return support.command().isPresent();
+        // available(), not command(): command() falls back to bare "claude" for PATH resolution and
+        // so is never empty, which would report this backend usable on a machine with no CLI and no
+        // login at all. available() checks for both.
+        return support.available();
     }
 
     @Override

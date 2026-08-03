@@ -68,13 +68,26 @@ export interface ModelRate {
   output: number
 }
 
-export interface ProvidersResponse {
-  /** Providers with a credential configured, so usable right now. */
-  configured: string[]
+/** An execution backend and whether it can run right now. */
+export interface BackendStatus {
+  /** `local` (claude CLI on a subscription) or `cloud` (ANTHROPIC_API_KEY). */
+  id: string
+  name: string
+  available: boolean
+}
+
+/**
+ * What the designer knows about models before a run.
+ *
+ * There is no provider list: Claude is the only model family, so the question is which Claude
+ * credential is present — which is what `backends` answers.
+ */
+export interface ModelCatalog {
   /** Rates for models named in `pricing.models`, keyed by model id. */
   pricing: Record<string, ModelRate>
   /** Rate applied to any model not listed above. */
   fallback: ModelRate
+  backends: BackendStatus[]
 }
 
 export interface NodeExecReport {
@@ -93,13 +106,72 @@ export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'input'
 
 export type InputNodeData = {
   kind: 'input'
-  mode: 'manual' | 'prompt' | 'cron' | 'webhook'
+  mode: 'manual' | 'prompt' | 'cron' | 'webhook' | 'mail'
   prompt: string
   cron: string
   /** Secret issued by the provider; we verify against it, we never mint it. */
   secret: string
   /** Header (or query param) carrying the signature/token, e.g. `Linear-Signature`. */
   authParam: string
+
+  // --- mail mode (IMAP) ---------------------------------------------------
+  // Folders, flags and read state live in the mail store, so this is IMAP rather than SMTP:
+  // SMTP only ever hands over a message, with nowhere to look and nothing to move it into.
+  // Flows saved before mail mode existed simply omit all of these.
+  mailHost?: string
+  mailPort?: number
+  mailSsl?: boolean
+  mailUsername?: string
+  /**
+   * The id of a stored credential — never the password.
+   *
+   * A reference rather than the value, even encrypted, because every flow save snapshots the
+   * flow's JSON into version history and duplicating a flow copies its nodes: a secret here would
+   * fan out into every revision and every copy.
+   */
+  mailCredentialId?: string
+  /**
+   * How the mailbox authenticates. Microsoft 365 refuses a password over IMAP outright — Basic
+   * authentication is retired there — so the mode is chosen per node rather than guessed from the
+   * host, which would silently break a self-hosted server that happens to be behind Exchange.
+   */
+  mailAuthMode?: 'password' | 'microsoft-oauth'
+  mailTenantId?: string
+  mailClientId?: string
+  mailFolder?: string
+  // Conditions. Blank/false means "don't filter on this".
+  mailFrom?: string
+  mailSubjectContains?: string
+  mailBodyContains?: string
+  mailUnseenOnly?: boolean
+  mailFlaggedOnly?: boolean
+  mailWithAttachmentsOnly?: boolean
+  mailPollSeconds?: number
+  mailMaxPerPoll?: number
+  // What happens to a message once its run has started.
+  mailMoveToFolder?: string
+  mailMarkSeen?: boolean
+  mailFlagAfter?: boolean
+}
+
+/** What a person has to do to finish a Microsoft mailbox sign-in, plus the handle we poll with. */
+export interface MailDeviceCode {
+  deviceCode: string
+  userCode: string
+  verificationUri: string
+  message: string
+  expiresIn: number
+  /** Seconds Entra asks us to wait between polls. Polling faster earns a `slow_down`. */
+  interval: number
+}
+
+export interface MailSignInResult {
+  /** True while the person is still entering the code — normal, not a failure. */
+  pending: boolean
+  ok?: boolean
+  error?: string
+  credentialId?: string
+  label?: string
 }
 
 export type AgentNodeData = {
@@ -119,19 +191,38 @@ export type AgentNodeData = {
 }
 
 export type McpNodeData = {
-  kind: 'mcp'
+  kind: "mcp"
   name: string
   url: string
-  tokenEnv: string
+  credentialId: string
+  /**
+   * Header the credential is sent in.
+   *
+   * Blank means `Authorization` with a `Bearer ` prefix, which most MCP servers expect. GitLab
+   * reads its access tokens from `PRIVATE-TOKEN`, unprefixed, so this cannot be fixed globally.
+   */
+  authHeader?: string
 }
 
 export type RepoNodeData = {
-  kind: 'repo'
-  provider: 'github' | 'gitlab'
+  kind: "repo"
+  provider: "github" | "gitlab"
   url: string
-  tokenEnv: string
+  credentialId: string
   mountPath: string
   branch: string
+  /** Self-hosted GitLab or GitHub Enterprise. Blank = the public instance. */
+  baseUrl?: string
+  /**
+   * A GitHub organization or GitLab group path. When set, this one node stands for every
+   * repository inside it, resolved when the run starts — so a repository added to the group next
+   * week is picked up without editing the flow.
+   */
+  group?: string
+  /** Restricts a group to these repositories, by full name. Empty means all of them. */
+  only?: string[]
+  /** Archived repositories are read-only, so they're excluded from a group by default. */
+  includeArchived?: boolean
 }
 
 export type SqlNodeData = {
@@ -139,7 +230,7 @@ export type SqlNodeData = {
   label: string
   jdbcUrl: string
   username: string
-  passwordEnv: string
+  credentialId: string
   query: string
   maxRows: number
 }
@@ -218,18 +309,117 @@ export type DatabaseDef = {
   label: string
   jdbcUrl: string
   username: string
-  passwordEnv: string
+  credentialId: string
 }
 
 export type McpDef = {
   id?: string
   name: string
   url: string
-  tokenEnv: string
+  credentialId: string
+  authHeader?: string
 }
 
 export interface McpServerInfo {
   name: string
   url: string
   status: string
+}
+
+// --- Sign-in ---------------------------------------------------------------
+
+export interface SignedInUser {
+  userId: string
+  email: string
+  organizationId: string
+  role: string
+}
+
+/**
+ * Whether sign-in is required and, if so, who is signed in.
+ *
+ * `authEnabled: false` is the escape hatch for local development, in which case the API is open
+ * and every request resolves to the default organization.
+ */
+export interface SessionInfo {
+  authEnabled: boolean
+  storeAvailable: boolean
+  signedIn: boolean
+  userId?: string
+  email?: string
+  organizationId?: string
+  role?: string
+}
+
+// --- Stored credentials -----------------------------------------------------
+
+/**
+ * A credential as the app sees it: metadata only.
+ *
+ * There is no `value` field, and that is deliberate rather than an omission — the API has no
+ * endpoint that returns a stored secret, so there is nowhere for one to arrive from. `hint` is a
+ * masked fragment, enough to tell two apart and not enough to reconstruct either.
+ */
+export interface Credential {
+  id: string
+  label: string
+  kind: string
+  hint: string | null
+  createdAt: number
+  updatedAt: number
+  lastUsedAt: number | null
+}
+
+export interface CredentialStatus {
+  /** False when CONCENTUS_SECRET_KEY is unset, so nothing can be stored. */
+  available: boolean
+  hint: string
+}
+
+/** What the host can do about MCP authentication. */
+export interface McpCapabilities {
+  /** False in a container: the OAuth sign-in needs a terminal and a browser. */
+  interactiveLogin: boolean
+  hint: string
+}
+
+/** A repository as the group/organization browser lists it. */
+export interface RemoteRepo {
+  name: string
+  fullName: string
+  cloneUrl: string
+  defaultBranch: string
+  archived: boolean
+  description: string | null
+}
+
+export interface RemoteRepoList {
+  ok: boolean
+  error?: string
+  repos: RemoteRepo[]
+}
+
+/** What the mail poller last did for one flow — the answer to "is this trigger working?". */
+export interface MailStatus {
+  /** unknown | off | incomplete | paused | waiting | ok | error */
+  state: string
+  detail: string
+  folder?: string
+  host?: string
+  pollSeconds?: number
+  runsStarted?: number
+  matched?: number
+  at?: number
+}
+
+/**
+ * The Entra app registration this deployment signs mailboxes in with.
+ *
+ * One registration serves every mailbox — it identifies the application, not the mailbox — so the
+ * node only asks when the deployment has none. Neither id is a secret.
+ */
+export interface MailOAuthDefaults {
+  tenantId: string
+  clientId: string
+  configured: boolean
 }

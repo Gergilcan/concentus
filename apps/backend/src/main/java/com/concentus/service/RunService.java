@@ -4,11 +4,12 @@ import com.anthropic.client.AnthropicClient;
 import com.anthropic.models.beta.sessions.events.BetaManagedAgentsStreamSessionEvents;
 import com.anthropic.models.beta.sessions.events.BetaManagedAgentsUserMessageEventParams;
 import com.anthropic.models.beta.sessions.events.EventSendParams;
+import com.concentus.model.FlowNode;
+import com.concentus.model.NodeExec;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.RunEvent;
 import com.concentus.model.RunSummary;
 import com.concentus.model.TriggerSpec;
-import com.concentus.llm.ProviderRegistry;
 import com.concentus.store.RunStore;
 import com.concentus.support.AnthropicClientProvider;
 import com.concentus.support.Ids;
@@ -55,14 +56,12 @@ public class RunService {
     private final ExecutorService exec;
     private final int maxRetainedRuns;
     private final PricingTable pricing;
-    private final ProviderRegistry apiProviders;
     private final double inputUsdPerMTok;
     private final double outputUsdPerMTok;
     private final ConcurrentHashMap<String, AgentRun> runs = new ConcurrentHashMap<>();
 
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
                       ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
-                      ProviderRegistry apiProviders,
                       CloudStreamEventHandler cloudEvents,
                       RunStore runStore, com.fasterxml.jackson.databind.ObjectMapper mapper,
                       NotificationService notifier,
@@ -76,7 +75,6 @@ public class RunService {
         this.launcher = launcher;
         this.backends = backends;
         this.pricing = pricing;
-        this.apiProviders = apiProviders;
         this.cloudEvents = cloudEvents;
         this.runStore = runStore;
         this.mapper = mapper;
@@ -121,6 +119,42 @@ public class RunService {
     }
 
     /**
+     * Records what the trigger handed the flow, on the Input node's own box.
+     *
+     * <p>Without this the Input node is the one box in the run with nothing in it — which is
+     * precisely backwards for a mail trigger, where the email <em>is</em> the run's whole reason
+     * for existing and the first thing anyone wants to read when checking what happened. The
+     * console shows it too, but buried under everything the agent then did.
+     *
+     * <p>Marked {@code passed} immediately: a trigger's work is finished the moment it produced
+     * this text, and leaving it "running" forever would misreport a node that already succeeded.
+     */
+    private static void recordTriggerInput(AgentRun run, FlowGraph flow, TriggerSpec trigger) {
+        String inputNodeId = null;
+        for (FlowNode n : flow.nodesOrEmpty()) {
+            if ("input".equalsIgnoreCase(n.type())) {
+                inputNodeId = n.id();
+                break;
+            }
+        }
+        if (inputNodeId == null) return;
+
+        String mode = trigger.mode() == null ? "manual" : trigger.mode().toLowerCase();
+        NodeExec exec = run.nodeExec(inputNodeId, "input", "Input (" + mode + ")");
+        if (exec == null) return;
+        if (run.initialPrompt != null && !run.initialPrompt.isBlank()) {
+            exec.appendOutput(run.initialPrompt);
+            exec.status = "passed";
+        } else {
+            // Manual mode: nothing was handed over, and saying so beats an empty panel that reads
+            // as a node that failed to produce anything.
+            exec.appendOutput("_Waiting for the first message — this run starts when you send one._");
+            exec.status = "passed";
+        }
+        exec.endedAt = System.currentTimeMillis();
+    }
+
+    /**
      * Starts a run. When {@code initialPromptOverride} is non-null it becomes the first turn
      * (used by webhook triggers to inject the event payload); otherwise the Input node's own
      * prompt is used for prompt/cron modes.
@@ -130,15 +164,12 @@ public class RunService {
         CompiledFlow compiled = compiler.compile(flow);
         TriggerSpec trigger = TriggerSpec.from(flow);
 
-        // The coordinator's model picks the backend: a non-Claude model with a configured provider
-        // runs on the api backend, so choosing e.g. a GPT model is all it takes — no extra switch.
-        String backend = apiProviders.forModel(compiled.coordinator().model.id).isPresent()
-                ? "api"
-                : clientProvider.backend();
+        // Which Claude credential is available decides the backend: the local CLI on a
+        // subscription, or the hosted Managed Agents API on a key.
+        String backend = clientProvider.backend();
         if ("none".equals(backend)) {
-            throw new IllegalStateException("Not signed in. Sign in to Claude Code (`claude`) to run on your "
-                    + "subscription, set ANTHROPIC_API_KEY to use the cloud API, or pick a model from "
-                    + "another configured provider (see llm.* settings).");
+            throw new IllegalStateException("Not signed in. Sign in to Claude Code (`claude`) to run on "
+                    + "your subscription, or set ANTHROPIC_API_KEY to use the cloud API.");
         }
 
         String runId = Ids.generate("run_", 12);
@@ -155,19 +186,18 @@ public class RunService {
                 ? initialPromptOverride
                 : (trigger.autoStart() ? trigger.prompt() : null);
         run.initialPrompt = run.pendingPrompt;
+        recordTriggerInput(run, flow, trigger);
         runs.put(runId, run);
         evictOldestCompleted();
         trackForPersistence(run);
         runStore.persist(run);
 
-        // Turn-based backends (the claude CLI and the api providers) sit idle until given a first
-        // instruction. Only the cloud backend launches a hosted session up front.
-        if ("local".equals(backend) || "api".equals(backend)) {
+        // The claude CLI is turn-based: it sits idle until given a first instruction. Only the
+        // cloud backend launches a hosted session up front.
+        if ("local".equals(backend)) {
             run.localSessionId = UUID.randomUUID().toString();
             run.status = "IDLE";
-            String where = "local".equals(backend)
-                    ? "Local mode — running on your Claude subscription"
-                    : "API mode — running on " + compiled.coordinator().model.id;
+            String where = "Local mode — running on your Claude subscription";
             if (run.pendingPrompt != null) {
                 run.emit(RunEvent.of("system", where + "; auto-starting with the Input prompt."));
                 String prompt = run.pendingPrompt;
@@ -328,7 +358,7 @@ public class RunService {
             run.initialPrompt = text;
         }
 
-        if ("local".equals(run.backend) || "api".equals(run.backend)) {
+        if ("local".equals(run.backend)) {
             if (run.compiled == null) {
                 throw new IllegalStateException("Run is not ready yet.");
             }
@@ -358,7 +388,7 @@ public class RunService {
     public void stop(String runId) {
         AgentRun run = require(runId);
 
-        if ("local".equals(run.backend) || "api".equals(run.backend)) {
+        if ("local".equals(run.backend)) {
             // Each backend knows how to stop itself: the CLI kills a child process, while the api
             // backend has none and relies on the loop seeing TERMINATED between turns.
             backends.byId(run.backend).ifPresentOrElse(

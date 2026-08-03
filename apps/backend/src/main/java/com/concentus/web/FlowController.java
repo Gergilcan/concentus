@@ -4,6 +4,7 @@ import com.concentus.model.FlowGraph;
 import com.concentus.model.FlowVersionInfo;
 import com.concentus.model.RunSummary;
 import com.concentus.service.RunService;
+import com.concentus.mail.MailTriggerService;
 import com.concentus.service.ScheduleService;
 import com.concentus.store.FlowStore;
 import com.concentus.store.FlowVersionStore;
@@ -28,13 +29,15 @@ public class FlowController {
     private final FlowStore store;
     private final RunService runService;
     private final ScheduleService scheduler;
+    private final MailTriggerService mailTriggers;
     private final FlowVersionStore versions;
 
     public FlowController(FlowStore store, RunService runService, ScheduleService scheduler,
-                          FlowVersionStore versions) {
+                          MailTriggerService mailTriggers, FlowVersionStore versions) {
         this.store = store;
         this.runService = runService;
         this.scheduler = scheduler;
+        this.mailTriggers = mailTriggers;
         this.versions = versions;
     }
 
@@ -53,6 +56,7 @@ public class FlowController {
         FlowGraph saved = store.save(flow);
         versions.snapshot(saved);  // keep a restorable revision of every save
         scheduler.reschedule();    // pick up new/changed cron triggers (and pauses)
+        mailTriggers.reschedule();
         return saved;
     }
 
@@ -70,6 +74,7 @@ public class FlowController {
         FlowGraph saved = store.save(old.withId(id));
         versions.snapshot(saved);
         scheduler.reschedule();
+        mailTriggers.reschedule();
         return saved;
     }
 
@@ -78,6 +83,7 @@ public class FlowController {
     public void delete(@PathVariable String id) {
         store.delete(id);
         scheduler.reschedule();
+        mailTriggers.reschedule();
     }
 
     @PostMapping("/{id}/run")

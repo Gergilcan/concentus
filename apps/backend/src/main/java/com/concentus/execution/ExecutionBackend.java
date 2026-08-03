@@ -21,7 +21,7 @@ import com.concentus.service.CompiledFlow;
  */
 public interface ExecutionBackend {
 
-    /** Stable id, matching what is stored in {@code AgentRun.backend}: "local", "cloud", "api". */
+    /** Stable id, matching what is stored in {@code AgentRun.backend}: "local" or "cloud". */
     String id();
 
     /** Name shown in the designer when explaining where a flow will run. */

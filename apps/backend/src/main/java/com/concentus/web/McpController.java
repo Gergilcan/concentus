@@ -29,14 +29,33 @@ public class McpController {
         return registry.list();
     }
 
-    /** Registers an MCP server into Claude Code (user scope). Token, if any, is read from tokenEnv. */
+    /**
+     * What this host can do about MCP authentication, so the UI offers the route that works.
+     *
+     * <p>{ interactiveLogin} is false in a container — the OAuth sign-in needs a terminal and
+     * a browser, and a headless deployment has neither. Both GitHub and GitLab issue long-lived
+     * tokens that skip the interactive step entirely, so this is a routing decision rather than a
+     * missing capability.
+     */
+    @GetMapping("/capabilities")
+    public Map<String, Object> capabilities() {
+        boolean interactive = registry.supportsInteractiveLogin();
+        return Map.of(
+                "interactiveLogin", interactive,
+                "hint", interactive ? ""
+                        : "This deployment has no desktop, so the OAuth sign-in cannot complete. "
+                          + "Use an access token instead: store it under Resources -> Credentials "
+                          + "and select it on the MCP node.");
+    }
+
+    /** Registers an MCP server into Claude Code (user scope), with its stored credential. */
     @PostMapping("/servers")
     public Map<String, String> add(@RequestBody McpServerSpec spec) {
         if (spec == null || spec.name == null || spec.name.isBlank()
                 || spec.url == null || spec.url.isBlank()) {
             throw new IllegalArgumentException("name and url are required.");
         }
-        String status = registry.add(spec.name, spec.url, spec.resolveToken());
+        String status = registry.add(spec.name, spec.url, spec.resolveToken(), spec.authHeader);
         return Map.of("name", spec.name, "status", status);
     }
 

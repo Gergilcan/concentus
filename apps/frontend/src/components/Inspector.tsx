@@ -51,10 +51,16 @@ export function Inspector() {
   const set = (patch: Record<string, unknown>) => update(id, patch)
   // Input/Output tabs only make sense for boxes that execute; only agents produce console
   // output, so Logs is theirs alone.
-  const hasExecTabs = data.kind === 'agent' || data.kind === 'sql' || data.kind === 'mcp'
-  const tabs: Tab[] = data.kind === 'agent'
-    ? ['properties', 'input', 'output', 'logs']
-    : ['properties', 'input', 'output']
+  const hasExecTabs =
+    data.kind === 'agent' || data.kind === 'sql' || data.kind === 'mcp' || data.kind === 'input'
+  // The Input node has an Output but no Input of its own: it is where the run's text comes *from*.
+  // For a mail trigger that output is the email, which is the first thing anyone wants to read.
+  const tabs: Tab[] =
+    data.kind === 'agent'
+      ? ['properties', 'input', 'output', 'logs']
+      : data.kind === 'input'
+        ? ['properties', 'output']
+        : ['properties', 'input', 'output']
   const shownTab: Tab = hasExecTabs && tabs.includes(tab) ? tab : 'properties'
 
   return (

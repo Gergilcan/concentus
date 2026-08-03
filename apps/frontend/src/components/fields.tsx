@@ -71,3 +71,27 @@ export function TextArea({ label, value, onChange, rows, placeholder, className 
     </label>
   )
 }
+
+interface CheckboxFieldProps {
+  label: ReactNode
+  checked: boolean
+  onChange: (checked: boolean) => void
+  className?: string
+}
+
+/**
+ * A labelled checkbox.
+ *
+ * Laid out label-after-input rather than reusing `.field`'s stacked shape: a lone checkbox under
+ * its own caption reads as a heading with an orphaned box, which is exactly how a condition gets
+ * ticked by accident.
+ */
+export function CheckboxField({ label, checked, onChange, className }: CheckboxFieldProps) {
+  const id = useId()
+  return (
+    <label className={cx(styles.checkField, className)} htmlFor={id}>
+      <input id={id} type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>{label}</span>
+    </label>
+  )
+}

@@ -49,21 +49,17 @@ public class AgentRun {
     /** Per-model rates; set at launch so a run prices each block by the model it actually used. */
     public volatile PricingTable pricing;
 
+    /**
+     * Repositories cloned into this run.s working directory, with the environment variable each
+     * one.s credential helper reads. Per run rather than per flow: two runs of the same
+     * mail-triggered flow can overlap, and one working tree would have them writing over each
+     * other.s branch mid-edit.
+     */
+    public volatile java.util.List<com.concentus.git.GitWorkspace.Checkout> checkouts = java.util.List.of();
+
     /** Open event stream (cloud), stored so {@code stop()} can break the loop. */
     public volatile AutoCloseable stream;
 
-    /**
-     * Whether the api backend has injected SQL/RAG context yet. Injection is once per run, not
-     * per turn — re-running the query each turn would re-read the database and append the same
-     * rows to the prompt again.
-     */
-    public volatile boolean apiContextPrepared = false;
-    /**
-     * MCP clients for the api backend, one per server, kept for the life of the run. The MCP
-     * handshake is per session, so reconnecting each turn would pay it repeatedly and churn
-     * sessions server-side.
-     */
-    public final Map<String, com.concentus.llm.McpClient> mcpClients = new ConcurrentHashMap<>();
 
     // --- local (claude CLI) run state ---
     public volatile CompiledFlow compiled;

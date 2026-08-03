@@ -6,60 +6,32 @@
 export const DEFAULT_MODEL = 'claude-opus-4-8'
 
 /**
- * Models offered in the agent inspector, grouped by the provider they route to.
+ * Models offered in the agent inspector.
  *
- * `providerId` matches what `GET /api/llm/providers` reports, so a group can be marked as
- * needing a key. Claude is the exception: it has no entry there because it runs on its own
- * backends rather than through a provider credential.
+ * Claude only. There is no provider grouping because there are no providers to choose between:
+ * a flow names a Claude model, and which credential is present decides where it runs — the
+ * `claude` CLI on your subscription, or the cloud API on `ANTHROPIC_API_KEY`.
  *
- * The field stays free-text, so anything absent here (a new release, an Ollama model) still works
- * — this list is a shortcut, not a whitelist.
+ * The field stays free-text, so a model absent here (a new release) still works — this list is a
+ * shortcut, not a whitelist.
  */
 export const MODEL_GROUPS: {
   label: string
-  providerId: string | null
   hint: string
   models: string[]
 }[] = [
   {
-    label: 'Claude — subscription or API key',
-    providerId: null,
-    hint: 'Runs on your Claude subscription (or the cloud API). Full tools: files, bash, MCP.',
-    models: ['claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
-  },
-  {
-    label: 'OpenAI — API key, billed per token',
-    providerId: 'openai',
-    hint: 'Needs OPENAI_API_KEY. A ChatGPT subscription does not grant API access.',
+    label: 'Claude',
+    hint: 'Runs on your Claude subscription via the local CLI, or on the API with ANTHROPIC_API_KEY.',
     models: [
-      'gpt-5.6-sol',
-      'gpt-5.6-terra',
-      'gpt-5.6-luna',
-      'gpt-5.5',
-      'gpt-5.4',
-      'gpt-5.4-mini',
-      'gpt-5.4-nano',
+      'claude-opus-4-8',
+      'claude-opus-4-7',
+      'claude-opus-4-6',
+      'claude-sonnet-5',
+      'claude-sonnet-4-6',
+      'claude-haiku-4-5',
+      'claude-fable-5',
     ],
-  },
-  {
-    label: 'Google Gemini — API key, billed per token',
-    providerId: 'gemini',
-    hint: 'Needs GEMINI_API_KEY (or VERTEX_* for Vertex AI).',
-    models: [
-      'gemini-3.5-flash',
-      'gemini-3.1-flash-lite',
-      'gemini-2.5-pro',
-      'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
-    ],
-  },
-  {
-    // deepseek-chat / deepseek-reasoner retire on 2026-07-24, so they are deliberately not
-    // offered — picking one today would break within days.
-    label: 'DeepSeek — API key, billed per token',
-    providerId: 'deepseek',
-    hint: 'Needs DEEPSEEK_API_KEY. Cache hits are far cheaper than the estimate assumes, so real cost runs below the figure shown.',
-    models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
   },
 ]
 

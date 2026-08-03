@@ -48,3 +48,18 @@
 .spacer {
   flex: 1;
 }
+
+.signOut {
+  background: transparent;
+  border: 1px solid t.$border;
+  color: t.$muted;
+  padding: 5px 11px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$text;
+    border-color: t.$accent;
+  }
+}

@@ -44,21 +44,18 @@ class RunServiceTest {
     private final RunStore runStore = mock(RunStore.class);
     private final NotificationService notifier = mock(NotificationService.class);
     private final ObjectMapper mapper = new ObjectMapper();
-    private final com.concentus.llm.ProviderRegistry apiProviders = mock(com.concentus.llm.ProviderRegistry.class);
-    private final ApiAgentExecutor apiExecutor = mock(ApiAgentExecutor.class);
 
     private final List<RunService> created = new ArrayList<>();
 
     /**
-     * The real adapters over the mocked executors, so these tests still assert on what actually
-     * gets executed rather than on the registry indirection in front of it.
+     * The real adapter over the mocked executor, so these tests still assert on what actually gets
+     * executed rather than on the registry indirection in front of it.
      */
-    private com.concentus.execution.ExecutionBackends backendsOver(com.concentus.llm.ProviderRegistry providers) {
+    private com.concentus.execution.ExecutionBackends backends() {
         com.concentus.support.LocalClaudeSupport support = mock(com.concentus.support.LocalClaudeSupport.class);
         when(support.command()).thenReturn(java.util.Optional.of("claude"));
         return new com.concentus.execution.ExecutionBackends(List.of(
-                new com.concentus.execution.ClaudeCliExecutionBackend(localExecutor, support),
-                new com.concentus.execution.ApiExecutionBackend(providers, apiExecutor)));
+                new com.concentus.execution.ClaudeCliExecutionBackend(localExecutor, support)));
     }
 
     @AfterEach
@@ -67,8 +64,8 @@ class RunServiceTest {
     }
 
     private RunService newService(int maxConcurrent, int queueCapacity, int maxRetainedRuns) {
-        RunService s = new RunService(clientProvider, compiler, launcher, backendsOver(apiProviders),
-                new PricingTable("", 3.0, 15.0), apiProviders,
+        RunService s = new RunService(clientProvider, compiler, launcher, backends(),
+                new PricingTable("", 3.0, 15.0),
                 new CloudStreamEventHandler(), runStore, mapper,
                 notifier, maxConcurrent, queueCapacity, maxRetainedRuns, 3.0, 15.0);
         created.add(s);
@@ -514,13 +511,9 @@ class RunServiceTest {
 
     // ------------------------------------------------- backend selection (regression guards)
 
-    /** A real registry, so these exercise actual routing rather than a stubbed answer. */
-    private RunService serviceWithRealRegistry(String openaiKey) {
-        com.concentus.llm.ProviderRegistry real = new com.concentus.llm.ProviderRegistry(
-                mapper, openaiKey, "https://api.openai.com/v1", "", "https://api.deepseek.com/v1",
-                "", "", "us-central1", "", "", "");
-        RunService s = new RunService(clientProvider, compiler, launcher, backendsOver(real),
-                new PricingTable("", 3.0, 15.0), real,
+    private RunService service() {
+        RunService s = new RunService(clientProvider, compiler, launcher, backends(),
+                new PricingTable("", 3.0, 15.0),
                 new CloudStreamEventHandler(), runStore, mapper, notifier, 4, 8, 10, 3.0, 15.0);
         created.add(s);
         return s;
@@ -534,53 +527,50 @@ class RunServiceTest {
     }
 
     @Test
-    void withNoProviderKeysAtAllAClaudeFlowStillRunsOnTheSubscription() {
-        // The whole point: adding multi-provider support must not require any new configuration
-        // for existing users.
+    void aFlowRunsOnTheSubscriptionWhenTheCliIsSignedIn() {
         when(compiler.compile(any())).thenReturn(flowOnModel("claude-opus-4-8"));
         when(clientProvider.backend()).thenReturn("local");
 
-        RunSummary summary = serviceWithRealRegistry("").start(flow("f1"));
+        RunSummary summary = service().start(flow("f1"));
 
         assertThat(summary.status()).isEqualTo("IDLE");
+        // The local backend is turn-based, so nothing is launched until a first instruction.
         verifyNoInteractions(launcher);
     }
 
     @Test
-    void configuringOpenAiDoesNotHijackClaudeFlows() {
-        // claude- routes to a provider this backend never serves, so it must fall through to the
-        // subscription rather than landing on whichever provider happens to have a key.
+    void aFlowRunsOnTheApiWhenAKeyIsPresent() {
         when(compiler.compile(any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(clientProvider.backend()).thenReturn("cloud");
+        when(clientProvider.client()).thenThrow(new IllegalStateException("no client in this test"));
+
+        RunService svc = service();
+        RunSummary summary = svc.start(flow("f1"));
+
+        assertThat(svc.get(summary.id()).orElseThrow().backend).isEqualTo("cloud");
+    }
+
+    @Test
+    void theModelIdDoesNotChangeWhichBackendIsUsed() {
+        // Backend selection follows the credential, not the model: with only Claude left there is
+        // no routing table for a model id to steer.
+        when(compiler.compile(any())).thenReturn(flowOnModel("claude-sonnet-5"));
         when(clientProvider.backend()).thenReturn("local");
 
-        RunService svc = serviceWithRealRegistry("sk-openai");
+        RunService svc = service();
         RunSummary summary = svc.start(flow("f1"));
 
         assertThat(svc.get(summary.id()).orElseThrow().backend).isEqualTo("local");
     }
 
     @Test
-    void aGptFlowRunsOnTheApiBackendAndNeverLaunchesACloudSession() {
-        when(compiler.compile(any())).thenReturn(flowOnModel("gpt-5"));
-        when(clientProvider.backend()).thenReturn("local");
+    void withNoCredentialAtAllStartingSaysSoInsteadOfFailingObscurely() {
+        when(compiler.compile(any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(clientProvider.backend()).thenReturn("none");
 
-        RunService svc = serviceWithRealRegistry("sk-openai");
-        RunSummary summary = svc.start(flow("f1"));
-
-        assertThat(svc.get(summary.id()).orElseThrow().backend).isEqualTo("api");
-        // Falling through to the cloud branch would try to start an Anthropic session for a
-        // GPT flow.
-        verifyNoInteractions(launcher);
-    }
-
-    @Test
-    void aGptModelWithNoKeyFallsBackRatherThanClaimingTheApiBackend() {
-        when(compiler.compile(any())).thenReturn(flowOnModel("gpt-5"));
-        when(clientProvider.backend()).thenReturn("local");
-
-        RunService svc = serviceWithRealRegistry("");
-        RunSummary summary = svc.start(flow("f1"));
-
-        assertThat(svc.get(summary.id()).orElseThrow().backend).isEqualTo("local");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().start(flow("f1")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Sign in to Claude Code")
+                .hasMessageContaining("ANTHROPIC_API_KEY");
     }
 }

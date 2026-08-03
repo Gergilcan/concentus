@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client.ts'
-import type { ModelRate, ProvidersResponse } from '../api/types.ts'
+import type { ModelCatalog, ModelRate } from '../api/types.ts'
 import { MODEL_GROUPS } from '../constants.ts'
 import { Field } from './fields.tsx'
 import styles from './panels.module.scss'
@@ -13,28 +13,22 @@ function rateLabel(rate: ModelRate): string {
   return `${fmt(rate.input)} / ${fmt(rate.output)}`
 }
 
-/** Roughly what a modest turn costs, to make the per-million rates concrete. */
-function exampleCost(rate: ModelRate): string {
-  // 50k in / 2k out — a mid-sized agent turn with some context.
-  const usd = (50_000 / 1_000_000) * rate.input + (2_000 / 1_000_000) * rate.output
-  return usd < 0.01 ? '<$0.01' : `$${usd.toFixed(2)}`
-}
-
 /**
  * Model picker for an agent node.
  *
- * <p>One field rather than a separate provider selector: the backend routes by model id, so a
- * provider dropdown would be a second source of truth that could contradict the model.
+ * Claude only, so there is no provider to choose: a flow names a model, and which credential the
+ * backend has decides where it runs — the local `claude` CLI on your subscription, or the API on
+ * `ANTHROPIC_API_KEY`.
  *
- * <p>Rates come from the backend's own `pricing.models` config rather than a copy here, so the
- * figure shown while picking is the same one the run's cost estimate will use.
+ * Rates come from the backend's own `pricing.models` config rather than a copy here, so the figure
+ * shown while picking is the same one the run's cost estimate will use.
  *
- * <p>The list is a shortcut, not a whitelist — anything not in it (a new release, a local Ollama
- * model) is still typeable, which is why "Custom…" exists and why an unrecognised saved value
- * opens in custom mode rather than being silently reset.
+ * The list is a shortcut, not a whitelist — a model not in it is still typeable, which is why
+ * "Custom…" exists and why an unrecognised saved value opens in custom mode rather than being
+ * silently reset.
  */
 export function ModelField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [providers, setProviders] = useState<ProvidersResponse | null>(null)
+  const [catalog, setCatalog] = useState<ModelCatalog | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -42,11 +36,11 @@ export function ModelField({ value, onChange }: { value: string; onChange: (v: s
     // to take the whole inspector down if the endpoint is missing or the call throws outright.
     try {
       void api
-        .listProviders()
-        .then((r) => alive && setProviders(r))
-        .catch(() => alive && setProviders(null))
+        .listModels()
+        .then((r) => alive && setCatalog(r))
+        .catch(() => alive && setCatalog(null))
     } catch {
-      setProviders(null)
+      setCatalog(null)
     }
     return () => {
       alive = false
@@ -57,16 +51,8 @@ export function ModelField({ value, onChange }: { value: string; onChange: (v: s
   const [custom, setCustom] = useState(!known.includes(value) && value !== '')
 
   const group = MODEL_GROUPS.find((g) => g.models.includes(value))
-  // Claude has no provider entry — it runs on its own backends, not a provider credential.
-  const needsKey =
-    group?.providerId != null &&
-    providers != null &&
-    !providers.configured.includes(group.providerId)
-
-  const rateFor = (model: string): ModelRate | undefined => providers?.pricing[model]
+  const rateFor = (model: string): ModelRate | undefined => catalog?.pricing[model]
   const currentRate = rateFor(value)
-  // A Claude subscription run has no per-token bill at all, so a price would be misleading.
-  const subscription = group?.providerId == null
 
   return (
     <>
@@ -95,7 +81,7 @@ export function ModelField({ value, onChange }: { value: string; onChange: (v: s
               })}
             </optgroup>
           ))}
-          <option value={CUSTOM}>Custom / local model…</option>
+          <option value={CUSTOM}>Custom…</option>
         </select>
       </label>
 
@@ -103,7 +89,7 @@ export function ModelField({ value, onChange }: { value: string; onChange: (v: s
         <Field
           label="Model id"
           value={value}
-          placeholder="e.g. gpt-oss:20b, llama-3.3-70b, qwen2.5"
+          placeholder="e.g. claude-opus-4-8"
           onChange={onChange}
         />
       )}
@@ -112,42 +98,21 @@ export function ModelField({ value, onChange }: { value: string; onChange: (v: s
 
       {currentRate && (
         <p className={styles.hint}>
-          {subscription ? (
-            <>
-              <b>No per-token bill on a Claude subscription.</b> Costs shown against a run are an
-              equivalent-usage estimate at {rateLabel(currentRate)} per 1M tokens (in / out) — useful
-              for comparing runs, not a charge.
-            </>
-          ) : (
-            <>
-              <b>{rateLabel(currentRate)}</b> per 1M tokens (in / out). A mid-sized turn — 50k in,
-              2k out — is about <b>{exampleCost(currentRate)}</b>. Cached context re-read on later
-              turns bills at roughly a tenth of the input rate.
-            </>
-          )}
+          {/* A subscription run has no per-token bill at all, and the same flow may run either
+              way depending on the credential present — so the figure is framed as a comparison
+              aid rather than a charge. */}
+          Costs shown against a run are an estimate at <b>{rateLabel(currentRate)}</b> per 1M tokens
+          (in / out). On a Claude <b>subscription</b> there is no per-token bill, so treat it as
+          equivalent usage; on the <b>API</b> it approximates the real charge. Cached context
+          re-read on later turns bills at roughly a tenth of the input rate.
         </p>
       )}
 
-      {!currentRate && providers && !subscription && (
+      {!currentRate && catalog && (
         <p className={styles.hint}>
           No rate configured for this model, so cost is estimated at the fallback{' '}
-          {rateLabel(providers.fallback)} per 1M tokens. Add it to <code>pricing.models</code> for an
+          {rateLabel(catalog.fallback)} per 1M tokens. Add it to <code>pricing.models</code> for an
           accurate figure.
-        </p>
-      )}
-
-      {needsKey && (
-        <p className={styles.hint}>
-          <b>No credential configured for this provider</b>, so a run using it will fail at launch.
-          Set its API key and restart the backend.
-        </p>
-      )}
-
-      {custom && (
-        <p className={styles.hint}>
-          Unlisted models route by id prefix. For a local server (Ollama, vLLM) point{' '}
-          <code>LLM_OPENAI_COMPATIBLE</code> at it and map the prefix with{' '}
-          <code>LLM_MODEL_PREFIXES</code> — no API key needed for localhost, and no per-token cost.
         </p>
       )}
     </>

@@ -1,5 +1,6 @@
 package com.concentus.web;
 
+import com.concentus.auth.OrgContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -27,6 +28,16 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, String>> conflict(IllegalStateException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", safe(e)));
+    }
+
+    /**
+     * A record was addressed that belongs to another organization, or the caller isn't an admin.
+     * Deliberately indistinguishable from "no such record": a 404-shaped message here would still
+     * confirm the id exists somewhere, which is exactly what tenant isolation must not leak.
+     */
+    @ExceptionHandler(OrgContext.AccessDeniedForOrganization.class)
+    public ResponseEntity<Map<String, String>> forbidden(OrgContext.AccessDeniedForOrganization e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", safe(e)));
     }
 
     @ExceptionHandler(Exception.class)

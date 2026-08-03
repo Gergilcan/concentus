@@ -9,7 +9,7 @@ import { McpNode } from './McpNode.tsx'
 import styles from './nodes.module.scss'
 
 function mcpData(overrides: Partial<McpNodeData> = {}): McpNodeData {
-  return { kind: 'mcp', name: 'GitHub MCP', url: 'https://mcp.example.com', tokenEnv: 'GH_TOKEN', ...overrides }
+  return { kind: 'mcp', name: 'GitHub MCP', url: 'https://mcp.example.com', credentialId: 'cred_x', ...overrides }
 }
 
 // McpNode renders the shared card scaffold (Handle needs a <ReactFlowProvider>) plus a live

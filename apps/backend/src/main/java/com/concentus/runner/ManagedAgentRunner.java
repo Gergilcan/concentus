@@ -76,7 +76,8 @@ final class ManagedAgentRunner implements AgentRunner {
                 .title(spec.name);
 
         // Native repo mounts (github only; gitlab is reached through its MCP server).
-        for (RepoSpec repo : spec.repositories) {
+        // A node can name a whole organization, in which case it stands for every repo inside it.
+        for (RepoSpec repo : com.concentus.git.RepoExpander.standalone().expandFlat(spec.repositories)) {
             if (repo.provider() != AgentSpec.RepoProvider.GITHUB) {
                 System.err.println("[info] repo " + repo.url + " is provider=" + repo.provider
                         + " -> not natively mounted; use its MCP server.");
@@ -84,8 +85,8 @@ final class ManagedAgentRunner implements AgentRunner {
             }
             String token = repo.resolveToken();
             if (token == null) {
-                System.err.println("[warn] github repo " + repo.url + " has no token ("
-                        + repo.tokenEnv + " unset) -> skipping mount.");
+                System.err.println("[warn] github repo " + repo.url + " has no usable credential"
+                        + " -> skipping mount.");
                 continue;
             }
             var res = BetaManagedAgentsGitHubRepositoryResourceParams.builder()

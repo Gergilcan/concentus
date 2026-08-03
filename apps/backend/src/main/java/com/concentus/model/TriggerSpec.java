@@ -51,4 +51,15 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
     public boolean webhook() {
         return "webhook".equalsIgnoreCase(mode);
     }
+
+    /**
+     * The flow is triggered by mail arriving in an IMAP folder.
+     *
+     * <p>The connection and match conditions are read separately by {@code MailTriggerSpec} rather
+     * than being added here: mail needs a dozen fields, and folding them into this record would
+     * make every other trigger mode carry them.
+     */
+    public boolean mail() {
+        return "mail".equalsIgnoreCase(mode);
+    }
 }

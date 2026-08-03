@@ -1,0 +1,109 @@
+@use '../styles/theme' as t;
+
+.wrap {
+  flex: 1;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: t.$bg;
+  padding: 24px;
+}
+
+.card {
+  width: 100%;
+  max-width: 380px;
+  background: t.$panel;
+  border: 1px solid t.$border;
+  border-radius: 12px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.brand {
+  font-size: 20px;
+  font-weight: 600;
+  color: t.$text;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo {
+  color: t.$accent;
+}
+
+.lead {
+  color: t.$muted;
+  font-size: 13px;
+  margin: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  span {
+    font-size: 12px;
+    color: t.$muted;
+  }
+
+  input {
+    background: t.$panel-2;
+    border: 1px solid t.$border;
+    border-radius: 8px;
+    padding: 9px 11px;
+    color: t.$text;
+    font-size: 13px;
+
+    &:focus {
+      outline: none;
+      border-color: t.$accent;
+    }
+  }
+}
+
+.submit {
+  margin-top: 4px;
+  background: t.$accent;
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.error {
+  color: t.$danger;
+  font-size: 12px;
+  margin: 0;
+}
+
+.warning {
+  color: t.$warn;
+  font-size: 12px;
+  margin: 0;
+}
+
+.hint {
+  color: t.$muted;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 4px 0 0;
+
+  code {
+    background: t.$panel-2;
+    padding: 1px 4px;
+    border-radius: 4px;
+  }
+}

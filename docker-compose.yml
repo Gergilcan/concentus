@@ -1,10 +1,13 @@
-# Concentus — backend (Spring Boot + claude CLI) and frontend (nginx).
+# Concentus — backend (Spring Boot + claude CLI), frontend (nginx) and Postgres.
 # The marketing website (apps/website) is intentionally NOT included.
 #
-# Auth: runs on your Claude *subscription*, no API key. Provide the login one of two ways:
-#   A) Recommended — mint a long-lived token on the host once:  claude setup-token
-#      then put it in a .env file next to this compose file:    CLAUDE_CODE_OAUTH_TOKEN=...
-#   B) Mount your existing host login instead (uncomment the volumes below).
+#   cp .env.example .env      # then fill in the REQUIRED values at the top of it
+#   docker compose up --build
+#   open http://localhost:3000
+#
+# Everything else — mailbox passwords, provider tokens, Holded credentials — is entered in the app
+# under Resources → Credentials and encrypted before storage. Nothing in this file is a secret
+# except by way of .env, which is gitignored.
 
 services:
   # Run/flow-version persistence. The backend creates its own schema on startup, so an empty
@@ -38,36 +41,71 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # --- Claude ----------------------------------------------------------
+      # Runs on your Claude *subscription*, not an API key. Mint a long-lived token on the host
+      # once with `claude setup-token` and put it in .env. Without it the container has no login
+      # and every run fails immediately with "Not signed in".
       ANTHROPIC_AUTH_MODE: local
       CLAUDE_COMMAND: claude
-      APP_DATA_DIR: /data
-      # A) token from `claude setup-token` (read from .env). Not an API key.
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
-      # Other model providers. Only variables named here reach the container, so a key set in
-      # .env but not listed would silently do nothing.
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      VERTEX_PROJECT: ${VERTEX_PROJECT:-}
-      VERTEX_REGION: ${VERTEX_REGION:-us-central1}
-      VERTEX_ACCESS_TOKEN: ${VERTEX_ACCESS_TOKEN:-}
-      LLM_OPENAI_COMPATIBLE: ${LLM_OPENAI_COMPATIBLE:-}
-      LLM_MODEL_PREFIXES: ${LLM_MODEL_PREFIXES:-}
-      # Persistence — "db" is the service above, resolved on the compose network.
-      PERSIST_DB_URL: jdbc:postgresql://db:5432/concentus
-      PERSIST_DB_USER: concentus
+      APP_DATA_DIR: /data
+      # Puts .claude.json inside the persisted directory below. It holds the user-scope MCP server
+      # registrations and their OAuth authorizations, and by default it sits at ~/.claude.json —
+      # OUTSIDE ~/.claude. Without this, every `docker compose up --build` silently drops every
+      # MCP server a flow depends on, and the first sign of it is an agent saying it has no tools.
+      CLAUDE_CONFIG_DIR: /root/.claude
+
+      # --- Persistence — "db" is the service above, resolved on the compose network ---------
+      PERSIST_DB_URL: ${PERSIST_DB_URL:-jdbc:postgresql://db:5432/concentus}
+      PERSIST_DB_USER: ${PERSIST_DB_USER:-concentus}
       PERSIST_DB_PASSWORD: ${PERSIST_DB_PASSWORD:-concentus}
+
+      # --- Sign-in ---------------------------------------------------------
+      # The first administrator is created for CONCENTUS_ADMIN_EMAIL. Leave the password blank and
+      # one is generated and printed once in this service's log at startup.
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      CONCENTUS_ADMIN_EMAIL: ${CONCENTUS_ADMIN_EMAIL:-}
+      CONCENTUS_ADMIN_PASSWORD: ${CONCENTUS_ADMIN_PASSWORD:-}
+      # REQUIRED — the backend refuses to start without it. Generate: openssl rand -base64 32
+      # Changing it makes every stored credential unreadable, so keep it with the database.
+      CONCENTUS_SECRET_KEY: ${CONCENTUS_SECRET_KEY:-}
+
+      # --- Mail-triggered flows (IMAP) -------------------------------------
+      # Host, folder and conditions live on the Input node; the mailbox secret is entered in the
+      # app and never appears here.
+      MAIL_TRIGGERS_ENABLED: ${MAIL_TRIGGERS_ENABLED:-true}
+      # The Entra app registration used to sign Microsoft 365 mailboxes in. One registration serves
+      # every mailbox — it identifies the application, not the mailbox — so setting it here means
+      # no node ever asks for it again. Neither value is a secret.
+      MAIL_MICROSOFT_TENANT_ID: ${MAIL_MICROSOFT_TENANT_ID:-}
+      MAIL_MICROSOFT_CLIENT_ID: ${MAIL_MICROSOFT_CLIENT_ID:-}
+
+      # --- Repository nodes ------------------------------------------------
+      GIT_MAX_GROUP_REPOS: ${GIT_MAX_GROUP_REPOS:-25}
+      GIT_CLONE_DEPTH: ${GIT_CLONE_DEPTH:-0}
     depends_on:
       db:
         # Wait for the database to accept connections; the backend tolerates a missing DB
         # (it falls back to memory) and would otherwise start up unpersisted.
         condition: service_healthy
+    healthcheck:
+      # The frontend proxies to this, so it should not take traffic before the API answers.
+      # curl is already in the image — the Dockerfile installs it to fetch the Node repository.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      # Generous: a cold JVM plus schema creation takes a while, and a container marked unhealthy
+      # during normal startup would take the frontend down with it.
+      start_period: 90s
+      retries: 5
+    restart: unless-stopped
     volumes:
       - concentus-data:/data
-      # B) OR mount the host Claude login (read-write so it can refresh). Comment out (A) if used.
-      # - ${USERPROFILE:-${HOME}}/.claude:/root/.claude
-      # - ${USERPROFILE:-${HOME}}/.claude.json:/root/.claude.json
+      # The claude CLI's whole config, including the MCP server registrations and the OAuth
+      # authorizations they carry (see CLAUDE_CONFIG_DIR above). A named volume rather than a bind
+      # mount of the host's ~/.claude: two Claude installations writing the same files corrupt each
+      # other's state, and the host path differs per machine. See the README to reuse a host login.
+      - concentus-claude:/root/.claude
 
   frontend:
     build:
@@ -76,8 +114,12 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        # nginx resolves `backend` when it starts and exits if the name isn't there yet.
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   concentus-data:
   concentus-db:
+  concentus-claude:

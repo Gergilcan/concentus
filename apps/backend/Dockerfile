@@ -12,8 +12,16 @@ RUN mvn -q -DskipTests package
 # ---------- runtime: JRE + Node + the claude CLI ----------
 FROM eclipse-temurin:25-jre
 # Claude Code is a Node CLI; git lets delegated agents work with repos.
+#
+# tesseract-ocr is the one native dependency in the image. PDF, Word and Excel attachments are
+# parsed in pure Java (PDFBox/POI), but reading an image attachment or a scanned PDF needs the
+# native library plus its language data — Spanish and English here, matching
+# integration.attachments.ocr-languages. Everything still starts without these: the OCR extractor
+# reports itself unavailable and image attachments are skipped, so removing them to slim the image
+# costs a feature rather than breaking the app. Set OCR_ENABLED=false if you do.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates git \
+      tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng \
  && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
  && apt-get install -y --no-install-recommends nodejs \
  && npm install -g @anthropic-ai/claude-code \

@@ -9,6 +9,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.nio.file.Path;
+import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -39,6 +40,10 @@ class ActuatorHealthTest {
         // application.properties — and would tie this test's UP assertion to that host being
         // reachable. Health being mapped and UP is what we assert here, not DB connectivity.
         registry.add("management.health.db.enabled", () -> "false");
+        // Required for the app to start at all — every stored credential depends on it, so a
+        // deployment without one is refused rather than left half-working. Any valid 32-byte
+        // base64 key does here; nothing in this test encrypts anything.
+        registry.add("app.secret-key", () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
     @LocalServerPort
@@ -52,11 +57,18 @@ class ActuatorHealthTest {
         assertThat(body).contains("\"status\":\"UP\"");
     }
 
+    /**
+     * Two independent controls keep {@code /actuator/env} unreachable, and either one answering is
+     * a pass: actuator's exposure list does not include it (404), and the security filter chain
+     * denies everything under {@code /actuator} except health and info (403). The assertion is on
+     * the outcome that matters — no configuration, and therefore no credential, comes back.
+     */
     @Test
     void sensitiveActuatorEndpointsAreNotExposed() {
         TestRestTemplate rest = new TestRestTemplate();
         var response = rest.getForEntity("http://localhost:" + port + "/actuator/env", String.class);
 
-        assertThat(response.getStatusCode().value()).isEqualTo(404);
+        assertThat(response.getStatusCode().value()).isIn(403, 404);
+        assertThat(response.getBody()).doesNotContain("propertySources");
     }
 }

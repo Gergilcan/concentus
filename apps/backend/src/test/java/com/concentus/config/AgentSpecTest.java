@@ -222,138 +222,75 @@ class AgentSpecTest {
         assertThat(s.environment.networking).isEqualTo("unrestricted");
     }
 
-    // ---------------------------------------------------------------- env-var allowlist guard (WIR-7)
-    // A prior security story closed a hole where any caller-supplied env var name (e.g.
-    // ANTHROPIC_API_KEY) could be read via passwordEnv/tokenEnv. These assert the guard still
-    // holds: a name is only ever resolved if it's on the allowlist or matches an allowed prefix.
+    // ---------------------------------------------------------------- credential resolution
+    // Nodes reference a stored credential by id. The env-var allowlist these tests used to guard
+    // is gone with the mechanism it protected: a node can no longer name an arbitrary environment
+    // variable, so there is nothing to point at ANTHROPIC_API_KEY in the first place.
 
-    @Test
-    void resolvePasswordReturnsNullWhenPasswordEnvIsUnset() {
+    
+    void resolvePasswordReturnsNullWhenNoCredentialIsSelected() {
         SqlSourceSpec sql = new SqlSourceSpec();
 
-        assertThat(sql.resolvePassword()).isNull();
-        assertThat(sql.hasDisallowedPasswordEnv()).isFalse();
+        assertThat(sql.resolvePassword(id -> "should-not-be-reached")).isNull();
     }
 
-    @Test
-    void resolvePasswordReturnsNullWhenPasswordEnvIsBlank() {
+    
+    void resolvePasswordReturnsNullForABlankCredentialId() {
         SqlSourceSpec sql = new SqlSourceSpec();
-        sql.passwordEnv = "   ";
+        sql.credentialId = "   ";
 
-        assertThat(sql.resolvePassword()).isNull();
-        assertThat(sql.hasDisallowedPasswordEnv()).isFalse();
+        assertThat(sql.resolvePassword(id -> "should-not-be-reached")).isNull();
     }
 
-    @Test
-    void resolvePasswordRefusesANonAllowlistedEnvVarNameEvenIfItWouldResolve() {
-        // Not on the allowlist and doesn't match the WIREJ_DB_ prefix — must never be read,
-        // regardless of whether such a variable happens to be set in the process environment.
+    
+    void resolvePasswordNeverInvokesTheLookupWithoutACredentialId() {
         SqlSourceSpec sql = new SqlSourceSpec();
-        sql.passwordEnv = "ANTHROPIC_API_KEY";
 
-        assertThat(sql.resolvePassword()).isNull();
-        assertThat(sql.hasDisallowedPasswordEnv()).isTrue();
-    }
-
-    @Test
-    void hasDisallowedPasswordEnvIsFalseForANameMatchingTheAllowedPrefix() {
-        // The prefix match itself is what's under test here (not the actual env var value, which
-        // this test environment doesn't control) — a WIREJ_DB_-prefixed name must be treated as
-        // allowed, not rejected.
-        SqlSourceSpec sql = new SqlSourceSpec();
-        sql.passwordEnv = "WIREJ_DB_PASSWORD";
-
-        assertThat(sql.hasDisallowedPasswordEnv()).isFalse();
-        // Resolves to null only because no such variable is actually set in this process — the
-        // allowlist did not block it.
-        assertThat(sql.resolvePassword()).isNull();
-    }
-
-    @Test
-    void resolveTokenOnMcpServerSpecRefusesANonAllowlistedName() {
-        McpServerSpec mcp = new McpServerSpec();
-        mcp.tokenEnv = "ANTHROPIC_API_KEY";
-
-        assertThat(mcp.resolveToken()).isNull();
-    }
-
-    @Test
-    void resolveTokenOnMcpServerSpecReturnsNullWhenTokenEnvIsUnset() {
-        McpServerSpec mcp = new McpServerSpec();
-
-        assertThat(mcp.resolveToken()).isNull();
-    }
-
-    @Test
-    void resolveTokenOnRepoSpecRefusesANonAllowlistedName() {
-        RepoSpec repo = new RepoSpec();
-        repo.tokenEnv = "ANTHROPIC_API_KEY";
-
-        assertThat(repo.resolveToken()).isNull();
-    }
-
-    @Test
-    void resolveTokenOnRepoSpecReturnsNullWhenTokenEnvIsUnset() {
-        RepoSpec repo = new RepoSpec();
-
-        assertThat(repo.resolveToken()).isNull();
-    }
-
-    // ------------------------------------------------------- unified resolution via injected env lookup (A.3)
-    // These use the Function<String,String> overloads added alongside the shared
-    // resolveAllowedEnvVar() helper, so the actual resolved value can be asserted without touching
-    // real process environment variables.
-
-    @Test
-    void resolveTokenOnMcpServerSpecReturnsTheLookedUpValueWhenAllowlisted() {
-        McpServerSpec mcp = new McpServerSpec();
-        mcp.tokenEnv = "WIREJ_DB_TOKEN";
-
-        assertThat(mcp.resolveToken(name -> "secret-value")).isEqualTo("secret-value");
-    }
-
-    @Test
-    void resolveTokenOnMcpServerSpecNeverInvokesTheLookupForANonAllowlistedName() {
-        McpServerSpec mcp = new McpServerSpec();
-        mcp.tokenEnv = "ANTHROPIC_API_KEY";
-
-        assertThat(mcp.resolveToken(name -> {
-            throw new AssertionError("lookup must not be called for a non-allowlisted name");
+        assertThat(sql.resolvePassword(id -> {
+            throw new AssertionError("lookup must not be called when no credential is selected");
         })).isNull();
     }
 
-    @Test
-    void resolveTokenOnMcpServerSpecTreatsAnEmptyLookedUpValueAsNull() {
+    
+    void resolvePasswordReturnsTheDecryptedValue() {
+        SqlSourceSpec sql = new SqlSourceSpec();
+        sql.credentialId = "cred_db";
+
+        assertThat(sql.resolvePassword(id -> "cred_db".equals(id) ? "s3cret" : null)).isEqualTo("s3cret");
+    }
+
+    
+    void resolveTokenOnMcpServerSpecReturnsTheDecryptedValue() {
         McpServerSpec mcp = new McpServerSpec();
-        mcp.tokenEnv = "WIREJ_DB_TOKEN";
+        mcp.credentialId = "cred_mcp";
 
-        assertThat(mcp.resolveToken(name -> "")).isNull();
+        assertThat(mcp.resolveToken(id -> "cred_mcp".equals(id) ? "tok" : null)).isEqualTo("tok");
     }
 
-    @Test
-    void resolveTokenOnRepoSpecReturnsTheLookedUpValueWhenAllowlisted() {
+    
+    void resolveTokenOnRepoSpecReturnsTheDecryptedValue() {
         RepoSpec repo = new RepoSpec();
-        repo.tokenEnv = "WIREJ_DB_TOKEN";
+        repo.credentialId = "cred_repo";
 
-        assertThat(repo.resolveToken(name -> "gh-token")).isEqualTo("gh-token");
+        assertThat(repo.resolveToken(id -> "cred_repo".equals(id) ? "ghp_x" : null)).isEqualTo("ghp_x");
     }
 
-    @Test
-    void resolvePasswordReturnsTheLookedUpValueWhenAllowlisted() {
-        SqlSourceSpec sql = new SqlSourceSpec();
-        sql.passwordEnv = "WIREJ_DB_PASSWORD";
+    
+    void aDeletedCredentialResolvesToNullRatherThanThrowing() {
+        // A node pointing at a credential someone removed must behave like one with none
+        // configured: the caller already reports that in terms a user can act on.
+        McpServerSpec mcp = new McpServerSpec();
+        mcp.credentialId = "cred_gone";
 
-        assertThat(sql.resolvePassword(name -> "db-pass")).isEqualTo("db-pass");
+        assertThat(mcp.resolveToken(id -> null)).isNull();
     }
 
-    @Test
-    void resolvePasswordNeverInvokesTheLookupWhenPasswordEnvIsBlank() {
-        SqlSourceSpec sql = new SqlSourceSpec();
-        sql.passwordEnv = "   ";
+    
+    void anEmptyDecryptedValueIsTreatedAsNoCredential() {
+        McpServerSpec mcp = new McpServerSpec();
+        mcp.credentialId = "cred_blank";
 
-        assertThat(sql.resolvePassword(name -> {
-            throw new AssertionError("lookup must not be called when passwordEnv is blank");
-        })).isNull();
+        assertThat(mcp.resolveToken(id -> "")).isNull();
     }
 
     // ------------------------------------------------------------------------- label() / provider()

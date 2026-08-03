@@ -182,6 +182,18 @@ describe('triggerOf', () => {
     expect(triggerOf(f)).toEqual({ label: '▶ Prompt', tone: 'prompt', scheduled: false })
   })
 
+  it('reports a mail trigger with the folder it watches', () => {
+    // Naming the folder because it is what decides which mail the flow acts on — and because a
+    // mail flow previously fell through to "✋ Manual", which is the opposite of the truth.
+    const f = flow([node('input', { mode: 'mail', mailFolder: 'Presupuestos' })])
+    expect(triggerOf(f)).toEqual({ label: '✉ Presupuestos', tone: 'mail', scheduled: true })
+  })
+
+  it('counts a mail trigger as scheduled, so it can be paused like a cron one', () => {
+    const f = flow([node('input', { mode: 'mail' })])
+    expect(triggerOf(f)).toEqual({ label: '✉ Mail', tone: 'mail', scheduled: true })
+  })
+
   it('defaults to manual when the input node has no recognized mode', () => {
     const f = flow([node('input', {})])
     expect(triggerOf(f)).toEqual({ label: '✋ Manual', tone: 'manual', scheduled: false })

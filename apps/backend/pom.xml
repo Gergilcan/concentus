@@ -22,6 +22,10 @@
     <properties>
         <java.version>25</java.version>
         <anthropic.version>2.34.0</anthropic.version>
+        <pdfbox.version>3.0.5</pdfbox.version>
+        <poi.version>5.4.1</poi.version>
+        <jsoup.version>1.21.1</jsoup.version>
+        <tess4j.version>5.16.0</tess4j.version>
     </properties>
 
     <dependencies>
@@ -41,6 +45,63 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <!-- Sign-in, organizations and per-request org isolation. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <!-- IMAP, for the mail-triggered Input node. Brings the Jakarta Mail API and the Angus
+             implementation, whose imap/imaps providers are what actually do the work — folders,
+             SEARCH, flags and MOVE all live in the mail *store*, which is why this is IMAP and
+             not SMTP. Version managed by the Boot parent. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
+        <!-- Attachment text extraction. Pure Java, no native binaries: PDF, DOCX and XLSX are
+             parsed in-process so the container image needs nothing extra for them. OCR is the
+             one exception (see tess4j below). -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+        <!-- HTML mail bodies -> text, keeping tables and lists readable. -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>${jsoup.version}</version>
+        </dependency>
+        <!-- OCR for image attachments and scanned PDFs. Unlike everything above, this is a JNA
+             binding to the *native* Tesseract library: it is loaded lazily and the extractor
+             reports itself unavailable when libtesseract or its language data is missing, so a
+             deployment without them still starts and simply skips OCR. See apps/backend/Dockerfile. -->
+        <dependency>
+            <groupId>net.sourceforge.tess4j</groupId>
+            <artifactId>tess4j</artifactId>
+            <version>${tess4j.version}</version>
+            <exclusions>
+                <!-- tess4j pulls its own logging bridge; Spring Boot already supplies one. -->
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>ch.qos.logback</groupId>
+                    <artifactId>logback-classic</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- Official Anthropic Java SDK -->
