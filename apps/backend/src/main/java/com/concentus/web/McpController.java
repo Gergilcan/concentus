@@ -32,10 +32,16 @@ public class McpController {
     /**
      * What this host can do about MCP authentication, so the UI offers the route that works.
      *
-     * <p>{ interactiveLogin} is false in a container — the OAuth sign-in needs a terminal and
-     * a browser, and a headless deployment has neither. Both GitHub and GitLab issue long-lived
-     * tokens that skip the interactive step entirely, so this is a routing decision rather than a
-     * missing capability.
+     * <p>{@code interactiveLogin} is about the {@code claude mcp login} path only: that one needs a
+     * terminal and a browser on the host, which a container has neither of. It being false no
+     * longer means "you cannot use an OAuth server here" — Concentus obtains its own grant through
+     * the browser you are already using (see {@code McpOAuthController}), and that works headlessly.
+     *
+     * <p>The distinction matters because the advice used to be "use an access token instead", and
+     * for an OAuth-protected server that is not merely inconvenient — it cannot work. Holded's MCP
+     * answers an unauthenticated request with an RFC 9728 challenge and refuses static tokens
+     * outright, so following that advice means an afternoon spent looking for a token that does
+     * not exist.
      */
     @GetMapping("/capabilities")
     public Map<String, Object> capabilities() {
@@ -43,9 +49,13 @@ public class McpController {
         return Map.of(
                 "interactiveLogin", interactive,
                 "hint", interactive ? ""
-                        : "This deployment has no desktop, so the OAuth sign-in cannot complete. "
-                          + "Use an access token instead: store it under Resources -> Credentials "
-                          + "and select it on the MCP node.");
+                        : "The claude CLI's own sign-in needs a desktop, which this deployment does "
+                          + "not have — but that is only one of two routes. For a server that uses "
+                          + "OAuth (Holded, Atlassian, Linear), press \"Sign in to this server\" on "
+                          + "the MCP node: Concentus gets its own authorization through this "
+                          + "browser, which works headlessly. A server that accepts a static token "
+                          + "needs neither — store it under Resources → Credentials and select it "
+                          + "on the node.");
     }
 
     /** Registers an MCP server into Claude Code (user scope), with its stored credential. */

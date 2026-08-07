@@ -7,6 +7,10 @@ import styles from './panels.module.scss'
 
 const CUSTOM = '__custom__'
 
+const LOCAL_HINT =
+  'Served by your own model server. The list is what it reports it has loaded, so pulling a new ' +
+  'model makes it appear here within a minute.'
+
 /** "$5 / $25" — input then output, per million tokens. */
 function rateLabel(rate: ModelRate): string {
   const fmt = (n: number) => (n < 1 ? `$${n}` : `$${Number.isInteger(n) ? n : n.toFixed(2)}`)
@@ -16,9 +20,9 @@ function rateLabel(rate: ModelRate): string {
 /**
  * Model picker for an agent node.
  *
- * Claude only, so there is no provider to choose: a flow names a model, and which credential the
- * backend has decides where it runs — the local `claude` CLI on your subscription, or the API on
- * `ANTHROPIC_API_KEY`.
+ * There is no provider to choose: a flow names a model, and the model decides where it runs. A
+ * Claude id goes to the `claude` CLI on your subscription or to the API on `ANTHROPIC_API_KEY`; an
+ * id your own model server reports goes there instead, with no credential involved at all.
  *
  * Rates come from the backend's own `pricing.models` config rather than a copy here, so the figure
  * shown while picking is the same one the run's cost estimate will use.
@@ -47,12 +51,26 @@ export function ModelField({ value, onChange }: { value: string; onChange: (v: s
     }
   }, [])
 
-  const known = useMemo(() => MODEL_GROUPS.flatMap((g) => g.models), [])
+  // Models the self-hosted server is actually serving. Discovered rather than listed here: what
+  // you can run is whatever you have pulled, and a hardcoded list would offer one that isn't there.
+  // Memoised off `catalog` rather than rebuilt each render: `?? []` is a new array every time,
+  // and everything derived from it would then recompute for no reason.
+  const localModels = useMemo(() => catalog?.localModels ?? [], [catalog])
+  const groups = useMemo(
+    () =>
+      localModels.length > 0
+        ? [...MODEL_GROUPS, { label: 'On your hardware', models: localModels, hint: LOCAL_HINT }]
+        : MODEL_GROUPS,
+    [localModels],
+  )
+
+  const known = useMemo(() => groups.flatMap((g) => g.models), [groups])
   const [custom, setCustom] = useState(!known.includes(value) && value !== '')
 
-  const group = MODEL_GROUPS.find((g) => g.models.includes(value))
+  const group = groups.find((g) => g.models.includes(value))
   const rateFor = (model: string): ModelRate | undefined => catalog?.pricing[model]
   const currentRate = rateFor(value)
+  const isLocal = localModels.includes(value)
 
   return (
     <>
@@ -69,10 +87,19 @@ export function ModelField({ value, onChange }: { value: string; onChange: (v: s
             onChange(e.target.value)
           }}
         >
-          {MODEL_GROUPS.map((g) => (
+          {groups.map((g) => (
             <optgroup key={g.label} label={g.label}>
               {g.models.map((m) => {
                 const rate = rateFor(m)
+                // A self-hosted model has no per-token bill, so "$0 / $0" would be noise where
+                // the useful fact is that it runs here.
+                if (localModels.includes(m)) {
+                  return (
+                    <option key={m} value={m}>
+                      {m} — runs locally
+                    </option>
+                  )
+                }
                 return (
                   <option key={m} value={m}>
                     {rate ? `${m} — ${rateLabel(rate)} / 1M` : m}
@@ -96,7 +123,21 @@ export function ModelField({ value, onChange }: { value: string; onChange: (v: s
 
       {group && <p className={styles.hint}>{group.hint}</p>}
 
-      {currentRate && (
+      {isLocal && (
+        <p className={styles.hint}>
+          Runs on your own machine, so there is no per-token bill and nothing leaves it. Delegation,
+          file tools, SQL context and MCP all work. <b>Bash and repository nodes do not</b> — a flow
+          that has to clone a repo and open a pull request needs a Claude model.
+        </p>
+      )}
+
+      {catalog?.localError && !isLocal && localModels.length === 0 && (
+        <p className={styles.hint}>
+          No self-hosted model available: {catalog.localError}
+        </p>
+      )}
+
+      {currentRate && !isLocal && (
         <p className={styles.hint}>
           {/* A subscription run has no per-token bill at all, and the same flow may run either
               way depending on the credential present — so the figure is framed as a comparison
@@ -108,7 +149,7 @@ export function ModelField({ value, onChange }: { value: string; onChange: (v: s
         </p>
       )}
 
-      {!currentRate && catalog && (
+      {!currentRate && catalog && !isLocal && (
         <p className={styles.hint}>
           No rate configured for this model, so cost is estimated at the fallback{' '}
           {rateLabel(catalog.fallback)} per 1M tokens. Add it to <code>pricing.models</code> for an

@@ -245,20 +245,153 @@ and everything else to the frontend — a single external entrypoint and a natur
 
 ## Models
 
-Flows run on **Claude**, and which credential is present decides where:
+**The model named on an agent decides where that agent runs.** Not a global setting, not a
+credential — the model. So one flow can put its coordinator on Claude and a summarising sub-agent
+on a model on your own GPU, and neither knows about the other.
 
-| Credential | Backend | How it runs |
+| Model named | Backend | How it runs |
 |---|---|---|
-| Claude Code sign-in (`claude`) | **Local** | the `claude` CLI on your subscription, on this machine |
-| `ANTHROPIC_API_KEY` | **API** | Anthropic's hosted Managed-Agents session |
+| a Claude id, with a Claude Code sign-in | **Local** | the `claude` CLI on your subscription, on this machine |
+| a Claude id, with `ANTHROPIC_API_KEY` | **API** | Anthropic's hosted Managed-Agents session |
+| an id your own model server reports | **Self-hosted** | your GPU, via OpenAI-compatible HTTP |
 
-`ANTHROPIC_AUTH_MODE` picks between them: `auto` (default — key set means API, otherwise local),
-`local`, or `api-key`. The toolbar badge shows which is active, and `GET /api/auth/status` reports
-it. With neither credential the designer still runs; only launching a flow fails, with a message
-saying so.
+`ANTHROPIC_AUTH_MODE` picks between the two Claude paths: `auto` (default — key set means API,
+otherwise local), `local`, or `api-key`. The toolbar badge shows which is active, and
+`GET /api/auth/status` reports it. With neither credential the designer still runs, and a flow on a
+self-hosted model runs too — **no Claude credential is needed for that path at all**.
 
-A flow names a model (`claude-opus-4-8`, `claude-sonnet-5`, …). The field is free text, so a model
+A flow names a model (`claude-opus-4-8`, `qwen3:14b`, …). The field is free text, so a model
 released after this list still works — the picker is a shortcut, not a whitelist.
+
+### Running on your own hardware
+
+Any server speaking OpenAI's `/chat/completions` works: **Ollama**, llama.cpp's `llama-server`,
+**vLLM**, LM Studio. A 14B model on a 16 GB card is a realistic target at 4-bit.
+
+The compose file ships the whole stack behind a **profile**, so it stays off until you ask:
+
+```bash
+docker compose --profile local-ai up --build
+```
+
+| | | |
+|---|---|---|
+| `ollama` | GPU | serves **both** the chat model and the embedding model |
+| `ollama-pull` | — | pulls them once, then exits |
+| `litellm` | `:4000` | Anthropic-format gateway, so the `claude` CLI can also target a local model |
+| `reranker` | `:7997` | CPU; **not** wired into Concentus — see below |
+| `openwebui` | `:8081` | chat UI, pointed at LiteLLM (8080 belongs to the backend) |
+
+Behind a profile because none of it is free: Ollama pins weights in VRAM and the reranker downloads
+a model on first start, and nothing there is needed to design a flow or run one on Claude. Plain
+`docker compose up` still gets you the app, the database and the frontend.
+
+**There is no separate embedding server.** Ollama serves both models on one URL; only the model name
+differs per request — `/v1/chat/completions` with `qwen3:14b`, `/v1/embeddings` with `bge-m3`. That
+is the whole wiring, and `LOCAL_MODEL_BASE_URL` is the only address involved. The MCP node shows
+which ranking you are actually getting, so you can see it working rather than assume it.
+
+Running Ollama on the host instead of in compose:
+
+```properties
+LOCAL_MODEL_BASE_URL=http://localhost:11434/v1               # backend running directly
+LOCAL_MODEL_BASE_URL=http://host.docker.internal:11434/v1    # backend in docker-compose
+```
+
+Two honest caveats about the merged stack. The **reranker is included but unused** — Concentus's
+tool search ranks by embedding distance and stops there; it is in the file because it is the
+cheapest quality win for a *document* RAG pipeline, and it costs no VRAM. And **LiteLLM is a second,
+separate path**: Concentus's self-hosted backend talks OpenAI-format to Ollama directly and never
+goes through it. Point `ANTHROPIC_BASE_URL` at `http://litellm:4000` only if you want Claude Code's
+own agent loop driving a 14B model — it works, and tool-calling discipline is the first casualty.
+
+That's the whole setup. The picker then lists **whatever the server reports it has loaded**, under
+*On your hardware* — asked rather than configured, because what you can run is whatever you have
+pulled, and a hand-written list would offer a model that would 404 at launch. Pull something new
+and it appears within a minute.
+
+Two things that cost an afternoon if missed:
+
+- **The `/v1` suffix.** Ollama's OpenAI-compatible surface is at `:11434/v1`, not at the root.
+- **Ollama's context window defaults to 2k** regardless of what the model supports, and truncates
+  past it *silently*. A system prompt plus tool definitions passes that immediately, and the symptom
+  is a model that appears to ignore its instructions rather than any error. Raise it on the server:
+  `OLLAMA_CONTEXT_LENGTH=32768 ollama serve`.
+
+**What works here:** delegation between agents (as tool calls), file tools scoped to the agent's
+context folders, SQL/RAG context, MCP servers, and every trigger — mail, cron, webhook.
+
+#### Large MCP servers: the agent searches instead of being handed everything
+
+A tool definition is a JSON schema in the prompt. Holded's MCP server exposes **338** of them —
+roughly fifty thousand tokens before the conversation starts, which no self-hosted context will
+hold. The model server truncates without saying so, and the model then reports having only the few
+that survived, which reads as a confused model rather than a starved one.
+
+So above `LOCAL_MODEL_TOOL_SEARCH_THRESHOLD` tools (default 25) the agent is given **one** tool,
+`search_<server>_tools`, instead of the catalogue. It describes what it needs — *"find a customer
+by tax id"* — gets back the few matching definitions with their full parameters, and calls the tool
+by name. **Every tool stays callable**; only the listing stops being carried in every prompt.
+
+Ranking is semantic when it can be. The tool corpus is embedded once per server and stored in
+pgvector, which is what connects *"who are my customers"* to `list_contacts` — a phrase sharing not
+one word with the tool's name.
+
+```bash
+ollama pull bge-m3      # an EMBEDDING model; a chat model 404s or returns nonsense
+```
+
+The compose file uses the `pgvector/pgvector` image for this. Without the extension, or without the
+embedding model, ranking **falls back to word overlap** and the run says which it used — worse
+results, still useful, and nothing breaks. Re-indexing is keyed on a hash of the server's tool list,
+so it happens when the server's tools change and not merely because a run started.
+
+Picking tools by hand on the node always wins over search: an explicit selection was a decision, and
+for eight tools a search round-trip is pure overhead.
+
+#### MCP servers that use OAuth
+
+A server like Holded's authenticates with **OAuth**, not a pasted token — and the `claude` CLI keeps
+its own authorization for it. So the same server works on the Claude backends and answers **401**
+here, which reads as a broken flow rather than a missing sign-in. It isn't: the grant simply belongs
+to the CLI, not to this application.
+
+Press **Sign in to this server** on the MCP node. Concentus then does the flow itself — discovers
+the authorization server from the `WWW-Authenticate` challenge, registers as a client dynamically
+(there is no console to create an app in), and runs authorization code with PKCE. Approve it once in
+the tab that opens; the grant is stored encrypted and renews itself.
+
+The browser is redirected back to `MCP_OAUTH_REDIRECT_BASE` (default `http://localhost:3000`, the
+compose frontend). **It has to be the address your browser actually uses to reach Concentus** — set
+it to whatever is in your address bar, minus the path:
+
+| How you run it | Set it to |
+|---|---|
+| docker-compose (default) | `http://localhost:3000` |
+| Vite dev server | `http://localhost:5173` |
+| backend opened directly | `http://localhost:8080` |
+| behind a domain | `https://concentus.example.com` |
+
+Get it wrong and the sign-in dies at the very last step with `ERR_CONNECTION_REFUSED`, after the
+code has already been issued and spent — the authorization server sent the browser somewhere
+nothing is listening. The Sign in button checks for that mismatch before it opens anything and says
+what to set, but only the running backend's value goes on the wire, so it still needs restarting
+after a change.
+
+Servers that take a plain token need none of this: fill in the token field and they work headlessly.
+
+**What does not: bash, and therefore repository nodes.** Cloning, committing and opening a PR all
+run through git on a shell. Flows can be triggered by public webhooks, so model-generated shell
+commands on the host is a remote-code-execution path; Claude Code carries its own permission model
+and a trust boundary you accepted by installing it, and none of that transfers when this app spawns
+a process itself. Doing it safely needs an isolation boundary, which is a design decision rather
+than a default. A flow that edits repositories belongs on Claude; the run says so out loud rather
+than quietly skipping the node.
+
+One more caveat worth stating plainly: a 14B model is not a frontier model, and the gap shows up as
+**tool-calling discipline** rather than prose quality — repeated calls, malformed arguments,
+answering in text where it should have called something. `LOCAL_MODEL_MAX_TURNS` bounds that, and
+hitting the cap is reported rather than passed off as an answer.
 
 ### Costs
 

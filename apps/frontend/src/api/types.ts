@@ -79,10 +79,26 @@ export interface BackendStatus {
 /**
  * What the designer knows about models before a run.
  *
- * There is no provider list: Claude is the only model family, so the question is which Claude
- * credential is present — which is what `backends` answers.
+ * There is no provider list to choose from: it is Claude, or a model on your own hardware. Which
+ * Claude credential is present and whether a self-hosted server is answering is what `backends`
+ * reports, and the model named on an agent decides which of them runs the flow.
  */
+/** Whether MCP tool search will rank semantically, and what is missing when it will not. */
+export interface ToolSearchStatus {
+  enabled: boolean
+  embeddingModel: string
+  modelPresent: boolean
+  vectorReady: boolean
+  threshold: number
+  detail: string
+}
+
 export interface ModelCatalog {
+  toolSearch?: ToolSearchStatus
+  /** Model ids the self-hosted server is serving right now. Discovered, not configured. */
+  localModels?: string[]
+  /** Why `localModels` is empty, when it is. */
+  localError?: string | null
   /** Rates for models named in `pricing.models`, keyed by model id. */
   pricing: Record<string, ModelRate>
   /** Rate applied to any model not listed above. */
@@ -113,6 +129,14 @@ export type InputNodeData = {
   secret: string
   /** Header (or query param) carrying the signature/token, e.g. `Linear-Signature`. */
   authParam: string
+  /**
+   * How much the claude CLI may do without asking, for runs of this flow.
+   *
+   * Blank means the deployment default. Per flow rather than per deployment because the answer
+   * differs by what the flow does: one that edits a repository and opens a PR is not the same
+   * risk as one that reads a mailbox and writes a draft.
+   */
+  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
 
   // --- mail mode (IMAP) ---------------------------------------------------
   // Folders, flags and read state live in the mail store, so this is IMAP rather than SMTP:
@@ -202,6 +226,14 @@ export type McpNodeData = {
    * reads its access tokens from `PRIVATE-TOKEN`, unprefixed, so this cannot be fixed globally.
    */
   authHeader?: string
+  /**
+   * Substrings selecting which of the server's tools an agent gets. Empty means all.
+   *
+   * A real MCP server can expose hundreds of tools — Holded's has 338 — and each one is a JSON
+   * schema in the prompt. That overflows a self-hosted model's context before the conversation
+   * starts, and the model server truncates in silence.
+   */
+  tools?: string[]
 }
 
 export type RepoNodeData = {
@@ -422,4 +454,29 @@ export interface MailOAuthDefaults {
   tenantId: string
   clientId: string
   configured: boolean
+}
+
+/** Whether Concentus holds its own OAuth grant for an MCP server. */
+export interface McpOAuthStatus {
+  connected: boolean
+  redirectUri?: string
+}
+
+export interface McpOAuthStart {
+  ok: boolean
+  authorizationUrl?: string
+  redirectUri?: string
+  error?: string
+}
+
+/** One tool a server offers, as the picker lists it. Schemas are omitted — the list is huge. */
+export interface McpToolInfo {
+  name: string
+  description: string
+}
+
+export interface McpToolList {
+  ok: boolean
+  tools?: McpToolInfo[]
+  error?: string
 }

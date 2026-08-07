@@ -4,6 +4,8 @@ import type { McpDef, McpNodeData, McpServerInfo } from '../api/types.ts'
 import { CredentialField } from './CredentialField.tsx'
 import { Field, SelectField } from './fields.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
+import { McpOAuthConnect } from './McpOAuthConnect.tsx'
+import { McpToolPicker } from './McpToolPicker.tsx'
 import styles from './panels.module.scss'
 
 interface Props {
@@ -92,6 +94,24 @@ export function McpInspector({ data, set }: Props) {
         <b>project/group access token</b> (GitLab) is a plain header, so it works headlessly — which
         is what makes this usable from Docker.
       </p>
+
+      <McpToolPicker
+        url={data.url}
+        credentialId={data.credentialId}
+        selected={data.tools ?? []}
+        onChange={(tools) => set({ tools })}
+      />
+      <p className={styles.hint}>
+        <b>This matters most on a self-hosted model.</b> A real server can expose hundreds of tools
+        — Holded's has 338 — and each is a JSON schema in the prompt. That overflows the context
+        before the conversation starts; the model server then truncates <i>silently</i>, and the
+        model reports having only the few that survived. Claude has the room; a 14B does not, and it
+        also picks better from eight tools than from three hundred. One agent per area — invoicing,
+        contacts, treasury — each with its own short list, is what the delegation on this canvas is
+        for.
+      </p>
+
+      <McpOAuthConnect url={data.url} />
 
       <McpClaudeActions
         name={data.name}

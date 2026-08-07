@@ -12,9 +12,15 @@ interface Props {
 }
 
 /**
- * Live Claude Code registration + OAuth status for one MCP server, with one-click
- * "Add & authorize" — no terminal needed. Used by the MCP node inspector and the
- * Resources → MCP Servers panel.
+ * Registration and status for one MCP server **in the Claude Code CLI's own list**.
+ *
+ * Only the Claude backends use this: the CLI holds its own MCP registrations and its own
+ * authorizations. It is not how the self-hosted-model backend reaches a server — that one connects
+ * directly and uses either a stored token or the grant Concentus obtained itself, which is what
+ * `McpOAuthConnect` above handles.
+ *
+ * The two sit next to each other and used to contradict one another: this panel would report that
+ * an OAuth sign-in "cannot complete here", which was true of the CLI's flow and false of the app's.
  */
 export function McpClaudeActions({ name, url, credentialId, authHeader }: Props) {
   const [servers, setServers] = useState<McpServerInfo[]>([])
@@ -143,7 +149,9 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
 
       {caps && !caps.interactiveLogin && (
         <div className={styles.previewMeta}>
-          {caps.hint || 'No desktop here, so OAuth cannot complete — use an access token.'}
+          {caps.hint ||
+            'The claude CLI’s own sign-in needs a desktop, which this deployment lacks. For an ' +
+              'OAuth server use “Sign in to this server” above instead — that route works here.'}
         </div>
       )}
       {failed && (

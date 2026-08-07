@@ -770,3 +770,21 @@
   border-radius: 5px;
   padding: 1px 6px;
 }
+
+/* A dialog that is a task, not a confirmation: a long list needs room to be read and searched. */
+.modalWide {
+  max-width: 760px;
+  /* The dialog itself does not scroll — its list does, so the search box and the actions stay
+     put. A search field that scrolls out of view is unusable on a list of three hundred. */
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* The only scrolling region in the tool dialog, so search and actions stay anchored. */
+.toolList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}

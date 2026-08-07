@@ -4,6 +4,9 @@ import type {
   CredentialStatus,
   MailDeviceCode,
   MailOAuthDefaults,
+  McpOAuthStart,
+  McpToolList,
+  McpOAuthStatus,
   MailStatus,
   MailSignInResult,
   BackendFlow,
@@ -190,6 +193,23 @@ export const api = {
 
   /** The deployment's Entra app registration, so a node need not ask for it. Not secrets. */
   mailSignInDefaults: () => req<MailOAuthDefaults>('/mail/oauth/microsoft/defaults'),
+
+  // MCP servers that use OAuth. The claude CLI keeps its own authorizations, so this app needs
+  // its own grant for any backend that is not the CLI.
+  /** What a server can do, fetched with the same credential a run uses. */
+  listMcpTools: (url: string, credentialId?: string) =>
+    req<McpToolList>(
+      '/mcp/tools?url=' +
+        encodeURIComponent(url) +
+        (credentialId ? '&credentialId=' + encodeURIComponent(credentialId) : ''),
+    ),
+
+  mcpOAuthStatus: (url: string) =>
+    req<McpOAuthStatus>('/mcp/oauth/status?url=' + encodeURIComponent(url)),
+  startMcpOAuth: (url: string) =>
+    req<McpOAuthStart>('/mcp/oauth/start', { method: 'POST', body: JSON.stringify({ url }) }),
+  disconnectMcpOAuth: (url: string) =>
+    req<McpOAuthStatus>('/mcp/oauth/disconnect', { method: 'POST', body: JSON.stringify({ url }) }),
 
   // Microsoft 365 mailbox sign-in (OAuth2 device code). Two calls because the flow is
   // asynchronous: `start` yields a code for a person to enter, `complete` is polled until they do.

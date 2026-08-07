@@ -344,7 +344,24 @@ class RunServiceTest {
 
         assertThatThrownBy(() -> svc.sendCommand(s.id(), "hi"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("not ready yet");
+                .hasMessageContaining("has not finished starting up");
+    }
+
+    @Test
+    void sendCommandDrivesAnyTurnBasedBackend() throws Exception {
+        // Regression: this branched on the literal id "local", so a run on any other turn-based
+        // backend fell through to the cloud path and was refused for having no session id — an
+        // execution that was working perfectly reported "Run is not ready yet".
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        RunService svc = newService(4, 8, 10);
+        RunSummary s = svc.start(flow("f1"));
+        svc.get(s.id()).orElseThrow().backend = "local";
+
+        svc.sendCommand(s.id(), "hola");
+
+        // Dispatched to the executor rather than rejected; the id is what routes it.
+        verify(localExecutor, timeout(2000).atLeastOnce()).runTurn(any(), any(), any());
     }
 
     @Test

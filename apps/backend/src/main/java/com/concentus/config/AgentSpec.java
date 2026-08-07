@@ -112,6 +112,16 @@ public class AgentSpec {
      * credential behaves like one with none configured — the caller reports "no credential" rather
      * than failing in a way that looks like a bug.
      */
+    /**
+     * Resolves a stored credential outside a spec, for the designer.
+     *
+     * <p>The tool picker has to authenticate exactly as a run does, or it shows a list the run
+     * cannot reproduce — which is worse than showing nothing.
+     */
+    public static String resolveCredentialForLookup(String credentialId) {
+        return resolveCredential(credentialId, credentialLookup);
+    }
+
     private static String resolveCredential(String credentialId, Function<String, String> lookup) {
         if (credentialId == null || credentialId.isBlank()) return null;
         return emptyToNull(lookup.apply(credentialId));
@@ -177,6 +187,20 @@ public class AgentSpec {
          * {@code PRIVATE-TOKEN}, unprefixed, so this has to be per-server rather than fixed.
          */
         public String authHeader;
+
+        /**
+         * Substrings that select which of the server's tools an agent is given. Empty means all.
+         *
+         * <p>Exists because a real MCP server can be enormous — Holded's exposes 338 tools — and
+         * every one of them is a JSON schema in the prompt. That is tens of thousands of tokens
+         * before the conversation starts, which a self-hosted model's context simply will not hold;
+         * the server then truncates silently and the model reports having only whatever survived.
+         * Choosing 20 relevant tools is also what makes a smaller model pick the right one.
+         *
+         * <p>Matched as case-insensitive substrings, not exact names, so {@code contact} covers
+         * {@code create_contact} and {@code list_contacts} without anyone transcribing a list.
+         */
+        public List<String> tools = new ArrayList<>();
 
         /** The decrypted bearer token, or null when none is configured or the id is unknown. */
         public String resolveToken() {

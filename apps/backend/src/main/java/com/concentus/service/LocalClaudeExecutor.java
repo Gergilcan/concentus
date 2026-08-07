@@ -416,7 +416,11 @@ public class LocalClaudeExecutor {
         a.add("stream-json");
         a.add("--verbose");
         a.add("--permission-mode");
-        a.add(permissionMode);
+        // The run's own mode when its flow named one, otherwise the deployment default. Read from
+        // the run rather than the flow so that editing the flow mid-run cannot change what an
+        // already-running agent is permitted to do.
+        a.add(run.permissionMode == null || run.permissionMode.isBlank()
+                ? permissionMode : run.permissionMode);
         a.add("--model");
         a.add(modelAlias(coord.model.id));
 

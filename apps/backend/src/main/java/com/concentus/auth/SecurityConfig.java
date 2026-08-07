@@ -85,6 +85,12 @@ public class SecurityConfig {
                     // Signing in, and asking whether you are signed in, cannot themselves require
                     // a session.
                     .requestMatchers("/api/account/login", "/api/account/session").permitAll()
+                    // An OAuth redirect arrives as a plain top-level navigation from the
+                    // authorization server, carrying none of our cookies, so it cannot require a
+                    // session. It is not an open door: the callback only accepts a `state` this
+                    // process issued minutes earlier and holds in memory, and that value is what
+                    // carries the organization — nothing is taken from the request itself.
+                    .requestMatchers("/api/mcp/oauth/callback").permitAll()
                     .anyRequest().authenticated())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                     .sessionFixation(f -> f.migrateSession()))

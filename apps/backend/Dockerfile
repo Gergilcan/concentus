@@ -28,7 +28,11 @@ RUN apt-get update \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY --from=build /src/target/concentus-backend-1.0.0.jar app.jar
+# A glob, not the artifact's name. The name is decided by the pom — artifactId, version, or a
+# <finalName> — and hard-coding it means a version bump breaks the image build with a "not found"
+# that points at the Dockerfile rather than at the pom. Exactly one jar is produced here; the
+# repackaged original is left as .jar.original, which this does not match.
+COPY --from=build /src/target/*.jar /app/app.jar
 
 # Run locally on the subscription login (no API key). See docker-compose for how auth is supplied.
 ENV ANTHROPIC_AUTH_MODE=local \
@@ -36,4 +40,6 @@ ENV ANTHROPIC_AUTH_MODE=local \
     APP_DATA_DIR=/data
 VOLUME /data
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "/app.jar"]
+# /app/app.jar, not /app.jar. The COPY above lands it under WORKDIR, and the two differ by one
+# slash — which fails at container start rather than at build time, so it survives a green build.
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

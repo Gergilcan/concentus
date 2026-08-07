@@ -41,20 +41,50 @@ public class PricingTable {
         this.fallback = new Rate(fallbackInput, fallbackOutput);
     }
 
-    /** Parses {@code id:input:output} entries; a malformed entry is skipped rather than fatal. */
+    /**
+     * Parses {@code id:input:output} entries; a malformed entry is skipped rather than fatal.
+     *
+     * <p>Split from the <em>right</em>, because model ids contain colons: Ollama names a model
+     * {@code qwen3:14b}, so splitting from the left gives four fields and the row is dropped —
+     * the model then silently prices at the Claude fallback rate. The last two fields are the
+     * rates; everything before them is the id.
+     */
     private static Map<String, Rate> parse(String configured) {
         Map<String, Rate> out = new LinkedHashMap<>();
         if (configured == null || configured.isBlank()) return Map.copyOf(out);
         for (String entry : configured.split(",")) {
-            String[] parts = entry.trim().split(":");
-            if (parts.length != 3) continue;
+            String row = entry.trim();
+            int lastColon = row.lastIndexOf(':');
+            if (lastColon <= 0) continue;
+            int prevColon = row.lastIndexOf(':', lastColon - 1);
+            if (prevColon <= 0) continue;
             try {
-                out.put(parts[0].trim(), new Rate(Double.parseDouble(parts[1]), Double.parseDouble(parts[2])));
+                out.put(row.substring(0, prevColon).trim(),
+                        new Rate(Double.parseDouble(row.substring(prevColon + 1, lastColon)),
+                                Double.parseDouble(row.substring(lastColon + 1))));
             } catch (NumberFormatException ignored) {
-                // A typo in one row shouldn't stop the app from starting or price everything else.
+                // A typo in one row shouldn't stop the app from starting or misprice everything else.
             }
         }
         return Map.copyOf(out);
+    }
+
+    /**
+     * Models that cost nothing per token because you are hosting them.
+     *
+     * <p>Registered at runtime rather than configured, since the set is whatever the local server
+     * turns out to be serving. Without this a self-hosted run is priced at the Claude fallback and
+     * reports a dollar figure for electricity you already paid for — which is worse than showing
+     * nothing, because it looks authoritative.
+     */
+    private volatile java.util.Set<String> freeModels = java.util.Set.of();
+
+    public void markFree(java.util.Collection<String> models) {
+        this.freeModels = models == null ? java.util.Set.of() : java.util.Set.copyOf(models);
+    }
+
+    public boolean isFree(String model) {
+        return model != null && freeModels.contains(model);
     }
 
     /**
@@ -70,11 +100,20 @@ public class PricingTable {
         return fallback;
     }
 
-    /** The configured rate for a model, or the global fallback when it isn't listed. */
+    /** A model you host yourself: no per-token bill at all. */
+    public static final Rate FREE = new Rate(0, 0);
+
+    /**
+     * The configured rate for a model, or the global fallback when it isn't listed.
+     *
+     * <p>An explicit {@code pricing.models} entry still wins over "self-hosted, so free" — that is
+     * how someone accounts for GPU time or electricity if they want to.
+     */
     public Rate rateFor(String model) {
         if (model == null || model.isBlank()) return fallback;
         Rate exact = byModel.get(model);
-        return exact != null ? exact : fallback;
+        if (exact != null) return exact;
+        return isFree(model) ? FREE : fallback;
     }
 
     /** USD estimate for one model's usage, with cached tokens weighted. */

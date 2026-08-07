@@ -67,6 +67,31 @@ public class AgentRun {
     public volatile boolean localStarted = false;
     public volatile Process localProcess;
 
+    // --- self-hosted model run state ---
+    /**
+     * MCP sessions, kept for the life of the run.
+     *
+     * <p>The handshake is per session, so reconnecting each turn would pay it repeatedly and churn
+     * sessions on the server. Keyed by server name, which is unique within a flow.
+     */
+    public final Map<String, com.concentus.llm.McpClient> mcpClients = new ConcurrentHashMap<>();
+    /**
+     * Whether SQL/RAG context has been injected for this run.
+     *
+     * <p>Once per run, not once per turn: the injector runs the query and appends the rows to the
+     * system prompt, so doing it again would re-read the database and stack a second copy of the
+     * same rows onto the prompt.
+     */
+    public volatile boolean modelContextPrepared = false;
+
+    /**
+     * The permission mode this run was launched with, or blank for the deployment default.
+     *
+     * <p>Fixed at launch rather than read per turn: a flow edited mid-run must not quietly change
+     * what an already-running agent is allowed to do.
+     */
+    public volatile String permissionMode = "";
+
     private final CopyOnWriteArrayList<RunEvent> buffer = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<Consumer<RunEvent>> listeners = new CopyOnWriteArrayList<>();
 

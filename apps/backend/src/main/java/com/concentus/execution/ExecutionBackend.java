@@ -40,6 +40,21 @@ public interface ExecutionBackend {
      */
     boolean supportsModel(String model);
 
+    /**
+     * Whether this backend is driven a turn at a time by us, rather than launching a session that
+     * runs itself.
+     *
+     * <p>The distinction decides what {@code start()} does: a turn-based backend sits idle until
+     * given a first instruction, while a session-based one is launched up front and streams back.
+     * Getting it wrong means either a run that never starts or one that starts twice.
+     *
+     * <p>True for the {@code claude} CLI and for a self-hosted model; false for Managed Agents,
+     * which owns its own loop once launched.
+     */
+    default boolean isTurnBased() {
+        return true;
+    }
+
     /** Runs one turn. Blocking — callers run it on a worker thread. */
     void runTurn(AgentRun run, CompiledFlow flow, String userText);
 

@@ -186,6 +186,9 @@ public class FlowCompiler {
             spec.url = str(md, "url", "");
             spec.credentialId = str(md, "credentialId", null);
             spec.authHeader = str(md, "authHeader", null);
+            // Which of the server's tools this agent gets. A large server would otherwise put
+            // hundreds of JSON schemas in the prompt.
+            spec.tools = strList(md, "tools");
             return spec;
         });
         collectConnected(flow, node, repos, s.repositories, repo -> {
