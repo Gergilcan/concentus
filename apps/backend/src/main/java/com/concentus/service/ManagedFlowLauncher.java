@@ -37,11 +37,14 @@ import java.util.function.Consumer;
 @Component
 public class ManagedFlowLauncher {
 
+    private final com.concentus.git.RepoExpander repoExpander;
+
     private static final Logger log = LoggerFactory.getLogger(ManagedFlowLauncher.class);
 
     private final RagContextInjector ragInjector;
 
-    public ManagedFlowLauncher(RagContextInjector ragInjector) {
+    public ManagedFlowLauncher(RagContextInjector ragInjector, com.concentus.git.RepoExpander repoExpander) {
+        this.repoExpander = repoExpander;
         this.ragInjector = ragInjector;
     }
 
@@ -79,14 +82,15 @@ public class ManagedFlowLauncher {
                 .environmentId(environment.id())
                 .title(flow.coordinator().name);
 
-        for (RepoSpec repo : flow.allRepos()) {
+        // A node can name a whole organization, in which case it stands for every repo inside it.
+        for (RepoSpec repo : repoExpander.expandFlat(flow.allRepos())) {
             if (repo.provider() != AgentSpec.RepoProvider.GITHUB) {
                 log.info("repo {} is {} -> not natively mounted; reachable via its MCP server", repo.url, repo.provider);
                 continue;
             }
             String token = repo.resolveToken();
             if (token == null) {
-                log.warn("github repo {} has no token ({} unset) -> skipping mount", repo.url, repo.tokenEnv);
+                log.warn("github repo {} has no usable credential -> skipping mount", repo.url);
                 continue;
             }
             var res = BetaManagedAgentsGitHubRepositoryResourceParams.builder()

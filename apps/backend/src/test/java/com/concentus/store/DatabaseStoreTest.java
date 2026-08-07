@@ -36,7 +36,7 @@ class DatabaseStoreTest {
         assertThat(reloaded.label()).isEqualTo("Orders DB");
         assertThat(reloaded.jdbcUrl()).isEqualTo("jdbc:postgresql://host/orders");
         assertThat(reloaded.username()).isEqualTo("user");
-        assertThat(reloaded.passwordEnv()).isEqualTo("WIREJ_DB_ORDERS");
+        assertThat(reloaded.credentialId()).isEqualTo("WIREJ_DB_ORDERS");
     }
 
     @Test

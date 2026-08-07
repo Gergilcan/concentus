@@ -4,6 +4,8 @@ import com.anthropic.client.AnthropicClient;
 import com.anthropic.models.beta.sessions.events.BetaManagedAgentsStreamSessionEvents;
 import com.anthropic.models.beta.sessions.events.BetaManagedAgentsUserMessageEventParams;
 import com.anthropic.models.beta.sessions.events.EventSendParams;
+import com.concentus.model.FlowNode;
+import com.concentus.model.NodeExec;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.RunEvent;
 import com.concentus.model.RunSummary;
@@ -26,6 +28,9 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import com.concentus.execution.ExecutionBackend;
+import com.concentus.execution.ExecutionBackends;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
@@ -44,7 +49,7 @@ public class RunService {
     private final AnthropicClientProvider clientProvider;
     private final FlowCompiler compiler;
     private final ManagedFlowLauncher launcher;
-    private final LocalClaudeExecutor localExecutor;
+    private final ExecutionBackends backends;
     private final CloudStreamEventHandler cloudEvents;
     private final RunStore runStore;
     private final com.fasterxml.jackson.databind.ObjectMapper mapper;
@@ -57,7 +62,7 @@ public class RunService {
     private final ConcurrentHashMap<String, AgentRun> runs = new ConcurrentHashMap<>();
 
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
-                      ManagedFlowLauncher launcher, LocalClaudeExecutor localExecutor, PricingTable pricing,
+                      ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
                       CloudStreamEventHandler cloudEvents,
                       RunStore runStore, com.fasterxml.jackson.databind.ObjectMapper mapper,
                       NotificationService notifier,
@@ -69,7 +74,7 @@ public class RunService {
         this.clientProvider = clientProvider;
         this.compiler = compiler;
         this.launcher = launcher;
-        this.localExecutor = localExecutor;
+        this.backends = backends;
         this.pricing = pricing;
         this.cloudEvents = cloudEvents;
         this.runStore = runStore;
@@ -115,6 +120,66 @@ public class RunService {
     }
 
     /**
+     * Why a flow has nowhere to run, phrased around what the flow actually asks for.
+     *
+     * <p>"Not signed in" is the right answer for a Claude model and the wrong one for a
+     * self-hosted model that simply isn't loaded — sending someone to `claude setup-token` when
+     * their Ollama server is down wastes the afternoon.
+     */
+    private String unroutableMessage(String model) {
+        String base = "Not signed in. Sign in to Claude Code (`claude`) to run on your "
+                + "subscription, or set ANTHROPIC_API_KEY to use the cloud API.";
+        if (model == null || model.isBlank()) return base;
+        // A backend that exists but is not answering is the more useful thing to report: it means
+        // the flow is configured correctly and the server is simply not up.
+        boolean selfHostedIsDown = backends.byId(com.concentus.llm.LocalModelClient.ID)
+                .filter(b -> !b.isAvailable())
+                .isPresent();
+        if (selfHostedIsDown) {
+            return "This flow runs on '" + model + "'. No self-hosted model server is answering — "
+                    + "start it (e.g. `ollama serve`) and check LOCAL_MODEL_BASE_URL. If '" + model
+                    + "' was meant to be a Claude model instead: " + base;
+        }
+        return base;
+    }
+
+    /**
+     * Records what the trigger handed the flow, on the Input node's own box.
+     *
+     * <p>Without this the Input node is the one box in the run with nothing in it — which is
+     * precisely backwards for a mail trigger, where the email <em>is</em> the run's whole reason
+     * for existing and the first thing anyone wants to read when checking what happened. The
+     * console shows it too, but buried under everything the agent then did.
+     *
+     * <p>Marked {@code passed} immediately: a trigger's work is finished the moment it produced
+     * this text, and leaving it "running" forever would misreport a node that already succeeded.
+     */
+    private static void recordTriggerInput(AgentRun run, FlowGraph flow, TriggerSpec trigger) {
+        String inputNodeId = null;
+        for (FlowNode n : flow.nodesOrEmpty()) {
+            if ("input".equalsIgnoreCase(n.type())) {
+                inputNodeId = n.id();
+                break;
+            }
+        }
+        if (inputNodeId == null) return;
+
+        String mode = trigger.mode() == null ? "manual" : trigger.mode().toLowerCase();
+        NodeExec exec = run.nodeExec(inputNodeId, "input", "Input (" + mode + ")");
+        if (exec == null) return;
+        if (run.initialPrompt != null && !run.initialPrompt.isBlank()) {
+            exec.appendOutput(run.initialPrompt);
+            exec.status = "passed";
+        } else {
+            // Manual mode: nothing was handed over, and saying so beats an empty panel that reads
+            // as a node that failed to produce anything.
+            exec.appendOutput("_Waiting for the first message — this run starts when you send one._");
+            exec.status = "passed";
+        }
+        exec.endedAt = System.currentTimeMillis();
+    }
+
+    /**
      * Starts a run. When {@code initialPromptOverride} is non-null it becomes the first turn
      * (used by webhook triggers to inject the event payload); otherwise the Input node's own
      * prompt is used for prompt/cron modes.
@@ -124,10 +189,26 @@ public class RunService {
         CompiledFlow compiled = compiler.compile(flow);
         TriggerSpec trigger = TriggerSpec.from(flow);
 
-        String backend = clientProvider.backend();
-        if ("none".equals(backend)) {
-            throw new IllegalStateException("Not signed in. Sign in to Claude Code (`claude`) to run on your "
-                    + "subscription, or set ANTHROPIC_API_KEY to use the cloud API.");
+        // The model decides where the flow runs, and only then does the credential.
+        //
+        // Asked in this order because a flow naming a self-hosted model must not be sent to Claude
+        // — and must not be refused for lacking a Claude credential it was never going to use.
+        // A backend only claims a model it can actually serve right now, so an unclaimed model
+        // falls through to the Claude paths exactly as before.
+        String coordinatorModel = compiled.coordinator().model == null
+                ? null : compiled.coordinator().model.id;
+        var claimed = backends.forModel(coordinatorModel).filter(ExecutionBackend::isTurnBased);
+
+        String backend;
+        if (claimed.isPresent()) {
+            backend = claimed.get().id();
+        } else {
+            // Which Claude credential is available decides the rest: the local CLI on a
+            // subscription, or the hosted Managed Agents API on a key.
+            backend = clientProvider.backend();
+            if ("none".equals(backend)) {
+                throw new IllegalStateException(unroutableMessage(coordinatorModel));
+            }
         }
 
         String runId = Ids.generate("run_", 12);
@@ -140,26 +221,40 @@ public class RunService {
                 run.inputUsdPerMTok = inputUsdPerMTok;
         run.outputUsdPerMTok = outputUsdPerMTok;
         run.trigger = trigger.mode() == null ? "manual" : trigger.mode().toLowerCase();
+        run.permissionMode = trigger.permissionMode();
         run.pendingPrompt = initialPromptOverride != null
                 ? initialPromptOverride
                 : (trigger.autoStart() ? trigger.prompt() : null);
         run.initialPrompt = run.pendingPrompt;
+        recordTriggerInput(run, flow, trigger);
         runs.put(runId, run);
         evictOldestCompleted();
         trackForPersistence(run);
         runStore.persist(run);
 
-        if ("local".equals(backend)) {
-            // Local: agents run via the claude CLI on the subscription.
+        // A turn-based backend sits idle until given a first instruction; only the cloud backend
+        // launches a hosted session up front. Asked of the backend rather than compared against a
+        // hardcoded id, so a third one does not have to be added to this condition to work at all.
+        ExecutionBackend chosen = backends.byId(backend).orElse(null);
+        if (chosen != null && chosen.isTurnBased()) {
+            // Harmless on a backend that has no notion of a CLI session; the claude one needs it.
             run.localSessionId = UUID.randomUUID().toString();
             run.status = "IDLE";
+            String where = com.concentus.llm.LocalModelClient.ID.equals(backend)
+                    ? "Running on your own hardware — " + chosen.displayName()
+                    : "Local mode — running on your Claude subscription";
+            // Named on every run, because it decides what the agent may do to this machine without
+            // asking, and it is otherwise invisible until something has already happened.
+            if (!run.permissionMode.isBlank()) {
+                where += " · permissions: " + run.permissionMode;
+            }
             if (run.pendingPrompt != null) {
-                run.emit(RunEvent.of("system", "Local mode — auto-starting with the Input prompt."));
+                run.emit(RunEvent.of("system", where + "; auto-starting with the Input prompt."));
                 String prompt = run.pendingPrompt;
                 run.pendingPrompt = null;
                 submitOrFail(run, () -> runLocalTurn(run, prompt));
             } else {
-                run.emit(RunEvent.of("system", "Local mode — running on your Claude subscription ("
+                run.emit(RunEvent.of("system", where + " ("
                         + (compiled.subAgents().size() + 1) + " agents). Send a command to start."));
             }
         } else {
@@ -257,10 +352,15 @@ public class RunService {
         }
     }
 
-    /** Runs one local turn, then snapshots the run and notifies if it failed. */
+    /** One turn on whichever turn-based backend this run uses. */
     private void runLocalTurn(AgentRun run, String prompt) {
         try {
-            localExecutor.runTurn(run, run.compiled, prompt);
+            // Dispatched through the registry rather than an if-chain, so adding a backend — or
+            // moving one behind a network call — does not mean editing this method.
+            backends.byId(run.backend)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "No execution backend '" + run.backend + "' is registered."))
+                    .runTurn(run, run.compiled, prompt);
         } finally {
             runStore.persist(run);
             if ("ERROR".equals(run.status)) {
@@ -308,9 +408,17 @@ public class RunService {
             run.initialPrompt = text;
         }
 
-        if ("local".equals(run.backend)) {
+        // Asked of the backend rather than compared against a hardcoded id. Every turn-based
+        // backend is driven the same way; the previous `"local".equals(...)` silently sent a
+        // self-hosted run down the cloud path, where it waited for a session id that a backend
+        // with no hosted session never produces — reported as "Run is not ready yet" on a run that
+        // was working perfectly.
+        boolean turnBased = backends.byId(run.backend)
+                .map(ExecutionBackend::isTurnBased)
+                .orElse(false);
+        if (turnBased) {
             if (run.compiled == null) {
-                throw new IllegalStateException("Run is not ready yet.");
+                throw new IllegalStateException("This execution has not finished starting up yet.");
             }
             try {
                 exec.submit(() -> runLocalTurn(run, text));
@@ -321,7 +429,7 @@ public class RunService {
         }
 
         if (run.sessionId == null) {
-            throw new IllegalStateException("Run is not ready yet.");
+            throw new IllegalStateException("This cloud session has not started yet — give it a moment.");
         }
         AnthropicClient client = clientProvider.client();
         var coord = coordExec(run);
@@ -338,8 +446,12 @@ public class RunService {
     public void stop(String runId) {
         AgentRun run = require(runId);
 
-        if ("local".equals(run.backend)) {
-            localExecutor.stop(run);
+        // Each backend knows how to stop itself: the CLI kills a child process, a self-hosted model
+        // has none and relies on its loop seeing TERMINATED between turns. Only the cloud path,
+        // which owns a stream rather than a backend bean, falls through below.
+        var backend = backends.byId(run.backend).filter(ExecutionBackend::isTurnBased);
+        if (backend.isPresent()) {
+            backend.get().stop(run);
             run.emit(RunEvent.of("status", "terminated"));
             runStore.persist(run);
             return;

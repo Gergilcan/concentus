@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.ts'
 import type { DatabaseDef, SqlNodeData, SqlPreview } from '../api/types.ts'
+import { CredentialField } from './CredentialField.tsx'
 import { Field, SelectField, TextArea } from './fields.tsx'
 import styles from './panels.module.scss'
 
@@ -25,7 +26,7 @@ export function SqlInspector({ data, set }: Props) {
   const useDatabase = (id: string) => {
     const db = databases.find((d) => d.id === id)
     if (!db) return
-    set({ jdbcUrl: db.jdbcUrl, username: db.username, passwordEnv: db.passwordEnv })
+    set({ jdbcUrl: db.jdbcUrl, username: db.username, credentialId: db.credentialId })
   }
 
   const runPreview = async () => {
@@ -37,7 +38,7 @@ export function SqlInspector({ data, set }: Props) {
         label: data.label,
         jdbcUrl: data.jdbcUrl,
         username: data.username,
-        passwordEnv: data.passwordEnv,
+        credentialId: data.credentialId,
         query: data.query,
         maxRows: data.maxRows,
       })
@@ -75,11 +76,11 @@ export function SqlInspector({ data, set }: Props) {
         onChange={(v) => set({ jdbcUrl: v })}
       />
       <Field label="Username" value={data.username} onChange={(v) => set({ username: v })} />
-      <Field
-        label="Password env var"
-        value={data.passwordEnv}
-        placeholder="PGPASSWORD"
-        onChange={(v) => set({ passwordEnv: v })}
+      <CredentialField
+        label="Password"
+        value={data.credentialId}
+        onChange={(v) => set({ credentialId: v })}
+        what="this database"
       />
       <TextArea label="SQL query" rows={5} value={data.query} onChange={(v) => set({ query: v })} />
       <Field

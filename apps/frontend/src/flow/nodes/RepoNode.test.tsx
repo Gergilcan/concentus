@@ -12,7 +12,7 @@ function repoData(overrides: Partial<RepoNodeData> = {}): RepoNodeData {
     kind: 'repo',
     provider: 'github',
     url: 'https://github.com/acme/widgets',
-    tokenEnv: 'GH_TOKEN',
+    credentialId: 'cred_x',
     mountPath: '/repo',
     branch: 'main',
     ...overrides,
@@ -66,6 +66,18 @@ describe('RepoNode', () => {
     renderRepoNode({ data: repoData({ url: '' }) })
     expect(screen.getByText('repo')).toBeInTheDocument()
     expect(screen.getByText('no url')).toBeInTheDocument()
+  })
+
+  it('shows the group rather than "no url" when the node stands for a whole group', () => {
+    // A group node legitimately has no url; reading "no url" would look like a broken node.
+    renderRepoNode({ data: repoData({ url: '', group: 'acme' }) })
+    expect(screen.getByText('acme')).toBeInTheDocument()
+    expect(screen.getByText('all repos in acme')).toBeInTheDocument()
+  })
+
+  it('says how many were selected when a group is narrowed down', () => {
+    renderRepoNode({ data: repoData({ url: '', group: 'acme', only: ['acme/api', 'acme/web'] }) })
+    expect(screen.getByText('2 of acme')).toBeInTheDocument()
   })
 
   it('applies the repo variant class to the root', () => {

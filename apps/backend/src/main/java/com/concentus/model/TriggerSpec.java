@@ -16,10 +16,31 @@ import java.util.Map;
  *       request parameter named {@link #authParam}.</li>
  * </ul>
  */
-public record TriggerSpec(String mode, String prompt, String cron, String secret, String authParam) {
+public record TriggerSpec(String mode, String prompt, String cron, String secret, String authParam,
+                          String permissionMode) {
 
     /** Used when a flow doesn't name one, so existing Linear webhooks keep working untouched. */
     public static final String DEFAULT_AUTH_PARAM = "Linear-Signature";
+
+    /**
+     * How much the {@code claude} CLI may do without asking, when a flow names it.
+     *
+     * <p>Blank means "use the deployment's configured default", which is what every flow saved
+     * before this existed says — so nothing about them changes.
+     *
+     * <p>Validated against this set rather than passed through. Two reasons, and the second is the
+     * important one: an unrecognised value is rejected by the CLI at launch, and a typo must never
+     * be able to <em>widen</em> what a flow is allowed to do.
+     */
+    public static final java.util.Set<String> PERMISSION_MODES =
+            java.util.Set.of("default", "acceptEdits", "bypassPermissions", "plan");
+
+    /** A recognised mode, or blank to defer to the deployment default. */
+    static String permissionModeOf(String configured) {
+        if (configured == null) return "";
+        String trimmed = configured.trim();
+        return PERMISSION_MODES.contains(trimmed) ? trimmed : "";
+    }
 
     public static TriggerSpec from(FlowGraph flow) {
         for (FlowNode n : flow.nodesOrEmpty()) {
@@ -30,10 +51,11 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
                         str(d, "prompt", ""),
                         str(d, "cron", ""),
                         str(d, "secret", ""),
-                        str(d, "authParam", DEFAULT_AUTH_PARAM));
+                        str(d, "authParam", DEFAULT_AUTH_PARAM),
+                        permissionModeOf(str(d, "permissionMode", "")));
             }
         }
-        return new TriggerSpec("manual", "", "", "", DEFAULT_AUTH_PARAM);
+        return new TriggerSpec("manual", "", "", "", DEFAULT_AUTH_PARAM, "");
     }
 
     /** The run should immediately fire {@link #prompt} as its first turn (Run button / prompt & cron modes). */
@@ -50,5 +72,16 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
     /** The flow is triggered by an inbound webhook. */
     public boolean webhook() {
         return "webhook".equalsIgnoreCase(mode);
+    }
+
+    /**
+     * The flow is triggered by mail arriving in an IMAP folder.
+     *
+     * <p>The connection and match conditions are read separately by {@code MailTriggerSpec} rather
+     * than being added here: mail needs a dozen fields, and folding them into this record would
+     * make every other trigger mode carry them.
+     */
+    public boolean mail() {
+        return "mail".equalsIgnoreCase(mode);
     }
 }

@@ -1,15 +1,10 @@
 package com.concentus.config;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * Root of the YAML agent specification. Sub-specs are nested static classes so the
@@ -90,53 +85,46 @@ public class AgentSpec {
         if (!cond) throw new IllegalArgumentException("Invalid agent spec: " + message);
     }
 
-    // ------------------------------------------------------- env-var allowlist (WIR-7)
+    // ------------------------------------------------------- credential resolution
 
     // AgentSpec instances are plain Jackson POJOs (deserialized from YAML/JSON, not
-    // Spring-managed), so they can't take @Value config directly. EnvAllowlistConfig is a
-    // tiny bean that wires the config-driven allowlist from application.properties into this
-    // static holder at startup. Without this, any caller that can set `passwordEnv`/`tokenEnv`
-    // (e.g. the unauthenticated RAG preview endpoint) could read an arbitrary server env var,
-    // such as ANTHROPIC_API_KEY, by naming it.
-    private static volatile Set<String> allowedEnvVars = Set.of();
-    private static volatile Set<String> allowedEnvVarPrefixes = Set.of("WIREJ_DB_");
+    // Spring-managed), so they can't be injected with the credential store. A tiny bean in the
+    // secrets package installs the lookup here at startup, which is the same shape the previous
+    // env-var allowlist used.
+    //
+    // The allowlist this replaced existed because a node named an arbitrary environment variable:
+    // without a guard, `tokenEnv=ANTHROPIC_API_KEY` on a node pointed at an attacker-controlled
+    // MCP url would have exfiltrated the real key. A credential id has no such reach — it either
+    // names a row in this deployment's credential table or it resolves to nothing — so the whole
+    // allowlist mechanism is gone rather than carried forward.
+    private static volatile Function<String, String> credentialLookup = id -> null;
 
-    @Component
-    static class EnvAllowlistConfig {
-        EnvAllowlistConfig(
-                @Value("${rag.allowed-env-vars:}") String allowedEnvVarsCsv,
-                @Value("${rag.allowed-env-var-prefixes:WIREJ_DB_}") String allowedEnvVarPrefixesCsv) {
-            allowedEnvVars = toSet(allowedEnvVarsCsv);
-            allowedEnvVarPrefixes = toSet(allowedEnvVarPrefixesCsv);
-        }
-
-        private static Set<String> toSet(String csv) {
-            if (csv == null || csv.isBlank()) return Set.of();
-            return Arrays.stream(csv.split(","))
-                    .map(String::trim)
-                    .filter(s -> !s.isEmpty())
-                    .collect(Collectors.toUnmodifiableSet());
-        }
-    }
-
-    /** True if {@code name} may be resolved via {@link System#getenv(String)} by a RAG/SQL spec. */
-    static boolean isEnvVarAllowed(String name) {
-        if (name == null || name.isBlank()) return false;
-        if (allowedEnvVars.contains(name)) return true;
-        for (String prefix : allowedEnvVarPrefixes) {
-            if (!prefix.isEmpty() && name.startsWith(prefix)) return true;
-        }
-        return false;
+    /** Installs the resolver. Called once at startup; see {@code secrets.CredentialResolver}. */
+    public static void setCredentialLookup(Function<String, String> lookup) {
+        credentialLookup = lookup == null ? id -> null : lookup;
     }
 
     /**
-     * Shared by {@link McpServerSpec#resolveToken()}, {@link RepoSpec#resolveToken()}, and {@link
-     * SqlSourceSpec#resolvePassword()}: resolves a named env var via {@code envLookup}, but only if
-     * it's on the allowlist (see {@link #isEnvVarAllowed}).
+     * Shared by {@link McpServerSpec#resolveToken()}, {@link RepoSpec#resolveToken()} and {@link
+     * SqlSourceSpec#resolvePassword()}: decrypts the credential a node references.
+     *
+     * <p>A missing or unknown id yields null rather than throwing, so a node pointing at a deleted
+     * credential behaves like one with none configured — the caller reports "no credential" rather
+     * than failing in a way that looks like a bug.
      */
-    private static String resolveAllowedEnvVar(String envVarName, Function<String, String> envLookup) {
-        if (envVarName == null || envVarName.isBlank() || !isEnvVarAllowed(envVarName)) return null;
-        return emptyToNull(envLookup.apply(envVarName));
+    /**
+     * Resolves a stored credential outside a spec, for the designer.
+     *
+     * <p>The tool picker has to authenticate exactly as a run does, or it shows a list the run
+     * cannot reproduce — which is worse than showing nothing.
+     */
+    public static String resolveCredentialForLookup(String credentialId) {
+        return resolveCredential(credentialId, credentialLookup);
+    }
+
+    private static String resolveCredential(String credentialId, Function<String, String> lookup) {
+        if (credentialId == null || credentialId.isBlank()) return null;
+        return emptyToNull(lookup.apply(credentialId));
     }
 
     // ---------------------------------------------------------------- enums
@@ -191,24 +179,37 @@ public class AgentSpec {
         public String nodeId;
         public String name;
         public String url;
-        /** Name of an env var holding a bearer token (optional). */
-        public String tokenEnv;
+        /** Id of a stored credential holding the token (optional). */
+        public String credentialId;
+        /**
+         * Header the credential is sent in. Defaults to {@code Authorization} with a {@code Bearer }
+         * prefix, which is what most MCP servers expect — but GitLab reads its access tokens from
+         * {@code PRIVATE-TOKEN}, unprefixed, so this has to be per-server rather than fixed.
+         */
+        public String authHeader;
 
         /**
-         * Resolves the token from the environment, or null if none configured/set. Only names on
-         * the config-driven allowlist ({@code rag.allowed-env-vars} / {@code
-         * rag.allowed-env-var-prefixes}) are ever read — a non-allowlisted name silently yields no
-         * value rather than the actual env var (e.g. {@code tokenEnv=ANTHROPIC_API_KEY} sent to an
-         * attacker-controlled MCP {@code url} via the unauthenticated {@code /api/mcp/servers}
-         * endpoint must not exfiltrate the real key).
+         * Substrings that select which of the server's tools an agent is given. Empty means all.
+         *
+         * <p>Exists because a real MCP server can be enormous — Holded's exposes 338 tools — and
+         * every one of them is a JSON schema in the prompt. That is tens of thousands of tokens
+         * before the conversation starts, which a self-hosted model's context simply will not hold;
+         * the server then truncates silently and the model reports having only whatever survived.
+         * Choosing 20 relevant tools is also what makes a smaller model pick the right one.
+         *
+         * <p>Matched as case-insensitive substrings, not exact names, so {@code contact} covers
+         * {@code create_contact} and {@code list_contacts} without anyone transcribing a list.
          */
+        public List<String> tools = new ArrayList<>();
+
+        /** The decrypted bearer token, or null when none is configured or the id is unknown. */
         public String resolveToken() {
-            return resolveToken(System::getenv);
+            return resolveToken(credentialLookup);
         }
 
-        /** Same as {@link #resolveToken()}, but resolving env vars via {@code envLookup} (for tests). */
-        public String resolveToken(Function<String, String> envLookup) {
-            return resolveAllowedEnvVar(tokenEnv, envLookup);
+        /** Same as {@link #resolveToken()}, resolving through {@code lookup} (for tests). */
+        public String resolveToken(Function<String, String> lookup) {
+            return resolveCredential(credentialId, lookup);
         }
     }
 
@@ -216,22 +217,48 @@ public class AgentSpec {
     public static class RepoSpec {
         public String provider = "github";
         public String url;
-        public String tokenEnv;
+        /** Id of a stored credential holding the Git provider token. */
+        public String credentialId;
         public String mountPath;
         public String branch;
+
+        /**
+         * A GitHub organization or GitLab group path. When set, this one node stands for every
+         * repository inside it, resolved when the run starts rather than when the flow is saved —
+         * so a repository added to the group next week is picked up without editing the flow.
+         *
+         * <p>Mutually exclusive with {@link #url} in practice: a node is either one repository or
+         * a whole group.
+         */
+        public String group;
+
+        /**
+         * Restricts a group to these repositories, by full name (e.g. {@code acme/api}). Empty
+         * means every repository in the group.
+         */
+        public List<String> only = new ArrayList<>();
+
+        /** Self-hosted GitLab or GitHub Enterprise API base. Blank uses the public cloud. */
+        public String baseUrl;
+
+        /** Archived repositories are read-only, so they are noise in a flow that exists to push. */
+        public boolean includeArchived = false;
+
+        public boolean isGroup() {
+            return group != null && !group.isBlank();
+        }
 
         public RepoProvider provider() {
             return RepoProvider.from(provider);
         }
 
-        /** Same allowlist guard as {@link McpServerSpec#resolveToken()} — see its javadoc. */
         public String resolveToken() {
-            return resolveToken(System::getenv);
+            return resolveToken(credentialLookup);
         }
 
-        /** Same as {@link #resolveToken()}, but resolving env vars via {@code envLookup} (for tests). */
-        public String resolveToken(Function<String, String> envLookup) {
-            return resolveAllowedEnvVar(tokenEnv, envLookup);
+        /** Same as {@link #resolveToken()}, resolving through {@code lookup} (for tests). */
+        public String resolveToken(Function<String, String> lookup) {
+            return resolveCredential(credentialId, lookup);
         }
     }
 
@@ -244,8 +271,8 @@ public class AgentSpec {
         /** Any JDBC URL, e.g. jdbc:postgresql://host:5432/db (driver must be on the classpath). */
         public String jdbcUrl;
         public String username;
-        /** Name of an env var holding the DB password (never store the password in the flow). */
-        public String passwordEnv;
+        /** Id of a stored credential holding the DB password (never the password itself). */
+        public String credentialId;
         public String query;
         public int maxRows = 50;
 
@@ -253,25 +280,14 @@ public class AgentSpec {
             return (label == null || label.isBlank()) ? "sql" : label;
         }
 
-        /**
-         * Resolves the DB password from the environment. Only names on the config-driven
-         * allowlist ({@code rag.allowed-env-vars} / {@code rag.allowed-env-var-prefixes}) are
-         * ever read; a non-allowlisted name silently yields no value rather than the actual
-         * env var. Callers should check {@link #hasDisallowedPasswordEnv()} before connecting
-         * to reject with a clear error instead of silently authenticating with no password.
-         */
+        /** The decrypted DB password, or null when none is configured or the id is unknown. */
         public String resolvePassword() {
-            return resolvePassword(System::getenv);
+            return resolvePassword(credentialLookup);
         }
 
-        /** Same as {@link #resolvePassword()}, but resolving env vars via {@code envLookup} (for tests). */
-        public String resolvePassword(Function<String, String> envLookup) {
-            return resolveAllowedEnvVar(passwordEnv, envLookup);
-        }
-
-        /** True if {@code passwordEnv} is set but not on the allowlist (used to reject with a clear 400). */
-        public boolean hasDisallowedPasswordEnv() {
-            return passwordEnv != null && !passwordEnv.isBlank() && !isEnvVarAllowed(passwordEnv);
+        /** Same as {@link #resolvePassword()}, resolving through {@code lookup} (for tests). */
+        public String resolvePassword(Function<String, String> lookup) {
+            return resolveCredential(credentialId, lookup);
         }
     }
 

@@ -64,11 +64,9 @@ public class SqlRagRetriever {
     public TableResult query(SqlSourceSpec spec) throws Exception {
         validateTarget(spec.jdbcUrl);
         validateReadOnly(spec.query);
-        if (spec.hasDisallowedPasswordEnv()) {
-            throw new IllegalArgumentException(
-                    "`passwordEnv` '" + spec.passwordEnv + "' is not on the allowed list of environment "
-                            + "variables (see rag.allowed-env-vars / rag.allowed-env-var-prefixes).");
-        }
+        // No credential guard here any more: the node references a stored credential by id rather
+        // than naming an environment variable, so there is no arbitrary variable to point at a
+        // server secret. An unknown id simply resolves to no password.
 
         int cap = Math.min(spec.maxRows <= 0 ? 50 : spec.maxRows, HARD_ROW_CAP);
         String password = spec.resolvePassword();

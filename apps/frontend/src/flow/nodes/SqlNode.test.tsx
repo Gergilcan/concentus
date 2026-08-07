@@ -14,7 +14,7 @@ function sqlData(overrides: Partial<SqlNodeData> = {}): SqlNodeData {
     label: 'orders db',
     jdbcUrl: 'jdbc:postgresql://localhost/orders',
     username: 'app',
-    passwordEnv: 'DB_PASSWORD',
+    credentialId: 'cred_x',
     query: 'select * from orders',
     maxRows: 100,
     ...overrides,

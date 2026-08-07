@@ -10,6 +10,7 @@ import com.concentus.model.FlowGraph;
 import com.concentus.model.FlowNode;
 import org.springframework.stereotype.Component;
 
+import static com.concentus.support.MapValues.bool;
 import static com.concentus.support.MapValues.lng;
 import static com.concentus.support.MapValues.str;
 import static com.concentus.support.MapValues.strList;
@@ -183,7 +184,11 @@ public class FlowCompiler {
             spec.nodeId = mcp.id();
             spec.name = str(md, "name", mcp.id());
             spec.url = str(md, "url", "");
-            spec.tokenEnv = str(md, "tokenEnv", null);
+            spec.credentialId = str(md, "credentialId", null);
+            spec.authHeader = str(md, "authHeader", null);
+            // Which of the server's tools this agent gets. A large server would otherwise put
+            // hundreds of JSON schemas in the prompt.
+            spec.tools = strList(md, "tools");
             return spec;
         });
         collectConnected(flow, node, repos, s.repositories, repo -> {
@@ -191,9 +196,15 @@ public class FlowCompiler {
             RepoSpec spec = new RepoSpec();
             spec.provider = str(rd, "provider", "github");
             spec.url = str(rd, "url", "");
-            spec.tokenEnv = str(rd, "tokenEnv", null);
+            spec.credentialId = str(rd, "credentialId", null);
             spec.mountPath = str(rd, "mountPath", null);
             spec.branch = str(rd, "branch", null);
+            // A node in group mode names an organization instead of a URL; which repositories that
+            // means is resolved when the run starts, not here — the compiler stays offline.
+            spec.group = str(rd, "group", null);
+            spec.baseUrl = str(rd, "baseUrl", null);
+            spec.only = strList(rd, "only");
+            spec.includeArchived = bool(rd, "includeArchived", false);
             return spec;
         });
         collectConnected(flow, node, sqls, s.ragSources, sql -> {
@@ -203,7 +214,7 @@ public class FlowCompiler {
             spec.label = str(qd, "label", sql.id());
             spec.jdbcUrl = str(qd, "jdbcUrl", "");
             spec.username = str(qd, "username", null);
-            spec.passwordEnv = str(qd, "passwordEnv", null);
+            spec.credentialId = str(qd, "credentialId", null);
             spec.query = str(qd, "query", "");
             spec.maxRows = (int) lng(qd, "maxRows", 50);
             return spec;

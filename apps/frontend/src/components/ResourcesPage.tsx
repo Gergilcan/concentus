@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { api } from '../api/client.ts'
 import type { DatabaseDef, LibraryAgent, McpDef } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, EFFORT_OPTIONS } from '../constants.ts'
+import { CredentialsPanel } from './CredentialsPanel.tsx'
 import { CrudPanel } from './CrudPanel.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import styles from './resources.module.scss'
 
-type Tab = 'agents' | 'mcp' | 'databases'
+type Tab = 'agents' | 'mcp' | 'databases' | 'credentials'
 
-export function ResourcesPage() {
+export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
   const [tab, setTab] = useState<Tab>('agents')
 
   return (
@@ -25,6 +26,12 @@ export function ResourcesPage() {
           onClick={() => setTab('databases')}
         >
           Databases
+        </button>
+        <button
+          className={tab === 'credentials' ? styles.active : ''}
+          onClick={() => setTab('credentials')}
+        >
+          Credentials
         </button>
       </div>
 
@@ -54,15 +61,28 @@ export function ResourcesPage() {
             fields={[
               { key: 'name', label: 'Name', placeholder: 'linear' },
               { key: 'url', label: 'URL', placeholder: 'https://mcp.linear.app/mcp' },
-              { key: 'tokenEnv', label: 'Token env var (optional)' },
+              { key: 'credentialId', label: 'Credential id (optional)', placeholder: 'from Resources -> Credentials' },
+              {
+                key: 'authHeader',
+                label: 'Send token in',
+                type: 'select',
+                options: ['', 'PRIVATE-TOKEN'],
+              },
             ]}
             labelOf={(m) => m.name}
             idOf={(m) => m.id}
-            empty={() => ({ name: '', url: '', tokenEnv: '' })}
+            empty={() => ({ name: '', url: '', credentialId: '', authHeader: '' })}
             load={api.listMcpDefs}
             save={api.saveMcpDef}
             remove={api.deleteMcpDef}
-            extra={(m) => <McpClaudeActions name={m.name} url={m.url} tokenEnv={m.tokenEnv} />}
+            extra={(m) => (
+              <McpClaudeActions
+                name={m.name}
+                url={m.url}
+                credentialId={m.credentialId}
+                authHeader={m.authHeader}
+              />
+            )}
           />
         )}
 
@@ -73,16 +93,17 @@ export function ResourcesPage() {
               { key: 'label', label: 'Label' },
               { key: 'jdbcUrl', label: 'JDBC URL', placeholder: 'jdbc:postgresql://host:5432/db' },
               { key: 'username', label: 'Username' },
-              { key: 'passwordEnv', label: 'Password env var', placeholder: 'PGPASSWORD' },
+              { key: 'credentialId', label: 'Credential id', placeholder: 'from Resources -> Credentials' },
             ]}
             labelOf={(d) => d.label}
             idOf={(d) => d.id}
-            empty={() => ({ label: '', jdbcUrl: '', username: '', passwordEnv: '' })}
+            empty={() => ({ label: '', jdbcUrl: '', username: '', credentialId: '' })}
             load={api.listDatabases}
             save={api.saveDatabase}
             remove={api.deleteDatabase}
           />
         )}
+        {tab === 'credentials' && <CredentialsPanel pushError={pushError} />}
       </div>
     </div>
   )

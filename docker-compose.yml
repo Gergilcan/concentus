@@ -1,35 +1,76 @@
-# Concentus — backend (Spring Boot + claude CLI) and frontend (nginx).
-# The marketing website (apps/website) is intentionally NOT included.
+# Concentus — backend (Spring Boot + claude CLI), frontend (nginx) and Postgres, plus an optional
+# local-inference stack. The marketing website (apps/website) is intentionally NOT included.
 #
-# Auth: runs on your Claude *subscription*, no API key. Provide the login one of two ways:
-#   A) Recommended — mint a long-lived token on the host once:  claude setup-token
-#      then put it in a .env file next to this compose file:    CLAUDE_CODE_OAUTH_TOKEN=...
-#   B) Mount your existing host login instead (uncomment the volumes below).
+#   cp .env.example .env      # then fill in the REQUIRED values at the top of it
+#   docker compose up --build                        # just the app
+#   docker compose --profile local-ai up --build     # + Ollama, LiteLLM, reranker, Open WebUI
+#
+#   app        http://localhost:3000     backend http://localhost:8080
+#   Open WebUI http://localhost:8081     LiteLLM http://localhost:4000
+#
+# The GPU services sit behind the `local-ai` profile because they are not free to run: Ollama pins
+# weights in VRAM and the reranker pulls a model on first start. Nothing in the profile is needed to
+# design a flow, edit one, or run anything on Claude — so it stays off until you ask for it.
+#
+# Everything else — mailbox passwords, provider tokens, Holded credentials — is entered in the app
+# under Resources → Credentials and encrypted before storage. Nothing in this file is a secret
+# except by way of .env, which is gitignored.
 
 services:
   # Run/flow-version persistence. The backend creates its own schema on startup, so an empty
   # database is all this needs. To use a hosted database (Neon, RDS, Cloud SQL) instead, delete
   # this service and point PERSIST_DB_* at it.
   db:
-    image: postgres:17-alpine
+    # pgvector rather than stock postgres: the MCP tool index stores embeddings, which is what
+    # lets an agent find list_contacts from "who are my customers". Without the extension the
+    # app still runs — tool search falls back to word overlap and says so.
+    image: pgvector/pgvector:pg17
     environment:
-      POSTGRES_DB: concentus
-      POSTGRES_USER: concentus
+      POSTGRES_DB: ${PERSIST_DB_NAME:-concentus}
+      POSTGRES_USER: ${PERSIST_DB_USER:-concentus}
       POSTGRES_PASSWORD: ${PERSIST_DB_PASSWORD:-concentus}
+    # Published so psql, a GUI, or another project's pipeline can reach the same instance — one
+    # Postgres rather than two, now that both want pgvector.
+    ports:
+      - "${PERSIST_DB_PORT:-5432}:5432"
     volumes:
       - concentus-db:/var/lib/postgresql/data
     healthcheck:
       # -U/-d so the check uses the app's own role rather than the implicit "postgres" one,
       # which this image doesn't create when POSTGRES_USER is set.
-      test: ["CMD-SHELL", "pg_isready -U concentus -d concentus"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 10
     restart: unless-stopped
-    # Not published to the host by default: nothing outside the compose network needs it.
-    # Uncomment to inspect it with psql/a GUI from your machine.
-    # ports:
-    #   - "5432:5432"
+
+  # Business data a flow reads through a SQL source node. Deliberately a SEPARATE database from the
+  # one above, not a second schema in it: this holds data the app only ever queries, while `db`
+  # holds the app's own runs and flow versions. Keeping them apart means a SQL node cannot reach
+  # Concentus's own tables, and restoring a dump of one never touches the other.
+  #
+  # Its own volume and its own credentials. Sharing either with `db` would put two Postgres
+  # processes on one data directory — the second refuses to start if you are lucky, and corrupts
+  # the first if you are not.
+  tecnovent-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${TECNOVENT_DB_NAME:-tecnovent}
+      POSTGRES_USER: ${TECNOVENT_DB_USER:-tecnovent}
+      POSTGRES_PASSWORD: ${TECNOVENT_DB_PASSWORD:-tecnovent}
+    # 5433 on the host because 5432 already carries the app's own database. This publishing is for
+    # psql and GUIs only — Concentus reaches it over the compose network on 5432, the port INSIDE
+    # the container, which does not change with whatever is published here.
+    ports:
+      - "${TECNOVENT_DB_PORT:-5433}:5432"
+    volumes:
+      - tecnovent-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 
   backend:
     build:
@@ -38,25 +79,99 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # --- Claude ----------------------------------------------------------
+      # Runs on your Claude *subscription*, not an API key. Mint a long-lived token on the host
+      # once with `claude setup-token` and put it in .env. Without it the container has no login
+      # and every run fails immediately with "Not signed in".
       ANTHROPIC_AUTH_MODE: local
       CLAUDE_COMMAND: claude
-      APP_DATA_DIR: /data
-      # A) token from `claude setup-token` (read from .env). Not an API key.
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
-      # Persistence — "db" is the service above, resolved on the compose network.
-      PERSIST_DB_URL: jdbc:postgresql://db:5432/concentus
-      PERSIST_DB_USER: concentus
+      APP_DATA_DIR: /data
+      # Puts .claude.json inside the persisted directory below. It holds the user-scope MCP server
+      # registrations and their OAuth authorizations, and by default it sits at ~/.claude.json —
+      # OUTSIDE ~/.claude. Without this, every `docker compose up --build` silently drops every
+      # MCP server a flow depends on, and the first sign of it is an agent saying it has no tools.
+      CLAUDE_CONFIG_DIR: /root/.claude
+
+      # --- Persistence — "db" is the service above, resolved on the compose network ---------
+      PERSIST_DB_URL: ${PERSIST_DB_URL:-jdbc:postgresql://db:5432/${PERSIST_DB_NAME:-concentus}}
+      PERSIST_DB_USER: ${PERSIST_DB_USER:-concentus}
       PERSIST_DB_PASSWORD: ${PERSIST_DB_PASSWORD:-concentus}
+
+      # --- Sign-in ---------------------------------------------------------
+      # The first administrator is created for CONCENTUS_ADMIN_EMAIL. Leave the password blank and
+      # one is generated and printed once in this service's log at startup.
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      CONCENTUS_ADMIN_EMAIL: ${CONCENTUS_ADMIN_EMAIL:-}
+      CONCENTUS_ADMIN_PASSWORD: ${CONCENTUS_ADMIN_PASSWORD:-}
+      # REQUIRED — the backend refuses to start without it. Generate: openssl rand -base64 32
+      # Changing it makes every stored credential unreadable, so keep it with the database.
+      CONCENTUS_SECRET_KEY: ${CONCENTUS_SECRET_KEY:-}
+
+      # --- Mail-triggered flows (IMAP) -------------------------------------
+      # Host, folder and conditions live on the Input node; the mailbox secret is entered in the
+      # app and never appears here.
+      MAIL_TRIGGERS_ENABLED: ${MAIL_TRIGGERS_ENABLED:-true}
+      # The Entra app registration used to sign Microsoft 365 mailboxes in. One registration serves
+      # every mailbox — it identifies the application, not the mailbox — so setting it here means
+      # no node ever asks for it again. Neither value is a secret.
+      MAIL_MICROSOFT_TENANT_ID: ${MAIL_MICROSOFT_TENANT_ID:-}
+      MAIL_MICROSOFT_CLIENT_ID: ${MAIL_MICROSOFT_CLIENT_ID:-}
+
+      # --- Repository nodes ------------------------------------------------
+      GIT_MAX_GROUP_REPOS: ${GIT_MAX_GROUP_REPOS:-25}
+      GIT_CLONE_DEPTH: ${GIT_CLONE_DEPTH:-0}
+
+      # --- Self-hosted models ----------------------------------------------
+      # A model on your own GPU, through any server speaking OpenAI's /chat/completions: Ollama,
+      # llama.cpp, vLLM, LM Studio. Blank disables the backend; it then reports itself unavailable
+      # rather than failing a run.
+      #
+      # Defaults to the `ollama` service below, which only exists under the `local-ai` profile.
+      # Without that profile nothing answers there and the backend reports the server unreachable —
+      # which is correct and visible. Running Ollama on the HOST instead? Set this to
+      # http://host.docker.internal:11434/v1 : inside a container `localhost` is the container.
+      # The /v1 suffix matters either way — Ollama's OpenAI surface is there, not at the root.
+      LOCAL_MODEL_BASE_URL: ${LOCAL_MODEL_BASE_URL:-http://ollama:11434/v1}
+      LOCAL_MODEL_API_KEY: ${LOCAL_MODEL_API_KEY:-}
+      LOCAL_MODEL_TIMEOUT_SECONDS: ${LOCAL_MODEL_TIMEOUT_SECONDS:-900}
+      LOCAL_MODEL_MAX_TURNS: ${LOCAL_MODEL_MAX_TURNS:-12}
+      # Where an MCP OAuth sign-in redirects back to. The address YOUR BROWSER uses for Concentus —
+      # the frontend below, which proxies /api to this service.
+      MCP_OAUTH_REDIRECT_BASE: ${MCP_OAUTH_REDIRECT_BASE:-http://localhost:3000}
+      # MCP tool search. Above this many tools on one server the agent gets a search tool instead
+      # of every definition — every tool stays callable, the catalogue stops filling the prompt.
+      # The embedding model must be an EMBEDDING one: ollama pull bge-m3
+      LOCAL_MODEL_TOOL_SEARCH_THRESHOLD: ${LOCAL_MODEL_TOOL_SEARCH_THRESHOLD:-25}
+      LOCAL_MODEL_EMBEDDING_MODEL: ${LOCAL_MODEL_EMBEDDING_MODEL:-bge-m3}
+    extra_hosts:
+      # Docker Desktop (Windows/macOS) provides host.docker.internal already; plain Linux does not,
+      # and without this line a container cannot reach a model server running on the host at all.
+      # Harmless where it is already defined.
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         # Wait for the database to accept connections; the backend tolerates a missing DB
         # (it falls back to memory) and would otherwise start up unpersisted.
         condition: service_healthy
+    healthcheck:
+      # The frontend proxies to this, so it should not take traffic before the API answers.
+      # curl is already in the image — the Dockerfile installs it to fetch the Node repository.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      # Generous: a cold JVM plus schema creation takes a while, and a container marked unhealthy
+      # during normal startup would take the frontend down with it.
+      start_period: 90s
+      retries: 5
+    restart: unless-stopped
     volumes:
       - concentus-data:/data
-      # B) OR mount the host Claude login (read-write so it can refresh). Comment out (A) if used.
-      # - ${USERPROFILE:-${HOME}}/.claude:/root/.claude
-      # - ${USERPROFILE:-${HOME}}/.claude.json:/root/.claude.json
+      # The claude CLI's whole config, including the MCP server registrations and the OAuth
+      # authorizations they carry (see CLAUDE_CONFIG_DIR above). A named volume rather than a bind
+      # mount of the host's ~/.claude: two Claude installations writing the same files corrupt each
+      # other's state, and the host path differs per machine. See the README to reuse a host login.
+      - concentus-claude:/root/.claude
 
   frontend:
     build:
@@ -65,8 +180,159 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        # nginx resolves `backend` when it starts and exits if the name isn't there yet.
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ================================================================================================
+  # Local inference — everything below runs only with `--profile local-ai`.
+  #
+  # Behind a profile because it is not free: Ollama pins weights in VRAM, and the reranker downloads
+  # a model on first start. None of it is needed to design a flow or to run one on Claude.
+  # ================================================================================================
+
+  # The GPU. Serves both the chat model and the embedding model — same server, same URL, only the
+  # model name differs. That is the whole connection: Concentus calls /v1/chat/completions with
+  # qwen3 and /v1/embeddings with bge-m3, against LOCAL_MODEL_BASE_URL.
+  ollama:
+    profiles: ["local-ai"]
+    image: ollama/ollama:latest
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      # Keeps the model resident, so the first token is not a 20-second cold start.
+      OLLAMA_KEEP_ALIVE: "30m"
+      # A 16 GB card holding a 14B chat model and an embedding model at once is already tight;
+      # a third would thrash between VRAM and system RAM.
+      OLLAMA_MAX_LOADED_MODELS: "2"
+      OLLAMA_NUM_PARALLEL: "2"
+      OLLAMA_FLASH_ATTENTION: "1"
+      # Quantised KV cache — roughly twice the context for the same VRAM.
+      OLLAMA_KV_CACHE_TYPE: "q8_0"
+      # THE setting. Ollama serves 2048 by default whatever the model supports, and truncates past
+      # it without saying so: an agent's tool definitions vanish and the model reports having only
+      # the last few. Everything about MCP on a self-hosted model depends on this being large.
+      OLLAMA_CONTEXT_LENGTH: "${OLLAMA_CONTEXT_LENGTH:-64768}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # Pulls the models once, then exits. Without it the first run fails with a 404 on a model nobody
+  # remembered to pull, which reads as a broken integration rather than a missing download.
+  ollama-pull:
+    profiles: ["local-ai"]
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "Pulling ${LOCAL_MODEL_CHAT_MODEL:-qwen3:14b} — several GB, this takes a while."
+        ollama pull ${LOCAL_MODEL_CHAT_MODEL:-qwen3:14b}
+        echo "Pulling ${LOCAL_MODEL_EMBEDDING_MODEL:-bge-m3} (embeddings, for MCP tool search)."
+        ollama pull ${LOCAL_MODEL_EMBEDDING_MODEL:-bge-m3}
+        echo "--- models now served ---"
+        ollama list
+    # set -e above, so a failed pull stops here and exits non-zero. Without it the second pull ran
+    # regardless and the container exited clean, leaving a server with no models and nothing to
+    # explain why — which surfaces much later as "reachable but serves no models".
+    restart: "no"
+
+  # Anthropic-format gateway, so the `claude` CLI itself can be pointed at a local model.
+  #
+  # A different path from the one Concentus's self-hosted backend uses (that talks OpenAI-format to
+  # Ollama directly). Useful when you want a flow's *Claude* nodes to run locally too: set
+  # ANTHROPIC_BASE_URL on the backend service to http://litellm:4000.
+  litellm:
+    profiles: ["local-ai"]
+    # Pinned deliberately: 1.82.7 and 1.82.8 shipped malware. Do not float this tag.
+    image: ghcr.io/berriai/litellm:main-v1.80.5-stable
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+    volumes:
+      - ./deploy/local-ai/litellm-config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-local-dev}
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Reranker. Not wired into Concentus — its MCP tool search ranks by embedding distance and stops
+  # there. Included because it is the cheapest quality win for a document RAG pipeline, and it runs
+  # on CPU so it costs no VRAM. Uncomment the deploy block to move it onto the GPU.
+  reranker:
+    profiles: ["local-ai"]
+    image: michaelf34/infinity:latest
+    ports:
+      - "${RERANKER_PORT:-7997}:7997"
+    command: >
+      v2
+      --model-id BAAI/bge-reranker-v2-m3
+      --port 7997
+      --device cpu
+      --engine torch
+    volumes:
+      - hf-cache:/app/.cache
+    environment:
+      HF_HOME: /app/.cache
+    restart: unless-stopped
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # Chat UI, pointed at LiteLLM rather than at Ollama — the same path a Claude node would take, so
+  # a problem here is a problem there.
+  #
+  # On 8081, not 8080: the Concentus backend has that port.
+  openwebui:
+    profiles: ["local-ai"]
+    image: ghcr.io/open-webui/open-webui:main
+    ports:
+      - "${OPENWEBUI_PORT:-8081}:8080"
+    environment:
+      OPENAI_API_BASE_URL: "http://litellm:4000/v1"
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-local-dev}
+      # Everything through the gateway, so there is one path to debug rather than two.
+      ENABLE_OLLAMA_API: "false"
+      RAG_EMBEDDING_ENGINE: "ollama"
+      RAG_EMBEDDING_MODEL: ${LOCAL_MODEL_EMBEDDING_MODEL:-bge-m3}
+      RAG_OLLAMA_BASE_URL: "http://ollama:11434"
+      # Single-user pilot on your own machine. Turn this on before anyone else can reach it.
+      WEBUI_AUTH: "${OPENWEBUI_AUTH:-false}"
+    volumes:
+      - openwebui-data:/app/backend/data
+    depends_on:
+      - litellm
+    restart: unless-stopped
 
 volumes:
   concentus-data:
   concentus-db:
+  tecnovent-db:
+  concentus-claude:
+  ollama-models:
+  hf-cache:
+  openwebui-data:

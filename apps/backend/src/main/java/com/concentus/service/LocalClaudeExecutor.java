@@ -3,6 +3,7 @@ package com.concentus.service;
 import com.concentus.config.AgentSpec;
 import com.concentus.config.AgentSpec.McpServerSpec;
 import com.concentus.model.NodeExec;
+import com.concentus.git.GitWorkspace;
 import com.concentus.model.RunEvent;
 import com.concentus.support.LocalClaudeSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -29,6 +31,10 @@ import java.util.stream.Collectors;
  * or structured inputs are written to files the CLI auto-discovers ({@code CLAUDE.md},
  * {@code .claude/agents/*.md}, an MCP config file) rather than passed as shell args, which
  * keeps the command line small and avoids cross-platform quoting issues.
+ *
+ * <p>The prompt itself follows the same rule once it stops being small: past
+ * {@link #MAX_INLINE_PROMPT_CHARS} it is piped on stdin instead of passed as an argument. A
+ * mail-triggered run carries a whole email, and a command line is not sized for that.
  */
 @Component
 public class LocalClaudeExecutor {
@@ -38,12 +44,28 @@ public class LocalClaudeExecutor {
     private final McpRegistry mcpRegistry;
     private final LocalStreamEventHandler streamHandler;
     private final ContextFolderResolver contextFolders;
+    private final GitWorkspace gitWorkspace;
     private final String permissionMode;
     private final String dataDir;
     private final boolean autoRegisterMcp;
 
+    /**
+     * Above this many characters the prompt goes in on stdin instead of as a {@code -p} argument.
+     *
+     * <p>Command lines are small, and an email is not. Windows caps a whole command line at 32,767
+     * characters, and the {@code claude} launcher is a script, so it goes through {@code cmd.exe},
+     * which caps at 8,191; Linux caps a <em>single</em> argument at 128 KB. A mail-triggered run
+     * carrying a body plus extracted attachment text passes all three limits easily, and the
+     * failure is a bare {@code CreateProcess error=206} that names nothing.
+     *
+     * <p>Deliberately well under the smallest limit: the rest of the command line — context
+     * directories, the session id, the model — has to fit too.
+     */
+    private static final int MAX_INLINE_PROMPT_CHARS = 4000;
+
     public LocalClaudeExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
                                McpRegistry mcpRegistry, ContextFolderResolver contextFolders,
+                               GitWorkspace gitWorkspace,
                                ObjectMapper mapper,
                                @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                                @Value("${app.data-dir}") String dataDir,
@@ -52,6 +74,7 @@ public class LocalClaudeExecutor {
         this.ragInjector = ragInjector;
         this.mcpRegistry = mcpRegistry;
         this.contextFolders = contextFolders;
+        this.gitWorkspace = gitWorkspace;
         this.streamHandler = new LocalStreamEventHandler(mapper);
         this.permissionMode = permissionMode;
         this.dataDir = dataDir;
@@ -88,12 +111,17 @@ public class LocalClaudeExecutor {
 
         // Rejections are reported on the first turn only, so a resumed session doesn't repeat them.
         List<Path> contextDirs = resolveContextDirs(run, flow, first);
-        List<String> args = buildArgs(cmd, run, workdir, first, userText, contextDirs);
+        boolean promptOnStdin = userText.length() > MAX_INLINE_PROMPT_CHARS;
+        List<String> args = buildArgs(cmd, run, workdir, first, userText, contextDirs, promptOnStdin);
         run.status = "RUNNING";
         run.emit(RunEvent.of("system", "› " + userText));
 
         ProcessBuilder pb = new ProcessBuilder(args).directory(workdir.toFile());
         pb.redirectErrorStream(true);
+        // Push credentials for the flow's repositories. On the process environment rather than in
+        // any .git/config, so the token is not written to disk and does not appear in
+        // `git remote -v` or in anything the agent might paste into a commit or a PR body.
+        pb.environment().putAll(GitWorkspace.environmentFor(run.checkouts));
 
         Process proc;
         try {
@@ -104,11 +132,15 @@ public class LocalClaudeExecutor {
         }
         run.localProcess = proc;
         run.localStarted = true;
-        // The prompt is passed via -p; close the child's stdin so it doesn't wait for piped input.
-        try {
-            proc.getOutputStream().close();
-        } catch (IOException ignored) {
-            // best effort
+        if (promptOnStdin) {
+            writePromptToStdin(proc, userText);
+        } else {
+            // The prompt went in as an argument; close stdin so the CLI doesn't wait for input.
+            try {
+                proc.getOutputStream().close();
+            } catch (IOException ignored) {
+                // best effort
+            }
         }
 
         try (BufferedReader reader = proc.inputReader()) {
@@ -137,8 +169,76 @@ public class LocalClaudeExecutor {
 
     // ------------------------------------------------------------- workspace
 
+    /**
+     * Tells the agent which repositories are checked out and how to hand work back.
+     *
+     * <p>Written into {@code CLAUDE.md} rather than left to be discovered: the agent is sitting in
+     * a scratch directory with some folders in it, and nothing about that says "these are git
+     * checkouts you may push, on a branch, and open a pull request from".
+     *
+     * <p>Branch-and-PR rather than pushing to the default branch, stated explicitly. An agent
+     * driven by an email from a stranger must not be one commit away from a protected branch, and
+     * a proposal a human reviews is the whole point of the workflow.
+     */
+    private static void appendRepositoryNote(AgentRun run, StringBuilder md) {
+        List<GitWorkspace.Checkout> ok = run.checkouts.stream().filter(GitWorkspace.Checkout::ok).toList();
+        List<GitWorkspace.Checkout> failed = run.checkouts.stream().filter(c -> !c.ok()).toList();
+        if (ok.isEmpty() && failed.isEmpty()) return;
+
+        md.append("\n## Repositories checked out for you\n\n");
+        for (GitWorkspace.Checkout c : ok) {
+            md.append("- `./").append(c.folderName()).append("` — ").append(c.spec().url);
+            if (c.spec().branch != null && !c.spec().branch.isBlank()) {
+                md.append(" (branch `").append(c.spec().branch).append("`)");
+            }
+            md.append('\n');
+        }
+        for (GitWorkspace.Checkout c : failed) {
+            // A group node that could not be listed has no URL to name it by — say which group it
+            // was, or the agent is told "null could not be cloned".
+            String what = c.spec().isGroup() ? "the group `" + c.spec().group + "`" : c.spec().url;
+            md.append("- ").append(what).append(" — **could not be cloned**: ")
+              .append(c.error()).append(". Do not guess at its contents.\n");
+        }
+
+        if (ok.isEmpty()) return;
+        md.append("""
+
+            They are real clones with a working remote, and pushing is already authenticated — you
+            do not need, and will not be given, a token to paste anywhere.
+
+            To hand work back:
+
+            1. Create a branch. Never commit to the default branch, and never force-push.
+            2. Make the change, and keep it to what was actually asked for.
+            3. Commit with a message that says what changed and why.
+            4. `git push -u origin <branch>`.
+            5. Open the pull request (GitHub) or merge request (GitLab) through that provider's MCP
+               server, targeting the default branch. On GitLab you may instead push with
+               `-o merge_request.create -o merge_request.target=<default-branch>`, which opens the
+               MR from the push itself.
+
+            Then report the branch name and the PR/MR URL.
+
+            If the change is not safe to make automatically — the request is ambiguous, the tests
+            do not pass, or it would touch something unrelated — stop and say so instead. An
+            unopened PR costs someone five minutes; a wrong one costs a review and a revert.
+            """);
+    }
+
     private void prepareWorkspace(AgentRun run, CompiledFlow flow, Path workdir) throws IOException {
         Files.createDirectories(workdir);
+
+        // Clone the flow's repositories into this workdir, which is already the CLI's working
+        // directory — so the checkouts are simply there, needing no --add-dir grant and no entry
+        // in local.context-roots. A directory this process created for this run is not the
+        // filesystem exposure that allowlist exists to prevent.
+        run.checkouts = gitWorkspace.prepare(flow.allRepos(), workdir);
+        for (GitWorkspace.Checkout c : run.checkouts) {
+            run.emit(RunEvent.of("system", c.ok()
+                    ? "Cloned " + c.spec().url + " into ./" + c.folderName()
+                    : "Could not clone " + c.spec().url + ": " + c.error()));
+        }
 
         // Inject SQL/RAG context into each agent's prompt (once); record per-node for the UI.
         ragInjector.inject(flow.coordinator(), run, m -> run.emit(RunEvent.of("system", m)));
@@ -156,6 +256,7 @@ public class LocalClaudeExecutor {
             claudeMd.append(coord.systemPrompt).append('\n');
         }
         appendContextFolderNote(coord, claudeMd);
+        appendRepositoryNote(run, claudeMd);
         appendDelegationRoster(coord, claudeMd);
         if (!claudeMd.isEmpty()) {
             Files.writeString(workdir.resolve("CLAUDE.md"), claudeMd.toString());
@@ -272,13 +373,41 @@ public class LocalClaudeExecutor {
         return all;
     }
 
-    private List<String> buildArgs(String cmd, AgentRun run, Path workdir, boolean first, String userText,
-                                   List<Path> contextDirs) {
+    /**
+     * Feeds the prompt to the CLI's stdin, on its own thread.
+     *
+     * <p>A thread rather than a straight write, because a large prompt does not fit in the pipe
+     * buffer: writing it inline would block here until the child drains it, while the child may
+     * itself be blocked writing stdout that nobody is reading yet. Both sides wait, and the run
+     * hangs with no output at all.
+     *
+     * <p>The stream is closed when the write finishes — that end-of-input is what tells the CLI
+     * the prompt is complete.
+     */
+    private static void writePromptToStdin(Process proc, String userText) {
+        Thread writer = new Thread(() -> {
+            try (var out = proc.getOutputStream()) {
+                out.write(userText.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            } catch (IOException ignored) {
+                // The child exited before reading it all; its own error surfaces on stdout.
+            }
+        }, "claude-stdin");
+        writer.setDaemon(true);
+        writer.start();
+    }
+
+    // Package-private for the arg-shape test: the ordering here is load-bearing and silent when
+    // wrong — a misplaced `-p` would take the next flag as the prompt.
+    List<String> buildArgs(String cmd, AgentRun run, Path workdir, boolean first, String userText,
+                                   List<Path> contextDirs, boolean promptOnStdin) {
         AgentSpec coord = run.compiled.coordinator();
         List<String> a = new ArrayList<>();
         a.add(cmd);
-        a.add("-p");
-        a.add(userText);
+        if (!promptOnStdin) {
+            a.add("-p");
+            a.add(userText);
+        }
         for (Path dir : contextDirs) {
             a.add("--add-dir");
             a.add(dir.toString());
@@ -287,7 +416,11 @@ public class LocalClaudeExecutor {
         a.add("stream-json");
         a.add("--verbose");
         a.add("--permission-mode");
-        a.add(permissionMode);
+        // The run's own mode when its flow named one, otherwise the deployment default. Read from
+        // the run rather than the flow so that editing the flow mid-run cannot change what an
+        // already-running agent is permitted to do.
+        a.add(run.permissionMode == null || run.permissionMode.isBlank()
+                ? permissionMode : run.permissionMode);
         a.add("--model");
         a.add(modelAlias(coord.model.id));
 
@@ -300,6 +433,10 @@ public class LocalClaudeExecutor {
             a.add("--resume");
             a.add(run.localSessionId);
         }
+        // Last, and with no value: `-p` takes an optional argument, so putting it anywhere else
+        // risks the following flag being read as the prompt. With nothing after it the CLI can
+        // only read the prompt from stdin, which is the point.
+        if (promptOnStdin) a.add("-p");
         return a;
     }
 

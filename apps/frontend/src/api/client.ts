@@ -1,16 +1,30 @@
 import type {
   AuthStatus,
+  Credential,
+  CredentialStatus,
+  MailDeviceCode,
+  MailOAuthDefaults,
+  McpOAuthStart,
+  McpToolList,
+  McpOAuthStatus,
+  MailStatus,
+  MailSignInResult,
   BackendFlow,
   DatabaseDef,
   LibraryAgent,
   FlowVersionInfo,
   McpDef,
+  McpCapabilities,
   McpServerInfo,
   NodeExecReport,
+  ModelCatalog,
   RagStatus,
+  RemoteRepoList,
   RunDetail,
   RunEvent,
   RunSummary,
+  SessionInfo,
+  SignedInUser,
   SqlPreview,
 } from './types.ts'
 
@@ -18,21 +32,44 @@ export interface SqlSourceInput {
   label?: string
   jdbcUrl: string
   username?: string
-  passwordEnv?: string
+  credentialId?: string
   query: string
   maxRows?: number
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000
 
+/**
+ * Reads the CSRF token the backend sets as a readable cookie.
+ *
+ * Spring Security issues `XSRF-TOKEN` and expects it echoed in a header on every state-changing
+ * request. A cookie alone would not prove intent — a third-party page can cause the browser to
+ * send cookies, but cannot read them, so it cannot reproduce the header.
+ */
+function csrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/)
+  return match ? decodeURIComponent(match[1]) : null
+}
+
 async function req<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const method = (init?.method ?? 'GET').toUpperCase()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((init?.headers as Record<string, string>) ?? {}),
+  }
+  if (method !== 'GET' && method !== 'HEAD') {
+    const token = csrfToken()
+    if (token) headers['X-XSRF-TOKEN'] = token
+  }
   let res: Response
   try {
     res = await fetch(`/api${path}`, {
-      headers: { 'Content-Type': 'application/json' },
       ...init,
+      headers,
+      // The session lives in a cookie; without this a cross-origin dev server would drop it.
+      credentials: 'same-origin',
       signal: controller.signal,
     })
   } catch (e) {
@@ -102,7 +139,8 @@ export const api = {
 
   // mcp servers (Claude Code list)
   listMcpServers: () => req<McpServerInfo[]>('/mcp/servers'),
-  addMcpServer: (source: { name: string; url: string; tokenEnv?: string }) =>
+  mcpCapabilities: () => req<McpCapabilities>('/mcp/capabilities'),
+  addMcpServer: (source: { name: string; url: string; credentialId?: string; authHeader?: string }) =>
     req<{ name: string; status: string }>('/mcp/servers', {
       method: 'POST',
       body: JSON.stringify(source),
@@ -118,8 +156,90 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
 
-  // auth
+  // auth (which Claude credentials the backend runs on — unrelated to signing in)
   authStatus: () => req<AuthStatus>('/auth/status'),
+
+  // account / sign-in
+  session: () => req<SessionInfo>('/account/session'),
+  signIn: (email: string, password: string) =>
+    req<SignedInUser>('/account/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
+  signOut: () => req<void>('/account/logout', { method: 'POST' }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    req<void>('/account/password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+
+  /** Per-model rates for the cost estimate, plus which execution backends can run right now. */
+  listModels: () => req<ModelCatalog>('/models'),
+
+  // stored credentials (write-only: nothing here ever returns a secret)
+  credentialStatus: () => req<CredentialStatus>('/credentials/status'),
+  listCredentials: () => req<Credential[]>('/credentials'),
+  createCredential: (label: string, kind: string, value: string) =>
+    req<Credential>('/credentials', { method: 'POST', body: JSON.stringify({ label, kind, value }) }),
+  /** A blank `value` leaves the stored secret untouched — that is what makes the masked field safe. */
+  updateCredential: (id: string, label: string, value: string) =>
+    req<Credential>(`/credentials/${id}`, { method: 'PUT', body: JSON.stringify({ label, value }) }),
+  deleteCredential: (id: string) => req<void>(`/credentials/${id}`, { method: 'DELETE' }),
+
+  // Mail trigger health. A poller succeeds by doing nothing most of the time, so it needs to be
+  // asked rather than waited on.
+  mailStatus: (flowId: string) => req<MailStatus>(`/mail/status/${flowId}`),
+  pollMailNow: (flowId: string) => req<MailStatus>(`/mail/poll/${flowId}`, { method: 'POST' }),
+
+  /** The deployment's Entra app registration, so a node need not ask for it. Not secrets. */
+  mailSignInDefaults: () => req<MailOAuthDefaults>('/mail/oauth/microsoft/defaults'),
+
+  // MCP servers that use OAuth. The claude CLI keeps its own authorizations, so this app needs
+  // its own grant for any backend that is not the CLI.
+  /** What a server can do, fetched with the same credential a run uses. */
+  listMcpTools: (url: string, credentialId?: string) =>
+    req<McpToolList>(
+      '/mcp/tools?url=' +
+        encodeURIComponent(url) +
+        (credentialId ? '&credentialId=' + encodeURIComponent(credentialId) : ''),
+    ),
+
+  mcpOAuthStatus: (url: string) =>
+    req<McpOAuthStatus>('/mcp/oauth/status?url=' + encodeURIComponent(url)),
+  startMcpOAuth: (url: string) =>
+    req<McpOAuthStart>('/mcp/oauth/start', { method: 'POST', body: JSON.stringify({ url }) }),
+  disconnectMcpOAuth: (url: string) =>
+    req<McpOAuthStatus>('/mcp/oauth/disconnect', { method: 'POST', body: JSON.stringify({ url }) }),
+
+  // Microsoft 365 mailbox sign-in (OAuth2 device code). Two calls because the flow is
+  // asynchronous: `start` yields a code for a person to enter, `complete` is polled until they do.
+  startMailSignIn: (tenantId: string, clientId: string) =>
+    req<MailDeviceCode>('/mail/oauth/microsoft/start', {
+      method: 'POST',
+      body: JSON.stringify({ tenantId, clientId }),
+    }),
+  completeMailSignIn: (body: {
+    tenantId: string
+    clientId: string
+    deviceCode: string
+    label?: string
+    credentialId?: string
+  }) =>
+    req<MailSignInResult>('/mail/oauth/microsoft/complete', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** Lists a GitHub organization's or GitLab group's repositories. The token never crosses the wire. */
+  listGroupRepos: (provider: string, group: string, credentialId?: string, baseUrl?: string) =>
+    req<RemoteRepoList>(
+      '/git/repos?provider=' +
+        encodeURIComponent(provider) +
+        '&group=' +
+        encodeURIComponent(group) +
+        (credentialId ? '&credentialId=' + encodeURIComponent(credentialId) : '') +
+        (baseUrl ? '&baseUrl=' + encodeURIComponent(baseUrl) : ''),
+    ),
 
   // rag
   ragStatus: () => req<RagStatus>('/rag/status'),

@@ -11,12 +11,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -101,7 +101,7 @@ public class WebhookController {
         }
 
         String param = trigger.authParam();
-        String presented = presentedValue(request, param);
+        String presented = presentedValue(request, param, raw);
         if (presented == null || presented.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
                     "Missing '" + param + "' — expected it as a header or query parameter.");
@@ -130,10 +130,56 @@ public class WebhookController {
         }
     }
 
-    /** Reads the configured parameter from the request headers, falling back to the query string. */
-    private static String presentedValue(HttpServletRequest request, String param) {
+    /**
+     * Reads the configured parameter from the request headers, then the query string, then the
+     * JSON body.
+     *
+     * <p>The body is searched last and only as a fallback, but it is what makes Microsoft Graph
+     * work at all: Graph carries its shared secret as a {@code clientState} field <em>inside</em>
+     * the payload rather than as a header, so header-and-query-only lookup can never authenticate
+     * it. Setting the Input node's parameter to {@code clientState} is then all a Graph webhook
+     * needs — still no provider-specific branch.
+     */
+    private String presentedValue(HttpServletRequest request, String param, byte[] raw) {
         String fromHeader = request.getHeader(param); // header lookup is case-insensitive
-        return fromHeader != null ? fromHeader : request.getParameter(param);
+        if (fromHeader != null) return fromHeader;
+        String fromQuery = request.getParameter(param);
+        if (fromQuery != null) return fromQuery;
+        return bodyValue(raw, param);
+    }
+
+    /**
+     * Finds {@code param} in the JSON body: at the top level, or inside a {@code value} array of
+     * notifications the way Graph batches them.
+     *
+     * <p>For a batch, <b>every</b> entry must carry the same value. A batch is one HTTP request
+     * authenticated once, so accepting it because the first entry matched would let a caller who
+     * learned the secret staple notifications for other subscriptions onto a valid delivery.
+     */
+    private String bodyValue(byte[] raw, String param) {
+        if (raw.length == 0) return null;
+        try {
+            JsonNode root = mapper.readTree(raw);
+            JsonNode direct = root.get(param);
+            if (direct != null && direct.isTextual()) return direct.asText();
+
+            JsonNode batch = root.get("value");
+            if (batch == null || !batch.isArray() || batch.isEmpty()) return null;
+            String shared = null;
+            for (JsonNode entry : batch) {
+                JsonNode value = entry.get(param);
+                if (value == null || !value.isTextual()) return null;
+                if (shared == null) {
+                    shared = value.asText();
+                } else if (!shared.equals(value.asText())) {
+                    log.warn("Rejecting a webhook batch whose '{}' values disagree.", param);
+                    return null;
+                }
+            }
+            return shared;
+        } catch (java.io.IOException e) {
+            return null; // not JSON — the header/query paths already had their chance
+        }
     }
 
     /**

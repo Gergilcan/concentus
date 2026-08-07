@@ -139,16 +139,16 @@ function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
         claudeMdPath: '',
       }
     case 'mcp':
-      return { kind: 'mcp', name: 'github', url: 'https://api.githubcopilot.com/mcp/', tokenEnv: 'GITHUB_MCP_TOKEN' }
+      return { kind: 'mcp', name: 'github', url: 'https://api.githubcopilot.com/mcp/', credentialId: '' }
     case 'repo':
-      return { kind: 'repo', provider: 'github', url: '', tokenEnv: 'GITHUB_TOKEN', mountPath: '', branch: '' }
+      return { kind: 'repo', provider: 'github', url: '', credentialId: '', mountPath: '', branch: '' }
     case 'sql':
       return {
         kind: 'sql',
         label: 'db',
         jdbcUrl: 'jdbc:postgresql://localhost:5432/postgres',
         username: 'postgres',
-        passwordEnv: 'PGPASSWORD',
+        credentialId: '',
         query: 'SELECT * FROM my_table LIMIT 20',
         maxRows: 50,
       }

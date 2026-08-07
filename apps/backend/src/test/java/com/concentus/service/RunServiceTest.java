@@ -47,13 +47,25 @@ class RunServiceTest {
 
     private final List<RunService> created = new ArrayList<>();
 
+    /**
+     * The real adapter over the mocked executor, so these tests still assert on what actually gets
+     * executed rather than on the registry indirection in front of it.
+     */
+    private com.concentus.execution.ExecutionBackends backends() {
+        com.concentus.support.LocalClaudeSupport support = mock(com.concentus.support.LocalClaudeSupport.class);
+        when(support.command()).thenReturn(java.util.Optional.of("claude"));
+        return new com.concentus.execution.ExecutionBackends(List.of(
+                new com.concentus.execution.ClaudeCliExecutionBackend(localExecutor, support)));
+    }
+
     @AfterEach
     void shutdownAll() {
         created.forEach(RunService::shutdown);
     }
 
     private RunService newService(int maxConcurrent, int queueCapacity, int maxRetainedRuns) {
-        RunService s = new RunService(clientProvider, compiler, launcher, localExecutor, new PricingTable("", 3.0, 15.0),
+        RunService s = new RunService(clientProvider, compiler, launcher, backends(),
+                new PricingTable("", 3.0, 15.0),
                 new CloudStreamEventHandler(), runStore, mapper,
                 notifier, maxConcurrent, queueCapacity, maxRetainedRuns, 3.0, 15.0);
         created.add(s);
@@ -332,7 +344,24 @@ class RunServiceTest {
 
         assertThatThrownBy(() -> svc.sendCommand(s.id(), "hi"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("not ready yet");
+                .hasMessageContaining("has not finished starting up");
+    }
+
+    @Test
+    void sendCommandDrivesAnyTurnBasedBackend() throws Exception {
+        // Regression: this branched on the literal id "local", so a run on any other turn-based
+        // backend fell through to the cloud path and was refused for having no session id — an
+        // execution that was working perfectly reported "Run is not ready yet".
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        RunService svc = newService(4, 8, 10);
+        RunSummary s = svc.start(flow("f1"));
+        svc.get(s.id()).orElseThrow().backend = "local";
+
+        svc.sendCommand(s.id(), "hola");
+
+        // Dispatched to the executor rather than rejected; the id is what routes it.
+        verify(localExecutor, timeout(2000).atLeastOnce()).runTurn(any(), any(), any());
     }
 
     @Test
@@ -495,5 +524,70 @@ class RunServiceTest {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    // ------------------------------------------------- backend selection (regression guards)
+
+    private RunService service() {
+        RunService s = new RunService(clientProvider, compiler, launcher, backends(),
+                new PricingTable("", 3.0, 15.0),
+                new CloudStreamEventHandler(), runStore, mapper, notifier, 4, 8, 10, 3.0, 15.0);
+        created.add(s);
+        return s;
+    }
+
+    private static CompiledFlow flowOnModel(String modelId) {
+        AgentSpec c = coordinatorSpec();
+        c.model = new AgentSpec.ModelSpec();
+        c.model.id = modelId;
+        return new CompiledFlow(c, List.of());
+    }
+
+    @Test
+    void aFlowRunsOnTheSubscriptionWhenTheCliIsSignedIn() {
+        when(compiler.compile(any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(clientProvider.backend()).thenReturn("local");
+
+        RunSummary summary = service().start(flow("f1"));
+
+        assertThat(summary.status()).isEqualTo("IDLE");
+        // The local backend is turn-based, so nothing is launched until a first instruction.
+        verifyNoInteractions(launcher);
+    }
+
+    @Test
+    void aFlowRunsOnTheApiWhenAKeyIsPresent() {
+        when(compiler.compile(any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(clientProvider.backend()).thenReturn("cloud");
+        when(clientProvider.client()).thenThrow(new IllegalStateException("no client in this test"));
+
+        RunService svc = service();
+        RunSummary summary = svc.start(flow("f1"));
+
+        assertThat(svc.get(summary.id()).orElseThrow().backend).isEqualTo("cloud");
+    }
+
+    @Test
+    void theModelIdDoesNotChangeWhichBackendIsUsed() {
+        // Backend selection follows the credential, not the model: with only Claude left there is
+        // no routing table for a model id to steer.
+        when(compiler.compile(any())).thenReturn(flowOnModel("claude-sonnet-5"));
+        when(clientProvider.backend()).thenReturn("local");
+
+        RunService svc = service();
+        RunSummary summary = svc.start(flow("f1"));
+
+        assertThat(svc.get(summary.id()).orElseThrow().backend).isEqualTo("local");
+    }
+
+    @Test
+    void withNoCredentialAtAllStartingSaysSoInsteadOfFailingObscurely() {
+        when(compiler.compile(any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(clientProvider.backend()).thenReturn("none");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().start(flow("f1")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Sign in to Claude Code")
+                .hasMessageContaining("ANTHROPIC_API_KEY");
     }
 }

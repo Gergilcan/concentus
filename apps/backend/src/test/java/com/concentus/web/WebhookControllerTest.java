@@ -73,6 +73,10 @@ class WebhookControllerTest {
         return HexFormat.of().formatHex(mac.doFinal(body));
     }
 
+    private static Map<String, String> bodyMap(ResponseEntity<Map<String, String>> response) {
+        return response.getBody();
+    }
+
     private static MockHttpServletRequest withHeader(String name, String value) {
         MockHttpServletRequest r = new MockHttpServletRequest();
         r.addHeader(name, value);
@@ -90,7 +94,7 @@ class WebhookControllerTest {
                 "f1", body, withHeader("Linear-Signature", sign(body, SECRET)));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-        assertThat(response.getBody()).containsEntry("runId", "run_abc123");
+        assertThat(bodyMap(response)).containsEntry("runId", "run_abc123");
     }
 
     @Test
@@ -259,5 +263,108 @@ class WebhookControllerTest {
                 "f1", body, withHeader("Linear-Signature", sign(body, SECRET)));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+    }
+
+    // ---- providers that carry the secret in the body rather than a header ----
+
+    /** A Microsoft-Graph-shaped notification: the secret is `clientState`, inside a `value` array. */
+    private static byte[] graphNotification(String clientState, String... messageIds) {
+        StringBuilder entries = new StringBuilder();
+        for (String id : messageIds) {
+            if (!entries.isEmpty()) entries.append(',');
+            entries.append("""
+                {"subscriptionId":"sub-1","clientState":"%s","changeType":"created",
+                 "resourceData":{"id":"%s"}}""".formatted(clientState, id));
+        }
+        return ("{\"value\":[" + entries + "]}").getBytes(StandardCharsets.UTF_8);
+    }
+
+    @Test
+    void aClientStateInsideTheBodyAuthenticatesTheDelivery() {
+        // The whole point: Graph sends no header and no query parameter, so header-and-query-only
+        // lookup could never authenticate it.
+        WebhookController controller = controllerFor(webhookFlow(SECRET, "clientState"));
+
+        ResponseEntity<Map<String, String>> response = controller.receive(
+                "f1", graphNotification(SECRET, "msg-1"), new MockHttpServletRequest());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        verify(runService).start(any(FlowGraph.class), anyString());
+    }
+
+    @Test
+    void aWrongClientStateInTheBodyIsRejected() {
+        WebhookController controller = controllerFor(webhookFlow(SECRET, "clientState"));
+
+        assertThatThrownBy(() -> controller.receive(
+                "f1", graphNotification("not-the-secret", "msg-1"), new MockHttpServletRequest()))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.UNAUTHORIZED));
+        verify(runService, never()).start(any(), anyString());
+    }
+
+    @Test
+    void aBatchWhoseEntriesDisagreeOnTheSecretIsRejectedEntirely() {
+        // A batch is one request authenticated once. Accepting it because the first entry matched
+        // would let someone who learned the secret staple foreign notifications onto a valid
+        // delivery and have them processed.
+        WebhookController controller = controllerFor(webhookFlow(SECRET, "clientState"));
+        byte[] mixed = ("""
+            {"value":[
+              {"subscriptionId":"sub-1","clientState":"%s","resourceData":{"id":"mine"}},
+              {"subscriptionId":"sub-2","clientState":"someone-elses","resourceData":{"id":"theirs"}}
+            ]}""".formatted(SECRET)).getBytes(StandardCharsets.UTF_8);
+
+        assertThatThrownBy(() -> controller.receive("f1", mixed, new MockHttpServletRequest()))
+                .isInstanceOf(ResponseStatusException.class);
+        verify(runService, never()).start(any(), anyString());
+    }
+
+    @Test
+    void aConsistentBatchIsAccepted() {
+        WebhookController controller = controllerFor(webhookFlow(SECRET, "clientState"));
+
+        ResponseEntity<Map<String, String>> response = controller.receive(
+                "f1", graphNotification(SECRET, "msg-1", "msg-2"), new MockHttpServletRequest());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+    }
+
+    @Test
+    void aHeaderStillWinsOverTheBody() {
+        // The body is a fallback, not a replacement: providers that do send a header keep working
+        // exactly as before, and a body field cannot override a presented header.
+        WebhookController controller = controllerFor(webhookFlow(SECRET, "token"));
+        byte[] bodyWithWrongToken = "{\"token\":\"not-the-secret\"}".getBytes(StandardCharsets.UTF_8);
+
+        ResponseEntity<Map<String, String>> response = controller.receive(
+                "f1", bodyWithWrongToken, withHeader("token", SECRET));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+    }
+
+    @Test
+    void aTopLevelBodyFieldAlsoWorks() {
+        // Not every body-carrying provider batches the way Graph does.
+        WebhookController controller = controllerFor(webhookFlow(SECRET, "token"));
+
+        ResponseEntity<Map<String, String>> response = controller.receive(
+                "f1", ("{\"token\":\"" + SECRET + "\"}").getBytes(StandardCharsets.UTF_8),
+                new MockHttpServletRequest());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+    }
+
+    @Test
+    void aNonJsonBodyFallsThroughToRejectionRatherThanThrowing() {
+        WebhookController controller = controllerFor(webhookFlow(SECRET, "clientState"));
+
+        assertThatThrownBy(() -> controller.receive(
+                "f1", "not json at all".getBytes(StandardCharsets.UTF_8),
+                new MockHttpServletRequest()))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.UNAUTHORIZED));
     }
 }

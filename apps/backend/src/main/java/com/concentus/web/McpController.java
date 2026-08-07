@@ -29,14 +29,43 @@ public class McpController {
         return registry.list();
     }
 
-    /** Registers an MCP server into Claude Code (user scope). Token, if any, is read from tokenEnv. */
+    /**
+     * What this host can do about MCP authentication, so the UI offers the route that works.
+     *
+     * <p>{@code interactiveLogin} is about the {@code claude mcp login} path only: that one needs a
+     * terminal and a browser on the host, which a container has neither of. It being false no
+     * longer means "you cannot use an OAuth server here" — Concentus obtains its own grant through
+     * the browser you are already using (see {@code McpOAuthController}), and that works headlessly.
+     *
+     * <p>The distinction matters because the advice used to be "use an access token instead", and
+     * for an OAuth-protected server that is not merely inconvenient — it cannot work. Holded's MCP
+     * answers an unauthenticated request with an RFC 9728 challenge and refuses static tokens
+     * outright, so following that advice means an afternoon spent looking for a token that does
+     * not exist.
+     */
+    @GetMapping("/capabilities")
+    public Map<String, Object> capabilities() {
+        boolean interactive = registry.supportsInteractiveLogin();
+        return Map.of(
+                "interactiveLogin", interactive,
+                "hint", interactive ? ""
+                        : "The claude CLI's own sign-in needs a desktop, which this deployment does "
+                          + "not have — but that is only one of two routes. For a server that uses "
+                          + "OAuth (Holded, Atlassian, Linear), press \"Sign in to this server\" on "
+                          + "the MCP node: Concentus gets its own authorization through this "
+                          + "browser, which works headlessly. A server that accepts a static token "
+                          + "needs neither — store it under Resources → Credentials and select it "
+                          + "on the node.");
+    }
+
+    /** Registers an MCP server into Claude Code (user scope), with its stored credential. */
     @PostMapping("/servers")
     public Map<String, String> add(@RequestBody McpServerSpec spec) {
         if (spec == null || spec.name == null || spec.name.isBlank()
                 || spec.url == null || spec.url.isBlank()) {
             throw new IllegalArgumentException("name and url are required.");
         }
-        String status = registry.add(spec.name, spec.url, spec.resolveToken());
+        String status = registry.add(spec.name, spec.url, spec.resolveToken(), spec.authHeader);
         return Map.of("name", spec.name, "status", status);
     }
 

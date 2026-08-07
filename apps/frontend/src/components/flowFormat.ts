@@ -52,7 +52,7 @@ export function money(usd: number): string {
 
 export function triggerOf(flow: BackendFlow): { label: string; tone: string; scheduled: boolean } {
   const input = flow.nodes.find((n) => n.type === 'input')
-  const d = (input?.data ?? {}) as { mode?: string; cron?: string }
+  const d = (input?.data ?? {}) as { mode?: string; cron?: string; mailFolder?: string }
   switch (d.mode) {
     case 'cron':
       return { label: `⏱ ${d.cron || 'scheduled'}`, tone: 'cron', scheduled: true }
@@ -60,6 +60,10 @@ export function triggerOf(flow: BackendFlow): { label: string; tone: string; sch
       return { label: '⚡ Webhook', tone: 'webhook', scheduled: false }
     case 'prompt':
       return { label: '▶ Prompt', tone: 'prompt', scheduled: false }
+    case 'mail':
+      // Scheduled, in the sense the badge means: it starts on its own, without anyone pressing
+      // Run. The folder is shown because it is what decides which mail this flow acts on.
+      return { label: `✉ ${d.mailFolder || 'Mail'}`, tone: 'mail', scheduled: true }
     default:
       return { label: '✋ Manual', tone: 'manual', scheduled: false }
   }

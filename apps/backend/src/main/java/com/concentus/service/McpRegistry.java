@@ -63,8 +63,28 @@ public class McpRegistry {
         return out;
     }
 
+    /**
+     * The header a server expects its credential in when none is configured.
+     *
+     * <p>{@code Authorization: Bearer …} is what most MCP servers take, but not all: GitLab's API
+     * canonically reads its project, group and personal access tokens from {@code PRIVATE-TOKEN},
+     * with no {@code Bearer} prefix. Hard-coding the header is therefore what stops a GitLab
+     * server working at all, which is why it is configurable per node.
+     */
+    public static final String DEFAULT_AUTH_HEADER = "Authorization";
+
     /** Adds an HTTP MCP server to the user scope. Returns a short human-readable status. */
     public String add(String name, String url, String token) {
+        return add(name, url, token, DEFAULT_AUTH_HEADER);
+    }
+
+    /**
+     * @param authHeader header to send the credential in; blank falls back to
+     *                   {@link #DEFAULT_AUTH_HEADER}. The {@code Bearer } prefix is added only for
+     *                   {@code Authorization} — it is specific to that header, and prepending it to
+     *                   a {@code PRIVATE-TOKEN} value would simply make the token wrong.
+     */
+    public String add(String name, String url, String token, String authHeader) {
         String cmd = support.command().orElse(null);
         if (cmd == null) return "claude CLI not found";
         if (name == null || name.isBlank() || url == null || url.isBlank()) return "missing name/url";
@@ -72,8 +92,10 @@ public class McpRegistry {
         List<String> args = new ArrayList<>(List.of(cmd, "mcp", "add", "--transport", "http", name, url, "-s", "user"));
         boolean hasToken = token != null && !token.isBlank();
         if (hasToken) {
+            String header = authHeader == null || authHeader.isBlank() ? DEFAULT_AUTH_HEADER : authHeader.trim();
+            String prefix = DEFAULT_AUTH_HEADER.equalsIgnoreCase(header) ? "Bearer " : "";
             args.add("-H");
-            args.add("Authorization: Bearer " + token);
+            args.add(header + ": " + prefix + token);
         }
         ProcResult r = run(args, 30);
         String out = r.output == null ? "" : r.output;
@@ -85,6 +107,22 @@ public class McpRegistry {
         }
         log.warn("claude mcp add failed for {}: {}", name, out);
         return "add failed: " + firstLine(out);
+    }
+
+    /**
+     * Whether an interactive OAuth sign-in can actually be completed on this host.
+     *
+     * <p>False in a container, and that is the common case: the login needs a terminal window and
+     * a browser, and a headless Linux deployment has neither. Reported so the UI can offer a token
+     * instead of a button that cannot work — the alternative is a sign-in that appears to start
+     * and silently never finishes.
+     *
+     * <p>Both GitHub and GitLab issue long-lived tokens that need no interactive step, so this
+     * being false is a routing decision rather than a limitation.
+     */
+    public boolean supportsInteractiveLogin() {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        return os.contains("win") || os.contains("mac");
     }
 
     /**

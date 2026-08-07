@@ -6,9 +6,12 @@ export type View = 'flows' | 'studio' | 'resources'
 interface Props {
   view: View
   onView: (v: View) => void
+  /** The signed-in address, or null when authentication is switched off. */
+  signedInAs?: string | null
+  onSignOut?: () => void
 }
 
-export function AppHeader({ view, onView }: Props) {
+export function AppHeader({ view, onView, signedInAs, onSignOut }: Props) {
   return (
     <header className={styles.header}>
       <div className={styles.brand}>
@@ -30,6 +33,11 @@ export function AppHeader({ view, onView }: Props) {
       </nav>
       <div className={styles.spacer} />
       <AuthBadge />
+      {signedInAs && (
+        <button type="button" className={styles.signOut} onClick={onSignOut} title={signedInAs}>
+          Sign out
+        </button>
+      )}
     </header>
   )
 }

@@ -69,6 +69,9 @@ concentus/
     payload as input. Authentication is provider-agnostic: you name the **validation parameter**
     the provider sends its proof in, and paste the **secret** the provider issued (we never mint
     one). See [Webhook authentication](#webhook-authentication).
+  - **Mail (IMAP)** — a run starts for each message matching the node's conditions: folder, from,
+    subject, body, unread, flagged, has-attachments. The message can then be moved, flagged or
+    marked read. See [Mail-triggered flows](#mail-triggered-flows-imap).
 - **Executions** are the runs a flow produces (manual, prompt, cron, or webhook), listed with their
   trigger in the bottom panel. Outcomes are colour-coded: green succeeded, red failed, blue running,
   and **grey stopped** — a run you stopped by hand is neither a success nor a failure, so it is
@@ -142,17 +145,70 @@ the deployment (this is a subscription OAuth token from `claude setup-token`, *n
 claude setup-token            # opens a browser once; prints CLAUDE_CODE_OAUTH_TOKEN
 ```
 
-### Docker Compose (backend + frontend)
+### Docker Compose (backend + frontend + Postgres)
 
 ```bash
-echo "CLAUDE_CODE_OAUTH_TOKEN=..." > .env    # paste the token from setup-token
+./scripts/setup-env.sh        # or: .\scripts\setup-env.ps1  on Windows
+                              # creates .env and generates CONCENTUS_SECRET_KEY
+```
+
+Then fill in two values in `.env` — the script tells you which:
+
+| | |
+|---|---|
+| `CLAUDE_CODE_OAUTH_TOKEN` | from `claude setup-token` above. Without it every run fails at "Not signed in". |
+| `CONCENTUS_ADMIN_EMAIL` | the account you sign in with. Leave `CONCENTUS_ADMIN_PASSWORD` blank and one is generated and printed **once** in the backend log. |
+
+```bash
 docker compose up --build
 # frontend → http://localhost:3000   ·   backend → http://localhost:8080
 ```
 
-The backend image bundles the `claude` CLI; the frontend image is nginx serving the SPA and proxying
-`/api` + `/ws`. The marketing site (`apps/website`) is not part of compose. See
-[docker-compose.yml](docker-compose.yml).
+Three services: `db` (Postgres, on a named volume), `backend` (the jar plus the `claude` CLI), and
+`frontend` (nginx serving the SPA and proxying `/api` + `/ws`). The frontend waits for the backend's
+health check rather than merely for the container to exist — nginx resolves `backend` at startup and
+exits if the name isn't there yet. The marketing site (`apps/website`) is not part of compose.
+
+Everything else is entered **in the app**, not in a file: mailbox sign-ins, Holded credentials,
+GitHub/GitLab tokens. They are encrypted with `CONCENTUS_SECRET_KEY` before storage, which is why
+that key belongs with the database — change it and every stored credential becomes unreadable.
+
+Two things worth setting once in `.env` so nothing asks again:
+
+- `MAIL_MICROSOFT_TENANT_ID` / `MAIL_MICROSOFT_CLIENT_ID` — the Entra app registration for Microsoft
+  365 mailboxes. One registration serves every mailbox (it identifies the *application*, not the
+  mailbox), so with these set the Input node stops asking; a node can still override them under
+  *Advanced* for a second tenant. Neither is a secret.
+- `LOCAL_CONTEXT_ROOTS` — only if agents need host folders as context. Repository nodes don't: they
+  clone into the run's own working directory.
+
+**MCP servers inside the container.** User-scope MCP registrations and their OAuth authorizations
+live in `.claude.json`, which by default sits at `~/.claude.json` — *outside* `~/.claude`. Compose
+therefore sets `CLAUDE_CONFIG_DIR=/root/.claude` so it lands on the `concentus-claude` volume;
+without that, every `docker compose up --build` would silently drop every MCP server a flow depends
+on, and the first sign of it would be an agent reporting that it has no tools.
+
+A server that authenticates with a **bearer token** works headlessly and is the path to prefer. One
+that needs an interactive OAuth sign-in cannot complete it in a container — there is no browser —
+so authorize it once from a shell in the container:
+
+```bash
+docker compose exec backend claude mcp login "<server name>"
+```
+
+#### Reusing your host Claude login
+
+Bind-mounting the host's `~/.claude` also carries MCP authorizations across, but two Claude
+installations writing the same files corrupt each other's state — stop the host CLI while the
+container runs, or prefer `claude setup-token`. Replace the `concentus-claude` volume line with:
+
+```yaml
+      - ${CLAUDE_HOME}/.claude:/root/.claude
+      - ${CLAUDE_HOME}/.claude.json:/root/.claude.json
+```
+
+and set `CLAUDE_HOME` in `.env` (`/home/you`, or `C:/Users/you`). Compose does not expand `$HOME`
+or `%USERPROFILE%` for you, which is why this is an explicit variable.
 
 ### Kubernetes — Helm
 
@@ -186,6 +242,176 @@ and everything else to the frontend — a single external entrypoint and a natur
 
 > **Webhooks** need the public entrypoint (or ingress) reachable from the internet so the provider
 > can POST to `/api/webhooks/{flowId}`.
+
+## Models
+
+**The model named on an agent decides where that agent runs.** Not a global setting, not a
+credential — the model. So one flow can put its coordinator on Claude and a summarising sub-agent
+on a model on your own GPU, and neither knows about the other.
+
+| Model named | Backend | How it runs |
+|---|---|---|
+| a Claude id, with a Claude Code sign-in | **Local** | the `claude` CLI on your subscription, on this machine |
+| a Claude id, with `ANTHROPIC_API_KEY` | **API** | Anthropic's hosted Managed-Agents session |
+| an id your own model server reports | **Self-hosted** | your GPU, via OpenAI-compatible HTTP |
+
+`ANTHROPIC_AUTH_MODE` picks between the two Claude paths: `auto` (default — key set means API,
+otherwise local), `local`, or `api-key`. The toolbar badge shows which is active, and
+`GET /api/auth/status` reports it. With neither credential the designer still runs, and a flow on a
+self-hosted model runs too — **no Claude credential is needed for that path at all**.
+
+A flow names a model (`claude-opus-4-8`, `qwen3:14b`, …). The field is free text, so a model
+released after this list still works — the picker is a shortcut, not a whitelist.
+
+### Running on your own hardware
+
+Any server speaking OpenAI's `/chat/completions` works: **Ollama**, llama.cpp's `llama-server`,
+**vLLM**, LM Studio. A 14B model on a 16 GB card is a realistic target at 4-bit.
+
+The compose file ships the whole stack behind a **profile**, so it stays off until you ask:
+
+```bash
+docker compose --profile local-ai up --build
+```
+
+| | | |
+|---|---|---|
+| `ollama` | GPU | serves **both** the chat model and the embedding model |
+| `ollama-pull` | — | pulls them once, then exits |
+| `litellm` | `:4000` | Anthropic-format gateway, so the `claude` CLI can also target a local model |
+| `reranker` | `:7997` | CPU; **not** wired into Concentus — see below |
+| `openwebui` | `:8081` | chat UI, pointed at LiteLLM (8080 belongs to the backend) |
+
+Behind a profile because none of it is free: Ollama pins weights in VRAM and the reranker downloads
+a model on first start, and nothing there is needed to design a flow or run one on Claude. Plain
+`docker compose up` still gets you the app, the database and the frontend.
+
+**There is no separate embedding server.** Ollama serves both models on one URL; only the model name
+differs per request — `/v1/chat/completions` with `qwen3:14b`, `/v1/embeddings` with `bge-m3`. That
+is the whole wiring, and `LOCAL_MODEL_BASE_URL` is the only address involved. The MCP node shows
+which ranking you are actually getting, so you can see it working rather than assume it.
+
+Running Ollama on the host instead of in compose:
+
+```properties
+LOCAL_MODEL_BASE_URL=http://localhost:11434/v1               # backend running directly
+LOCAL_MODEL_BASE_URL=http://host.docker.internal:11434/v1    # backend in docker-compose
+```
+
+Two honest caveats about the merged stack. The **reranker is included but unused** — Concentus's
+tool search ranks by embedding distance and stops there; it is in the file because it is the
+cheapest quality win for a *document* RAG pipeline, and it costs no VRAM. And **LiteLLM is a second,
+separate path**: Concentus's self-hosted backend talks OpenAI-format to Ollama directly and never
+goes through it. Point `ANTHROPIC_BASE_URL` at `http://litellm:4000` only if you want Claude Code's
+own agent loop driving a 14B model — it works, and tool-calling discipline is the first casualty.
+
+That's the whole setup. The picker then lists **whatever the server reports it has loaded**, under
+*On your hardware* — asked rather than configured, because what you can run is whatever you have
+pulled, and a hand-written list would offer a model that would 404 at launch. Pull something new
+and it appears within a minute.
+
+Two things that cost an afternoon if missed:
+
+- **The `/v1` suffix.** Ollama's OpenAI-compatible surface is at `:11434/v1`, not at the root.
+- **Ollama's context window defaults to 2k** regardless of what the model supports, and truncates
+  past it *silently*. A system prompt plus tool definitions passes that immediately, and the symptom
+  is a model that appears to ignore its instructions rather than any error. Raise it on the server:
+  `OLLAMA_CONTEXT_LENGTH=32768 ollama serve`.
+
+**What works here:** delegation between agents (as tool calls), file tools scoped to the agent's
+context folders, SQL/RAG context, MCP servers, and every trigger — mail, cron, webhook.
+
+#### Large MCP servers: the agent searches instead of being handed everything
+
+A tool definition is a JSON schema in the prompt. Holded's MCP server exposes **338** of them —
+roughly fifty thousand tokens before the conversation starts, which no self-hosted context will
+hold. The model server truncates without saying so, and the model then reports having only the few
+that survived, which reads as a confused model rather than a starved one.
+
+So above `LOCAL_MODEL_TOOL_SEARCH_THRESHOLD` tools (default 25) the agent is given **one** tool,
+`search_<server>_tools`, instead of the catalogue. It describes what it needs — *"find a customer
+by tax id"* — gets back the few matching definitions with their full parameters, and calls the tool
+by name. **Every tool stays callable**; only the listing stops being carried in every prompt.
+
+Ranking is semantic when it can be. The tool corpus is embedded once per server and stored in
+pgvector, which is what connects *"who are my customers"* to `list_contacts` — a phrase sharing not
+one word with the tool's name.
+
+```bash
+ollama pull bge-m3      # an EMBEDDING model; a chat model 404s or returns nonsense
+```
+
+The compose file uses the `pgvector/pgvector` image for this. Without the extension, or without the
+embedding model, ranking **falls back to word overlap** and the run says which it used — worse
+results, still useful, and nothing breaks. Re-indexing is keyed on a hash of the server's tool list,
+so it happens when the server's tools change and not merely because a run started.
+
+Picking tools by hand on the node always wins over search: an explicit selection was a decision, and
+for eight tools a search round-trip is pure overhead.
+
+#### MCP servers that use OAuth
+
+A server like Holded's authenticates with **OAuth**, not a pasted token — and the `claude` CLI keeps
+its own authorization for it. So the same server works on the Claude backends and answers **401**
+here, which reads as a broken flow rather than a missing sign-in. It isn't: the grant simply belongs
+to the CLI, not to this application.
+
+Press **Sign in to this server** on the MCP node. Concentus then does the flow itself — discovers
+the authorization server from the `WWW-Authenticate` challenge, registers as a client dynamically
+(there is no console to create an app in), and runs authorization code with PKCE. Approve it once in
+the tab that opens; the grant is stored encrypted and renews itself.
+
+The browser is redirected back to `MCP_OAUTH_REDIRECT_BASE` (default `http://localhost:3000`, the
+compose frontend). **It has to be the address your browser actually uses to reach Concentus** — set
+it to whatever is in your address bar, minus the path:
+
+| How you run it | Set it to |
+|---|---|
+| docker-compose (default) | `http://localhost:3000` |
+| Vite dev server | `http://localhost:5173` |
+| backend opened directly | `http://localhost:8080` |
+| behind a domain | `https://concentus.example.com` |
+
+Get it wrong and the sign-in dies at the very last step with `ERR_CONNECTION_REFUSED`, after the
+code has already been issued and spent — the authorization server sent the browser somewhere
+nothing is listening. The Sign in button checks for that mismatch before it opens anything and says
+what to set, but only the running backend's value goes on the wire, so it still needs restarting
+after a change.
+
+Servers that take a plain token need none of this: fill in the token field and they work headlessly.
+
+**What does not: bash, and therefore repository nodes.** Cloning, committing and opening a PR all
+run through git on a shell. Flows can be triggered by public webhooks, so model-generated shell
+commands on the host is a remote-code-execution path; Claude Code carries its own permission model
+and a trust boundary you accepted by installing it, and none of that transfers when this app spawns
+a process itself. Doing it safely needs an isolation boundary, which is a design decision rather
+than a default. A flow that edits repositories belongs on Claude; the run says so out loud rather
+than quietly skipping the node.
+
+One more caveat worth stating plainly: a 14B model is not a frontier model, and the gap shows up as
+**tool-calling discipline** rather than prose quality — repeated calls, malformed arguments,
+answering in text where it should have called something. `LOCAL_MODEL_MAX_TURNS` bounds that, and
+hitting the cap is reported rather than passed off as an answer.
+
+### Costs
+
+The model picker shows each model's rate, and a run reports estimated cost per block and in total —
+all read from `pricing.models` (`id:inputPerMTok:outputPerMTok`), so the number you see while
+choosing is the one the estimate uses.
+
+Claude rates ship configured, taken from Anthropic's published pricing. **They change** — re-check
+rather than trusting them indefinitely, and add anything you use that isn't listed:
+
+```properties
+PRICING_MODELS=...,my-model:<inputPerMTok>:<outputPerMTok>
+```
+
+A cache read is weighted at 0.1× input, which is Anthropic's cache-read rate.
+
+An unlisted model falls back to the flat `pricing.input-usd-per-mtok` / `output-usd-per-mtok` pair,
+and the picker says so rather than showing a figure that isn't real. Runs on a Claude **subscription**
+have no per-token bill at all — there the figure is an equivalent-usage estimate for comparing runs,
+not a charge; on the **API** it approximates the real charge.
 
 ## Persistence (PostgreSQL)
 
@@ -283,6 +509,202 @@ Notes:
 - Comparisons are constant-time, and the HMAC covers the exact bytes received (the body is never
   re-encoded before verification).
 
+## Sign-in and organizations
+
+The API requires an authenticated session. Sessions are the servlet container's own — no extra
+dependency — and every state-changing request carries the CSRF token Spring Security sets as the
+readable `XSRF-TOKEN` cookie (the SPA's `req()` helper does this for you).
+
+- **The administrator account** comes from `CONCENTUS_ADMIN_EMAIL` / `CONCENTUS_ADMIN_PASSWORD`,
+  and is provisioned at startup whenever *that email* has no account yet — not only on an empty
+  database, so setting it after the first boot still works. Leave the password blank and one is
+  generated and printed **once** in the backend log. Minimum 12 characters, the same rule that
+  governs changing a password later, so an account is never created in a state from which its own
+  password could not be re-set.
+- **An existing password is never overwritten from configuration.** That would let anyone able to
+  edit an environment variable take over a live account, and would silently undo a password
+  changed in the app. `CONCENTUS_ADMIN_PASSWORD_RESET=true` is the explicit one-run opt-in for a
+  genuinely lost one.
+- There is deliberately **no public registration endpoint**: on a self-hosted install that would
+  let whoever reaches the server first claim the organization. Further members are invited by an
+  admin from `POST /api/account/members`.
+- **Every integration table is partitioned by `organization_id`**, and the id always comes from
+  the authenticated principal, never from a request parameter — so no request can address another
+  tenant's mail events, subscriptions or estimates.
+- **`AUTH_ENABLED=false`** leaves the API open exactly as it was before accounts existed, and
+  resolves everything to `APP_ORGANIZATION_ID`. Local development only.
+- **Accounts fail closed.** Unlike run persistence, which degrades to memory when the database is
+  unavailable, sign-in refuses rather than degrading — a server nobody can authenticate against is
+  safer than one that authenticates nobody.
+
+Pre-existing resources (flows, agents, MCP definitions, databases) are now behind sign-in but are
+still shared across the deployment rather than partitioned per organization; repartitioning them
+would be a data migration that breaks existing installs.
+
+## Background jobs
+
+Work that must outlive the request that accepted it goes through a PostgreSQL-backed queue
+(`jobs`), claimed with `for update skip locked` so several workers — and several processes — drain
+it safely. Retries use exponential backoff, honour a provider's `Retry-After` when one was sent,
+and park the job after `max_attempts`. A job whose worker died is returned to the queue by a stale
+sweep.
+
+Add a job type by implementing `JobHandler` and exposing it as a bean; `JobWorkers` picks it up by
+`type()`, the same way `ProviderRegistry` and `ExecutionBackends` assemble their implementations.
+
+Unlike run persistence, the queue does **not** degrade to memory: accepting a webhook we cannot
+durably record would lose the work, so `enqueue` throws and the endpoint answers `503` so the
+provider redelivers.
+
+## Mail-triggered flows (IMAP)
+
+An Input node in **mail** mode polls an IMAP folder and starts a run for each message matching its
+conditions — folder, from, subject, body, unread, flagged, has-attachments — and can move, flag or
+mark the message read once the run has started.
+
+IMAP rather than SMTP, and the distinction is load-bearing: SMTP is a transport that hands a
+message over and forgets it, while folders, flags and read state live in the mail *store*. "When a
+flagged mail lands in Presupuestos" is only expressible over IMAP, and so is moving it to
+Procesados afterwards.
+
+- **Conditions become an IMAP `SEARCH`**, so the server filters and only matches cross the network.
+  *Has attachments* and the already-processed exclusion are applied locally — the protocol can't
+  express them.
+- **The password is never in the flow.** It is entered under **Resources → Credentials**,
+  encrypted with AES-256-GCM, and the node stores only its id — see [Stored
+  credentials](#stored-credentials).
+- **Microsoft 365 needs a sign-in, not a password.** Basic authentication for IMAP is retired in
+  Exchange Online, so a correct password still returns `AUTHENTICATE failed`. Set the node's
+  **Authentication** to *Microsoft 365 sign-in* and press **Connect Microsoft account**: the
+  backend runs the OAuth2 **device code** flow, shows a short code, and you enter it at
+  `microsoft.com/devicelogin` on any device. No redirect URI, no client secret and no browser on
+  the server — which is exactly why it works from inside the container. What gets stored is a
+  refresh token, encrypted like every other credential, and it renews itself; rotated tokens are
+  written back, because keeping a stale one works right up until it doesn't. The app registration
+  needs delegated `IMAP.AccessAsUser.All` + `offline_access` and *Allow public client flows* = Yes;
+  its tenant and client ids go on the node, since they are identifiers rather than secrets.
+- **A message starts at most one run.** Its `Message-ID` is claimed in `processed_mail` — an insert
+  against a unique index, not a read-then-write — *before* the run starts. Keyed on `Message-ID`,
+  not the IMAP UID, because the UID doesn't survive the folder move.
+- **The mail reaches the agent as untrusted data**: body and attachment text fenced with an
+  unguessable per-run marker, with sender/subject/date stated outside the fence as verified.
+  Attachments are routed by magic bytes, never by the sender-supplied filename or MIME type.
+- Polling, not IMAP IDLE — IDLE needs a held connection per folder and careful re-establishment;
+  for work measured in minutes, polling degrades to "slightly late" rather than "silently stopped".
+
+**[Quote requests by email → Holded](docs/flows/mail-to-holded.md)** is the worked example, and
+ships as a starter flow: a mail Input node, an agent carrying the rules in its system prompt, and
+an MCP node for Holded. It creates **draft** estimates only — never sends, accepts, invoices or
+deletes.
+
+## Stored credentials
+
+Mailbox passwords, MCP bearer tokens, Git provider tokens and database passwords are all entered in
+the app under **Resources → Credentials**, not in the environment. They are encrypted with AES-256-GCM (fresh random IV per value, authenticated, so
+a tampered row fails to decrypt rather than yielding different plaintext) under the master key in
+`CONCENTUS_SECRET_KEY`.
+
+**The field is write-only.** No endpoint returns a stored secret — not to a user, not to an
+administrator. A credential comes back as a label, a kind and a masked hint. Editing shows an empty
+value box, and leaving it empty keeps the stored secret, so "rename and save" cannot overwrite a
+password with a mask.
+
+**Every node type uses this** — mail, MCP, repository and SQL. **Nodes hold an id, never a value.** Every flow save snapshots the flow JSON into version history
+and duplicating a flow copies its nodes, so a secret on a node — even encrypted — would fan out
+into every revision and every copy. Deleting a credential therefore really removes it.
+
+**Be precise about what encryption at rest buys.** It protects a leaked database backup, a
+database-only compromise, or a read-only SQL injection. It does **not** protect against someone who
+compromises the application or the host, because the key has to be reachable by the process to be
+usable. The secret does not disappear — it collapses to one key, which is then the thing to guard.
+
+`CONCENTUS_SECRET_KEY` is **required**: the backend refuses to start without it. Every credential
+it holds depends on that key, so starting anyway would leave a half-working deployment — credential
+fields that silently cannot save, mail triggers quietly not polling. It fails once, at startup, with
+the command to generate one. Changing the key makes existing credentials unreadable; they have to
+be re-entered.
+
+### Git providers, and why OAuth is the wrong route here
+
+The MCP registration is a header, not a browser flow — `claude mcp add --transport http … -H "<header>"`.
+So any credential that works as a header works headlessly, which is what makes this usable from
+Docker at all: the interactive OAuth sign-in needs a terminal and a browser, and a container has
+neither. `GET /api/mcp/capabilities` reports that, and the UI offers the token route instead of a
+button that would start a sign-in it can never finish.
+
+| Provider | Credential | Header |
+|---|---|---|
+| GitHub | fine-grained PAT, or a GitHub App installation token | `Authorization: Bearer …` (default) |
+| GitLab | project or group access token (not tied to a person), or a PAT | `PRIVATE-TOKEN: …` |
+
+The header is per-node because it is not universal: GitLab reads its access tokens from
+`PRIVATE-TOKEN` with **no** `Bearer` prefix, so sending one there makes an otherwise-correct token
+wrong. Existing flows carry no header and keep the default, so nothing changes for them.
+
+GitLab repositories are reached through their MCP server rather than mounted natively — only
+GitHub repos are mounted in the cloud backend, and a non-GitHub repo is logged and skipped rather
+than failing the run.
+
+### Working on repositories, and opening PRs / MRs
+
+A **repository node** is cloned into the run.s own working directory — which is already the CLI.s
+cwd, so the checkout is simply there, needing no `--add-dir` grant and no entry in
+`local.context-roots`. One clone per run, because two runs of the same mail-triggered flow can
+overlap and a shared working tree would have them writing over each other.s branch.
+
+The agent then edits, commits, pushes a branch and opens the pull request (GitHub) or merge request
+(GitLab) through that provider.s MCP server. On GitLab it can instead push with
+`-o merge_request.create`, which opens the MR from the push itself. Those instructions are written
+into the run.s `CLAUDE.md`, including the rules that matter: branch, never the default; never
+force-push; and stop rather than open a PR you are not sure about.
+
+**One repository, or a whole group.** A node's **Scope** is either a single repository or an entire
+GitHub organization / GitLab group. In group mode the node has no URL: it names the group, and
+every repository inside it is cloned. That set is resolved **when the run starts**, not when the
+flow is saved, so a repository added to the group next week is picked up without anyone reopening
+the canvas — which is the point of pointing at a group rather than pasting twelve URLs.
+
+- **Selecting a subset stays possible.** Press *Select specific repositories* and tick the ones you
+  want; leave them all unticked and it means all of them.
+- **Archived repositories are excluded by default** — they are read-only, so a flow that exists to
+  open PRs can only fail on them. There is a checkbox if you want them anyway.
+- **Each repository keeps its own default branch**, unless the node sets one explicitly. A group's
+  repositories rarely share a branch name, and forcing `main` on all of them would simply fail the
+  clone of every repository that uses something else.
+- **The expansion is capped** by `GIT_MAX_GROUP_REPOS` (default 25). Going over is logged and told
+  to the agent — a run that quietly worked on a prefix of the group would look like success.
+- In single-repository mode you can still browse a group and fill the node in from the pick. The
+  token is named by credential id and resolved server-side — it never crosses the wire in either
+  direction.
+
+**Where the push credential lives.** On the CLI process environment, never in `.git/config` and
+never in a remote URL. That keeps it off disk and out of `git remote -v`, so it cannot be copied
+into a commit message or a PR body by accident.
+
+> It does **not** hide the token from the agent, which runs with `bypassPermissions` and can read
+> its own environment. That is inherent to letting the agent push. Scope the credential to these
+> repositories — a fine-grained PAT (GitHub) or a project/group access token (GitLab) — and do not
+> reuse a credential that has any other reach, particularly not the one a mail trigger uses.
+
+In the cloud backend only GitHub repositories are mounted natively; a GitLab repo is logged and
+skipped there, and is reached through its MCP server instead.
+
+### Bundled starter flows
+
+Flows under `apps/backend/src/main/resources/library-flows/*.json` are installed into the flow
+store on startup, the way `library-agents` seeds the agent library. Installation is recorded in
+`<data-dir>/flows/.seeded-flows`, so a starter you delete stays deleted and one you edit is never
+overwritten.
+
+### Webhook body credentials
+
+The webhook accepts its configured parameter from a header, the query string, **or the JSON body**
+— at the top level, or inside a `value` array of batched notifications. Some providers carry their
+shared secret inside the payload rather than as a header (Microsoft Graph's `clientState` is the
+common example), which header-and-query-only lookup can never authenticate. In a batch, every entry
+must present the same value, so a caller who learned the secret cannot staple foreign notifications
+onto a valid delivery.
+
 ## API surface (backend)
 
 | Method | Path | Purpose |
@@ -308,6 +730,9 @@ Notes:
 > as argv, so servers registered under any name stay removable.
 | POST | `/api/webhooks/{flowId}` | inbound webhook that starts a run with the event payload ([auth](#webhook-authentication)) |
 | GET | `/api/rag/status` · POST `/api/rag/preview` | RAG capabilities / preview a SQL source's rows |
+| GET | `/api/account/session` | whether sign-in is required, and who is signed in |
+| POST | `/api/account/login` · `/api/account/logout` | sign in / out ([details](#sign-in-and-organizations)) |
+| GET/POST | `/api/account/members` | organization members (admin only) · `POST /api/account/password` |
 
 Flows persist as JSON under `apps/backend/data/flows` (override with `APP_DATA_DIR`).
 

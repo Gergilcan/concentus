@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * opening a JDBC connection, so every case here is expected to fail validation and must never
  * reach {@code DriverManager.getConnection} — no test here touches the network. Cases that need
  * to prove a host or driver is *not* blocked use an explicit {@code allowedHosts}/host literal
- * plus a passwordEnv guard failure to still short-circuit before any connection attempt.
+ * without any connection attempt.
  */
 class SqlRagRetrieverTest {
 
@@ -99,7 +99,6 @@ class SqlRagRetrieverTest {
         // closed is enough to guarantee query() never opens a connection to it.
         SqlRagRetriever retriever = new SqlRagRetriever("postgresql", "169.254.169.254");
         SqlSourceSpec s = spec("jdbc:postgresql://169.254.169.254:5432/app", "select 1");
-        s.passwordEnv = "ANTHROPIC_API_KEY";
 
         assertThatThrownBy(() -> retriever.query(s)).isInstanceOf(IllegalArgumentException.class);
     }
@@ -110,13 +109,14 @@ class SqlRagRetrieverTest {
         // DNS/loopback check) is never consulted. The passwordEnv guard then fails closed before
         // any connection is attempted, proving target validation itself passed without a network
         // call ever occurring.
+        // The read-only guard runs *after* target validation, so tripping it proves the target
+        // passed — without a connection ever being attempted.
         SqlRagRetriever retriever = new SqlRagRetriever("postgresql", "db.internal.example.com");
-        SqlSourceSpec s = spec("jdbc:postgresql://db.internal.example.com:5432/app", "select 1");
-        s.passwordEnv = "ANTHROPIC_API_KEY"; // not on the AgentSpec allowlist -> guaranteed to fail closed
+        SqlSourceSpec s = spec("jdbc:postgresql://db.internal.example.com:5432/app", "delete from t");
 
         assertThatThrownBy(() -> retriever.query(s))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("passwordEnv");
+                .hasMessageContaining("read-only SELECT");
     }
 
     // ---------------------------------------------------------------- read-only query guard
@@ -147,11 +147,12 @@ class SqlRagRetrieverTest {
         // closed right after validation passes, without ever attempting a connection.
         SqlRagRetriever retriever = new SqlRagRetriever("postgresql", "db.example.com");
         SqlSourceSpec s = spec("jdbc:postgresql://db.example.com:5432/app", "select 1;");
-        s.passwordEnv = "ANTHROPIC_API_KEY"; // forces a fail-closed exception before any connection
 
+        // Validation passes, so the call goes on to attempt a connection and fails as a
+        // SQLException. The point is what it is *not*: an IllegalArgumentException complaining
+        // about multiple statements.
         assertThatThrownBy(() -> retriever.query(s))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("passwordEnv"); // not rejected for "multi-statement"
+                .isNotInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -164,19 +165,9 @@ class SqlRagRetrieverTest {
                 .hasMessageContaining("read-only SELECT");
     }
 
-    // ---------------------------------------------------------------- passwordEnv guard (defense in depth)
-
-    @Test
-    void rejectsADisallowedPasswordEnvBeforeConnecting() {
-        SqlRagRetriever retriever = new SqlRagRetriever("postgresql", "db.example.com");
-        SqlSourceSpec s = spec("jdbc:postgresql://db.example.com:5432/app", "select 1");
-        s.passwordEnv = "SOME_SECRET";
-
-        assertThatThrownBy(() -> retriever.query(s))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("passwordEnv")
-                .hasMessageContaining("SOME_SECRET");
-    }
+    // The former "disallowed passwordEnv" guard is gone with the mechanism it protected: a SQL
+    // node now references a stored credential by id rather than naming an environment variable,
+    // so there is no arbitrary variable to point at a server secret in the first place.
 
     // ---------------------------------------------------------------- asContextText formatting (pure)
 

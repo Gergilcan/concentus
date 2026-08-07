@@ -171,3 +171,18 @@
   color: t.$muted;
   font-size: 12px;
 }
+
+// Explanatory text under a form field. Mirrors panels.module.scss `.hint`, kept here so the
+// credentials panel doesn't have to import two stylesheets for one class.
+.hint {
+  color: t.$muted;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: -6px 0 12px;
+
+  code {
+    background: t.$panel;
+    padding: 1px 4px;
+    border-radius: 4px;
+  }
+}

@@ -41,17 +41,17 @@ skills:
 mcpServers:
   - name: github
     url: https://api.githubcopilot.com/mcp/
-    tokenEnv: GITHUB_MCP_TOKEN     # optional bearer token env var
+    credentialId: ""               # optional: id of a credential from Resources -> Credentials
   - name: gitlab
     url: https://gitlab.com/api/v4/mcp/
-    tokenEnv: GITLAB_MCP_TOKEN
+    credentialId: ""
 
 # Native repository mounts. Managed mode clones github repos into the sandbox
 # filesystem (git access). GitLab has no native mount -> use the MCP server above.
 repositories:
   - provider: github               # github | gitlab
     url: https://github.com/owner/repo
-    tokenEnv: GITHUB_TOKEN
+    credentialId: ""
     mountPath: /workspace/repo
     branch: main
 

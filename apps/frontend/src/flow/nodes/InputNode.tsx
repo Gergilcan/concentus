@@ -10,6 +10,7 @@ const LABEL: Record<InputNodeData['mode'], string> = {
   prompt: 'Prompt',
   cron: 'Automatic (cron)',
   webhook: 'Webhook',
+  mail: 'Mail (IMAP)',
 }
 
 export function InputNode({ data, selected }: NodeProps<InputRFNode>) {
@@ -23,6 +24,11 @@ export function InputNode({ data, selected }: NodeProps<InputRFNode>) {
       badge={LABEL[data.mode]}
     >
       {data.mode === 'cron' && <div className={styles.meta}>{data.cron || 'no schedule'}</div>}
+      {/* The folder is what someone scanning the canvas needs to see — it is the thing that
+          decides which mail this flow acts on. */}
+      {data.mode === 'mail' && (
+        <div className={styles.meta}>{data.mailFolder || 'no folder set'}</div>
+      )}
       {data.mode === 'webhook' ? (
         <div className={styles.snippetMuted}>starts on an external event</div>
       ) : data.mode === 'manual' ? (
