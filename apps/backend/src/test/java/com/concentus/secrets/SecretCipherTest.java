@@ -61,8 +61,14 @@ class SecretCipherTest {
         SecretCipher cipher = cipher();
         String sealed = cipher.seal("original-value");
         // Flip a character in the base64 body. GCM is authenticated, so this must fail loudly.
-        String tampered = sealed.substring(0, sealed.length() - 2)
-                + (sealed.endsWith("A") ? "B" : "A") + sealed.charAt(sealed.length() - 1);
+        // The replacement is chosen against the character actually being replaced — deciding it
+        // from a different position leaves the string untouched whenever the two happen to agree,
+        // and a test that silently hands `open` the original ciphertext fails about one run in
+        // sixty. Mid-body, so the flipped bits always reach a decoded byte rather than landing in
+        // padding a shorter value might have.
+        int at = sealed.length() / 2;
+        char flipped = sealed.charAt(at) == 'A' ? 'B' : 'A';
+        String tampered = sealed.substring(0, at) + flipped + sealed.substring(at + 1);
 
         assertThatThrownBy(() -> cipher.open(tampered))
                 .isInstanceOf(SecretCipher.SecretException.class);
