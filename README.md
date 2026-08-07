@@ -205,6 +205,12 @@ returns 404 there; its rewrite rules can forward `/api/*` to the backend, but
 which is the run console's live output. Set `MCP_OAUTH_REDIRECT_BASE` on the backend to the
 frontend's public URL while you are there, or MCP sign-in comes back to the wrong host.
 
+On **Railway**, both services build from a Dockerfile with Root Directory left empty —
+[deploy/railway/](deploy/railway/) has a config file for each and the full variable list. Note that
+the backend is Maven, not part of the pnpm workspace, so no `pnpm --filter backend` command can
+build it; and a plain JDK builder is not enough either, because a run shells out to the `claude`
+CLI that `apps/backend/Dockerfile` installs.
+
 Everything else is entered **in the app**, not in a file: mailbox sign-ins, Holded credentials,
 GitHub/GitLab tokens. They are encrypted with `CONCENTUS_SECRET_KEY` before storage, which is why
 that key belongs with the database — change it and every stored credential becomes unreadable.
