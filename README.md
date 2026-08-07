@@ -131,6 +131,19 @@ pnpm dev:backend      # = cd apps/backend && mvn spring-boot:run
 pnpm dev:frontend     # = pnpm --filter frontend dev  (proxies /api + /ws to :8080)
 ```
 
+To point the UI at a **deployed** backend instead of a local one, set `CONCENTUS_BACKEND_URL` — in
+`.env` or on the command line — and run the frontend alone:
+
+```bash
+CONCENTUS_BACKEND_URL=https://concentus.onrender.com pnpm dev:frontend
+# PowerShell: $env:CONCENTUS_BACKEND_URL="https://concentus.onrender.com"; pnpm dev:frontend
+```
+
+The dev server proxies `/api` and `/ws` there, so the browser still sees a single origin and the
+session + XSRF cookies keep working — no CORS grant and no cross-site cookies. You are signing in
+against that deployment, so the account has to exist there. `pnpm preview` (the built SPA on :4173)
+honours the same variable; docker-compose does not — nginx proxies to the `backend` service.
+
 Open http://localhost:5173, drop an **Agent** node (auto-marked coordinator), add more agents +
 MCP/Repository nodes, wire them up, **Save**, then **Run**. Pick the run in the bottom panel and
 send commands in the console.
