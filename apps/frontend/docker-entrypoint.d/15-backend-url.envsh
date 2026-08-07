@@ -1,0 +1,12 @@
+#!/bin/sh
+# Sourced (.envsh) by the nginx entrypoint before 20-envsubst-on-templates.sh, so the value it
+# exports is the one substituted into default.conf.template.
+#
+# A trailing slash is the difference between a working proxy and a silent 404: `proxy_pass
+# https://host/;` carries a URI, which makes nginx REPLACE the matched /api/ prefix instead of
+# passing the path through. Pasting a URL with the slash is the obvious mistake, so strip it here
+# rather than leave it to be debugged.
+
+CONCENTUS_BACKEND_URL="$(echo "${CONCENTUS_BACKEND_URL:-http://backend:8080}" | sed 's:/*$::')"
+export CONCENTUS_BACKEND_URL
+echo "$0: proxying /api and /ws to $CONCENTUS_BACKEND_URL"

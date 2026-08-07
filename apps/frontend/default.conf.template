@@ -1,0 +1,41 @@
+# Rendered to /etc/nginx/conf.d/default.conf at container start by the nginx image's envsubst
+# entrypoint, with ${CONCENTUS_BACKEND_URL} substituted (default: http://backend:8080, the
+# docker-compose service). Point it at any reachable backend — including an https one on another
+# host — to serve this SPA against that deployment:
+#
+#   docker run -e CONCENTUS_BACKEND_URL=https://concentus.onrender.com ...
+#
+# Proxying rather than calling the backend straight from the browser is what keeps the app on one
+# origin. The session and XSRF cookies are ordinary host cookies, and a browser talking to a second
+# origin would need SameSite=None on both — which Safari and every browser with third-party cookies
+# off simply drop.
+#
+# Only ${...}-style names are substituted, so nginx's own $host, $uri and friends survive as-is.
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # REST API -> backend
+    location /api/ {
+        proxy_pass ${CONCENTUS_BACKEND_URL};
+        include /etc/nginx/concentus-proxy.conf;
+        proxy_read_timeout 300s;
+    }
+
+    # WebSocket (run console stream) -> backend
+    location /ws/ {
+        proxy_pass ${CONCENTUS_BACKEND_URL};
+        include /etc/nginx/concentus-proxy.conf;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+    }
+
+    # SPA fallback
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

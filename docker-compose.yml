@@ -179,6 +179,11 @@ services:
       dockerfile: apps/frontend/Dockerfile
     ports:
       - "3000:80"
+    environment:
+      # Where nginx sends /api and /ws. The `backend` service above by default; set
+      # CONCENTUS_BACKEND_URL in .env to serve this SPA against a deployed backend instead — and
+      # then drop the depends_on below, since there is no local backend left to wait for.
+      CONCENTUS_BACKEND_URL: ${CONCENTUS_BACKEND_URL:-http://backend:8080}
     depends_on:
       backend:
         # nginx resolves `backend` when it starts and exits if the name isn't there yet.

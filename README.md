@@ -182,6 +182,29 @@ Three services: `db` (Postgres, on a named volume), `backend` (the jar plus the 
 health check rather than merely for the container to exist — nginx resolves `backend` at startup and
 exits if the name isn't there yet. The marketing site (`apps/website`) is not part of compose.
 
+### Hosting the frontend apart from the backend (Render, Fly, a VM…)
+
+The SPA always calls its **own origin** — `/api` and `/ws`, never an absolute URL — and whatever
+serves it proxies those two prefixes onward. That is a deliberate constraint, not an oversight: the
+session and XSRF cookies are ordinary host cookies, so a browser calling a second origin directly
+would need `SameSite=None` on both, which Safari and any browser with third-party cookies disabled
+throw away. One origin, and none of that applies.
+
+So the frontend needs a server that can proxy, and `CONCENTUS_BACKEND_URL` tells it where:
+
+```bash
+docker build -f apps/frontend/Dockerfile -t concentus-frontend .
+docker run -p 3000:80 -e CONCENTUS_BACKEND_URL=https://concentus.onrender.com concentus-frontend
+```
+
+On **Render** that means the frontend is a **Web Service** (Runtime: Docker, Dockerfile Path
+`apps/frontend/Dockerfile`, Docker Build Context Directory `.`) with `CONCENTUS_BACKEND_URL` set to
+the backend service's URL — *not* a Static Site. A Static Site serves files only, so `/api/...`
+returns 404 there; its rewrite rules can forward `/api/*` to the backend, but
+[not WebSocket upgrades](https://feedback.render.com/features/p/support-websockets-in-static-site-rewrites),
+which is the run console's live output. Set `MCP_OAUTH_REDIRECT_BASE` on the backend to the
+frontend's public URL while you are there, or MCP sign-in comes back to the wrong host.
+
 Everything else is entered **in the app**, not in a file: mailbox sign-ins, Holded credentials,
 GitHub/GitLab tokens. They are encrypted with `CONCENTUS_SECRET_KEY` before storage, which is why
 that key belongs with the database — change it and every stored credential becomes unreadable.

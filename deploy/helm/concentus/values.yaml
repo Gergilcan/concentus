@@ -71,6 +71,10 @@ frontend:
     pullPolicy: IfNotPresent
   replicas: 1
   port: 80
+  # Where the frontend's nginx sends /api and /ws. Blank = the backend Deployment in this release.
+  # Set it to serve the SPA against a backend outside the cluster, e.g.
+  #   backendUrl: https://concentus.onrender.com
+  backendUrl: ""
   service:
     type: ClusterIP
   resources: {}
