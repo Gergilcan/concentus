@@ -49,8 +49,8 @@ class RunStoreTest {
     // ---------------------------------------------------------------- unavailable gating
 
     @Test
-    void whenTableCreationFailsTheStoreStaysUnavailableAndWritesAreNoOps() {
-        doThrow(new RuntimeException("db unreachable")).when(jdbc).execute(anyString());
+    void whenTheSchemaIsMissingTheStoreStaysUnavailableAndWritesAreNoOps() {
+        doThrow(new RuntimeException("db unreachable")).when(jdbc).queryForObject(anyString(), eq(Integer.class));
         RunStore store = new RunStore(jdbc, mapper);
 
         store.init();
@@ -63,7 +63,7 @@ class RunStoreTest {
 
     @Test
     void loadAllReturnsEmptyWhenUnavailableRatherThanQuerying() {
-        doThrow(new RuntimeException("db unreachable")).when(jdbc).execute(anyString());
+        doThrow(new RuntimeException("db unreachable")).when(jdbc).queryForObject(anyString(), eq(Integer.class));
         RunStore store = new RunStore(jdbc, mapper);
         store.init();
 
@@ -102,7 +102,7 @@ class RunStoreTest {
 
     @Test
     void markDirtyIsANoOpWhenUnavailable() {
-        doThrow(new RuntimeException("db unreachable")).when(jdbc).execute(anyString());
+        doThrow(new RuntimeException("db unreachable")).when(jdbc).queryForObject(anyString(), eq(Integer.class));
         RunStore store = new RunStore(jdbc, mapper);
         store.init();
 

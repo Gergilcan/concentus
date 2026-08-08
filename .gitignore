@@ -2,6 +2,10 @@
 apps/backend/target/
 *.class
 
+# The pgvector extension, compiled per platform by CI and staged into the jar's resources. Build
+# output, not source: the source is pgvector's own repository, at the tag the workflows pin.
+apps/backend/src/main/resources/pgvector/
+
 # Node
 node_modules/
 apps/frontend/dist/

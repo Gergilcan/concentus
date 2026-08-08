@@ -65,75 +65,19 @@ jobs:
           node-version: "24"
           cache: pnpm
 
-      # --- pgvector -------------------------------------------------------------------------
       # Compiled here because it cannot be compiled anywhere else: it is C, built against the
       # PostgreSQL server headers, for one OS and one major version. The result is copied into the
-      # embedded server at startup (see PgVectorInstaller) so `create extension vector` works and
-      # MCP tool search can rank by meaning instead of word overlap.
+      # embedded server at startup (see PgVectorInstaller) so MCP tool search can rank by meaning.
       #
-      # Both steps are `continue-on-error`. Losing semantic ranking is a degraded feature that the
-      # app already handles and reports; losing the installer over it would be the wrong trade.
-      - name: Build pgvector (Linux)
-        if: runner.os == 'Linux'
+      # continue-on-error: losing semantic ranking is a degraded feature the app already handles
+      # and reports; losing the installer over it would be the wrong trade.
+      - name: Build pgvector
         continue-on-error: true
-        run: |
-          set -euo pipefail
-          # The server headers, matching the major version embedded in the app. Ubuntu's own
-          # repositories carry an older PostgreSQL, so the headers come from PGDG — building
-          # against the wrong major produces a library the server will refuse to load.
-          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
-          echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
-            | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update
-          sudo apt-get install -y postgresql-server-dev-${PG_MAJOR} build-essential
-          pg_config --version
-          git clone --branch "v${PGVECTOR_VERSION}" --depth 1 https://github.com/pgvector/pgvector.git /tmp/pgvector
-          make -C /tmp/pgvector OPTFLAGS=""
-          dest="apps/backend/src/main/resources/pgvector/linux-amd64"
-          mkdir -p "$dest"
-          cp /tmp/pgvector/vector.so "$dest/"
-          cp /tmp/pgvector/vector.control "$dest/"
-          cp /tmp/pgvector/sql/*.sql "$dest/"
-          # PgVectorInstaller reads this: a jar is not a directory it can list portably.
-          (cd "$dest" && ls *.sql > sql-files.txt)
-          ls -la "$dest"
-
-      # Two steps, because the headers have to be fetched before the compiler is set up.
-      # Deliberately NOT the PostgreSQL the runner ships: that is whatever version the image
-      # happens to carry, and a library built against a different major will not load into the
-      # one the app embeds.
-      - name: Fetch PostgreSQL ${{ env.PG_MAJOR }} headers (Windows)
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $url = "https://get.enterprisedb.com/postgresql/postgresql-$env:PG_FULL-1-windows-x64-binaries.zip"
-          Write-Host "Downloading $url"
-          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\pg.zip"
-          Expand-Archive "$env:RUNNER_TEMP\pg.zip" -DestinationPath "$env:RUNNER_TEMP\pg"
-          # The archive unpacks to a `pgsql` folder holding bin, include and lib.
-          "PGROOT=$env:RUNNER_TEMP\pg\pgsql" | Out-File -FilePath $env:GITHUB_ENV -Append
-          & "$env:RUNNER_TEMP\pg\pgsql\bin\pg_config.exe" --version
-
-      - name: Build pgvector (Windows)
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        shell: cmd
-        run: |
-          call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          git clone --branch v%PGVECTOR_VERSION% --depth 1 https://github.com/pgvector/pgvector.git "%RUNNER_TEMP%\pgvector" || exit /b 1
-          cd /d "%RUNNER_TEMP%\pgvector"
-          REM PGROOT was exported by the previous step and is what Makefile.win reads.
-          nmake /F Makefile.win || exit /b 1
-          set "DEST=%GITHUB_WORKSPACE%\apps\backend\src\main\resources\pgvector\windows-amd64"
-          mkdir "%DEST%"
-          copy vector.dll "%DEST%\" || exit /b 1
-          copy vector.control "%DEST%\" || exit /b 1
-          copy sql\*.sql "%DEST%\" || exit /b 1
-          cd /d "%DEST%"
-          dir /b *.sql > sql-files.txt
-          dir
+        uses: ./.github/actions/build-pgvector
+        with:
+          pg-major: ${{ env.PG_MAJOR }}
+          pg-full: ${{ env.PG_FULL }}
+          pgvector-version: ${{ env.PGVECTOR_VERSION }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

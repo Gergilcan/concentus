@@ -39,8 +39,8 @@ class FlowVersionStoreTest {
     // ---------------------------------------------------------------- unavailable gating
 
     @Test
-    void whenTableCreationFailsTheStoreStaysUnavailable() {
-        doThrow(new RuntimeException("db unreachable")).when(jdbc).execute(anyString());
+    void whenTheSchemaIsMissingTheStoreStaysUnavailable() {
+        doThrow(new RuntimeException("db unreachable")).when(jdbc).queryForObject(anyString(), eq(Integer.class));
         FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
 
         store.init();

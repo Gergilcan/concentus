@@ -148,6 +148,22 @@
             ranking in ToolSearchIndex falls back to lexical matching. It already detects and logs
             that, so the behaviour is degraded rather than broken.
         -->
+        <!--
+            Schema migrations. Versions are managed by the Spring Boot parent.
+
+            flyway-database-postgresql is a separate artifact since Flyway 10 — without it Flyway
+            starts and then reports PostgreSQL as unsupported, which reads like a configuration
+            error rather than a missing dependency.
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>io.zonky.test</groupId>
             <artifactId>embedded-postgres</artifactId>

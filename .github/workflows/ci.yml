@@ -4,6 +4,14 @@ on:
   push:
   pull_request:
 
+env:
+  # Must match embedded-postgres-binaries.version in apps/backend/pom.xml. pgvector is compiled
+  # against these server headers, and a library built for one major version will not load into
+  # another — a mismatch fails at CREATE EXTENSION, not at build time.
+  PG_MAJOR: "17"
+  PG_FULL: "17.5"
+  PGVECTOR_VERSION: "0.8.0"
+
 jobs:
   backend:
     name: Backend (Maven)
@@ -71,3 +79,39 @@ jobs:
       # push, and it would catch nothing this does not.
       - name: Typecheck
         run: pnpm --filter desktop typecheck
+
+  pgvector:
+    name: pgvector (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Built here, on every push, even though only the release workflow ships the result.
+      #
+      # It is native code compiled per platform against PostgreSQL's server headers, which makes it
+      # the part of the build most likely to break and the part least likely to be noticed: nothing
+      # else exercises it, and a failure at release time is a failure while cutting a release. This
+      # job is the difference between finding that out now and finding it out then.
+      #
+      # NOT continue-on-error here, unlike the release workflow. There the trade is "ship an
+      # installer without semantic ranking rather than no installer"; here there is nothing to
+      # ship, so a break should be loud.
+      - name: Build pgvector
+        uses: ./.github/actions/build-pgvector
+        with:
+          pg-major: ${{ env.PG_MAJOR }}
+          pg-full: ${{ env.PG_FULL }}
+          pgvector-version: ${{ env.PGVECTOR_VERSION }}
+
+      # Downloadable from the run, so the extension can be tried against a real database without
+      # waiting for a release.
+      - name: Upload the extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: pgvector-${{ runner.os }}
+          path: apps/backend/src/main/resources/pgvector/
+          if-no-files-found: error

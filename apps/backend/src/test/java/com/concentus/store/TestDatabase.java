@@ -35,12 +35,33 @@ final class TestDatabase {
                 throw new UncheckedIOException(e);
             }
             jdbc = new JdbcTemplate(postgres.getPostgresDatabase());
+            // The real migrations, so the tests run against the schema the app actually ships
+            // rather than one written twice and free to disagree.
+            SchemaMigrator.migrate(postgres.getPostgresDatabase());
         }
         return jdbc;
     }
 
-    /** Empties the shared table so one test cannot see another's records. */
+    /**
+     * A separate, empty database on the same server.
+     *
+     * <p>For the tests that need a schema of their own — chiefly the baseline case, which has to
+     * start from a database this run has never migrated.
+     */
+    static javax.sql.DataSource freshDatabase(String name) {
+        jdbc();  // make sure the server is up
+        jdbc.execute("drop database if exists " + name);
+        jdbc.execute("create database " + name);
+        return postgres.getDatabase("postgres", name);
+    }
+
+    /**
+     * Clears the records one test wrote so the next does not see them.
+     *
+     * <p>Deletes rather than drops: the table belongs to the migrations now, and dropping it would
+     * leave Flyway's history claiming a schema that is no longer there.
+     */
     static void reset(JdbcTemplate template) {
-        template.execute("drop table if exists resources");
+        template.execute("delete from resources");
     }
 }

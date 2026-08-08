@@ -16,9 +16,8 @@ import java.util.Optional;
 /**
  * Organizations and users, in PostgreSQL.
  *
- * <p>Schema is created on startup with {@code create table if not exists}, the same idempotent
- * approach {@link com.concentus.store.RunStore} uses — this project has no migration tool, and an
- * empty database is all a deployment needs.
+ * <p>Schema comes from the Flyway migrations in {@code db/migration}; this class only checks that
+ * they reached the database it was pointed at.
  *
  * <p>Unlike the run store, this one <b>does not degrade to memory</b> when the database is
  * unavailable. Runs falling back to memory costs history; accounts falling back to memory would
@@ -39,29 +38,11 @@ public class AccountStore {
 
     @PostConstruct
     void init() {
+        // Created by the migrations; this asks whether they reached this database. Both tables are
+        // probed because sign-in needs both, and half a schema must not read as available.
         try {
-            jdbc.execute("""
-                create table if not exists organizations (
-                  id text primary key,
-                  name text not null,
-                  created_at bigint not null
-                )
-                """);
-            jdbc.execute("""
-                create table if not exists users (
-                  id text primary key,
-                  organization_id text not null,
-                  email text not null,
-                  password_hash text not null,
-                  role text not null,
-                  enabled boolean not null default true,
-                  created_at bigint not null
-                )
-                """);
-            // Email is the login handle, so it must be unique case-insensitively — "Ana@x.com"
-            // and "ana@x.com" are the same person, and allowing both would make sign-in ambiguous.
-            jdbc.execute("create unique index if not exists users_email_lower_key on users (lower(email))");
-            jdbc.execute("create index if not exists users_organization_idx on users (organization_id)");
+            jdbc.queryForObject("select count(*) from organizations", Integer.class);
+            jdbc.queryForObject("select count(*) from users", Integer.class);
             available = true;
             log.info("Account store ready (PostgreSQL).");
         } catch (Exception e) {

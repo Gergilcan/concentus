@@ -60,17 +60,11 @@ public abstract class JsonStore<T> {
 
     @PostConstruct
     void init() {
+        // The table is created by the migrations, not here. This only asks whether it is actually
+        // there — which is the same question the old `create table if not exists` answered as a
+        // side effect, and the answer still decides whether reads return empty or writes throw.
         try {
-            jdbc.execute("""
-                    create table if not exists resources (
-                      kind text not null,
-                      id text not null,
-                      sort_key text,
-                      json text not null,
-                      updated_at bigint not null,
-                      primary key (kind, id)
-                    )
-                    """);
+            jdbc.queryForObject("select count(*) from resources where kind = ?", Integer.class, kind);
             available = true;
         } catch (Exception e) {
             log.error("{} storage unavailable: {}", kind, e.getMessage());

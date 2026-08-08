@@ -33,17 +33,9 @@ public class FlowVersionStore {
 
     @PostConstruct
     void init() {
+        // Created by the migrations; this only checks it arrived.
         try {
-            jdbc.execute("""
-                create table if not exists flow_versions (
-                  flow_id text not null,
-                  version int not null,
-                  name text,
-                  flow_json text,
-                  created_at bigint,
-                  primary key (flow_id, version)
-                )
-                """);
+            jdbc.queryForObject("select count(*) from flow_versions", Integer.class);
             available = true;
         } catch (Exception e) {
             log.warn("Flow version history unavailable: {}", e.getMessage());

@@ -43,11 +43,11 @@ import java.util.Optional;
  * the same user. What guards this data is the file permissions on the data directory and the fact
  * that the port is not reachable from another machine.
  *
- * <p><b>Seeding.</b> Nothing to seed. Each store issues {@code create table if not exists} when it
- * starts, and {@code AccountBootstrap} creates the default organization row that the integration
- * tables are written against. An empty data directory therefore becomes a working database on its
- * own, and the same path runs on every later launch — so first-run and upgrade are not two
- * different cases that can drift apart.
+ * <p><b>Seeding.</b> Nothing to seed. The schema is applied by {@link SchemaMigrator} as soon as
+ * the connection exists, and {@code AccountBootstrap} creates the default organization row that
+ * the integration tables are written against. An empty data directory therefore becomes a working
+ * database on its own, and the same path runs on every later launch — so first-run and upgrade are
+ * not two different cases that can drift apart.
  */
 @Configuration
 @ConditionalOnProperty(name = "app.desktop", havingValue = "true")
@@ -97,6 +97,7 @@ public class EmbeddedPostgresConfig {
         StorageSettings settings = storageSettings.load();
         if (!settings.isExternal()) {
             EmbeddedPostgres postgres = startEmbedded(dataDir);
+            SchemaMigrator.migrate(postgres.getPostgresDatabase());
             // Registered so its close() runs on shutdown. Not a @Bean method, because it must not
             // exist at all in external mode.
             context.getBeanFactory().registerSingleton("embeddedPostgres", postgres);
@@ -117,7 +118,11 @@ public class EmbeddedPostgresConfig {
         config.setInitializationFailTimeout(-1);
         config.setConnectionTimeout(10_000);
         config.setMaximumPoolSize(5);
-        return new HikariDataSource(config);
+        HikariDataSource external = new HikariDataSource(config);
+        // Same treatment as the embedded case: migrate, and carry on if it is unreachable so the
+        // settings that point at it stay editable.
+        SchemaMigrator.migrate(external);
+        return external;
     }
 
     private static void closeQuietly(EmbeddedPostgres postgres) {
