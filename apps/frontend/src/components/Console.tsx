@@ -1,5 +1,6 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { api, openRunSocket, type RunSocketStatus } from '../api/client.ts'
+import type { RunStatus } from '../api/types.ts'
 import { useFlowStore } from '../state/store.ts'
 import { usd } from './NodeExecView.tsx'
 import { agentKey } from '../utils/agentKey.ts'
@@ -17,7 +18,12 @@ function hueOf(name: string): number {
   return h
 }
 
-export function Console({ runId }: { runId: string }) {
+export function Console({ runId, status }: { runId: string; status?: RunStatus }) {
+  // Stopping only means something while something is running. STARTING and RUNNING are the states
+  // with work to interrupt; IDLE is a turn-based run waiting for its next command, with no process
+  // to kill, and TERMINATED and ERROR are over. Offering the button there invites a click that
+  // does nothing and leaves the user unsure whether it worked.
+  const canStop = status === 'STARTING' || status === 'RUNNING'
   // Events live in the store so a node's inspector can render its own agent's slice
   // of the same stream — one socket, many views.
   const events = useFlowStore((s) => s.runEvents)
@@ -177,7 +183,12 @@ export function Console({ runId }: { runId: string }) {
         <button onClick={() => void send()} disabled={sending}>
           Send
         </button>
-        <button className={styles.stopBtn} onClick={() => void stop()}>
+        <button
+          className={styles.stopBtn}
+          onClick={() => void stop()}
+          disabled={!canStop}
+          title={canStop ? 'Stop the agents' : 'Nothing is running to stop'}
+        >
           Stop
         </button>
         <button
