@@ -149,6 +149,41 @@
                     <mainClass>com.concentus.ConcentusApplication</mainClass>
                 </configuration>
             </plugin>
+            <!--
+                The built frontend ships inside the jar, so the backend serves the UI from the same
+                origin as the API. That is not a packaging convenience but the thing that removes a
+                whole category of configuration: with /api, /ws and the page itself on one origin
+                there is no proxy to configure, no CORS grant to keep in step, and the session and
+                XSRF cookies are ordinary same-site cookies.
+
+                The frontend has no client-side router, so Spring Boot's default handling of
+                classpath:/static/ is all that is needed to serve it — no fallback controller.
+
+                Build the frontend first (pnpm build). If dist/ is absent the plugin logs
+                "skip non existing resourceDirectory" and the jar simply carries no UI, which is
+                the right outcome for a backend-only test run rather than a build failure.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-frontend</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/static</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}/../frontend/dist</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>

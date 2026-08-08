@@ -7,6 +7,11 @@ node_modules/
 apps/frontend/dist/
 .pnpm-store/
 
+# Desktop shell — compiled output, installers, and the bundled payload the build stages
+apps/desktop/dist/
+apps/desktop/release/
+apps/desktop/resources/
+
 # App data (persisted flows)
 data/
 apps/backend/data/

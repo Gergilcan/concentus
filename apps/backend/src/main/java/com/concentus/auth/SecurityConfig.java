@@ -2,9 +2,11 @@ package com.concentus.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -122,15 +124,33 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** Probes and static SPA assets stay reachable in both modes. */
+    /**
+     * Probes and static SPA assets stay reachable in both modes.
+     *
+     * <p>The desktop build additionally opens {@code POST /actuator/shutdown}, because there the
+     * application is a child process of a window rather than a service: closing the window has to
+     * stop it, and Windows offers no SIGTERM to do that with. The alternative is killing the
+     * process, which skips Spring's shutdown hooks and loses in-flight run state instead of
+     * flushing it. It stays denied everywhere else — on a reachable deployment this endpoint is a
+     * one-request outage. What makes it defensible on the desktop is not the property below but
+     * the loopback bind that comes with it ({@code server.address=127.0.0.1}).
+     */
     @Bean
-    public SecurityFilterChain publicSecurity(HttpSecurity http) throws Exception {
+    public SecurityFilterChain publicSecurity(HttpSecurity http,
+                                              @Value("${app.desktop:false}") boolean desktop) throws Exception {
         http.securityMatcher("/actuator/**", "/", "/index.html", "/assets/**", "/favicon.ico")
             .csrf(csrf -> csrf.disable())
-            .authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
-                    .requestMatchers("/actuator/**").denyAll()
-                    .anyRequest().permitAll());
+            .authorizeHttpRequests(auth -> {
+                auth.requestMatchers("/actuator/health/**", "/actuator/info").permitAll();
+                if (desktop) {
+                    // POST only: the endpoint answers nothing useful to a GET, and narrowing the
+                    // grant to the verb that does something keeps it from being reachable by a
+                    // stray navigation.
+                    auth.requestMatchers(HttpMethod.POST, "/actuator/shutdown").permitAll();
+                }
+                auth.requestMatchers("/actuator/**").denyAll();
+                auth.anyRequest().permitAll();
+            });
         return http.build();
     }
 
