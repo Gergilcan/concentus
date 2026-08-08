@@ -60,11 +60,24 @@ function buildRuntime() {
   // The cost of being safe is roughly 30-40MB in an installer already measured in hundreds. If
   // that ever matters, trim with a curated list and test every feature — not with jdeps output.
   // ALL-MODULE-PATH resolves against --module-path, not against the running JDK, so the JDK's own
-  // jmods directory has to be named explicitly. Some JDK distributions ship without it; that is a
-  // packaging choice of theirs and the error below says so rather than producing a broken image.
+  // jmods directory has to be named explicitly.
+  //
+  // Not every distribution ships it — some Temurin builds do not, which is how this first showed
+  // up: a release failing on a runner after the jar had already been built. Rather than stop, fall
+  // back to shipping the JDK as it is. The result is a working app in a larger installer, which is
+  // a far better outcome than no installer at all, and the warning says what happened.
   const jmods = path.join(home, 'jmods')
   if (!fs.existsSync(jmods)) {
-    throw new Error(`${jmods} is missing — this JDK cannot build a runtime image. Install a full JDK 25.`)
+    console.warn(
+      `\nWARNING: ${jmods} does not exist, so jlink cannot trim a runtime image.\n` +
+      `Copying the whole JDK instead — the app will work, but the installer will be tens of\n` +
+      `megabytes larger. Use a distribution that ships jmods (Zulu, Liberica, Oracle) to avoid this.\n`,
+    )
+    copyDirectory(home, target)
+    const staged = path.join(target, 'bin', exe('java'))
+    if (!fs.existsSync(staged)) throw new Error(`Copied ${home} but ${staged} is missing.`)
+    console.log(`Staged the full JDK from ${home}`)
+    return
   }
 
   run(jlink, [
@@ -83,6 +96,17 @@ function buildRuntime() {
   // leave this looking like it produced nothing.
   const version = execFileSync(staged, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
   console.log(`Staged runtime: ${version.split('\n')[0].trim()}`)
+}
+
+/**
+ * Recursive copy, for the fallback above.
+ *
+ * <p>fs.cpSync rather than a shell command so it behaves the same on both platforms; the JDK is
+ * tens of thousands of small files and a per-file loop here would be noticeably slower.
+ */
+function copyDirectory(from, to) {
+  fs.mkdirSync(to, { recursive: true })
+  fs.cpSync(from, to, { recursive: true, dereference: true })
 }
 
 function stageJar() {

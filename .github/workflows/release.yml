@@ -48,14 +48,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # A full JDK, not a JRE: the payload script needs jlink and the jmods directory to build the
-      # runtime that ships inside the installer.
+      # Zulu rather than Temurin, for one specific reason: the payload script builds the bundled
+      # runtime with jlink, and jlink needs the JDK's `jmods` directory. The Temurin 25 build this
+      # workflow was getting does not ship one, so the first release failed after the jar had
+      # already been built. Zulu includes it.
+      #
+      # A missing jmods no longer stops the build — prepare-payload.mjs falls back to copying the
+      # whole JDK — but that fallback exists for a bad day, not as the normal path: it produces a
+      # noticeably larger installer.
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: zulu
           java-version: "25"
           cache: maven
+
+      # Cheap, and answers the question above directly in the log instead of leaving it to be
+      # inferred from a failure ten minutes later.
+      - name: Check the JDK can trim a runtime
+        shell: bash
+        run: |
+          if [ -d "$JAVA_HOME/jmods" ]; then
+            echo "jmods present ($(ls "$JAVA_HOME/jmods" | wc -l) modules) — jlink will trim the runtime."
+          else
+            echo "::warning::$JAVA_HOME has no jmods; the whole JDK will be bundled and the installer will be larger."
+          fi
 
       - uses: pnpm/action-setup@v4
 
