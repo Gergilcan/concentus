@@ -9,12 +9,10 @@
     "type": "git",
     "url": "https://github.com/Gergilcan/concentus.git"
   },
-  "//author": "Not decoration: a .deb carries a Maintainer field and refuses to build without a name and an email, and the deb target is what failed the first Linux release for want of them.",
   "author": {
     "name": "Gerard Gilabert",
     "email": "gila791@hotmail.com"
   },
-  "//desktopName": "Links running windows to the .desktop entry on Linux; without it the taskbar treats the app as unknown.",
   "desktopName": "concentus.desktop",
   "main": "dist/main.js",
   "scripts": {
@@ -22,7 +20,6 @@
     "typecheck": "tsc -b --noEmit",
     "start": "pnpm build && electron .",
     "payload": "node scripts/prepare-payload.mjs",
-    "//package": "--publish never because the release workflow uploads the artifacts itself; without it electron-builder publishes implicitly whenever it sees a git tag, which would race the workflow for the same release.",
     "package": "pnpm build && pnpm payload && electron-builder --publish never"
   },
   "devDependencies": {
