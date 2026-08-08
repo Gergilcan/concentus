@@ -173,8 +173,8 @@ public class LocalModelClient {
                     + "system RAM.");
         } catch (java.io.IOException e) {
             throw new LlmException(ID, "Could not reach the local model server at " + baseUrl
-                    + " — " + e.getMessage() + ". Is it running and reachable from here? Inside a "
-                    + "container `localhost` is the container itself; use host.docker.internal.");
+                    + " — " + e.getMessage() + ". Is it running? Note the /v1 suffix: Ollama's "
+                    + "OpenAI-compatible endpoint is at :11434/v1, not at the root.");
         } catch (Exception e) {
             throw new LlmException(ID, "Call to the local model server failed: " + e.getMessage(), e);
         }

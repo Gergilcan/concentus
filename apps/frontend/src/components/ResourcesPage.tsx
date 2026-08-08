@@ -5,9 +5,11 @@ import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, EFFORT_OPTIONS } from '../constants.
 import { CredentialsPanel } from './CredentialsPanel.tsx'
 import { CrudPanel } from './CrudPanel.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
+import { ModelField } from './ModelField.tsx'
+import { StoragePanel } from './StoragePanel.tsx'
 import styles from './resources.module.scss'
 
-type Tab = 'agents' | 'mcp' | 'databases' | 'credentials'
+type Tab = 'agents' | 'mcp' | 'databases' | 'credentials' | 'storage'
 
 export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
   const [tab, setTab] = useState<Tab>('agents')
@@ -33,6 +35,12 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
         >
           Credentials
         </button>
+        <button
+          className={tab === 'storage' ? styles.active : ''}
+          onClick={() => setTab('storage')}
+        >
+          Storage
+        </button>
       </div>
 
       <div className={styles.tabBody}>
@@ -41,7 +49,19 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
             title="Agents"
             fields={[
               { key: 'name', label: 'Name' },
-              { key: 'model', label: 'Model', placeholder: DEFAULT_MODEL },
+              {
+                key: 'model',
+                label: 'Model',
+                // The same picker the canvas uses, rather than a text box you had to already know
+                // the answer to fill in — grouped by family, with rates and any locally-served
+                // models the backend reports.
+                render: (value, onChange) => (
+                  <ModelField
+                    value={String(value ?? DEFAULT_MODEL)}
+                    onChange={(v) => onChange(v)}
+                  />
+                ),
+              },
               { key: 'effort', label: 'Effort', type: 'select', options: [...EFFORT_OPTIONS] },
               { key: 'maxTokens', label: 'Max tokens', type: 'number' },
               { key: 'systemPrompt', label: 'System prompt', type: 'textarea' },
@@ -104,6 +124,8 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           />
         )}
         {tab === 'credentials' && <CredentialsPanel pushError={pushError} />}
+
+        {tab === 'storage' && <StoragePanel pushError={pushError} />}
       </div>
     </div>
   )

@@ -1,0 +1,49 @@
+appId: com.concentus.desktop
+productName: Concentus
+copyright: Concentus
+
+directories:
+  output: release
+  buildResources: build
+
+# Only the compiled shell. The UI is not here — it is inside the backend jar, served over
+# loopback — so there is no renderer bundle to include.
+files:
+  - dist/**/*
+  - package.json
+  # The window icon is read at runtime (see appIcon() in main.ts), so it has to be inside the app
+  # rather than only consumed by the packager.
+  - build/icon.png
+
+extraResources:
+  # Read by paths.ts as resources/backend/concentus-backend.jar
+  - from: ../backend/target/concentus-backend.jar
+    to: backend/concentus-backend.jar
+  # The Java runtime, so the user never installs a JDK. Built by scripts/prepare-payload.mjs,
+  # which `pnpm package` runs first. If it is missing the build fails here rather than quietly
+  # shipping an app that cannot start — paths.ts refuses to borrow the user's Java in a packaged
+  # build for the same reason.
+  - from: resources/jre
+    to: jre
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  category: Development
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+
+# macOS is deliberately absent. Shipping a mac build means an Apple Developer account and
+# notarization — without them Gatekeeper blocks the app outright, so a target here would produce
+# an artifact that does not run. The runtime code still handles darwin; only the build does not.

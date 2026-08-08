@@ -28,7 +28,9 @@ class JsonStoreTest {
     void setUp() {
         // @TempDir field injection happens after construction, so the store (which needs the
         // resolved temp dir) must be built here rather than as an inline field initializer.
-        store = new FlowStore(dataDir.toString(), new ObjectMapper());
+        TestDatabase.reset(TestDatabase.jdbc());
+        store = new FlowStore(TestDatabase.jdbc(), dataDir.toString(), new ObjectMapper());
+        store.init();
     }
 
     private static FlowGraph flow(String id, String name) {
@@ -60,12 +62,15 @@ class JsonStoreTest {
     }
 
     @Test
-    void listSkipsCorruptFilesButStillReturnsValidRecords() throws Exception {
+    void listSkipsUnreadableRecordsButStillReturnsValidOnes() {
         FlowGraph saved = store.save(flow(null, "Good Flow"));
 
-        // Bypass save() and drop a malformed JSON file directly into the store dir.
-        Path badFile = dataDir.resolve("flows").resolve("corrupt.json");
-        Files.writeString(badFile, "{ not valid json ][");
+        // Bypass save() and write a malformed row straight into the table — the row-level
+        // equivalent of the corrupt file this used to check for. One bad record must not be able
+        // to hide every other flow the user has.
+        TestDatabase.jdbc().update(
+                "insert into resources (kind, id, sort_key, json, updated_at) values (?,?,?,?,?)",
+                "flow", "flow_corrupt", "Corrupt", "{ not valid json ][", 0L);
 
         assertThatCode(store::list).doesNotThrowAnyException();
 
@@ -73,5 +78,23 @@ class JsonStoreTest {
 
         assertThat(all).extracting(FlowGraph::id).containsExactly(saved.id());
         assertThat(all).extracting(FlowGraph::name).containsExactly("Good Flow");
+    }
+
+    @Test
+    void flowsLeftOnDiskByAnOlderBuildAreImportedOnce() throws Exception {
+        // A file-backed install being opened by this build for the first time.
+        Path flowsDir = Files.createDirectories(dataDir.resolve("flows"));
+        Files.writeString(flowsDir.resolve("flow_legacy.json"),
+                new ObjectMapper().writeValueAsString(flow("flow_legacy", "From Files")));
+
+        FlowStore fresh = new FlowStore(TestDatabase.jdbc(), dataDir.toString(), new ObjectMapper());
+        fresh.init();
+
+        assertThat(fresh.get("flow_legacy")).isPresent();
+        assertThat(fresh.get("flow_legacy").orElseThrow().name()).isEqualTo("From Files");
+        // Set aside rather than deleted, and renamed so a second start does not import it again —
+        // which would resurrect flows the user has since deleted.
+        assertThat(Files.exists(flowsDir)).isFalse();
+        assertThat(Files.isDirectory(dataDir.resolve("flows.migrated"))).isTrue();
     }
 }

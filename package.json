@@ -10,7 +10,9 @@
     "build": "pnpm --filter frontend build",
     "backend": "cd apps/backend && mvn spring-boot:run",
     "backend:build": "cd apps/backend && mvn -q clean package",
-    "preview": "pnpm --filter frontend preview"
+    "preview": "pnpm --filter frontend preview",
+    "desktop:build": "pnpm --filter frontend build && pnpm backend:build",
+    "desktop": "pnpm desktop:build && pnpm --filter desktop start"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

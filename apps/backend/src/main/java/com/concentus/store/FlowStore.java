@@ -3,16 +3,17 @@ package com.concentus.store;
 import com.concentus.model.FlowGraph;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
 
-/** Persists flows as one JSON file per flow under {@code <data-dir>/flows}. */
+/** Flows, in the database. Anything left in {@code <data-dir>/flows} is imported once. */
 @Component
 public class FlowStore extends JsonStore<FlowGraph> {
 
-    public FlowStore(@Value("${app.data-dir}") String dataDir, ObjectMapper mapper) {
-        super(Path.of(dataDir, "flows"), mapper, FlowGraph.class, "flow_");
+    public FlowStore(JdbcTemplate jdbc, @Value("${app.data-dir}") String dataDir, ObjectMapper mapper) {
+        super(jdbc, mapper, FlowGraph.class, "flow", "flow_", Path.of(dataDir, "flows"));
     }
 
     @Override

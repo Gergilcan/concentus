@@ -26,6 +26,17 @@
         <poi.version>5.4.1</poi.version>
         <jsoup.version>1.21.1</jsoup.version>
         <tess4j.version>5.16.0</tess4j.version>
+        <embedded-postgres.version>2.1.0</embedded-postgres.version>
+        <!--
+            The PostgreSQL the app embeds. 17.5.0 is the newest zonky publishes — there is no 18,
+            which is worth knowing before someone tries to raise it again.
+
+            Changing the MAJOR version here is not just a number: a data directory initialised by
+            one major cannot be read by another, so EmbeddedPostgresConfig checks the two agree and
+            says so plainly rather than letting PostgreSQL fail with a lock-file-shaped error. Keep
+            app.embedded-postgres.major-version in step with this.
+        -->
+        <embedded-postgres-binaries.version>17.5.0</embedded-postgres-binaries.version>
     </properties>
 
     <dependencies>
@@ -124,6 +135,65 @@
             <artifactId>postgresql</artifactId>
         </dependency>
 
+        <!--
+            The database, embedded. Real PostgreSQL binaries extracted and started as a child
+            process of the JVM against a data directory in the user's app-data folder — not an
+            emulation, so the existing SQL (jsonb, upserts, partial indexes) runs unchanged and
+            there is no dialect to port to.
+
+            The binaries are platform-specific and are pulled in per platform below, which is what
+            keeps each installer carrying only its own.
+
+            One capability does not survive: pgvector is not part of these bundles, so the semantic
+            ranking in ToolSearchIndex falls back to lexical matching. It already detects and logs
+            that, so the behaviour is degraded rather than broken.
+        -->
+        <!--
+            Schema migrations. Versions are managed by the Spring Boot parent.
+
+            flyway-database-postgresql is a separate artifact since Flyway 10 — without it Flyway
+            starts and then reports PostgreSQL as unsupported, which reads like a configuration
+            error rather than a missing dependency.
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.zonky.test</groupId>
+            <artifactId>embedded-postgres</artifactId>
+            <version>${embedded-postgres.version}</version>
+            <!--
+                It ships every platform's binaries by default — Windows, macOS, Linux and Alpine,
+                around 80MB of which at most one is ever executed. Excluded here and added back one
+                at a time by the OS profiles below, so a Windows installer carries Windows
+                PostgreSQL and nothing else.
+            -->
+            <exclusions>
+                <exclusion>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-windows-amd64</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-darwin-amd64</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-linux-amd64</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-linux-amd64-alpine</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -139,6 +209,57 @@
         </dependency>
     </dependencies>
 
+    <!--
+        The PostgreSQL binaries for the platform being built on. Activated by the host OS, which is
+        the correct rule for both cases that matter: a developer building locally gets binaries
+        that run on their machine, and a per-platform CI runner produces an installer carrying its
+        own. Nothing has to be passed on the command line for either.
+    -->
+    <profiles>
+        <profile>
+            <id>pg-binaries-windows</id>
+            <activation>
+                <os><family>windows</family></os>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-windows-amd64</artifactId>
+                    <version>${embedded-postgres-binaries.version}</version>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+        <profile>
+            <id>pg-binaries-linux</id>
+            <activation>
+                <os><family>unix</family><name>linux</name></os>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-linux-amd64</artifactId>
+                    <version>${embedded-postgres-binaries.version}</version>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+        <profile>
+            <id>pg-binaries-mac</id>
+            <activation>
+                <os><family>mac</family></os>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-darwin-amd64</artifactId>
+                    <version>${embedded-postgres-binaries.version}</version>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+
     <build>
         <finalName>concentus-backend</finalName>
         <plugins>
@@ -148,6 +269,41 @@
                 <configuration>
                     <mainClass>com.concentus.ConcentusApplication</mainClass>
                 </configuration>
+            </plugin>
+            <!--
+                The built frontend ships inside the jar, so the backend serves the UI from the same
+                origin as the API. That is not a packaging convenience but the thing that removes a
+                whole category of configuration: with /api, /ws and the page itself on one origin
+                there is no proxy to configure, no CORS grant to keep in step, and the session and
+                XSRF cookies are ordinary same-site cookies.
+
+                The frontend has no client-side router, so Spring Boot's default handling of
+                classpath:/static/ is all that is needed to serve it — no fallback controller.
+
+                Build the frontend first (pnpm build). If dist/ is absent the plugin logs
+                "skip non existing resourceDirectory" and the jar simply carries no UI, which is
+                the right outcome for a backend-only test run rather than a build failure.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-frontend</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/static</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}/../frontend/dist</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

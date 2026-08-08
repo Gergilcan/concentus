@@ -99,7 +99,8 @@ public class ToolSearchIndex {
                     + "' is not on the model server.";
         } else if (!vectorReady) {
             detail = "Ranking by word overlap: the database has no pgvector extension. "
-                    + "The compose file uses the pgvector/pgvector image for this.";
+                    + "The embedded PostgreSQL does not ship it, so semantic ranking is "
+                    + "unavailable in the desktop app.";
         } else if (!present) {
             detail = "Ranking by word overlap: the model server does not serve '" + embeddingModel
                     + "'. Pull it — `ollama pull " + embeddingModel + "` — it is the same server "
@@ -129,7 +130,8 @@ public class ToolSearchIndex {
             vectorReady = true;
         } catch (RuntimeException e) {
             log.warn("pgvector is not available ({}), so MCP tool search will rank lexically. "
-                    + "Use the pgvector/pgvector image to enable it.", e.getMessage());
+                    + "The extension is built per platform and shipped with the installer; a "
+                    + "locally built jar carries none.", e.getMessage());
         }
     }
 

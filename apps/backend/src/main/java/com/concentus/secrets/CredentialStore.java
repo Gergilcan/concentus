@@ -44,26 +44,9 @@ public class CredentialStore {
 
     @PostConstruct
     void init() {
+        // Created by the migrations; this only checks it arrived.
         try {
-            jdbc.execute("""
-                create table if not exists credentials (
-                  id text primary key,
-                  organization_id text not null,
-                  label text not null,
-                  kind text not null,
-                  secret text not null,
-                  hint text,
-                  created_at bigint not null,
-                  updated_at bigint not null,
-                  last_used_at bigint
-                )
-                """);
-            jdbc.execute("create index if not exists credentials_org_idx "
-                    + "on credentials (organization_id, kind)");
-            // Labels are how a person picks one in a dropdown, so two with the same name in the
-            // same organization would make the choice meaningless.
-            jdbc.execute("create unique index if not exists credentials_org_label_key "
-                    + "on credentials (organization_id, lower(label))");
+            jdbc.queryForObject("select count(*) from credentials", Integer.class);
             available = true;
             log.info("Credential store ready (PostgreSQL){}.",
                     cipher.isAvailable() ? "" : " — but CONCENTUS_SECRET_KEY is unset, so it is unusable");

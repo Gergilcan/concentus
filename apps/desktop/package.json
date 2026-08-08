@@ -1,0 +1,21 @@
+{
+  "name": "desktop",
+  "productName": "Concentus",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Concentus desktop shell — supervises the backend and hosts its UI in a window.",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --noEmit",
+    "start": "pnpm build && electron .",
+    "payload": "node scripts/prepare-payload.mjs",
+    "package": "pnpm build && pnpm payload && electron-builder"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.9.3"
+  }
+}

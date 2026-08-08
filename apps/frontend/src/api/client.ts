@@ -23,6 +23,8 @@ import type {
   RunDetail,
   RunEvent,
   RunSummary,
+  StorageConfig,
+  StorageDraft,
   SessionInfo,
   SignedInUser,
   SqlPreview,
@@ -127,6 +129,17 @@ export const api = {
   deleteAgent: (id: string) => req<void>(`/agents/${id}`, { method: 'DELETE' }),
 
   // database definitions
+  // Where the app keeps its own data — not to be confused with /databases below, which is the
+  // databases an agent reads as RAG context.
+  getStorage: () => req<StorageConfig>('/storage'),
+  saveStorage: (s: StorageDraft) =>
+    req<StorageConfig>('/storage', { method: 'PUT', body: JSON.stringify(s) }),
+  testStorage: (s: StorageDraft) =>
+    req<{ ok: boolean; detail: string }>('/storage/test', {
+      method: 'POST',
+      body: JSON.stringify(s),
+    }),
+
   listDatabases: () => req<DatabaseDef[]>('/databases'),
   saveDatabase: (d: DatabaseDef) =>
     req<DatabaseDef>('/databases', { method: 'POST', body: JSON.stringify(d) }),

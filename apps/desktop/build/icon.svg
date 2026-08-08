@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="512" height="512">
+  <!--
+    The Concentus mark, taken from the website's favicon (apps/website/index.html) so the app in
+    the dock and the site are recognisably the same product. Geometry is unchanged; only the
+    rendered size differs.
+
+    icon.png (512px, Linux) and icon.ico (multi-size, Windows) beside this file were rendered from
+    it and are what the build actually consumes. This is kept as the source of record: if the mark
+    changes, re-render both from here rather than editing a bitmap.
+  -->
+  <rect width="32" height="32" rx="7" fill="#0b0e14"/>
+  <path d="M25 16 L20.5 23.8 L11.5 23.8 L7 16 L11.5 8.2 L20.5 8.2 Z"
+        fill="none" stroke="#6ea8fe" stroke-width="2.6" stroke-linejoin="round"/>
+</svg>

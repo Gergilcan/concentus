@@ -219,7 +219,7 @@ class LocalModelClientTest {
 
         assertThatThrownBy(() -> dead.chat(request("qwen3:14b")))
                 .hasMessageContaining("127.0.0.1:1")
-                .hasMessageContaining("host.docker.internal");
+                .hasMessageContaining("/v1");
     }
 
     @Test

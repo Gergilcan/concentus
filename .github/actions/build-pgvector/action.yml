@@ -1,0 +1,100 @@
+name: Build pgvector
+description: >
+  Compiles the pgvector extension for the runner's platform and stages it where the backend jar
+  picks it up (apps/backend/src/main/resources/pgvector/<os>-<arch>).
+
+  Shared by the release workflow, which ships the result, and by CI, which builds it on every push
+  so a break is found then rather than while cutting a release.
+
+inputs:
+  pg-major:
+    description: PostgreSQL major version to compile against. Must match embedded-postgres-binaries.version.
+    required: true
+  pg-full:
+    description: Full PostgreSQL version, for the Windows binaries download.
+    required: true
+  pgvector-version:
+    description: pgvector release tag, without the leading v.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Deliberately NOT the PostgreSQL each runner image happens to ship: a library compiled against
+    # a different major will not load, and it fails at CREATE EXTENSION rather than at build time —
+    # the worst place to find out.
+    - name: Install PostgreSQL ${{ inputs.pg-major }} headers (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Ubuntu's own repositories carry an older major, so the headers come from PGDG.
+        curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+          | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+        echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+          | sudo tee /etc/apt/sources.list.d/pgdg.list
+        sudo apt-get update
+        sudo apt-get install -y postgresql-server-dev-${{ inputs.pg-major }} build-essential
+        pg_config --version
+
+    - name: Build pgvector (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        git clone --branch "v${{ inputs.pgvector-version }}" --depth 1 \
+          https://github.com/pgvector/pgvector.git /tmp/pgvector
+        make -C /tmp/pgvector OPTFLAGS=""
+        dest="apps/backend/src/main/resources/pgvector/linux-amd64"
+        mkdir -p "$dest"
+        cp /tmp/pgvector/vector.so "$dest/"
+        cp /tmp/pgvector/vector.control "$dest/"
+        cp /tmp/pgvector/sql/*.sql "$dest/"
+        # PgVectorInstaller reads this: a jar is not a directory it can list portably.
+        (cd "$dest" && ls *.sql > sql-files.txt)
+        ls -la "$dest"
+
+    - name: Fetch PostgreSQL ${{ inputs.pg-major }} headers (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $url = "https://get.enterprisedb.com/postgresql/postgresql-${{ inputs.pg-full }}-1-windows-x64-binaries.zip"
+        Write-Host "Downloading $url"
+        Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\pg.zip"
+        Expand-Archive "$env:RUNNER_TEMP\pg.zip" -DestinationPath "$env:RUNNER_TEMP\pg"
+        # The archive unpacks to a `pgsql` folder holding bin, include and lib.
+        "PGROOT=$env:RUNNER_TEMP\pg\pgsql" | Out-File -FilePath $env:GITHUB_ENV -Append
+        & "$env:RUNNER_TEMP\pg\pgsql\bin\pg_config.exe" --version
+
+    - name: Build pgvector (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: |
+        REM Locate Visual Studio with vswhere rather than naming a path. The edition and the year
+        REM are properties of the runner image, not of this build: hardcoding
+        REM "2022\Enterprise" broke the moment windows-latest moved on, and broke badly — `call`
+        REM to a missing batch file does NOT stop a cmd script, so the build carried on and failed
+        REM later at `nmake`, pointing at the wrong thing entirely.
+        set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+        if not exist "%VSWHERE%" echo Could not find vswhere.exe & exit /b 1
+        for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"
+        if not defined VSDIR echo No Visual Studio with the C++ toolchain is installed & exit /b 1
+        echo Using Visual Studio at %VSDIR%
+        call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
+        REM Prove the toolchain is actually on PATH before trusting it, so a failure names its own
+        REM cause instead of surfacing three commands later.
+        where nmake >nul 2>&1 || (echo nmake is not on PATH after vcvars64 & exit /b 1)
+        where cl >nul 2>&1 || (echo cl is not on PATH after vcvars64 & exit /b 1)
+
+        git clone --branch v${{ inputs.pgvector-version }} --depth 1 https://github.com/pgvector/pgvector.git "%RUNNER_TEMP%\pgvector" || exit /b 1
+        cd /d "%RUNNER_TEMP%\pgvector"
+        REM PGROOT was exported by the previous step and is what Makefile.win reads.
+        nmake /F Makefile.win || exit /b 1
+        set "DEST=%GITHUB_WORKSPACE%\apps\backend\src\main\resources\pgvector\windows-amd64"
+        mkdir "%DEST%"
+        copy vector.dll "%DEST%\" || exit /b 1
+        copy vector.control "%DEST%\" || exit /b 1
+        copy sql\*.sql "%DEST%\" || exit /b 1
+        cd /d "%DEST%"
+        dir /b *.sql > sql-files.txt
+        dir

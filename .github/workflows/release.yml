@@ -1,0 +1,132 @@
+name: Release
+
+# Tag a version to cut a release:
+#
+#   git tag v1.0.0 && git push origin v1.0.0
+#
+# Manual runs build the installers and leave them as artifacts without publishing anything, which
+# is how to check a packaging change without spending a version number on it.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+# Needed to create the release and upload assets to it.
+permissions:
+  contents: write
+
+env:
+  # Must match the major version of embedded-postgres-binaries.version in apps/backend/pom.xml.
+  # pgvector is compiled against these server headers, and a library built for one major version
+  # will not load into another.
+  PG_MAJOR: "17"
+  # The full version, for the Windows binaries download. Keep both in step with
+  # embedded-postgres-binaries.version in apps/backend/pom.xml.
+  PG_FULL: "17.5"
+  PGVECTOR_VERSION: "0.8.0"
+
+jobs:
+  installers:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing should not throw away the other's build — a Linux packaging problem
+      # is no reason to be left without a Windows installer to test.
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows installer
+            artifact: "apps/desktop/release/*.exe"
+          - os: ubuntu-latest
+            name: Linux installers
+            artifact: |
+              apps/desktop/release/*.AppImage
+              apps/desktop/release/*.deb
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # A full JDK, not a JRE: the payload script needs jlink and the jmods directory to build the
+      # runtime that ships inside the installer.
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      # Compiled here because it cannot be compiled anywhere else: it is C, built against the
+      # PostgreSQL server headers, for one OS and one major version. The result is copied into the
+      # embedded server at startup (see PgVectorInstaller) so MCP tool search can rank by meaning.
+      #
+      # continue-on-error: losing semantic ranking is a degraded feature the app already handles
+      # and reports; losing the installer over it would be the wrong trade.
+      - name: Build pgvector
+        continue-on-error: true
+        uses: ./.github/actions/build-pgvector
+        with:
+          pg-major: ${{ env.PG_MAJOR }}
+          pg-full: ${{ env.PG_FULL }}
+          pgvector-version: ${{ env.PGVECTOR_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Order matters: the frontend is copied into the jar as static resources, so it has to exist
+      # before Maven packages. This is what puts the UI, /api and /ws on one origin.
+      - name: Build frontend
+        run: pnpm --filter frontend build
+
+      # The PostgreSQL binaries inside the jar are platform-specific and selected by an
+      # OS-activated Maven profile, so this jar is only valid for the runner that built it. That
+      # is why the whole build runs per platform rather than building one jar and packaging it
+      # twice.
+      - name: Build backend jar
+        working-directory: apps/backend
+        run: mvn -B -q clean package
+
+      - name: Build installer
+        working-directory: apps/desktop
+        # electron-builder picks the current platform's targets from electron-builder.yml.
+        run: pnpm package
+
+      - name: Upload installers as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: concentus-${{ runner.os }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    # Only for a tag. A manual run stops after the artifacts above.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: installers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create the release
+        uses: softprops/action-gh-release@v2
+        with:
+          # Flattened from the per-platform artifact folders.
+          files: artifacts/**/*
+          draft: false
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          # A tag with a suffix (v1.0.0-rc1, v0.1.0-beta) is published as a pre-release, so trying
+          # the pipeline out does not put a build people will take as final at the top of the
+          # releases page. A plain v1.0.0 is a normal release.
+          prerelease: ${{ contains(github.ref_name, '-') }}

@@ -9,7 +9,6 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -36,7 +35,6 @@ public class RunStore {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
-    private final boolean enabled;
     private final ExecutorService writer = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "run-store-writer");
         t.setDaemon(true);
@@ -55,45 +53,19 @@ public class RunStore {
     });
     private volatile boolean available;
 
-    public RunStore(JdbcTemplate jdbc, ObjectMapper mapper,
-                    @Value("${app.persistence.enabled:true}") boolean enabled) {
+    public RunStore(JdbcTemplate jdbc, ObjectMapper mapper) {
         this.jdbc = jdbc;
         this.mapper = mapper;
-        this.enabled = enabled;
     }
 
     @PostConstruct
     void init() {
-        if (!enabled) {
-            log.info("Run persistence disabled (app.persistence.enabled=false).");
-            return;
-        }
+        // Created by the migrations. Probing initial_prompt rather than just the table because it
+        // is one of the columns that used to be added by an `alter` here — if the migration did
+        // not reach this database, an empty count on the table alone would look like success and
+        // the failure would surface later, on the first write.
         try {
-            jdbc.execute("""
-                create table if not exists runs (
-                  id text primary key,
-                  flow_id text,
-                  flow_name text,
-                  mode text,
-                  backend text,
-                  status text,
-                  trigger_type text,
-                  session_id text,
-                  local_session_id text,
-                  local_started boolean default false,
-                  error text,
-                  total_input_tokens bigint default 0,
-                  total_output_tokens bigint default 0,
-                  flow_json text,
-                  events_json text,
-                  node_execs_json text,
-                  created_at bigint,
-                  updated_at bigint
-                )
-                """);
-            // Added after the first release — safe to run every start.
-            jdbc.execute("alter table runs add column if not exists initial_prompt text");
-            jdbc.execute("alter table runs add column if not exists notify_webhook text");
+            jdbc.queryForObject("select count(initial_prompt) from runs", Integer.class);
             available = true;
             log.info("Run persistence ready (PostgreSQL).");
         } catch (Exception e) {
@@ -122,7 +94,7 @@ public class RunStore {
     }
 
     public boolean isAvailable() {
-        return enabled && available;
+        return available;
     }
 
     /** Queue an upsert of the run's current state. Non-blocking; best-effort. */

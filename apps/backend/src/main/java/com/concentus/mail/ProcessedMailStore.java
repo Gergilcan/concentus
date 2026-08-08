@@ -43,21 +43,9 @@ public class ProcessedMailStore {
 
     @PostConstruct
     void init() {
+        // Created by the migrations; this only checks it arrived.
         try {
-            jdbc.execute("""
-                create table if not exists processed_mail (
-                  flow_id text not null,
-                  folder text not null,
-                  identity text not null,
-                  subject text,
-                  sender text,
-                  run_id text,
-                  created_at bigint not null,
-                  primary key (flow_id, folder, identity)
-                )
-                """);
-            jdbc.execute("create index if not exists processed_mail_recent_idx "
-                    + "on processed_mail (flow_id, folder, created_at desc)");
+            jdbc.queryForObject("select count(*) from processed_mail", Integer.class);
             available = true;
             log.info("Processed-mail store ready (PostgreSQL).");
         } catch (Exception e) {

@@ -212,6 +212,15 @@ export type AgentNodeData = {
   contextFolders?: string[]
   /** Path to an existing CLAUDE.md, or a folder containing one, to load as context. */
   claudeMdPath?: string
+  /**
+   * How much the run may do without asking. **Coordinator only.**
+   *
+   * Not a per-agent setting even though it lives on an agent: a local run launches one `claude`
+   * process for the whole flow, and `--permission-mode` applies to that process. The coordinator
+   * is that process, so this is the one node where the control is not a lie — sub-agents
+   * deliberately do not offer it rather than showing a switch that would silently do nothing.
+   */
+  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | ''
 }
 
 export type McpNodeData = {
@@ -334,6 +343,32 @@ export type LibraryAgent = {
   maxTokens: number
   description?: string
   systemPrompt: string
+}
+
+/**
+ * Where Concentus keeps its own data — runs, credentials, flow history.
+ *
+ * Distinct from {@link DatabaseDef}, which is a database an *agent* queries for context. The names
+ * are close enough to be worth stating: this one is the application's storage.
+ */
+export type StorageConfig = {
+  /** What the next start will use. */
+  mode: 'embedded' | 'external'
+  url: string
+  username: string
+  /** The password is never returned; this only says whether one is stored. */
+  hasPassword: boolean
+  /** What this process is running on — differs from `mode` when a restart is pending. */
+  activeMode: 'embedded' | 'external'
+  restartRequired?: boolean
+}
+
+/** A pending edit. `password: null` means "leave the stored one alone". */
+export type StorageDraft = {
+  mode: 'embedded' | 'external'
+  url: string
+  username: string
+  password: string | null
 }
 
 export type DatabaseDef = {

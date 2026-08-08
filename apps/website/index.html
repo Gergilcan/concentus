@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Concentus — visual multi-agent orchestration</title>
-<meta name="description" content="A visual canvas for multi-agent orchestration. Design agent flows, wire in MCP tools and databases, and run them on your Claude subscription — or the cloud. No API key needed to start." />
+<title>Concentus — the desktop app for multi-agent orchestration</title>
+<meta name="description" content="A desktop app for Windows and Linux. Design multi-agent flows on a canvas, wire in MCP tools and databases, and run them on the Claude subscription already on your machine. No server, no database to install, no API key." />
 <meta name="theme-color" content="#0b0e14" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="Concentus" />
-<meta property="og:description" content="Wire up a team of AI agents on a canvas and run them on your own Claude. Local or cloud, MCP tools, database RAG." />
+<meta property="og:description" content="Wire up a team of AI agents on a canvas and run them on your own Claude. A desktop app for Windows and Linux — nothing to deploy." />
 <meta property="og:site_name" content="Concentus" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Concentus" />
-<meta name="twitter:description" content="Visual multi-agent orchestration you run on your own Claude login." />
+<meta name="twitter:description" content="Visual multi-agent orchestration, as a desktop app that runs on your own Claude login." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cpath d='M25 16 L20.5 23.8 L11.5 23.8 L7 16 L11.5 8.2 L20.5 8.2 Z' fill='none' stroke='%236ea8fe' stroke-width='2.6' stroke-linejoin='round'/%3E%3C/svg%3E" />
 <style>
   /* ============================ tokens ============================ */
@@ -292,10 +292,10 @@
       <a href="#features">Features</a>
       <a href="#run">Run anywhere</a>
       <a href="#how">How it works</a>
-      <a href="#install">Install</a>
+      <a href="#download">Download</a>
       <a href="#" data-gh>GitHub</a>
     </nav>
-    <a class="btn btn-primary btn-sm nav-cta" href="#" data-gh>GitHub</a>
+    <a class="btn btn-primary btn-sm nav-cta" href="#" data-gh="/releases/latest">Download</a>
   </div>
 </header>
 
@@ -304,20 +304,20 @@
   <section class="hero">
     <div class="wrap hero-grid">
       <div>
-        <span class="eyebrow">Visual multi-agent orchestration</span>
+        <span class="eyebrow">Visual multi-agent orchestration · Desktop app</span>
         <h1>Wire up a team of AI agents.<br><span class="grad">Run them on your own Claude.</span></h1>
-        <p class="lede">A visual canvas for building multi-agent flows. Design them, connect your tools and databases, and run on your Claude subscription — or the cloud. No API key needed to start.</p>
+        <p class="lede">A desktop app for Windows and Linux. Design multi-agent flows on a canvas, connect your tools and databases, and run them on the Claude subscription already on your machine. No server, no database to install, no API key.</p>
         <div class="hero-actions">
-          <a class="btn btn-primary" href="#install">Get started
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          <a class="btn btn-primary" href="#download">Download
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
           </a>
           <a class="btn btn-ghost" href="#" data-gh>View on GitHub</a>
         </div>
         <div class="chips">
           <span class="chip"><span class="dot"></span>Runs on your Claude login</span>
           <span class="chip"><span class="dot" style="background:var(--accent)"></span>MCP&nbsp;+&nbsp;databases</span>
-          <span class="chip"><span class="dot" style="background:var(--sql)"></span>Local or cloud</span>
-          <span class="chip"><span class="dot" style="background:var(--coord)"></span>Steer&nbsp;live</span>
+          <span class="chip"><span class="dot" style="background:var(--sql)"></span>Windows&nbsp;&amp;&nbsp;Linux</span>
+          <span class="chip"><span class="dot" style="background:var(--coord)"></span>Nothing&nbsp;to&nbsp;deploy</span>
         </div>
       </div>
 
@@ -578,55 +578,66 @@
   </section>
 
   <!-- ============================ install ============================ -->
-  <section id="install" class="band">
+  <section id="download" class="band">
     <div class="wrap">
       <div class="band-head" data-reveal>
-        <span class="eyebrow">Install</span>
-        <h2>Run it your way — laptop to cluster.</h2>
-        <p>Open source. Clone the repo and pick a method. Every path runs on your Claude subscription — no API key required.</p>
+        <span class="eyebrow">Download</span>
+        <h2>Install it. Open it. That's the setup.</h2>
+        <p>The app carries its own Java runtime and its own PostgreSQL, so there are no prerequisites and nothing to configure — and it touches neither, if you already have them installed.</p>
       </div>
 
       <div class="methods">
         <div class="method" data-reveal>
-          <div class="k">Local dev</div>
-          <h3>One command</h3>
-          <p>The designer and API start with no credentials. Sign in to Claude once to run flows.</p>
-          <pre><code>claude                  # sign in once (subscription)
-pnpm install
-pnpm dev                # API + UI → http://localhost:5173</code></pre>
+          <div class="k">Windows</div>
+          <h3>Installer</h3>
+          <p>A per-user install — no administrator rights needed.</p>
+          <p style="margin-top:14px">
+            <a class="btn btn-primary btn-sm" href="#" data-gh="/releases/latest">Download for Windows
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
+            </a>
+          </p>
         </div>
 
         <div class="method" data-reveal>
-          <div class="k">Docker</div>
-          <h3>Compose up</h3>
-          <p>Backend (with the Claude CLI baked in) + frontend. Mint a subscription token once, no API key.</p>
-          <pre><code>claude setup-token        # prints a token
-echo "CLAUDE_CODE_OAUTH_TOKEN=..." &gt; .env
-docker compose up --build # :3000</code></pre>
+          <div class="k">Linux</div>
+          <h3>AppImage or .deb</h3>
+          <p>The AppImage runs as-is; the .deb installs like any other package.</p>
+          <pre><code>chmod +x Concentus-*.AppImage
+./Concentus-*.AppImage
+
+# or
+sudo apt install ./concentus_*_amd64.deb</code></pre>
+          <p style="margin-top:14px">
+            <a class="btn btn-primary btn-sm" href="#" data-gh="/releases/latest">Download for Linux
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
+            </a>
+          </p>
         </div>
 
         <div class="method" data-reveal>
-          <div class="k">Kubernetes</div>
-          <h3>Helm chart</h3>
-          <p>One release for backend + frontend, with an optional public nginx entrypoint.</p>
-          <pre><code>helm install concentus deploy/helm/concentus \
-  --set backend.claudeOAuthToken=$TOKEN \
-  --set publicNginx.enabled=true</code></pre>
+          <div class="k">First run</div>
+          <h3>Sign in to Claude once</h3>
+          <p>To run flows on your subscription, sign in to Claude Code once in a terminal. Concentus finds the CLI itself.</p>
+          <pre><code>claude          # then /login</code></pre>
+          <p class="note" style="margin-top:12px">Prefer the cloud API? Set <code>ANTHROPIC_API_KEY</code> instead.</p>
         </div>
 
         <div class="method" data-reveal>
-          <div class="k">Kubernetes</div>
-          <h3>Kustomize</h3>
-          <p>Plain manifests. The <code>public</code> overlay adds the optional nginx to expose it externally.</p>
-          <pre><code>kubectl apply -k deploy/kustomize/base
-# or, with the public nginx entrypoint:
-kubectl apply -k deploy/kustomize/overlays/public</code></pre>
+          <div class="k">Source</div>
+          <h3>Build it yourself</h3>
+          <p>Open source. Build the installer for your own platform, or run the app straight from the repo.</p>
+          <pre><code>pnpm install
+pnpm desktop            # build + launch
+
+# or produce an installer:
+cd apps/desktop &amp;&amp; pnpm package</code></pre>
         </div>
       </div>
 
       <p class="note" data-reveal style="text-align:center;margin-top:22px">
-        Full walkthrough, values, and the webhook setup are in the
-        <a href="#" data-gh="/blob/HEAD/README.md#deploy">README</a>.
+        macOS is not built yet — shipping one needs an Apple Developer account for notarization.
+        Everything else, including the webhook setup, is in the
+        <a href="#" data-gh="/blob/HEAD/README.md">README</a>.
       </p>
     </div>
   </section>
@@ -635,10 +646,12 @@ kubectl apply -k deploy/kustomize/overlays/public</code></pre>
   <section id="start" class="cta">
     <div class="wrap">
       <h2 data-reveal>Build your first flow in minutes.</h2>
-      <p data-reveal>Sign in to Claude once, open the canvas, and run a multi-agent flow on your own subscription — no API key, no setup tax.</p>
+      <p data-reveal>Install the app, sign in to Claude once, and run a multi-agent flow on your own subscription — no API key, no setup tax.</p>
       <div class="row" data-reveal>
-        <a class="btn btn-primary" href="#" data-gh>View on GitHub</a>
-        <a class="btn btn-ghost" href="#install">Installation methods</a>
+        <a class="btn btn-primary" href="#" data-gh="/releases/latest">Download Concentus
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
+        </a>
+        <a class="btn btn-ghost" href="#" data-gh>View on GitHub</a>
       </div>
     </div>
   </section>
@@ -649,7 +662,7 @@ kubectl apply -k deploy/kustomize/overlays/public</code></pre>
   <div class="wrap foot">
     <div class="col about">
       <a class="brand" href="#top"><span class="hex">⬡</span> Concentus</a>
-      <p>A visual canvas for multi-agent orchestration — run on your Claude login, or in the cloud.</p>
+      <p>A desktop app for multi-agent orchestration — runs on your Claude login, or in the cloud.</p>
     </div>
     <div class="col">
       <h4>Product</h4>
@@ -660,7 +673,7 @@ kubectl apply -k deploy/kustomize/overlays/public</code></pre>
     <div class="col">
       <h4>Build</h4>
       <a href="#how">How it works</a>
-      <a href="#install">Install</a>
+      <a href="#download">Download</a>
       <a href="#" data-gh="/blob/HEAD/README.md">Documentation</a>
       <a href="#" data-gh>Source</a>
     </div>

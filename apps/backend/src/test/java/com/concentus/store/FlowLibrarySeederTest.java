@@ -26,8 +26,10 @@ class FlowLibrarySeederTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private FlowStore seedInto(Path dataDir) {
-        FlowStore flows = new FlowStore(dataDir.toString(), mapper);
-        new FlowLibrarySeeder(dataDir.toString(), flows, mapper).seed();
+        TestDatabase.reset(TestDatabase.jdbc());
+        FlowStore flows = new FlowStore(TestDatabase.jdbc(), dataDir.toString(), mapper);
+        flows.init();
+        new FlowLibrarySeeder(TestDatabase.jdbc(), flows, mapper).seed();
         return flows;
     }
 
@@ -108,7 +110,7 @@ class FlowLibrarySeederTest {
                 edited.edges(), edited.enabled(), edited.tags(), edited.favorite(),
                 edited.notifyWebhook()));
 
-        new FlowLibrarySeeder(dataDir.toString(), flows, mapper).seed();
+        new FlowLibrarySeeder(TestDatabase.jdbc(), flows, mapper).seed();
 
         // The user's edits survive a restart; re-seeding must never clobber them.
         assertThat(flows.get(FLOW_ID)).get().extracting(FlowGraph::name).isEqualTo("My edited name");
@@ -120,7 +122,7 @@ class FlowLibrarySeederTest {
         FlowStore flows = seedInto(dataDir);
         flows.delete(FLOW_ID);
 
-        new FlowLibrarySeeder(dataDir.toString(), flows, mapper).seed();
+        new FlowLibrarySeeder(TestDatabase.jdbc(), flows, mapper).seed();
 
         // It is a starter, not something the app keeps reinstating against the user's wishes.
         assertThat(flows.get(FLOW_ID)).isEmpty();
@@ -130,11 +132,13 @@ class FlowLibrarySeederTest {
     void anExistingUnrelatedFlowDoesNotBlockSeeding(@TempDir Path dataDir) {
         // The naive "seed only when the directory is empty" rule would skip the starter for every
         // install that already had a flow — which is all of them.
-        FlowStore flows = new FlowStore(dataDir.toString(), mapper);
+        TestDatabase.reset(TestDatabase.jdbc());
+        FlowStore flows = new FlowStore(TestDatabase.jdbc(), dataDir.toString(), mapper);
+        flows.init();
         flows.save(new FlowGraph("existing", "Something else", "local", java.util.List.of(),
                 java.util.List.of(), true, java.util.List.of(), false, null));
 
-        new FlowLibrarySeeder(dataDir.toString(), flows, mapper).seed();
+        new FlowLibrarySeeder(TestDatabase.jdbc(), flows, mapper).seed();
 
         assertThat(flows.get(FLOW_ID)).isPresent();
         assertThat(flows.get("existing")).isPresent();
