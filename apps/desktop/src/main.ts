@@ -3,6 +3,7 @@ import * as path from 'node:path'
 import { RunningBackend, backendLogTail, startBackend, stopBackend } from './backend'
 import { StorageDraft, backendApi } from './backend-api'
 import { resolveClaudeCli } from './claude-cli'
+import { installClaude, installCommand } from './claude-install'
 import { failurePage } from './failure-page'
 import { OnboardingState, StorageState, onboardingPage } from './onboarding-page'
 import { backendLogFile, shellLogFile } from './paths'
@@ -279,6 +280,23 @@ function registerIpc(): void {
     const state = await claudeState()
     await adoptClaudeCommand(state.command)
     return state
+  })
+
+  ipcMain.handle('onboarding:install-command', () => installCommand())
+
+  ipcMain.handle('onboarding:install', async (event) => {
+    const result = await installClaude((line) => {
+      // Streamed to the window that asked, so a long install shows progress rather than freezing.
+      if (!event.sender.isDestroyed()) event.sender.send('onboarding:install-output', line)
+    })
+    if (!result.ok) return { ...result, state: await claudeState() }
+
+    // The installer puts the binary where discovery already looks, so the same re-check that
+    // follows a manual install applies here — including restarting the backend, which reads the
+    // CLI path once at startup.
+    const state = await claudeState()
+    await adoptClaudeCommand(state.command)
+    return { ...result, state }
   })
 
   ipcMain.handle('onboarding:locate', async () => {

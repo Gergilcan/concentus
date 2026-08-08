@@ -17,6 +17,13 @@ contextBridge.exposeInMainWorld('concentus', {
   // it was given initially, rather than guessing at what changed.
   recheckClaude: () => ipcRenderer.invoke('onboarding:recheck'),
   locateClaude: () => ipcRenderer.invoke('onboarding:locate'),
+  // Runs Anthropic's official installer. The command is exposed separately so the page can show
+  // exactly what it is about to run — this pipes a remote script to a shell, and asking someone to
+  // approve that without naming it would not be a real choice.
+  claudeInstallCommand: () => ipcRenderer.invoke('onboarding:install-command'),
+  installClaude: () => ipcRenderer.invoke('onboarding:install'),
+  onInstallOutput: (handler: (line: string) => void) =>
+    ipcRenderer.on('onboarding:install-output', (_event, line: string) => handler(line)),
   finishOnboarding: (dontAskAgain: boolean) => ipcRenderer.send('onboarding:finish', dontAskAgain),
 
   // The database step. testStorage is what gates moving on: an external database that cannot be

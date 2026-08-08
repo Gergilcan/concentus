@@ -83,6 +83,8 @@ export function onboardingPage(claude: OnboardingState, storage: StorageState): 
   pre { background: #0f1420; border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem;
         margin: 0 0 1.25rem; overflow-x: auto; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
   pre .c { color: var(--muted); }
+  /* The installer log: bounded so a long install cannot push the buttons off screen. */
+  #installLog { max-height: 9rem; overflow-y: auto; white-space: pre-wrap; font-size: 12px; }
   .actions { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
   button { font: inherit; font-weight: 600; padding: .55rem 1.1rem; border-radius: 8px;
            cursor: pointer; border: 1px solid var(--line); background: #1a2130; color: var(--text); }
@@ -159,12 +161,27 @@ export function onboardingPage(claude: OnboardingState, storage: StorageState): 
 
     <div class="status" id="status"></div>
 
+    <!-- Shown when the CLI is missing: installing it is the step people get stuck on, and it is
+         one command they should not have to find. The command itself is on screen because this
+         downloads and runs a script — approving that without seeing it would not be a real
+         choice. -->
+    <div id="install" class="hidden">
+      <p class="lede">Concentus can install it for you. This runs Anthropic's official installer as
+        you, with no administrator rights:</p>
+      <pre id="installCmd"></pre>
+      <div class="actions">
+        <button class="primary" id="doInstall">Install Claude Code</button>
+      </div>
+      <pre id="installLog" class="hidden"></pre>
+      <p class="msg" id="installMsg"></p>
+    </div>
+
     <div id="how">
-      <p class="lede">Open a terminal and run this. It opens a browser once, and Concentus picks it
-        up from there — you never paste a key.</p>
-      <pre><span class="c"># installs at claude.ai/download if you don't have it yet</span>
+      <p class="lede" id="howLede">Or do it yourself in a terminal. Once installed, run
+        <code>claude</code> and sign in — it opens a browser once, and Concentus picks it up from
+        there. You never paste a key.</p>
+      <pre><span class="c"># then, inside it:</span>
 claude
-<span class="c"># then, inside it:</span>
 /login</pre>
     </div>
 
@@ -302,6 +319,12 @@ claude
       ? 'Concentus found your Claude Code sign-in. Flows will run on your subscription — no API key, no per-token bill.'
       : 'Concentus runs your flows through the Claude Code CLI, on the Claude subscription you already pay for. It needs to be installed and signed in once.';
     $('how').className = ready ? 'hidden' : '';
+    // The install offer is only for the case it solves. With the CLI already there, the remaining
+    // step is signing in, and offering to install it again would be noise.
+    $('install').className = hasCli ? 'hidden' : '';
+    $('howLede').textContent = hasCli
+      ? 'Run claude in a terminal and sign in — it opens a browser once, and Concentus picks it up from there. You never paste a key.'
+      : 'Or do it yourself in a terminal. Once installed, run claude and sign in.';
     $('finish').textContent = ready ? 'Open Concentus' : 'Continue without it';
     $('finish').className = ready ? 'primary' : '';
   }
@@ -317,6 +340,45 @@ claude
   $('locate').addEventListener('click', function () {
     window.concentus.locateClaude().then(function (next) {
       if (next) { claude = next; renderStep2(); }
+    });
+  });
+
+  // The installer's output goes on screen as it arrives. An install that takes a minute behind a
+  // frozen button is indistinguishable from one that has hung.
+  window.concentus.onInstallOutput(function (line) {
+    var out = $('installLog');
+    out.className = '';
+    out.textContent += line;
+    out.scrollTop = out.scrollHeight;
+  });
+
+  window.concentus.claudeInstallCommand().then(function (cmd) {
+    $('installCmd').textContent = cmd;
+  });
+
+  $('doInstall').addEventListener('click', function () {
+    var btn = this;
+    btn.disabled = true; btn.textContent = 'Installing…';
+    $('installMsg').textContent = ''; $('installMsg').className = 'msg';
+    $('installLog').textContent = '';
+    window.concentus.installClaude().then(function (r) {
+      if (r.state) { claude = r.state; renderStep2(); }
+      if (r.ok && claude.command) {
+        $('installMsg').textContent = '✓ Installed. Now sign in: run claude in a terminal, then /login.';
+        $('installMsg').className = 'msg ok';
+      } else if (r.ok) {
+        // Exit code 0 but nothing where we look — worth saying plainly rather than claiming success.
+        $('installMsg').textContent = '✗ The installer finished but Concentus still cannot find claude. Try "Locate claude…".';
+        $('installMsg').className = 'msg bad';
+      } else {
+        $('installMsg').textContent = '✗ ' + r.detail;
+        $('installMsg').className = 'msg bad';
+      }
+    }).catch(function (e) {
+      $('installMsg').textContent = '✗ ' + (e && e.message ? e.message : String(e));
+      $('installMsg').className = 'msg bad';
+    }).then(function () {
+      btn.disabled = false; btn.textContent = 'Install Claude Code';
     });
   });
 
