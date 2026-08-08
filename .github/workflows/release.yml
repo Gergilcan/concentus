@@ -66,13 +66,17 @@ jobs:
           cache: pnpm
 
       # Compiled here because it cannot be compiled anywhere else: it is C, built against the
-      # PostgreSQL server headers, for one OS and one major version. The result is copied into the
-      # embedded server at startup (see PgVectorInstaller) so MCP tool search can rank by meaning.
+      # PostgreSQL server headers, for one OS and one major version. It has to run BEFORE the jar
+      # is packaged — it stages into src/main/resources, so `mvn package` carries it into the jar
+      # and the jar into the installer. That is what makes the extension part of what a user
+      # installs rather than something they fetch.
       #
-      # continue-on-error: losing semantic ranking is a degraded feature the app already handles
-      # and reports; losing the installer over it would be the wrong trade.
+      # Required, not continue-on-error. It was the latter on the reasoning that an installer
+      # without semantic ranking beats no installer — but that silently ships an .exe missing a
+      # feature it is supposed to contain, and nobody would notice until a user's log said the
+      # build carried none. CI now compiles this on every push, so a break is caught long before a
+      # release; by the time a tag is cut, a failure here is a real problem and should stop.
       - name: Build pgvector
-        continue-on-error: true
         uses: ./.github/actions/build-pgvector
         with:
           pg-major: ${{ env.PG_MAJOR }}
