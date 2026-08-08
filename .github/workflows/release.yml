@@ -21,6 +21,9 @@ env:
   # pgvector is compiled against these server headers, and a library built for one major version
   # will not load into another.
   PG_MAJOR: "17"
+  # The full version, for the Windows binaries download. Keep both in step with
+  # embedded-postgres-binaries.version in apps/backend/pom.xml.
+  PG_FULL: "17.5"
   PGVECTOR_VERSION: "0.8.0"
 
 jobs:
@@ -75,9 +78,16 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          # The server headers, matching the major version embedded in the app.
+          # The server headers, matching the major version embedded in the app. Ubuntu's own
+          # repositories carry an older PostgreSQL, so the headers come from PGDG — building
+          # against the wrong major produces a library the server will refuse to load.
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
           sudo apt-get install -y postgresql-server-dev-${PG_MAJOR} build-essential
+          pg_config --version
           git clone --branch "v${PGVECTOR_VERSION}" --depth 1 https://github.com/pgvector/pgvector.git /tmp/pgvector
           make -C /tmp/pgvector OPTFLAGS=""
           dest="apps/backend/src/main/resources/pgvector/linux-amd64"
@@ -89,16 +99,32 @@ jobs:
           (cd "$dest" && ls *.sql > sql-files.txt)
           ls -la "$dest"
 
+      # Two steps, because the headers have to be fetched before the compiler is set up.
+      # Deliberately NOT the PostgreSQL the runner ships: that is whatever version the image
+      # happens to carry, and a library built against a different major will not load into the
+      # one the app embeds.
+      - name: Fetch PostgreSQL ${{ env.PG_MAJOR }} headers (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $url = "https://get.enterprisedb.com/postgresql/postgresql-$env:PG_FULL-1-windows-x64-binaries.zip"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\pg.zip"
+          Expand-Archive "$env:RUNNER_TEMP\pg.zip" -DestinationPath "$env:RUNNER_TEMP\pg"
+          # The archive unpacks to a `pgsql` folder holding bin, include and lib.
+          "PGROOT=$env:RUNNER_TEMP\pg\pgsql" | Out-File -FilePath $env:GITHUB_ENV -Append
+          & "$env:RUNNER_TEMP\pg\pgsql\bin\pg_config.exe" --version
+
       - name: Build pgvector (Windows)
         if: runner.os == 'Windows'
         continue-on-error: true
         shell: cmd
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          git clone --branch v%PGVECTOR_VERSION% --depth 1 https://github.com/pgvector/pgvector.git %TEMP%\pgvector || exit /b 1
-          cd %TEMP%\pgvector
-          REM The runner ships PostgreSQL, and PGROOT is where its headers and libs are.
-          set "PGROOT=%PGBIN%\.."
+          call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          git clone --branch v%PGVECTOR_VERSION% --depth 1 https://github.com/pgvector/pgvector.git "%RUNNER_TEMP%\pgvector" || exit /b 1
+          cd /d "%RUNNER_TEMP%\pgvector"
+          REM PGROOT was exported by the previous step and is what Makefile.win reads.
           nmake /F Makefile.win || exit /b 1
           set "DEST=%GITHUB_WORKSPACE%\apps\backend\src\main\resources\pgvector\windows-amd64"
           mkdir "%DEST%"
