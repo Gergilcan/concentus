@@ -23,7 +23,9 @@ class DatabaseStoreTest {
 
     @BeforeEach
     void setUp() {
-        store = new DatabaseStore(dataDir.toString(), new ObjectMapper());
+        TestDatabase.reset(TestDatabase.jdbc());
+        store = new DatabaseStore(TestDatabase.jdbc(), dataDir.toString(), new ObjectMapper());
+        store.init();
     }
 
     @Test

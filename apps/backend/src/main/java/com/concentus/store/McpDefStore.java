@@ -3,16 +3,17 @@ package com.concentus.store;
 import com.concentus.model.McpDef;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
 
-/** Reusable MCP server definitions under {@code <data-dir>/mcp-servers}. */
+/** Reusable MCP server definitions, in the database. Old files are imported once. */
 @Component
 public class McpDefStore extends JsonStore<McpDef> {
 
-    public McpDefStore(@Value("${app.data-dir}") String dataDir, ObjectMapper mapper) {
-        super(Path.of(dataDir, "mcp-servers"), mapper, McpDef.class, "mcp_");
+    public McpDefStore(JdbcTemplate jdbc, @Value("${app.data-dir}") String dataDir, ObjectMapper mapper) {
+        super(jdbc, mapper, McpDef.class, "mcp", "mcp_", Path.of(dataDir, "mcp-servers"));
     }
 
     @Override

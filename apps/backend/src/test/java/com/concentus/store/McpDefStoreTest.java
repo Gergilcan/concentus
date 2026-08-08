@@ -24,7 +24,9 @@ class McpDefStoreTest {
 
     @BeforeEach
     void setUp() {
-        store = new McpDefStore(dataDir.toString(), new ObjectMapper());
+        TestDatabase.reset(TestDatabase.jdbc());
+        store = new McpDefStore(TestDatabase.jdbc(), dataDir.toString(), new ObjectMapper());
+        store.init();
     }
 
     @Test

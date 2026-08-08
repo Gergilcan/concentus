@@ -1,11 +1,12 @@
 package com.concentus.store;
 
 import com.concentus.model.FlowGraph;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
@@ -13,9 +14,6 @@ import jakarta.annotation.PostConstruct;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -27,8 +25,8 @@ import java.util.Set;
  * template nobody has copied there does not exist as far as the product is concerned. This copies
  * them in on startup so they appear, ready to open on the canvas and edit like any other flow.
  *
- * <p>Seeding is recorded in a marker file rather than keyed on "the flows directory is empty".
- * Empty-directory seeding would skip the starter flows entirely for anyone who already had a flow
+ * <p>Seeding is recorded rather than keyed on "the store is empty". The latter would skip the
+ * starter flows entirely for anyone who already had a flow
  * — which is every existing install. Recording what has been installed also means <b>deleting a
  * seeded flow makes it stay deleted</b>: it is a starter, not something the app keeps reinstating
  * against the user's wishes.
@@ -38,16 +36,23 @@ public class FlowLibrarySeeder {
 
     private static final Logger log = LoggerFactory.getLogger(FlowLibrarySeeder.class);
 
-    /** One seeded flow id per line. Lives beside the flows so it travels with the data directory. */
-    private static final String MARKER = ".seeded-flows";
+    /**
+     * Which starter flows have been installed, recorded in the database beside the flows.
+     *
+     * <p>This used to be a file next to them. Now that flows are rows it has to follow them: with
+     * an external database shared between installs, a marker left on one machine would let a
+     * second install re-offer a starter flow the first one deleted — exactly the behaviour this
+     * record exists to prevent.
+     */
+    private static final String MARKER_KIND = "meta";
+    private static final String MARKER_ID = "seeded-flows";
 
-    private final Path flowsDir;
+    private final JdbcTemplate jdbc;
     private final FlowStore flows;
     private final ObjectMapper mapper;
 
-    public FlowLibrarySeeder(@Value("${app.data-dir}") String dataDir, FlowStore flows,
-                             ObjectMapper mapper) {
-        this.flowsDir = Path.of(dataDir, "flows");
+    public FlowLibrarySeeder(JdbcTemplate jdbc, FlowStore flows, ObjectMapper mapper) {
+        this.jdbc = jdbc;
         this.flows = flows;
         this.mapper = mapper;
     }
@@ -55,7 +60,6 @@ public class FlowLibrarySeeder {
     @PostConstruct
     void seed() {
         try {
-            Files.createDirectories(flowsDir);
             Set<String> alreadySeeded = readMarker();
             Set<String> seeded = new LinkedHashSet<>(alreadySeeded);
 
@@ -94,15 +98,23 @@ public class FlowLibrarySeeder {
     }
 
     private Set<String> readMarker() {
-        Path marker = flowsDir.resolve(MARKER);
-        if (!Files.isRegularFile(marker)) return Set.of();
         try {
-            Set<String> ids = new LinkedHashSet<>();
-            for (String line : Files.readAllLines(marker, StandardCharsets.UTF_8)) {
-                if (!line.isBlank()) ids.add(line.trim());
-            }
-            return ids;
-        } catch (IOException e) {
+            return jdbc.query("select json from resources where kind = ? and id = ?",
+                            (rs, i) -> rs.getString("json"), MARKER_KIND, MARKER_ID)
+                    .stream().findFirst()
+                    .map(this::parseIds)
+                    .orElse(Set.of());
+        } catch (RuntimeException e) {
+            // "Nothing recorded" is the safe reading: the worst case is a starter flow being
+            // offered again, and the flows.get() check still stops it overwriting a real one.
+            return Set.of();
+        }
+    }
+
+    private Set<String> parseIds(String json) {
+        try {
+            return new LinkedHashSet<>(mapper.readValue(json, new TypeReference<List<String>>() {}));
+        } catch (Exception e) {
             return Set.of();
         }
     }
@@ -110,10 +122,16 @@ public class FlowLibrarySeeder {
     private void writeMarker(Set<String> ids) {
         if (ids.isEmpty()) return;
         try {
-            Files.write(flowsDir.resolve(MARKER), List.copyOf(ids), StandardCharsets.UTF_8);
-        } catch (IOException e) {
+            jdbc.update("""
+                    insert into resources (kind, id, sort_key, json, updated_at)
+                    values (?, ?, ?, ?, ?)
+                    on conflict (kind, id) do update
+                       set json = excluded.json, updated_at = excluded.updated_at
+                    """, MARKER_KIND, MARKER_ID, MARKER_ID,
+                    mapper.writeValueAsString(List.copyOf(ids)), System.currentTimeMillis());
+        } catch (Exception e) {
             // Worst case the flow is re-offered next start, which is recoverable; failing startup
-            // over a bookkeeping file is not.
+            // over bookkeeping is not.
             log.debug("Could not record seeded flows: {}", e.getMessage());
         }
     }

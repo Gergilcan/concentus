@@ -1,6 +1,7 @@
 package com.concentus.store;
 
 import com.concentus.model.LibraryAgent;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -10,19 +11,26 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Unit tests for {@link AgentLibraryStore}: YAML-file-backed CRUD for reusable agent definitions,
- * plus its one-time seeding of the bundled example agents (src/main/resources/library-agents)
- * into a fresh, empty library directory.
+ * Unit tests for {@link AgentLibraryStore}: database-backed CRUD for reusable agent definitions,
+ * the one-time import of the YAML files earlier builds kept on disk, and the seeding of the
+ * bundled examples (src/main/resources/library-agents) into an empty library.
  */
 class AgentLibraryStoreTest {
 
-    @Test
-    void firstRunOnAnEmptyDirSeedsTheBundledExampleAgents(@TempDir Path dir) throws IOException {
-        AgentLibraryStore store = new AgentLibraryStore(dir.toString(), dir.toString());
+    private AgentLibraryStore store(Path dir) {
+        TestDatabase.reset(TestDatabase.jdbc());
+        AgentLibraryStore store =
+                new AgentLibraryStore(TestDatabase.jdbc(), dir.toString(), dir.toString(), new ObjectMapper());
+        store.init();
+        return store;
+    }
 
-        List<String> ids = store.list().stream().map(LibraryAgent::id).toList();
+    @Test
+    void anEmptyLibraryIsSeededWithTheBundledExampleAgents(@TempDir Path dir) {
+        List<String> ids = store(dir).list().stream().map(LibraryAgent::id).toList();
 
         // The four curated examples bundled under src/main/resources/library-agents.
         assertThat(ids).containsExactlyInAnyOrder(
@@ -30,26 +38,39 @@ class AgentLibraryStoreTest {
     }
 
     @Test
-    void seedingDoesNotOverwriteAnExistingNonEmptyDir(@TempDir Path dir) throws IOException {
+    void yamlFilesFromAnOlderBuildAreImportedInsteadOfSeedingExamples(@TempDir Path dir) throws IOException {
+        // What a file-backed install looks like when this build first opens it.
         Files.writeString(dir.resolve("custom.yaml"), "name: Custom\n");
 
-        AgentLibraryStore store = new AgentLibraryStore(dir.toString(), dir.toString());
+        AgentLibraryStore store = store(dir);
 
-        // Seeding is skipped entirely once the dir already has at least one yaml file.
+        // Imported, and the examples are not added on top — an existing library is not empty.
         assertThat(store.list()).extracting(LibraryAgent::id).containsExactly("custom");
+        assertThat(store.list()).extracting(LibraryAgent::name).containsExactly("Custom");
     }
 
     @Test
-    void savingWithNoIdAssignsOneAndPersistsAsYaml(@TempDir Path dir) throws IOException {
-        Files.writeString(dir.resolve(".keep-nonempty.yaml"), "name: placeholder\n"); // skip seeding
-        AgentLibraryStore store = new AgentLibraryStore(dir.toString(), dir.toString());
+    void theImportedFilesAreSetAsideSoASecondStartDoesNotResurrectThem(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("custom.yaml"), "name: Custom\n");
+        AgentLibraryStore first = store(dir);
+        first.delete("custom");
+
+        // A second start against the same directory must not bring the deleted agent back.
+        AgentLibraryStore second =
+                new AgentLibraryStore(TestDatabase.jdbc(), dir.toString(), dir.toString(), new ObjectMapper());
+        second.init();
+
+        assertThat(second.list()).extracting(LibraryAgent::id).doesNotContain("custom");
+    }
+
+    @Test
+    void savingWithNoIdAssignsOneAndRoundTrips(@TempDir Path dir) {
+        AgentLibraryStore store = store(dir);
 
         LibraryAgent saved = store.save(new LibraryAgent(null, "My Agent", "claude-x", "medium", 4000, "Be terse."));
 
         assertThat(saved.id()).startsWith("agent_");
-        assertThat(Files.exists(dir.resolve(saved.id() + ".yaml"))).isTrue();
-        LibraryAgent reloaded = store.list().stream()
-                .filter(a -> a.id().equals(saved.id())).findFirst().orElseThrow();
+        LibraryAgent reloaded = store.get(saved.id()).orElseThrow();
         assertThat(reloaded.name()).isEqualTo("My Agent");
         assertThat(reloaded.model()).isEqualTo("claude-x");
         assertThat(reloaded.effort()).isEqualTo("medium");
@@ -58,65 +79,54 @@ class AgentLibraryStoreTest {
     }
 
     @Test
-    void savingWithAllOptionalFieldsNullAppliesModelDefaults(@TempDir Path dir) throws IOException {
-        Files.writeString(dir.resolve(".keep-nonempty.yaml"), "name: placeholder\n"); // skip seeding
-        AgentLibraryStore store = new AgentLibraryStore(dir.toString(), dir.toString());
+    void savingWithAllOptionalFieldsNullAppliesModelDefaults(@TempDir Path dir) {
+        AgentLibraryStore store = store(dir);
 
         LibraryAgent saved = store.save(new LibraryAgent(null, "My Agent", null, null, 0, null));
 
         assertThat(saved.model()).isEqualTo("claude-opus-4-8");
         assertThat(saved.effort()).isEqualTo("high");
         assertThat(saved.maxTokens()).isEqualTo(16000);
-        // save() normalizes a null systemPrompt to "" everywhere else it touches the value — the
-        // YAML doc actually written to disk gets "" for a null input (see AgentLibraryStore.save,
-        // `doc.put("systemPrompt", a.systemPrompt() == null ? "" : a.systemPrompt())`) — but the
-        // record returned to the caller is built from the raw input (`a.systemPrompt()`), not the
-        // normalized `doc` value, so it still carries null. Reloading via list() (which re-parses
-        // the written YAML) correctly returns "".
+        // Normalised before storing, so the returned record and a reloaded one agree — which the
+        // file-backed version did not manage: it returned the raw null and read back "".
         assertThat(saved.systemPrompt()).isEqualTo("");
+        assertThat(store.get(saved.id()).orElseThrow().systemPrompt()).isEqualTo("");
     }
 
     @Test
-    void savingWithAnExplicitIdUpdatesThatFileInPlace(@TempDir Path dir) throws IOException {
-        Files.writeString(dir.resolve(".keep-nonempty.yaml"), "name: placeholder\n");
-        AgentLibraryStore store = new AgentLibraryStore(dir.toString(), dir.toString());
+    void savingWithAnExplicitIdUpdatesInPlace(@TempDir Path dir) {
+        AgentLibraryStore store = store(dir);
         LibraryAgent saved = store.save(new LibraryAgent(null, "Original", "claude-x", "high", 1000, ""));
 
         store.save(new LibraryAgent(saved.id(), "Renamed", "claude-x", "high", 1000, ""));
 
-        long matching = store.list().stream().filter(a -> a.id().equals(saved.id())).count();
-        assertThat(matching).isEqualTo(1);
-        assertThat(store.list().stream().filter(a -> a.id().equals(saved.id())).findFirst().orElseThrow().name())
-                .isEqualTo("Renamed");
+        assertThat(store.list().stream().filter(a -> a.id().equals(saved.id())).count()).isEqualTo(1);
+        assertThat(store.get(saved.id()).orElseThrow().name()).isEqualTo("Renamed");
     }
 
     @Test
-    void deleteRemovesTheYamlFile(@TempDir Path dir) throws IOException {
-        Files.writeString(dir.resolve(".keep-nonempty.yaml"), "name: placeholder\n");
-        AgentLibraryStore store = new AgentLibraryStore(dir.toString(), dir.toString());
+    void deleteRemovesTheAgentAndIsIdempotent(@TempDir Path dir) {
+        AgentLibraryStore store = store(dir);
         LibraryAgent saved = store.save(new LibraryAgent(null, "Temp", "claude-x", "high", 1000, ""));
 
         assertThat(store.delete(saved.id())).isTrue();
-        assertThat(Files.exists(dir.resolve(saved.id() + ".yaml"))).isFalse();
+        assertThat(store.get(saved.id())).isEmpty();
         assertThat(store.delete(saved.id())).isFalse();
     }
 
     @Test
-    void listSkipsAnUnreadableYamlFileButStillReturnsTheOthers(@TempDir Path dir) throws IOException {
+    void anUnreadableYamlFileIsSkippedWithoutLosingTheOthers(@TempDir Path dir) throws IOException {
         Files.writeString(dir.resolve("good.yaml"), "name: Good Agent\n");
         Files.writeString(dir.resolve("bad.yaml"), "not: [ valid: yaml structure for an AgentSpec");
-        AgentLibraryStore store = new AgentLibraryStore(dir.toString(), dir.toString());
 
-        List<String> names = store.list().stream().map(LibraryAgent::name).toList();
-        assertThat(names).containsExactly("Good Agent");
+        assertThat(store(dir).list()).extracting(LibraryAgent::name).containsExactly("Good Agent");
     }
 
     @Test
-    void invalidIdIsRejectedOnDelete(@TempDir Path dir) throws IOException {
-        Files.writeString(dir.resolve(".keep-nonempty.yaml"), "name: placeholder\n");
-        AgentLibraryStore store = new AgentLibraryStore(dir.toString(), dir.toString());
+    void invalidIdIsRejectedOnDelete(@TempDir Path dir) {
+        AgentLibraryStore store = store(dir);
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> store.delete("../escape"))
+        assertThatThrownBy(() -> store.delete("../escape"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }
