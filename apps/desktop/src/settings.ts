@@ -14,6 +14,13 @@ export interface Settings {
   port?: number
   /** An explicit path to the claude CLI, for the machine where discovery fails. */
   claudeCommand?: string
+  /**
+   * Set when the user ticks "Don't check on future launches" on the first-run page.
+   *
+   * Worth honouring rather than re-prompting: someone running only local models, or driving the
+   * cloud API, has no use for a Claude Code login and should not be told about it at every launch.
+   */
+  skipClaudeCheck?: boolean
 }
 
 export function loadSettings(): Settings {

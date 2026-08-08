@@ -1,8 +1,11 @@
-import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import * as path from 'node:path'
 import { RunningBackend, backendLogTail, startBackend, stopBackend } from './backend'
+import { resolveClaudeCli } from './claude-cli'
 import { failurePage } from './failure-page'
+import { OnboardingState, onboardingPage } from './onboarding-page'
 import { backendLogFile, shellLogFile } from './paths'
+import { loadSettings, saveSettings } from './settings'
 import { log } from './log'
 
 /**
@@ -25,8 +28,17 @@ app.setName('Concentus')
 let backend: RunningBackend | null = null
 let mainWindow: BrowserWindow | null = null
 let failureWindow: BrowserWindow | null = null
+let onboardingWindow: BrowserWindow | null = null
 /** Set once quitting has begun, so the backend is stopped exactly once. */
 let quitting = false
+/**
+ * The CLI path the running backend was started with.
+ *
+ * Kept because the backend reads `local.claude-command` once, at startup. A login appearing later
+ * is picked up on its own — the backend checks the filesystem each time it is asked — but a CLI
+ * that was not found when it spawned is baked in as "not configured", and only a restart fixes it.
+ */
+let backendClaudeCommand: string | null = null
 
 /**
  * Two copies of this app would fight over the port, the data directory and the run state in it.
@@ -75,16 +87,46 @@ async function main(): Promise<void> {
   })
 }
 
-/** Start the backend and show either the app or the failure page. */
+/** Start the backend, then show the first-run page, the app, or the failure page. */
 async function launch(): Promise<void> {
   try {
     backend = await startBackend()
-    showMainWindow(backend.port)
+    backendClaudeCommand = (await claudeState()).command
+    if (await shouldOnboard()) {
+      showOnboardingWindow()
+    } else {
+      showMainWindow(backend.port)
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.error('Backend failed to start', err)
     showFailureWindow(message)
   }
+}
+
+/** Current sign-in state, as the first-run page needs it. */
+async function claudeState(): Promise<OnboardingState> {
+  const settings = loadSettings()
+  const cli = await resolveClaudeCli(settings.claudeCommand)
+  return {
+    command: cli.command,
+    loggedIn: cli.loggedIn,
+    // An API key means flows run in Anthropic's hosted sandbox, where a local CLI is irrelevant.
+    cloudConfigured: !!(process.env.ANTHROPIC_API_KEY ?? '').trim(),
+  }
+}
+
+/**
+ * Whether to show the first-run page.
+ *
+ * Only when flows genuinely could not run: no usable local sign-in *and* no API key to fall back
+ * on. Anything else would be nagging someone whose setup is already fine.
+ */
+async function shouldOnboard(): Promise<boolean> {
+  if (loadSettings().skipClaudeCheck) return false
+  const state = await claudeState()
+  if (state.cloudConfigured) return false
+  return !state.command || !state.loggedIn
 }
 
 function showMainWindow(port: number): void {
@@ -149,6 +191,39 @@ function openExternalLinksInBrowser(win: BrowserWindow, port: number): void {
   })
 }
 
+function showOnboardingWindow(): void {
+  onboardingWindow = new BrowserWindow({
+    width: 720,
+    height: 840,
+    minWidth: 520,
+    minHeight: 420,
+    // Resizable on purpose. The content is a fixed amount of prose and it very nearly fits, but
+    // "very nearly" depends on the platform's font and the user's display scaling — and a window
+    // that cannot grow turns a few pixels of overflow into a button nobody can reach.
+    title: 'Welcome to Concentus',
+    icon: appIcon(),
+    autoHideMenuBar: true,
+    backgroundColor: '#0b0e14',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+
+  // Closing this window with the X means the same as "continue" — the app is usable either way,
+  // and quitting instead would make a prompt behave like a gate.
+  onboardingWindow.on('closed', () => {
+    onboardingWindow = null
+    if (!mainWindow && !quitting && backend) showMainWindow(backend.port)
+  })
+
+  void claudeState().then((state) => {
+    const html = onboardingPage(state)
+    void onboardingWindow?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+  })
+}
+
 function showFailureWindow(message: string): void {
   failureWindow = new BrowserWindow({
     width: 900,
@@ -182,6 +257,69 @@ function registerIpc(): void {
     shell.showItemInFolder(shellLogFile())
   })
   ipcMain.on('failure:quit', () => app.quit())
+
+  ipcMain.handle('onboarding:recheck', async () => {
+    const state = await claudeState()
+    await adoptClaudeCommand(state.command)
+    return state
+  })
+
+  ipcMain.handle('onboarding:locate', async () => {
+    if (!onboardingWindow) return null
+    // The escape hatch for the machine where discovery fails — a CLI installed somewhere no
+    // convention covers, or a version manager the login shell exposes and nothing else does.
+    const { canceled, filePaths } = await dialog.showOpenDialog(onboardingWindow, {
+      title: 'Locate the claude CLI',
+      properties: ['openFile'],
+      filters: process.platform === 'win32'
+        ? [{ name: 'Executables', extensions: ['exe', 'cmd', 'bat'] }]
+        : [],
+    })
+    if (canceled || filePaths.length === 0) return null
+
+    const chosen = filePaths[0]
+    saveSettings({ ...loadSettings(), claudeCommand: chosen })
+    log.info(`claude CLI set by hand: ${chosen}`)
+
+    const state = await claudeState()
+    await adoptClaudeCommand(state.command)
+    return state
+  })
+
+  ipcMain.on('onboarding:finish', (_event, dontAskAgain: boolean) => {
+    if (dontAskAgain) {
+      saveSettings({ ...loadSettings(), skipClaudeCheck: true })
+      log.info('First-run check disabled at the user\'s request.')
+    }
+    // The 'closed' handler opens the main window, so both routes out of this page agree.
+    onboardingWindow?.close()
+  })
+}
+
+/**
+ * Restart the backend if the CLI path it was started with is no longer the right one.
+ *
+ * Needed because `local.claude-command` is read once at startup. Signing in is picked up without
+ * this — the backend re-checks the filesystem whenever it is asked — but a CLI that did not exist
+ * when the backend spawned stays unconfigured until it is told again. Without this, "Locate
+ * claude…" would appear to work and then fail at the first Run.
+ */
+async function adoptClaudeCommand(command: string | null): Promise<void> {
+  if (command === backendClaudeCommand) return
+  if (!backend) return
+
+  log.info(`claude CLI changed (${backendClaudeCommand ?? 'none'} -> ${command ?? 'none'}); restarting the backend.`)
+  await stopBackend(backend)
+  backend = null
+  try {
+    backend = await startBackend()
+    backendClaudeCommand = command
+    // The port is stable by design, but re-point the window rather than assume it.
+    if (mainWindow) void mainWindow.loadURL(`http://127.0.0.1:${backend.port}`)
+  } catch (err) {
+    log.error('Backend failed to restart after the claude CLI changed', err)
+    showFailureWindow(err instanceof Error ? err.message : String(err))
+  }
 }
 
 /**

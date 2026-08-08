@@ -156,9 +156,18 @@ To run flows on your Claude subscription, sign in to Claude Code once, in a term
 claude          # then /login
 ```
 
-Concentus finds the CLI itself — including the case a desktop launcher usually gets wrong, where
-the app does not inherit your shell's `PATH`. To use the cloud API instead of your subscription,
-set `ANTHROPIC_API_KEY` in the environment the app starts in.
+**The app tells you if this is missing rather than letting you find out later.** On launch it
+checks for the CLI and for a login, and if either is absent it opens a page saying so, with a
+**Check again** button and a **Locate claude…** picker for the case where it is installed somewhere
+discovery does not reach. It is a prompt, not a gate — the canvas works without Claude, so
+**Continue without it** is a real choice, and "Don't check on future launches" makes it stop asking.
+
+Concentus finds the CLI itself, including the case a desktop launcher usually gets wrong: an app
+started from a launcher does not inherit your shell's `PATH`, so a perfectly working `claude`
+becomes invisible to it. The app resolves it through a login shell instead.
+
+To use the cloud API rather than your subscription, set `ANTHROPIC_API_KEY` in the environment the
+app starts in — the first-run check then stays out of your way, since a local login is not needed.
 
 The first launch takes about ten seconds longer than later ones: it unpacks the database and
 initialises it. After that, start-up is a couple of seconds.
