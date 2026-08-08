@@ -9,7 +9,6 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -36,7 +35,6 @@ public class RunStore {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
-    private final boolean enabled;
     private final ExecutorService writer = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "run-store-writer");
         t.setDaemon(true);
@@ -55,19 +53,13 @@ public class RunStore {
     });
     private volatile boolean available;
 
-    public RunStore(JdbcTemplate jdbc, ObjectMapper mapper,
-                    @Value("${app.persistence.enabled:true}") boolean enabled) {
+    public RunStore(JdbcTemplate jdbc, ObjectMapper mapper) {
         this.jdbc = jdbc;
         this.mapper = mapper;
-        this.enabled = enabled;
     }
 
     @PostConstruct
     void init() {
-        if (!enabled) {
-            log.info("Run persistence disabled (app.persistence.enabled=false).");
-            return;
-        }
         try {
             jdbc.execute("""
                 create table if not exists runs (
@@ -122,7 +114,7 @@ public class RunStore {
     }
 
     public boolean isAvailable() {
-        return enabled && available;
+        return available;
     }
 
     /** Queue an upsert of the run's current state. Non-blocking; best-effort. */

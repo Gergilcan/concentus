@@ -22,7 +22,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -47,36 +46,12 @@ class RunStoreTest {
         return r;
     }
 
-    // ---------------------------------------------------------------- disabled / unavailable gating
-
-    @Test
-    void whenPersistenceIsDisabledInitNeverTouchesTheDatabase() {
-        RunStore store = new RunStore(jdbc, mapper, false);
-
-        store.init();
-
-        assertThat(store.isAvailable()).isFalse();
-        verifyNoInteractions(jdbc);
-    }
-
-    @Test
-    void whenDisabledAllWriteAndReadOperationsAreNoOps() {
-        RunStore store = new RunStore(jdbc, mapper, false);
-        store.init();
-
-        store.persist(run("r1"));
-        store.markDirty(run("r1"));
-        store.delete("r1");
-        List<RunStore.RunRow> rows = store.loadAll(10);
-
-        assertThat(rows).isEmpty();
-        verifyNoInteractions(jdbc);
-    }
+    // ---------------------------------------------------------------- unavailable gating
 
     @Test
     void whenTableCreationFailsTheStoreStaysUnavailableAndWritesAreNoOps() {
         doThrow(new RuntimeException("db unreachable")).when(jdbc).execute(anyString());
-        RunStore store = new RunStore(jdbc, mapper, true);
+        RunStore store = new RunStore(jdbc, mapper);
 
         store.init();
 
@@ -89,7 +64,7 @@ class RunStoreTest {
     @Test
     void loadAllReturnsEmptyWhenUnavailableRatherThanQuerying() {
         doThrow(new RuntimeException("db unreachable")).when(jdbc).execute(anyString());
-        RunStore store = new RunStore(jdbc, mapper, true);
+        RunStore store = new RunStore(jdbc, mapper);
         store.init();
 
         assertThat(store.loadAll(5)).isEmpty();
@@ -99,7 +74,7 @@ class RunStoreTest {
 
     @Test
     void persistWritesTheRunsCurrentStateAsynchronously() {
-        RunStore store = new RunStore(jdbc, mapper, true); // jdbc.execute(...) succeeds (default mock)
+        RunStore store = new RunStore(jdbc, mapper); // jdbc.execute(...) succeeds (default mock)
         store.init();
         assertThat(store.isAvailable()).isTrue();
 
@@ -119,7 +94,7 @@ class RunStoreTest {
 
     @Test
     void markDirtyIsANoOpWhenTheRunIsNull() {
-        RunStore store = new RunStore(jdbc, mapper, true);
+        RunStore store = new RunStore(jdbc, mapper);
         store.init();
 
         assertThatCode(() -> store.markDirty(null)).doesNotThrowAnyException();
@@ -128,7 +103,7 @@ class RunStoreTest {
     @Test
     void markDirtyIsANoOpWhenUnavailable() {
         doThrow(new RuntimeException("db unreachable")).when(jdbc).execute(anyString());
-        RunStore store = new RunStore(jdbc, mapper, true);
+        RunStore store = new RunStore(jdbc, mapper);
         store.init();
 
         // Would normally queue the run for the next flush; unavailable means it must not.
@@ -139,7 +114,7 @@ class RunStoreTest {
 
     @Test
     void deleteIsAsynchronousWhenAvailable() {
-        RunStore store = new RunStore(jdbc, mapper, true);
+        RunStore store = new RunStore(jdbc, mapper);
         store.init();
 
         store.delete("r1");
@@ -152,7 +127,7 @@ class RunStoreTest {
     @Test
     @SuppressWarnings("unchecked")
     void loadAllParsesEventsAndNodeExecsAndToleratesCorruptJsonColumns() throws Exception {
-        RunStore store = new RunStore(jdbc, mapper, true);
+        RunStore store = new RunStore(jdbc, mapper);
         store.init();
 
         ArgumentCaptor<RowMapper<RunStore.RunRow>> mapperCaptor = ArgumentCaptor.forClass(RowMapper.class);

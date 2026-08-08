@@ -26,6 +26,8 @@
         <poi.version>5.4.1</poi.version>
         <jsoup.version>1.21.1</jsoup.version>
         <tess4j.version>5.16.0</tess4j.version>
+        <embedded-postgres.version>2.1.0</embedded-postgres.version>
+        <embedded-postgres-binaries.version>14.15.0</embedded-postgres-binaries.version>
     </properties>
 
     <dependencies>
@@ -124,6 +126,49 @@
             <artifactId>postgresql</artifactId>
         </dependency>
 
+        <!--
+            The database, embedded. Real PostgreSQL binaries extracted and started as a child
+            process of the JVM against a data directory in the user's app-data folder — not an
+            emulation, so the existing SQL (jsonb, upserts, partial indexes) runs unchanged and
+            there is no dialect to port to.
+
+            The binaries are platform-specific and are pulled in per platform below, which is what
+            keeps each installer carrying only its own.
+
+            One capability does not survive: pgvector is not part of these bundles, so the semantic
+            ranking in ToolSearchIndex falls back to lexical matching. It already detects and logs
+            that, so the behaviour is degraded rather than broken.
+        -->
+        <dependency>
+            <groupId>io.zonky.test</groupId>
+            <artifactId>embedded-postgres</artifactId>
+            <version>${embedded-postgres.version}</version>
+            <!--
+                It ships every platform's binaries by default — Windows, macOS, Linux and Alpine,
+                around 80MB of which at most one is ever executed. Excluded here and added back one
+                at a time by the OS profiles below, so a Windows installer carries Windows
+                PostgreSQL and nothing else.
+            -->
+            <exclusions>
+                <exclusion>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-windows-amd64</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-darwin-amd64</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-linux-amd64</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-linux-amd64-alpine</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -138,6 +183,57 @@
             <optional>true</optional>
         </dependency>
     </dependencies>
+
+    <!--
+        The PostgreSQL binaries for the platform being built on. Activated by the host OS, which is
+        the correct rule for both cases that matter: a developer building locally gets binaries
+        that run on their machine, and a per-platform CI runner produces an installer carrying its
+        own. Nothing has to be passed on the command line for either.
+    -->
+    <profiles>
+        <profile>
+            <id>pg-binaries-windows</id>
+            <activation>
+                <os><family>windows</family></os>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-windows-amd64</artifactId>
+                    <version>${embedded-postgres-binaries.version}</version>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+        <profile>
+            <id>pg-binaries-linux</id>
+            <activation>
+                <os><family>unix</family><name>linux</name></os>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-linux-amd64</artifactId>
+                    <version>${embedded-postgres-binaries.version}</version>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+        <profile>
+            <id>pg-binaries-mac</id>
+            <activation>
+                <os><family>mac</family></os>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-darwin-amd64</artifactId>
+                    <version>${embedded-postgres-binaries.version}</version>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
 
     <build>
         <finalName>concentus-backend</finalName>

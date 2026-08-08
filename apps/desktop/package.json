@@ -9,7 +9,8 @@
     "build": "tsc -b",
     "typecheck": "tsc -b --noEmit",
     "start": "pnpm build && electron .",
-    "package": "pnpm build && electron-builder"
+    "payload": "node scripts/prepare-payload.mjs",
+    "package": "pnpm build && pnpm payload && electron-builder"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

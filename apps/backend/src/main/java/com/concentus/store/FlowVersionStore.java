@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -25,19 +24,15 @@ public class FlowVersionStore {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
-    private final boolean enabled;
     private volatile boolean available;
 
-    public FlowVersionStore(JdbcTemplate jdbc, ObjectMapper mapper,
-                            @Value("${app.persistence.enabled:true}") boolean enabled) {
+    public FlowVersionStore(JdbcTemplate jdbc, ObjectMapper mapper) {
         this.jdbc = jdbc;
         this.mapper = mapper;
-        this.enabled = enabled;
     }
 
     @PostConstruct
     void init() {
-        if (!enabled) return;
         try {
             jdbc.execute("""
                 create table if not exists flow_versions (
@@ -56,7 +51,7 @@ public class FlowVersionStore {
     }
 
     public boolean isAvailable() {
-        return enabled && available;
+        return available;
     }
 
     /** Appends the flow's current state as the next version. */

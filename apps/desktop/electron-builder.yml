@@ -16,10 +16,10 @@ extraResources:
   # Read by paths.ts as resources/backend/concentus-backend.jar
   - from: ../backend/target/concentus-backend.jar
     to: backend/concentus-backend.jar
-  # The trimmed Java runtime, so the user never installs a JDK. NOT YET PRODUCED: the jlink step
-  # is a later phase, and until it exists `electron-builder` will fail here rather than quietly
-  # shipping an app that cannot start. That is the intended failure — see paths.ts, which refuses
-  # to borrow the user's Java in a packaged build for the same reason.
+  # The Java runtime, so the user never installs a JDK. Built by scripts/prepare-payload.mjs,
+  # which `pnpm package` runs first. If it is missing the build fails here rather than quietly
+  # shipping an app that cannot start — paths.ts refuses to borrow the user's Java in a packaged
+  # build for the same reason.
   - from: resources/jre
     to: jre
 

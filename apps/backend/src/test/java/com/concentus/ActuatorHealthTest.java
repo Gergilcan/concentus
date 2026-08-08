@@ -27,13 +27,15 @@ class ActuatorHealthTest {
     static void dataDir(DynamicPropertyRegistry registry) {
         // Isolate FlowStore's persistence from the repo's real data dir during tests.
         registry.add("app.data-dir", () -> dataDir.toString());
-        // Disable the run/version DB persistence so this test never opens a connection to the
-        // real (production) Postgres/Neon instance configured as the application.properties
-        // default — RunStore/FlowVersionStore both no-op their DB access when this is false.
-        registry.add("app.persistence.enabled", () -> "false");
-        // Also stop Hikari from proactively filling its idle pool (which would otherwise still
-        // dial out to the configured datasource host in the background even with persistence
-        // logically disabled above).
+        // Point the datasource at a host that cannot resolve, so this test never opens a
+        // connection to the real Postgres configured as the application.properties default.
+        // Persistence is no longer switchable — every store now creates its schema on startup —
+        // so isolation has to come from the connection itself rather than from a flag. The stores
+        // are built to survive an unreachable database (each logs and reports itself unavailable),
+        // which is exactly the state this produces.
+        registry.add("spring.datasource.url", () -> "jdbc:postgresql://127.0.0.1:1/nonexistent");
+        registry.add("spring.datasource.hikari.connection-timeout", () -> "250");
+        // Stop Hikari proactively filling its idle pool in the background.
         registry.add("spring.datasource.hikari.minimum-idle", () -> "0");
         // Finally, disable the DataSource health indicator. /actuator/health probes it on every
         // request, which opens a real connection to the production Neon default in

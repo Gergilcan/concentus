@@ -19,7 +19,6 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -37,36 +36,12 @@ class FlowVersionStoreTest {
         return new FlowGraph(id, "My Flow", "managed", List.of(), List.of(), null, List.of(), null, null);
     }
 
-    // ---------------------------------------------------------------- disabled / unavailable gating
-
-    @Test
-    void whenDisabledInitNeverTouchesTheDatabase() {
-        FlowVersionStore store = new FlowVersionStore(jdbc, mapper, false);
-
-        store.init();
-
-        assertThat(store.isAvailable()).isFalse();
-        verifyNoInteractions(jdbc);
-    }
-
-    @Test
-    void whenDisabledSnapshotListAndGetAreAllNoOps() {
-        FlowVersionStore store = new FlowVersionStore(jdbc, mapper, false);
-        store.init();
-
-        store.snapshot(flow("f1"));
-        List<?> versions = store.list("f1");
-        Optional<FlowGraph> got = store.get("f1", 1);
-
-        assertThat(versions).isEmpty();
-        assertThat(got).isEmpty();
-        verifyNoInteractions(jdbc);
-    }
+    // ---------------------------------------------------------------- unavailable gating
 
     @Test
     void whenTableCreationFailsTheStoreStaysUnavailable() {
         doThrow(new RuntimeException("db unreachable")).when(jdbc).execute(anyString());
-        FlowVersionStore store = new FlowVersionStore(jdbc, mapper, true);
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
 
         store.init();
 
@@ -77,7 +52,7 @@ class FlowVersionStoreTest {
 
     @Test
     void snapshotIsANoOpForANullFlowOrAFlowWithoutAnId() {
-        FlowVersionStore store = new FlowVersionStore(jdbc, mapper, true); // init() succeeds
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper); // init() succeeds
         store.init();
 
         store.snapshot(null);
@@ -90,7 +65,7 @@ class FlowVersionStoreTest {
 
     @Test
     void snapshotInsertsVersionOneWhenNoPriorVersionExists() {
-        FlowVersionStore store = new FlowVersionStore(jdbc, mapper, true);
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
         store.init();
         when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("f1"))).thenReturn(0);
 
@@ -106,7 +81,7 @@ class FlowVersionStoreTest {
 
     @Test
     void snapshotIncrementsFromTheCurrentMaxVersion() {
-        FlowVersionStore store = new FlowVersionStore(jdbc, mapper, true);
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
         store.init();
         when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("f1"))).thenReturn(4);
 
@@ -119,7 +94,7 @@ class FlowVersionStoreTest {
 
     @Test
     void snapshotSwallowsDatabaseErrorsRatherThanPropagating() {
-        FlowVersionStore store = new FlowVersionStore(jdbc, mapper, true);
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
         store.init();
         when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("f1")))
                 .thenThrow(new RuntimeException("boom"));
@@ -132,7 +107,7 @@ class FlowVersionStoreTest {
     @Test
     @SuppressWarnings("unchecked")
     void listMapsVersionNameAndCreatedAt() throws Exception {
-        FlowVersionStore store = new FlowVersionStore(jdbc, mapper, true);
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
         store.init();
         ArgumentCaptor<RowMapper<Object>> mapperCaptor = ArgumentCaptor.forClass(RowMapper.class);
         when(jdbc.query(anyString(), mapperCaptor.capture(), eq("f1"))).thenReturn(List.of());
@@ -156,7 +131,7 @@ class FlowVersionStoreTest {
 
     @Test
     void getReturnsEmptyWhenNoRowMatches() {
-        FlowVersionStore store = new FlowVersionStore(jdbc, mapper, true);
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
         store.init();
         when(jdbc.query(anyString(), any(org.springframework.jdbc.core.RowMapper.class), eq("f1"), eq(1)))
                 .thenReturn(List.of());
@@ -166,7 +141,7 @@ class FlowVersionStoreTest {
 
     @Test
     void getReturnsEmptyWhenTheStoredFlowJsonIsCorrupt() {
-        FlowVersionStore store = new FlowVersionStore(jdbc, mapper, true);
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
         store.init();
         when(jdbc.query(anyString(), any(org.springframework.jdbc.core.RowMapper.class), eq("f1"), eq(1)))
                 .thenReturn(List.of("{ not valid json ]["));
@@ -176,7 +151,7 @@ class FlowVersionStoreTest {
 
     @Test
     void getReturnsTheFlowWhenTheStoredJsonIsValid() throws Exception {
-        FlowVersionStore store = new FlowVersionStore(jdbc, mapper, true);
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
         store.init();
         String json = mapper.writeValueAsString(flow("f1"));
         when(jdbc.query(anyString(), any(org.springframework.jdbc.core.RowMapper.class), eq("f1"), eq(2)))
