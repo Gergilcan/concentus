@@ -21,6 +21,14 @@ export interface Settings {
    * cloud API, has no use for a Claude Code login and should not be told about it at every launch.
    */
   skipClaudeCheck?: boolean
+  /**
+   * Set once the first-run wizard has been seen through to the end.
+   *
+   * <p>Separate from {@link skipClaudeCheck}: that one is the user declining a recurring check,
+   * this one is "the database question has been asked". Without it the wizard would either never
+   * ask about storage, or ask on every launch.
+   */
+  wizardCompleted?: boolean
 }
 
 export function loadSettings(): Settings {

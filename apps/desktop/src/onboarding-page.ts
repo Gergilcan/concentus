@@ -1,38 +1,40 @@
 /**
- * The first-run page, shown when flows could not actually run yet.
+ * The first-run wizard: where data is kept, then signing in to Claude.
  *
- * Without it the failure is silent and badly timed: the designer opens, everything looks fine, and
- * the problem only surfaces when the user presses Run on a flow they have just spent ten minutes
- * building — as an error about a CLI they were never told they needed. This says so up front, at
- * the moment it can still be fixed in one command.
+ * <p>Both steps exist for the same reason — they are the two things that must be settled before
+ * the app can do anything, and both used to fail late and confusingly. A missing Claude sign-in
+ * surfaced as an error on a flow the user had just spent ten minutes building. A database that
+ * could not be reached surfaced as an app that opened onto nothing at the *next* launch, by which
+ * point the connection details were somewhere else entirely.
  *
- * It is a prompt, not a gate. The canvas is fully usable without Claude — you can design flows,
- * wire up MCP and repository nodes and save them — so "Continue without it" is a first-class
- * choice rather than a way to dismiss a warning.
+ * <p>The database step therefore refuses to advance on an untested external connection. That is
+ * the whole point of doing it here: the check happens while the person who typed the host name is
+ * still looking at it.
+ *
+ * <p>The Claude step remains a prompt rather than a gate — the canvas is fully usable without it.
  */
 
-/**
- * Everything the page needs, and deliberately nothing more — in particular not the resolved PATH,
- * which is on the ClaudeCli record but has no business being rendered into a page.
- */
+/** State of the Claude half. */
 export interface OnboardingState {
-  /** Absolute path to the CLI, or null if it could not be found. */
   command: string | null
-  /** Whether a Claude Code login exists on this machine. */
   loggedIn: boolean
-  /** An API key makes the local login unnecessary, so its absence stops being a problem. */
   cloudConfigured: boolean
 }
 
-export function onboardingPage(state: OnboardingState): string {
-  // Serialised into the page so the first render needs no round trip, and re-render after a
-  // re-check uses the identical code path rather than a second, subtly different one.
-  //
-  // NOT html-escaped: entities are literal text inside a <script>, so escaping would corrupt the
-  // JSON rather than protect it. What actually needs escaping is `<`, which is the only way this
-  // string could close the script element early — and the CLI path is the kind of value a user
-  // controls, via the "Locate claude…" picker.
-  const initial = JSON.stringify(state).replace(/</g, '\\u003c')
+/** State of the database half, as the backend reports it. */
+export interface StorageState {
+  mode: 'embedded' | 'external'
+  url: string
+  username: string
+  hasPassword: boolean
+  activeMode: 'embedded' | 'external'
+}
+
+export function onboardingPage(claude: OnboardingState, storage: StorageState): string {
+  // Entities are literal text inside <script>, so HTML-escaping would corrupt this rather than
+  // protect it. `<` is what could close the element early, and these values include a JDBC URL and
+  // a filesystem path the user controls.
+  const initial = JSON.stringify({ claude, storage }).replace(/</g, '\\u003c')
 
   return `<!doctype html>
 <html lang="en">
@@ -44,7 +46,7 @@ export function onboardingPage(state: OnboardingState): string {
   :root {
     color-scheme: dark;
     --bg: #0b0e14; --panel: #121722; --line: #222a3a; --text: #e6ecf7;
-    --muted: #8a97ad; --accent: #6ea8fe; --ok: #4ade80; --warn: #fbbf24;
+    --muted: #8a97ad; --accent: #6ea8fe; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
   }
   * { box-sizing: border-box; }
   body {
@@ -52,7 +54,10 @@ export function onboardingPage(state: OnboardingState): string {
     font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     background: var(--bg); color: var(--text);
   }
-  .mark { width: 36px; height: 36px; display: block; margin-bottom: 1rem; }
+  .mark { width: 36px; height: 36px; display: block; margin-bottom: .75rem; }
+  .steps { display: flex; gap: .5rem; align-items: center; color: var(--muted); font-size: 12.5px; margin-bottom: 1rem; }
+  .steps b { color: var(--text); }
+  .steps .sep { opacity: .5; }
   h1 { font-size: 1.4rem; margin: 0 0 .5rem; font-weight: 800; letter-spacing: -.01em; }
   .lede { color: var(--muted); margin: 0 0 1.25rem; max-width: 62ch; }
   .status { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: .25rem 1rem; margin-bottom: 1.25rem; }
@@ -61,27 +66,36 @@ export function onboardingPage(state: OnboardingState): string {
   .icon { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 1px; }
   .row .label { font-weight: 600; }
   .row .detail { color: var(--muted); font-size: 13px; word-break: break-all; }
-  code {
-    background: #0f1420; border: 1px solid var(--line); border-radius: 5px;
-    padding: .1rem .4rem; font-size: 12.5px; font-family: ui-monospace, Menlo, Consolas, monospace;
+  label.opt { display: flex; gap: .6rem; align-items: flex-start; padding: .7rem 1rem; border: 1px solid var(--line);
+              border-radius: 10px; background: var(--panel); margin-bottom: .6rem; cursor: pointer; }
+  label.opt.sel { border-color: var(--accent); }
+  label.opt .t { font-weight: 600; }
+  label.opt .d { color: var(--muted); font-size: 13px; }
+  .fields { margin: .25rem 0 1rem; }
+  .fields label { display: block; margin-bottom: .6rem; }
+  .fields span { display: block; color: var(--muted); font-size: 12.5px; margin-bottom: .25rem; }
+  .fields input {
+    width: 100%; font: inherit; padding: .5rem .65rem; border-radius: 7px;
+    border: 1px solid var(--line); background: #0f1420; color: var(--text);
   }
-  pre {
-    background: #0f1420; border: 1px solid var(--line); border-radius: 8px;
-    padding: .8rem 1rem; margin: 0 0 1.25rem; overflow-x: auto;
-    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
-  }
+  code { background: #0f1420; border: 1px solid var(--line); border-radius: 5px; padding: .1rem .4rem;
+         font-size: 12.5px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  pre { background: #0f1420; border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem;
+        margin: 0 0 1.25rem; overflow-x: auto; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
   pre .c { color: var(--muted); }
   .actions { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
-  button {
-    font: inherit; font-weight: 600; padding: .55rem 1.1rem; border-radius: 8px;
-    cursor: pointer; border: 1px solid var(--line); background: #1a2130; color: var(--text);
-  }
-  button:hover { border-color: var(--accent); }
+  button { font: inherit; font-weight: 600; padding: .55rem 1.1rem; border-radius: 8px;
+           cursor: pointer; border: 1px solid var(--line); background: #1a2130; color: var(--text); }
+  button:hover:not(:disabled) { border-color: var(--accent); }
   button.primary { background: var(--accent); border-color: var(--accent); color: #071018; }
-  button.primary:hover { background: #8bbaff; }
+  button.primary:hover:not(:disabled) { background: #8bbaff; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
   .spacer { flex: 1 1 auto; }
   .ask { display: flex; align-items: center; gap: .45rem; color: var(--muted); font-size: 13px; margin-top: 1.1rem; }
   .foot { color: var(--muted); font-size: 12.5px; margin-top: .9rem; margin-bottom: 0; }
+  .msg { font-size: 13px; margin: .5rem 0 0; }
+  .msg.ok { color: var(--ok); }
+  .msg.bad { color: var(--bad); }
   .hidden { display: none; }
 </style>
 </head>
@@ -92,45 +106,105 @@ export function onboardingPage(state: OnboardingState): string {
           fill="none" stroke="#6ea8fe" stroke-width="2.6" stroke-linejoin="round"/>
   </svg>
 
-  <h1 id="title">One step before you can run flows</h1>
-  <p class="lede" id="lede"></p>
+  <div class="steps">
+    <span id="lbl1">1. Database</span><span class="sep">›</span><span id="lbl2">2. Claude</span>
+  </div>
 
-  <div class="status" id="status"></div>
+  <!-- ---------------------------------------------------------------- step 1 -->
+  <section id="step1">
+    <h1>Where should Concentus keep its data?</h1>
+    <p class="lede">Runs, credentials and flow history. Your flows, agents and MCP definitions live
+      here too, so this is the thing worth backing up.</p>
 
-  <div id="how">
-    <p class="lede">Open a terminal and run this. It opens a browser once, and Concentus picks it up from there — you never paste a key.</p>
-    <pre><span class="c"># installs at claude.ai/download if you don't have it yet</span>
+    <label class="opt" id="optEmbedded">
+      <input type="radio" name="mode" value="embedded">
+      <span>
+        <span class="t">Use the built-in database</span>
+        <span class="d">Ships with the app and starts with it. Nothing to install, nothing to
+          administer. Right for one person on one machine.</span>
+      </span>
+    </label>
+
+    <label class="opt" id="optExternal">
+      <input type="radio" name="mode" value="external">
+      <span>
+        <span class="t">Connect to my own PostgreSQL</span>
+        <span class="d">For a team: shared between installs, backed up and audited like any other
+          database. Concentus creates its own tables, so an empty database is all it needs.</span>
+      </span>
+    </label>
+
+    <div class="fields hidden" id="extFields">
+      <label><span>JDBC URL</span>
+        <input id="url" placeholder="jdbc:postgresql://db.internal:5432/concentus"></label>
+      <label><span>Username</span><input id="username"></label>
+      <label><span>Password</span><input id="password" type="password"></label>
+      <div class="actions">
+        <button id="test">Test connection</button>
+      </div>
+      <p class="msg" id="testMsg"></p>
+    </div>
+
+    <div class="actions" style="margin-top:1rem">
+      <button class="primary" id="next" disabled>Continue</button>
+      <span class="spacer"></span>
+    </div>
+    <p class="foot" id="step1Foot"></p>
+  </section>
+
+  <!-- ---------------------------------------------------------------- step 2 -->
+  <section id="step2" class="hidden">
+    <h1 id="title">One step before you can run flows</h1>
+    <p class="lede" id="lede"></p>
+
+    <div class="status" id="status"></div>
+
+    <div id="how">
+      <p class="lede">Open a terminal and run this. It opens a browser once, and Concentus picks it
+        up from there — you never paste a key.</p>
+      <pre><span class="c"># installs at claude.ai/download if you don't have it yet</span>
 claude
 <span class="c"># then, inside it:</span>
 /login</pre>
-  </div>
+    </div>
 
-  <div class="actions">
-    <button class="primary" id="recheck">Check again</button>
-    <button id="locate">Locate claude…</button>
-    <div class="spacer"></div>
-    <button id="continue">Continue without it</button>
-  </div>
+    <div class="actions">
+      <button class="primary" id="recheck">Check again</button>
+      <button id="locate">Locate claude…</button>
+      <div class="spacer"></div>
+      <button id="back">Back</button>
+      <button id="finish">Continue without it</button>
+    </div>
 
-  <label class="ask"><input type="checkbox" id="dontask"> Don't check on future launches</label>
+    <label class="ask"><input type="checkbox" id="dontask"> Don't check on future launches</label>
 
-  <p class="foot">
-    Prefer Anthropic's cloud API? Set <code>ANTHROPIC_API_KEY</code> in your environment and flows
-    run in a hosted sandbox instead — no local sign-in needed.
-  </p>
+    <p class="foot">
+      Prefer Anthropic's cloud API? Set <code>ANTHROPIC_API_KEY</code> in your environment and flows
+      run in a hosted sandbox instead — no local sign-in needed.
+    </p>
+  </section>
 
 <script>
-  var state = ${initial};
+  var s = ${initial};
+  var claude = s.claude;
+  var storage = s.storage;
+  // An external connection must prove itself before Continue unlocks. Reset by any edit, so
+  // changing the host after a successful test does not carry the old verdict forward.
+  var tested = false;
+  var busy = false;
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function esc(t) {
+    return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
 
   function tick(ok) {
     var colour = ok ? 'var(--ok)' : 'var(--warn)';
-    var d = ok ? 'M20 6 9 17l-5-5' : 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z';
+    var d = ok ? 'M20 6 9 17l-5-5'
+               : 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z';
     return '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="' + colour +
            '" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>';
-  }
-
-  function esc(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   function row(ok, label, detail) {
@@ -138,47 +212,135 @@ claude
            '</div><div class="detail">' + esc(detail) + '</div></div></div>';
   }
 
-  function render() {
-    var hasCli = !!state.command;
-    document.getElementById('status').innerHTML =
-      row(hasCli, 'Claude Code CLI',
-          hasCli ? state.command : 'Not found. Install it, or point Concentus at it below.') +
-      row(state.loggedIn, 'Signed in to Claude',
-          state.loggedIn ? 'A Claude Code login was found on this machine.'
-                         : 'No login yet — run the command below.');
-
-    var ready = hasCli && state.loggedIn;
-    document.getElementById('title').textContent =
-      ready ? "You're ready to go" : 'One step before you can run flows';
-    document.getElementById('lede').textContent = ready
-      ? 'Concentus found your Claude Code sign-in. Flows will run on your subscription — no API key, no per-token bill.'
-      : 'Concentus runs your flows through the Claude Code CLI, on the Claude subscription you already pay for. It needs to be installed and signed in once.';
-    document.getElementById('how').className = ready ? 'hidden' : '';
-    document.getElementById('continue').textContent = ready ? 'Open Concentus' : 'Continue without it';
-    if (ready) document.getElementById('continue').className = 'primary';
+  // ---------------------------------------------------------------- step 1
+  function mode() {
+    var checked = document.querySelector('input[name=mode]:checked');
+    return checked ? checked.value : 'embedded';
   }
 
-  document.getElementById('recheck').addEventListener('click', function () {
+  function draft() {
+    return {
+      mode: mode(),
+      url: $('url').value.trim(),
+      username: $('username').value.trim(),
+      // Null means "keep what is stored", which matters when returning to this step on a machine
+      // that already has a password saved.
+      password: $('password').value === '' && storage.hasPassword ? null : $('password').value,
+    };
+  }
+
+  function renderStep1() {
+    var external = mode() === 'external';
+    $('extFields').className = external ? 'fields' : 'fields hidden';
+    $('optEmbedded').className = external ? 'opt' : 'opt sel';
+    $('optExternal').className = external ? 'opt sel' : 'opt';
+    // Embedded needs no proof; external does.
+    $('next').disabled = busy || (external && !tested);
+    $('step1Foot').textContent = external && !tested
+      ? 'Test the connection before continuing — an unreachable database would leave the app with nowhere to start next time.'
+      : '';
+  }
+
+  function invalidate() {
+    tested = false;
+    $('testMsg').textContent = '';
+    $('testMsg').className = 'msg';
+    renderStep1();
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('input[name=mode]'), function (r) {
+    r.addEventListener('change', invalidate);
+  });
+  ['url', 'username', 'password'].forEach(function (id) {
+    $(id).addEventListener('input', invalidate);
+  });
+
+  $('test').addEventListener('click', function () {
+    busy = true; this.disabled = true; this.textContent = 'Testing…';
     var btn = this;
-    btn.disabled = true; btn.textContent = 'Checking…';
+    $('testMsg').textContent = ''; $('testMsg').className = 'msg';
+    window.concentus.testStorage(draft()).then(function (r) {
+      tested = !!r.ok;
+      $('testMsg').textContent = (r.ok ? '✓ ' : '✗ ') + r.detail;
+      $('testMsg').className = 'msg ' + (r.ok ? 'ok' : 'bad');
+    }).catch(function (e) {
+      tested = false;
+      $('testMsg').textContent = '✗ ' + (e && e.message ? e.message : String(e));
+      $('testMsg').className = 'msg bad';
+    }).then(function () {
+      busy = false; btn.disabled = false; btn.textContent = 'Test connection';
+      renderStep1();
+    });
+  });
+
+  $('next').addEventListener('click', function () {
+    busy = true; renderStep1();
+    var btn = this; btn.textContent = 'Saving…';
+    window.concentus.saveStorage(draft()).then(function () {
+      showStep(2);
+    }).catch(function (e) {
+      $('testMsg').textContent = '✗ ' + (e && e.message ? e.message : String(e));
+      $('testMsg').className = 'msg bad';
+    }).then(function () {
+      busy = false; btn.textContent = 'Continue'; renderStep1();
+    });
+  });
+
+  // ---------------------------------------------------------------- step 2
+  function renderStep2() {
+    var hasCli = !!claude.command;
+    $('status').innerHTML =
+      row(hasCli, 'Claude Code CLI',
+          hasCli ? claude.command : 'Not found. Install it, or point Concentus at it below.') +
+      row(claude.loggedIn, 'Signed in to Claude',
+          claude.loggedIn ? 'A Claude Code login was found on this machine.'
+                          : 'No login yet — run the command below.');
+
+    var ready = hasCli && claude.loggedIn;
+    $('title').textContent = ready ? "You're ready to go" : 'One step before you can run flows';
+    $('lede').textContent = ready
+      ? 'Concentus found your Claude Code sign-in. Flows will run on your subscription — no API key, no per-token bill.'
+      : 'Concentus runs your flows through the Claude Code CLI, on the Claude subscription you already pay for. It needs to be installed and signed in once.';
+    $('how').className = ready ? 'hidden' : '';
+    $('finish').textContent = ready ? 'Open Concentus' : 'Continue without it';
+    $('finish').className = ready ? 'primary' : '';
+  }
+
+  $('recheck').addEventListener('click', function () {
+    var btn = this; btn.disabled = true; btn.textContent = 'Checking…';
     window.concentus.recheckClaude().then(function (next) {
-      state = next;
-      render();
+      claude = next; renderStep2();
       btn.disabled = false; btn.textContent = 'Check again';
     });
   });
 
-  document.getElementById('locate').addEventListener('click', function () {
+  $('locate').addEventListener('click', function () {
     window.concentus.locateClaude().then(function (next) {
-      if (next) { state = next; render(); }
+      if (next) { claude = next; renderStep2(); }
     });
   });
 
-  document.getElementById('continue').addEventListener('click', function () {
-    window.concentus.finishOnboarding(document.getElementById('dontask').checked);
+  $('back').addEventListener('click', function () { showStep(1); });
+
+  $('finish').addEventListener('click', function () {
+    window.concentus.finishOnboarding($('dontask').checked);
   });
 
-  render();
+  // ---------------------------------------------------------------- steps
+  function showStep(n) {
+    $('step1').className = n === 1 ? '' : 'hidden';
+    $('step2').className = n === 2 ? '' : 'hidden';
+    $('lbl1').innerHTML = n === 1 ? '<b>1. Database</b>' : '1. Database';
+    $('lbl2').innerHTML = n === 2 ? '<b>2. Claude</b>' : '2. Claude';
+    if (n === 1) renderStep1(); else renderStep2();
+  }
+
+  // Prefill from what is already configured.
+  document.querySelector('input[name=mode][value=' + (storage.mode === 'external' ? 'external' : 'embedded') + ']').checked = true;
+  $('url').value = storage.url || '';
+  $('username').value = storage.username || '';
+  if (storage.hasPassword) $('password').placeholder = '•••••••• (unchanged)';
+  showStep(1);
 </script>
 </body>
 </html>`

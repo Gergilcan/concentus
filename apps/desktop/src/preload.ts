@@ -18,4 +18,10 @@ contextBridge.exposeInMainWorld('concentus', {
   recheckClaude: () => ipcRenderer.invoke('onboarding:recheck'),
   locateClaude: () => ipcRenderer.invoke('onboarding:locate'),
   finishOnboarding: (dontAskAgain: boolean) => ipcRenderer.send('onboarding:finish', dontAskAgain),
+
+  // The database step. testStorage is what gates moving on: an external database that cannot be
+  // reached must not be accepted, because the next launch would open against nothing.
+  getStorage: () => ipcRenderer.invoke('onboarding:storage-get'),
+  testStorage: (draft: unknown) => ipcRenderer.invoke('onboarding:storage-test', draft),
+  saveStorage: (draft: unknown) => ipcRenderer.invoke('onboarding:storage-save', draft),
 })

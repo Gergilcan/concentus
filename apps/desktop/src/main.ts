@@ -1,9 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import * as path from 'node:path'
 import { RunningBackend, backendLogTail, startBackend, stopBackend } from './backend'
+import { StorageDraft, backendApi } from './backend-api'
 import { resolveClaudeCli } from './claude-cli'
 import { failurePage } from './failure-page'
-import { OnboardingState, onboardingPage } from './onboarding-page'
+import { OnboardingState, StorageState, onboardingPage } from './onboarding-page'
 import { backendLogFile, shellLogFile } from './paths'
 import { loadSettings, saveSettings } from './settings'
 import { log } from './log'
@@ -117,13 +118,17 @@ async function claudeState(): Promise<OnboardingState> {
 }
 
 /**
- * Whether to show the first-run page.
+ * Whether to show the first-run wizard.
  *
- * Only when flows genuinely could not run: no usable local sign-in *and* no API key to fall back
- * on. Anything else would be nagging someone whose setup is already fine.
+ * <p>Always on a genuine first run, because the database question has to be asked once and there
+ * is no other moment to ask it — a choice that only surfaces after something breaks is not a
+ * choice. Afterwards it returns only when flows could not actually run: no usable local sign-in
+ * and no API key to fall back on. Anything else would be nagging someone whose setup is fine.
  */
 async function shouldOnboard(): Promise<boolean> {
-  if (loadSettings().skipClaudeCheck) return false
+  const settings = loadSettings()
+  if (!settings.wizardCompleted) return true
+  if (settings.skipClaudeCheck) return false
   const state = await claudeState()
   if (state.cloudConfigured) return false
   return !state.command || !state.loggedIn
@@ -218,10 +223,22 @@ function showOnboardingWindow(): void {
     if (!mainWindow && !quitting && backend) showMainWindow(backend.port)
   })
 
-  void claudeState().then((state) => {
-    const html = onboardingPage(state)
+  void (async () => {
+    const claude = await claudeState()
+    // The storage half comes from the backend, which is already running by the time this window
+    // opens. If it cannot be asked, the page still opens on the embedded default rather than not
+    // at all — the wizard is how someone recovers from a bad setting, so it must survive one.
+    let storage: StorageState = {
+      mode: 'embedded', url: '', username: '', hasPassword: false, activeMode: 'embedded',
+    }
+    try {
+      if (backend) storage = await backendApi.getStorage(backend.port)
+    } catch (err) {
+      log.warn(`Could not read the storage settings: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    const html = onboardingPage(claude, storage)
     void onboardingWindow?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-  })
+  })()
 }
 
 function showFailureWindow(message: string): void {
@@ -286,11 +303,35 @@ function registerIpc(): void {
     return state
   })
 
+  ipcMain.handle('onboarding:storage-get', async () => {
+    if (!backend) throw new Error('The backend is not running.')
+    return backendApi.getStorage(backend.port)
+  })
+
+  ipcMain.handle('onboarding:storage-test', async (_event, draft: StorageDraft) => {
+    if (!backend) throw new Error('The backend is not running.')
+    return backendApi.testStorage(backend.port, draft)
+  })
+
+  ipcMain.handle('onboarding:storage-save', async (_event, draft: StorageDraft) => {
+    if (!backend) throw new Error('The backend is not running.')
+    const saved = await backendApi.saveStorage(backend.port, draft)
+    // Applied immediately rather than at the next launch, which is the difference between a wizard
+    // and a form: the rest of this first run — and the app the user is about to open — should be on
+    // the database they just chose, not on the one that happened to start first.
+    if (saved.restartRequired) await restartBackend()
+    return saved
+  })
+
   ipcMain.on('onboarding:finish', (_event, dontAskAgain: boolean) => {
-    if (dontAskAgain) {
-      saveSettings({ ...loadSettings(), skipClaudeCheck: true })
-      log.info('First-run check disabled at the user\'s request.')
-    }
+    // Recorded on the way out, not on the way in: a wizard closed halfway through has not asked
+    // the database question, and should ask it again next time.
+    saveSettings({
+      ...loadSettings(),
+      wizardCompleted: true,
+      ...(dontAskAgain ? { skipClaudeCheck: true } : {}),
+    })
+    if (dontAskAgain) log.info('Further Claude checks disabled at the user\'s request.')
     // The 'closed' handler opens the main window, so both routes out of this page agree.
     onboardingWindow?.close()
   })
@@ -309,16 +350,28 @@ async function adoptClaudeCommand(command: string | null): Promise<void> {
   if (!backend) return
 
   log.info(`claude CLI changed (${backendClaudeCommand ?? 'none'} -> ${command ?? 'none'}); restarting the backend.`)
+  await restartBackend()
+  backendClaudeCommand = command
+}
+
+/**
+ * Stops and starts the backend, keeping the window pointed at it.
+ *
+ * <p>Needed by two settings that are read once at startup and so cannot change under a running
+ * process: the path to the claude CLI, and which database to use.
+ */
+async function restartBackend(): Promise<void> {
+  if (!backend) return
   await stopBackend(backend)
   backend = null
   try {
     backend = await startBackend()
-    backendClaudeCommand = command
     // The port is stable by design, but re-point the window rather than assume it.
     if (mainWindow) void mainWindow.loadURL(`http://127.0.0.1:${backend.port}`)
   } catch (err) {
-    log.error('Backend failed to restart after the claude CLI changed', err)
+    log.error('The backend failed to restart', err)
     showFailureWindow(err instanceof Error ? err.message : String(err))
+    throw err
   }
 }
 
