@@ -38,6 +38,13 @@ nsis:
 
 linux:
   category: Development
+  # Without this the .deb is named after the npm package — "desktop_1.0.0_amd64.deb" — which says
+  # nothing about what it installs. Linux only: the NSIS name ("Concentus Setup 1.0.0.exe") is
+  # already the convention on Windows.
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  # Pairs with desktopName in package.json so the window manager associates running windows with
+  # the installed .desktop entry, rather than showing the app as an unknown one in the taskbar.
+  syncDesktopName: true
   target:
     - target: AppImage
       arch: [x64]

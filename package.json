@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "packageManager": "pnpm@9.15.0",
+  "email": "gila791@hotmail.com",
+  "url": "http://www.concentus-ai.com/",
   "scripts": {
     "dev": "concurrently -n backend,frontend -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\"",
     "dev:backend": "cd apps/backend && mvn -q spring-boot:run",

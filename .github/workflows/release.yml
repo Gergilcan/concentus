@@ -112,9 +112,15 @@ jobs:
       # OS-activated Maven profile, so this jar is only valid for the runner that built it. That
       # is why the whole build runs per platform rather than building one jar and packaging it
       # twice.
+      # Tests are CI's job, not this one's. Running them here again buys nothing — the commit being
+      # tagged has already been through them — and it makes cutting a release depend on the test
+      # suite working in an environment it was never meant to run in. That is not hypothetical: the
+      # store tests need a real PostgreSQL, and PostgreSQL refuses to start under the
+      # administrative account GitHub's Windows runner uses, so the release failed on a platform
+      # difference that had nothing to do with packaging.
       - name: Build backend jar
         working-directory: apps/backend
-        run: mvn -B -q clean package
+        run: mvn -B -q clean package -DskipTests
 
       - name: Build installer
         working-directory: apps/desktop

@@ -1,10 +1,12 @@
 package com.concentus.store;
 
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
+import org.junit.jupiter.api.Assumptions;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.Locale;
 
 /**
  * One real PostgreSQL, shared by every test that needs storage.
@@ -31,8 +33,21 @@ final class TestDatabase {
         if (jdbc == null) {
             try {
                 postgres = EmbeddedPostgres.builder().setPort(0).start();
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
+            } catch (IOException | RuntimeException e) {
+                // PostgreSQL refuses to run under an account with administrative rights on Windows.
+                // That is every GitHub Windows runner, and any developer working from an elevated
+                // shell — neither of which is a broken build, so these tests step aside there with
+                // a reason rather than failing.
+                //
+                // Only on Windows: on Linux, which is where CI runs the suite, a database that will
+                // not start IS a broken build and must fail.
+                if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
+                    Assumptions.abort(
+                            "Skipped: the embedded PostgreSQL could not start (" + e.getMessage() + "). "
+                            + "On Windows it refuses to run from an elevated shell — run these tests "
+                            + "from a normal, non-administrator terminal.");
+                }
+                throw e instanceof IOException io ? new UncheckedIOException(io) : (RuntimeException) e;
             }
             jdbc = new JdbcTemplate(postgres.getPostgresDatabase());
             // The real migrations, so the tests run against the schema the app actually ships
