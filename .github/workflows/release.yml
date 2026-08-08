@@ -156,3 +156,7 @@ jobs:
           draft: false
           generate_release_notes: true
           fail_on_unmatched_files: true
+          # A tag with a suffix (v1.0.0-rc1, v0.1.0-beta) is published as a pre-release, so trying
+          # the pipeline out does not put a build people will take as final at the top of the
+          # releases page. A plain v1.0.0 is a normal release.
+          prerelease: ${{ contains(github.ref_name, '-') }}
