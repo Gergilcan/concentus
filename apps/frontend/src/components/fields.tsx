@@ -8,7 +8,8 @@ interface FieldProps {
   label: ReactNode
   value: string | number
   onChange?: (value: string) => void
-  type?: 'text' | 'number'
+  /** `password` masks the value — for a secret being typed, never for one read back from the API. */
+  type?: 'text' | 'number' | 'password'
   placeholder?: string
   readOnly?: boolean
   className?: string

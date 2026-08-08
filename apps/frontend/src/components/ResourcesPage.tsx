@@ -6,9 +6,10 @@ import { CredentialsPanel } from './CredentialsPanel.tsx'
 import { CrudPanel } from './CrudPanel.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import { ModelField } from './ModelField.tsx'
+import { StoragePanel } from './StoragePanel.tsx'
 import styles from './resources.module.scss'
 
-type Tab = 'agents' | 'mcp' | 'databases' | 'credentials'
+type Tab = 'agents' | 'mcp' | 'databases' | 'credentials' | 'storage'
 
 export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
   const [tab, setTab] = useState<Tab>('agents')
@@ -33,6 +34,12 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           onClick={() => setTab('credentials')}
         >
           Credentials
+        </button>
+        <button
+          className={tab === 'storage' ? styles.active : ''}
+          onClick={() => setTab('storage')}
+        >
+          Storage
         </button>
       </div>
 
@@ -117,6 +124,8 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           />
         )}
         {tab === 'credentials' && <CredentialsPanel pushError={pushError} />}
+
+        {tab === 'storage' && <StoragePanel pushError={pushError} />}
       </div>
     </div>
   )

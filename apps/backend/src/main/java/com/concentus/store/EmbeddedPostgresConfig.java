@@ -1,12 +1,17 @@
 package com.concentus.store;
 
+import com.concentus.model.StorageSettings;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.event.ContextClosedEvent;
 
 import javax.sql.DataSource;
 import java.io.IOException;
@@ -51,12 +56,6 @@ public class EmbeddedPostgresConfig {
     private static final Logger log = LoggerFactory.getLogger(EmbeddedPostgresConfig.class);
 
     /**
-     * Started here rather than lazily, because every store's {@code @PostConstruct} expects a
-     * usable connection. destroyMethod stops the server on shutdown — which the desktop shell
-     * reaches through {@code POST /actuator/shutdown} when its window closes, so the database is
-     * closed properly instead of being killed mid-write.
-     */
-    /**
      * The major version of the bundled binaries, so a data directory written by a different one is
      * caught here rather than by PostgreSQL failing to start. Kept in step with
      * {@code embedded-postgres-binaries.version} in the pom.
@@ -67,8 +66,69 @@ public class EmbeddedPostgresConfig {
         this.majorVersion = majorVersion;
     }
 
-    @Bean(destroyMethod = "close")
-    public EmbeddedPostgres embeddedPostgres(@Value("${app.data-dir}") String dataDir) throws IOException {
+    /**
+     * The application's DataSource: the embedded server, or an external PostgreSQL when one has
+     * been configured.
+     *
+     * <p>Both are produced here rather than by two competing configurations, because the choice is
+     * made from a file and not from a property — Spring's conditionals cannot see it, and a bean
+     * that started the embedded server "just in case" would leave a PostgreSQL running for a
+     * deployment that pointed elsewhere.
+     *
+     * <p>Defined at all only because Spring Boot's auto-configuration backs off when a DataSource
+     * bean exists; that is what makes the datasource properties in application.properties
+     * irrelevant here.
+     */
+    /**
+     * The storage this process actually started on.
+     *
+     * <p>Separate from reading the file, which answers a different question: the file is what the
+     * <em>next</em> start will use. Comparing the two is how the UI knows to ask for a restart.
+     */
+    @Bean
+    public StorageSettings activeStorage(StorageSettingsStore storageSettings) {
+        return storageSettings.load();
+    }
+
+    @Bean
+    public DataSource dataSource(StorageSettingsStore storageSettings,
+                                 @Value("${app.data-dir}") String dataDir,
+                                 ConfigurableApplicationContext context) throws IOException {
+        StorageSettings settings = storageSettings.load();
+        if (!settings.isExternal()) {
+            EmbeddedPostgres postgres = startEmbedded(dataDir);
+            // Registered so its close() runs on shutdown. Not a @Bean method, because it must not
+            // exist at all in external mode.
+            context.getBeanFactory().registerSingleton("embeddedPostgres", postgres);
+            context.addApplicationListener(event -> {
+                if (event instanceof ContextClosedEvent) closeQuietly(postgres);
+            });
+            return postgres.getPostgresDatabase();
+        }
+
+        log.info("Using an external PostgreSQL: {} (the embedded server is not started).",
+                settings.url());
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(settings.url());
+        config.setUsername(settings.username());
+        config.setPassword(storageSettings.plaintextPassword(settings));
+        // The stores survive an unreachable database by design — each reports itself unavailable —
+        // so a database that is briefly down must not prevent the app from opening.
+        config.setInitializationFailTimeout(-1);
+        config.setConnectionTimeout(10_000);
+        config.setMaximumPoolSize(5);
+        return new HikariDataSource(config);
+    }
+
+    private static void closeQuietly(EmbeddedPostgres postgres) {
+        try {
+            postgres.close();
+        } catch (IOException e) {
+            log.warn("Could not stop the embedded database cleanly: {}", e.getMessage());
+        }
+    }
+
+    private EmbeddedPostgres startEmbedded(String dataDir) throws IOException {
         Path pgdata = Path.of(dataDir).toAbsolutePath().resolve("pgdata");
         Files.createDirectories(pgdata);
 
@@ -114,17 +174,6 @@ public class EmbeddedPostgresConfig {
         // for them — and locating the unpacked distribution is only possible once it exists.
         unpackedDistribution(binaries).ifPresent(PgVectorInstaller::installInto);
         return postgres;
-    }
-
-    /**
-     * Replaces Spring Boot's auto-configured DataSource.
-     *
-     * <p>The auto-configuration backs off when a DataSource bean already exists, so the JDBC URL,
-     * user and password in application.properties are simply not consulted in this profile.
-     */
-    @Bean
-    public DataSource dataSource(EmbeddedPostgres postgres) {
-        return postgres.getPostgresDatabase();
     }
 
     /**
