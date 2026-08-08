@@ -70,7 +70,22 @@ runs:
       if: runner.os == 'Windows'
       shell: cmd
       run: |
-        call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        REM Locate Visual Studio with vswhere rather than naming a path. The edition and the year
+        REM are properties of the runner image, not of this build: hardcoding
+        REM "2022\Enterprise" broke the moment windows-latest moved on, and broke badly — `call`
+        REM to a missing batch file does NOT stop a cmd script, so the build carried on and failed
+        REM later at `nmake`, pointing at the wrong thing entirely.
+        set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+        if not exist "%VSWHERE%" echo Could not find vswhere.exe & exit /b 1
+        for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"
+        if not defined VSDIR echo No Visual Studio with the C++ toolchain is installed & exit /b 1
+        echo Using Visual Studio at %VSDIR%
+        call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
+        REM Prove the toolchain is actually on PATH before trusting it, so a failure names its own
+        REM cause instead of surfacing three commands later.
+        where nmake >nul 2>&1 || (echo nmake is not on PATH after vcvars64 & exit /b 1)
+        where cl >nul 2>&1 || (echo cl is not on PATH after vcvars64 & exit /b 1)
+
         git clone --branch v${{ inputs.pgvector-version }} --depth 1 https://github.com/pgvector/pgvector.git "%RUNNER_TEMP%\pgvector" || exit /b 1
         cd /d "%RUNNER_TEMP%\pgvector"
         REM PGROOT was exported by the previous step and is what Makefile.win reads.
