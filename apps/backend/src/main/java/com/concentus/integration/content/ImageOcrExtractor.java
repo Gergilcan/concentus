@@ -26,8 +26,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * without Tesseract installed starts normally and simply produces no OCR text, rather than failing
  * at boot or throwing on the first scanned invoice.
  *
- * <p>See {@code apps/backend/Dockerfile} for the packages that make it available, and
- * {@code integration.attachments.ocr-enabled} to switch it off.
+ * <p>Tesseract is a native library and is not bundled with the app, so OCR is available only on a
+ * machine where it has been installed separately. {@code integration.attachments.ocr-enabled}
+ * switches it off.
  */
 @Component
 public class ImageOcrExtractor implements AttachmentTextExtractor {

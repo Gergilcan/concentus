@@ -11,6 +11,9 @@ directories:
 files:
   - dist/**/*
   - package.json
+  # The window icon is read at runtime (see appIcon() in main.ts), so it has to be inside the app
+  # rather than only consumed by the packager.
+  - build/icon.png
 
 extraResources:
   # Read by paths.ts as resources/backend/concentus-backend.jar

@@ -48,3 +48,26 @@ jobs:
 
       - name: Build
         run: pnpm --filter frontend build
+
+  desktop:
+    name: Desktop shell (TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Typecheck only. Building an actual installer needs a JDK, a jlink runtime and platform
+      # PostgreSQL binaries, which is what the release workflow does — too slow to run on every
+      # push, and it would catch nothing this does not.
+      - name: Typecheck
+        run: pnpm --filter desktop typecheck

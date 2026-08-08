@@ -1,26 +1,54 @@
 # Concentus
 
-A monorepo for designing, running, and steering Claude agents — visually.
+A **desktop application** for designing, running, and steering Claude agents — visually.
 
-- **Backend** (`apps/backend`) — Spring Boot API (Java 25) that compiles no-code **flows** into
-  Managed-Agents multi-agent sessions, launches them, streams their output over WebSocket, and
-  routes commands to running sessions. Wraps the official `com.anthropic:anthropic-java` SDK.
-  Also ships the original single-agent **YAML CLI**.
-- **Frontend** (`apps/frontend`) — Vite + React 19 + TypeScript + SASS. A React Flow canvas to
-  build multi-agent flows (coordinator + sub-agents + MCP/repo capability nodes), a runs panel,
-  and a live streaming console with a command box.
+**[Download for Windows or Linux →](https://github.com/Gergilcan/concentus/releases/latest)**
+
+Install it and open it. There is no server to deploy, no database to provision, no API key to
+paste, and nothing to configure — the app carries its own Java runtime and its own PostgreSQL, and
+runs your flows on the Claude Code login already on your machine.
+
+### Why a desktop app and not a web service
+
+Because the interesting half of this product only works on your own machine. Concentus runs flows
+by driving the `claude` CLI against **your Claude subscription** — no API key, no per-token bill.
+A hosted deployment cannot do that: the CLI would run in the server's container, which has no
+Claude Code login, no access to your repositories, and no sight of the folders you want agents to
+read. The same goes for pointing an agent at a local model on `localhost`, or at a directory on
+your disk. Shipping it as an app you install is what makes those features real rather than
+theoretical.
+
+The trade-off is honest: flows run while the app is running. A scheduled or mail-triggered flow
+fires when your machine is on and Concentus is open, not at 3am on a server.
+
+### What is inside
+
+- **`apps/desktop`** — the Electron shell. It owns the backend as a child process: picks a port,
+  finds your `claude` CLI, keeps the credential key in your OS keyring, starts the runtime, waits
+  for it to be ready, and only then shows a window.
+- **`apps/backend`** — Spring Boot (Java 25). Compiles no-code **flows** into multi-agent sessions,
+  launches them, streams output over WebSocket, and routes commands to running sessions. Serves the
+  UI from inside its own jar. Also ships the original single-agent **YAML CLI**.
+- **`apps/frontend`** — Vite + React 19 + TypeScript + SASS. The React Flow canvas, runs panel and
+  streaming console. Built into the backend jar rather than deployed anywhere.
+- **`apps/website`** — the marketing site, deployed separately.
 
 ```
 concentus/
 ├── package.json            # pnpm workspace root
 ├── pnpm-workspace.yaml
 ├── apps/
+│   ├── desktop/            # Electron shell (TypeScript)
+│   │   ├── src/            # main process: backend supervisor, CLI + key resolution, windows
+│   │   ├── build/          # icon source + rendered icon.png / icon.ico
+│   │   ├── scripts/        # jlink runtime + payload staging
+│   │   └── electron-builder.yml
 │   ├── backend/            # Spring Boot API + YAML CLI (Maven, Java 25)
 │   │   └── src/main/java/com/concentus/
 │   │       ├── ConcentusApplication.java   # Spring Boot entry
-│   │       ├── web/         # REST controllers + WebSocket handler + CORS
+│   │       ├── web/         # REST controllers + WebSocket handler
 │   │       ├── service/     # FlowCompiler, RunService, ManagedFlowLauncher
-│   │       ├── store/       # file-backed flow store
+│   │       ├── store/       # flow store + embedded PostgreSQL
 │   │       ├── model/       # Flow/Run DTOs
 │   │       ├── config/      # AgentSpec (YAML schema) + ConfigLoader
 │   │       ├── runner/      # CLI runners (managed / self-hosted)
@@ -102,188 +130,114 @@ concentus/
   (generic JDBC; PostgreSQL bundled, add other drivers to the backend pom) and the rows are injected
   into that agent's context. Test a query from the node inspector before running.
 
-## Prerequisites
+## Install
 
-- **Java 25 (JDK)** and **Maven** — backend
-- **Node 24+** and **pnpm** — frontend
-- **To run a flow** (the designer and API start without any credentials; the toolbar shows which is active):
-  - **Local, on your Claude subscription (default):** sign in once with **Claude Code** (`claude`),
-    and flows run locally via the `claude` CLI — no API key. Badge: **Local (subscription)**.
-  - **Cloud (Managed Agents):** set `ANTHROPIC_API_KEY` and flows run in Anthropic's hosted sandbox.
-  - `ANTHROPIC_AUTH_MODE` = `auto` (default: key set → cloud, else local) | `local` | `api-key`.
-  - Repo / MCP / DB tokens come from the env vars named in each node.
+Download the installer for your platform from
+**[the latest release](https://github.com/Gergilcan/concentus/releases/latest)**:
 
-## Run it
+| Platform | File | Notes |
+|---|---|---|
+| **Windows** | `Concentus Setup <version>.exe` | Per-user install; no administrator rights needed |
+| **Linux** | `Concentus-<version>.AppImage` | `chmod +x` and run it — nothing to install |
+| **Linux (Debian/Ubuntu)** | `concentus_<version>_amd64.deb` | `sudo apt install ./concentus_<version>_amd64.deb` |
 
-```bash
-# once: sign in with Claude Code so flows run on your subscription
-claude                # then /login
-#   or, to use the cloud API instead:  export ANTHROPIC_API_KEY=sk-ant-...
+There are no prerequisites. Java and PostgreSQL are inside the installer — the app does **not** use
+or interfere with any Java or PostgreSQL you already have.
 
-pnpm install          # once, from the repo root
-pnpm dev              # backend :8080 + frontend :5173, together
-```
+macOS is not built. The code runs there, but shipping a Mac build requires an Apple Developer
+account for notarization, without which Gatekeeper blocks the app outright — so a build would only
+produce something that refuses to open.
 
-`pnpm dev` runs both, interleaving their logs under `backend`/`frontend` prefixes. To run just one:
+### First run
+
+To run flows on your Claude subscription, sign in to Claude Code once, in a terminal:
 
 ```bash
-pnpm dev:backend      # = cd apps/backend && mvn spring-boot:run
-pnpm dev:frontend     # = pnpm --filter frontend dev  (proxies /api + /ws to :8080)
+claude          # then /login
 ```
 
-To point the UI at a **deployed** backend instead of a local one, set `CONCENTUS_BACKEND_URL` — in
-`.env` or on the command line — and run the frontend alone:
+Concentus finds the CLI itself — including the case a desktop launcher usually gets wrong, where
+the app does not inherit your shell's `PATH`. To use the cloud API instead of your subscription,
+set `ANTHROPIC_API_KEY` in the environment the app starts in.
 
-```bash
-CONCENTUS_BACKEND_URL=https://concentus.onrender.com pnpm dev:frontend
-# PowerShell: $env:CONCENTUS_BACKEND_URL="https://concentus.onrender.com"; pnpm dev:frontend
-```
+The first launch takes about ten seconds longer than later ones: it unpacks the database and
+initialises it. After that, start-up is a couple of seconds.
 
-The dev server proxies `/api` and `/ws` there, so the browser still sees a single origin and the
-session + XSRF cookies keep working — no CORS grant and no cross-site cookies. You are signing in
-against that deployment, so the account has to exist there. `pnpm preview` (the built SPA on :4173)
-honours the same variable; docker-compose does not — nginx proxies to the `backend` service.
+### Where your data lives
 
-Open http://localhost:5173, drop an **Agent** node (auto-marked coordinator), add more agents +
-MCP/Repository nodes, wire them up, **Save**, then **Run**. Pick the run in the bottom panel and
-send commands in the console.
+Everything is under one folder, which is also all an uninstall needs to remove:
 
-## Deploy
-
-The backend runs on your Claude **subscription** with no API key. Because containers can't do the
-interactive browser login, mint a long-lived **subscription token once on your host** and hand it to
-the deployment (this is a subscription OAuth token from `claude setup-token`, *not* an API key):
-
-```bash
-claude setup-token            # opens a browser once; prints CLAUDE_CODE_OAUTH_TOKEN
-```
-
-### Docker Compose (backend + frontend + Postgres)
-
-```bash
-./scripts/setup-env.sh        # or: .\scripts\setup-env.ps1  on Windows
-                              # creates .env and generates CONCENTUS_SECRET_KEY
-```
-
-Then fill in two values in `.env` — the script tells you which:
-
-| | |
+| Platform | Folder |
 |---|---|
-| `CLAUDE_CODE_OAUTH_TOKEN` | from `claude setup-token` above. Without it every run fails at "Not signed in". |
-| `CONCENTUS_ADMIN_EMAIL` | the account you sign in with. Leave `CONCENTUS_ADMIN_PASSWORD` blank and one is generated and printed **once** in the backend log. |
+| Windows | `%APPDATA%\Concentus` |
+| Linux | `~/.config/Concentus` |
+
+It holds your flows, the agent library, MCP definitions, the `pgdata` database directory, and
+`logs/` — `desktop.log` from the shell and `backend.log` from the backend. Those two logs are the
+first place to look if something fails to start; the failure window shows the tail of them and has
+a button to open the folder.
+
+The key that encrypts stored credentials is **not** kept there. It is generated on first launch
+into your OS keyring (DPAPI on Windows, libsecret on Linux), so a copied app-data folder does not
+carry your mailbox passwords and API tokens with it.
+
+## Develop
 
 ```bash
-docker compose up --build
-# frontend → http://localhost:3000   ·   backend → http://localhost:8080
+pnpm install          # once, from the repo root
+pnpm desktop          # build frontend + jar, then launch the app
 ```
 
-Three services: `db` (Postgres, on a named volume), `backend` (the jar plus the `claude` CLI), and
-`frontend` (nginx serving the SPA and proxying `/api` + `/ws`). The frontend waits for the backend's
-health check rather than merely for the container to exist — nginx resolves `backend` at startup and
-exits if the name isn't there yet. The marketing site (`apps/website`) is not part of compose.
+`pnpm desktop` is the full path — it builds the frontend, packages it into the backend jar, and
+starts Electron against `apps/backend/target/concentus-backend.jar`. Rebuild after changing backend
+or frontend code.
 
-### Hosting the frontend apart from the backend (Render, Fly, a VM…)
-
-The SPA always calls its **own origin** — `/api` and `/ws`, never an absolute URL — and whatever
-serves it proxies those two prefixes onward. That is a deliberate constraint, not an oversight: the
-session and XSRF cookies are ordinary host cookies, so a browser calling a second origin directly
-would need `SameSite=None` on both, which Safari and any browser with third-party cookies disabled
-throw away. One origin, and none of that applies.
-
-So the frontend needs a server that can proxy, and `CONCENTUS_BACKEND_URL` tells it where:
+For a faster loop on the UI alone, run the two halves separately with hot reload:
 
 ```bash
-docker build -f apps/frontend/Dockerfile -t concentus-frontend .
-docker run -p 3000:80 -e CONCENTUS_BACKEND_URL=https://concentus.onrender.com concentus-frontend
+pnpm dev              # backend :8734 + Vite dev server :5173, together
 ```
 
-On **Render** that means the frontend is a **Web Service** (Runtime: Docker, Dockerfile Path
-`apps/frontend/Dockerfile`, Docker Build Context Directory `.`) with `CONCENTUS_BACKEND_URL` set to
-the backend service's URL — *not* a Static Site. A Static Site serves files only, so `/api/...`
-returns 404 there; its rewrite rules can forward `/api/*` to the backend, but
-[not WebSocket upgrades](https://feedback.render.com/features/p/support-websockets-in-static-site-rewrites),
-which is the run console's live output. Set `MCP_OAUTH_REDIRECT_BASE` on the backend to the
-frontend's public URL while you are there, or MCP sign-in comes back to the wrong host.
+The dev server proxies `/api` and `/ws` to the backend, so the browser still sees one origin and
+the session and XSRF cookies behave exactly as they do in the packaged app.
 
-On **Railway**, both services build from a Dockerfile with Root Directory left empty —
-[deploy/railway/](deploy/railway/) has a config file for each and the full variable list. Note that
-the backend is Maven, not part of the pnpm workspace, so no `pnpm --filter backend` command can
-build it; and a plain JDK builder is not enough either, because a run shells out to the `claude`
-CLI that `apps/backend/Dockerfile` installs.
+Requirements for development (not for using the app): **JDK 25** and Maven, **Node 24+** and pnpm.
+A backend started by hand does not activate the `desktop` profile, so it has no embedded database —
+point `PERSIST_DB_*` at a PostgreSQL of your own, or accept that stored credentials and mail
+triggers report themselves unavailable. See [.env.example](.env.example).
 
-Everything else is entered **in the app**, not in a file: mailbox sign-ins, Holded credentials,
-GitHub/GitLab tokens. They are encrypted with `CONCENTUS_SECRET_KEY` before storage, which is why
-that key belongs with the database — change it and every stored credential becomes unreadable.
-
-Two things worth setting once in `.env` so nothing asks again:
-
-- `MAIL_MICROSOFT_TENANT_ID` / `MAIL_MICROSOFT_CLIENT_ID` — the Entra app registration for Microsoft
-  365 mailboxes. One registration serves every mailbox (it identifies the *application*, not the
-  mailbox), so with these set the Input node stops asking; a node can still override them under
-  *Advanced* for a second tenant. Neither is a secret.
-- `LOCAL_CONTEXT_ROOTS` — only if agents need host folders as context. Repository nodes don't: they
-  clone into the run's own working directory.
-
-**MCP servers inside the container.** User-scope MCP registrations and their OAuth authorizations
-live in `.claude.json`, which by default sits at `~/.claude.json` — *outside* `~/.claude`. Compose
-therefore sets `CLAUDE_CONFIG_DIR=/root/.claude` so it lands on the `concentus-claude` volume;
-without that, every `docker compose up --build` would silently drop every MCP server a flow depends
-on, and the first sign of it would be an agent reporting that it has no tools.
-
-A server that authenticates with a **bearer token** works headlessly and is the path to prefer. One
-that needs an interactive OAuth sign-in cannot complete it in a container — there is no browser —
-so authorize it once from a shell in the container:
+## Building the installers
 
 ```bash
-docker compose exec backend claude mcp login "<server name>"
+pnpm --filter frontend build          # UI, copied into the jar as static resources
+cd apps/backend && mvn clean package  # the jar
+cd ../desktop && pnpm package         # jlink runtime + installer
 ```
 
-#### Reusing your host Claude login
+`pnpm package` runs [scripts/prepare-payload.mjs](apps/desktop/scripts/prepare-payload.mjs), which
+`jlink`s a Java runtime into `resources/jre` and stages the jar beside it, then hands both to
+`electron-builder`. Output lands in `apps/desktop/release`.
 
-Bind-mounting the host's `~/.claude` also carries MCP authorizations across, but two Claude
-installations writing the same files corrupt each other's state — stop the host CLI while the
-container runs, or prefer `claude setup-token`. Replace the `concentus-claude` volume line with:
+**Build on the platform you are targeting.** Both the Java runtime and the PostgreSQL binaries
+inside the jar are native code, and the jar's binaries are chosen by an OS-activated Maven profile,
+so a jar built on Windows is only valid on Windows. This is why
+[.github/workflows/release.yml](.github/workflows/release.yml) runs the whole build once per
+platform rather than building a jar once and packaging it twice.
 
-```yaml
-      - ${CLAUDE_HOME}/.claude:/root/.claude
-      - ${CLAUDE_HOME}/.claude.json:/root/.claude.json
-```
-
-and set `CLAUDE_HOME` in `.env` (`/home/you`, or `C:/Users/you`). Compose does not expand `$HOME`
-or `%USERPROFILE%` for you, which is why this is an explicit variable.
-
-### Kubernetes — Helm
+Pushing a `v*` tag builds both installers and publishes them to a GitHub release:
 
 ```bash
-helm install concentus deploy/helm/concentus \
-  --namespace concentus --create-namespace \
-  --set backend.claudeOAuthToken="$CLAUDE_CODE_OAUTH_TOKEN" \
-  --set backend.image.repository=YOUR_REGISTRY/concentus-backend \
-  --set frontend.image.repository=YOUR_REGISTRY/concentus-frontend \
-  --set publicNginx.enabled=true            # optional public entrypoint (LoadBalancer)
+git tag v1.0.0 && git push origin v1.0.0
 ```
 
-Key values: `backend.authMode` (`local`|`api-key`|`auto`), `backend.claudeOAuthToken` or
-`backend.existingSecret`, `backend.persistence.*`, `publicNginx.enabled` / `publicNginx.service.type`
-(`LoadBalancer`|`NodePort`), and an alternative `ingress.enabled`. Without a public entrypoint,
-port-forward the frontend Service. See [deploy/helm/concentus/values.yaml](deploy/helm/concentus/values.yaml).
+Running the workflow manually builds the same installers and leaves them as artifacts without
+publishing, which is how to test a packaging change without spending a version number.
 
-### Kubernetes — Kustomize
-
-```bash
-kubectl create namespace concentus
-# edit deploy/kustomize/base/secret.yaml with your token first
-kubectl apply -k deploy/kustomize/base                  # internal only (port-forward the frontend)
-kubectl apply -k deploy/kustomize/overlays/public       # + optional public nginx (LoadBalancer)
-```
-
-The optional public nginx lives as a Kustomize **component**
-([deploy/kustomize/components/public-nginx](deploy/kustomize/components/public-nginx)); the `public`
-overlay enables it. Both Helm's `publicNginx` and this component route `/api` + `/ws` to the backend
-and everything else to the frontend — a single external entrypoint and a natural place to terminate TLS.
-
-> **Webhooks** need the public entrypoint (or ingress) reachable from the internet so the provider
-> can POST to `/api/webhooks/{flowId}`.
+Expect roughly a 290MB installer: Electron, a Java runtime, PostgreSQL and the backend jar are each
+a large fraction of it. The runtime is built with `ALL-MODULE-PATH` rather than a `jdeps`-derived
+module list, deliberately — this application resolves most of its classes reflectively (Spring's
+component scan, JDBC driver registration, JNA, the crypto providers TLS selects at runtime), and a
+module missed that way does not fail the build, it fails later on a user's machine.
 
 ## Models
 
@@ -310,35 +264,28 @@ released after this list still works — the picker is a shortcut, not a whiteli
 Any server speaking OpenAI's `/chat/completions` works: **Ollama**, llama.cpp's `llama-server`,
 **vLLM**, LM Studio. A 14B model on a 16 GB card is a realistic target at 4-bit.
 
-The compose file ships the whole stack behind a **profile**, so it stays off until you ask:
-
-```bash
-docker compose --profile local-ai up --build
-```
-
-| | | |
-|---|---|---|
-| `ollama` | GPU | serves **both** the chat model and the embedding model |
-| `ollama-pull` | — | pulls them once, then exits |
-| `litellm` | `:4000` | Anthropic-format gateway, so the `claude` CLI can also target a local model |
-| `reranker` | `:7997` | CPU; **not** wired into Concentus — see below |
-| `openwebui` | `:8081` | chat UI, pointed at LiteLLM (8080 belongs to the backend) |
-
-Behind a profile because none of it is free: Ollama pins weights in VRAM and the reranker downloads
-a model on first start, and nothing there is needed to design a flow or run one on Claude. Plain
-`docker compose up` still gets you the app, the database and the frontend.
-
-**There is no separate embedding server.** Ollama serves both models on one URL; only the model name
-differs per request — `/v1/chat/completions` with `qwen3:14b`, `/v1/embeddings` with `bge-m3`. That
-is the whole wiring, and `LOCAL_MODEL_BASE_URL` is the only address involved. The MCP node shows
-which ranking you are actually getting, so you can see it working rather than assume it.
-
-Running Ollama on the host instead of in compose:
+Install one and point Concentus at it. Since the app runs on your machine, `localhost` means your
+machine — there is no container boundary to cross:
 
 ```properties
-LOCAL_MODEL_BASE_URL=http://localhost:11434/v1               # backend running directly
-LOCAL_MODEL_BASE_URL=http://host.docker.internal:11434/v1    # backend in docker-compose
+LOCAL_MODEL_BASE_URL=http://localhost:11434/v1
 ```
+
+Mind the `/v1`: Ollama's OpenAI-compatible surface is there, not at the root. Set it in the
+environment the app starts in.
+
+**There is no separate embedding server.** Ollama serves both the chat and embedding models on one
+URL; only the model name differs per request — `/v1/chat/completions` with `qwen3:14b`,
+`/v1/embeddings` with `bge-m3`. That is the whole wiring, and `LOCAL_MODEL_BASE_URL` is the only
+address involved. The MCP node shows which ranking you are actually getting, so you can see it
+working rather than assume it.
+
+Two things worth knowing. Ollama serves a **2048-token context by default** whatever the model
+supports, and truncates past it without saying so — start it with
+`OLLAMA_CONTEXT_LENGTH=32768 ollama serve`. And pointing the `claude` CLI itself at a local model
+needs an Anthropic-format gateway such as LiteLLM in front of Ollama; be clear-eyed about what that
+means, because Claude Code's agent loop driving a 14B model works, but tool-calling discipline is
+the first thing to suffer.
 
 Two honest caveats about the merged stack. The **reranker is included but unused** — Concentus's
 tool search ranks by embedding distance and stops there; it is in the file because it is the
@@ -383,9 +330,9 @@ one word with the tool's name.
 ollama pull bge-m3      # an EMBEDDING model; a chat model 404s or returns nonsense
 ```
 
-The compose file uses the `pgvector/pgvector` image for this. Without the extension, or without the
-embedding model, ranking **falls back to word overlap** and the run says which it used — worse
-results, still useful, and nothing breaks. Re-indexing is keyed on a hash of the server's tool list,
+**The embedded database does not ship pgvector**, so in the desktop app this half is simply not
+available. Without the extension, or without the embedding model, ranking **falls back to word
+overlap** and the run says which it used — worse results, still useful, and nothing breaks. Re-indexing is keyed on a hash of the server's tool list,
 so it happens when the server's tools change and not merely because a run started.
 
 Picking tools by hand on the node always wins over search: an explicit selection was a decision, and
@@ -403,16 +350,19 @@ the authorization server from the `WWW-Authenticate` challenge, registers as a c
 (there is no console to create an app in), and runs authorization code with PKCE. Approve it once in
 the tab that opens; the grant is stored encrypted and renews itself.
 
-The browser is redirected back to `MCP_OAUTH_REDIRECT_BASE` (default `http://localhost:3000`, the
-compose frontend). **It has to be the address your browser actually uses to reach Concentus** — set
-it to whatever is in your address bar, minus the path:
+The browser is redirected back to `MCP_OAUTH_REDIRECT_BASE`. **In the app you never set this** —
+the shell passes the port it actually bound, and deliberately keeps that port stable between
+launches, because this URL is registered with the authorization server and a port that moved would
+invalidate every MCP sign-in you had already done.
+
+It only needs setting when you run the backend yourself, where it must be the address your browser
+actually uses, minus the path:
 
 | How you run it | Set it to |
 |---|---|
-| docker-compose (default) | `http://localhost:3000` |
+| The desktop app | handled for you — `http://127.0.0.1:8734` |
 | Vite dev server | `http://localhost:5173` |
 | backend opened directly | `http://localhost:8080` |
-| behind a domain | `https://concentus.example.com` |
 
 Get it wrong and the sign-in dies at the very last step with `ERR_CONNECTION_REFUSED`, after the
 code has already been issued and spent — the authorization server sent the browser somewhere
@@ -462,30 +412,33 @@ restart and can be continued. The backend **creates its own schema on startup**
 (`create table if not exists`), so an empty database is all it ever needs — no migrations, no
 seed scripts.
 
-A database ships with every deployment path, so there is nothing to provision to get started:
+**The app ships its own.** Real PostgreSQL binaries are inside the installer, started as a child
+process of the backend against `pgdata` in your app-data folder and stopped with it. Not an
+emulation — the same server, so `jsonb`, upserts and partial indexes work exactly as they do
+anywhere else.
 
-| | What you get | Point it elsewhere |
-|---|---|---|
-| **docker-compose** | A `db` service on the compose network | Delete the service, set `PERSIST_DB_*` in `.env` |
-| **Helm** | A Postgres StatefulSet + PVC (`postgresql.enabled: true`) | `postgresql.enabled: false` and fill in `externalDatabase.*` |
-| **Kustomize** | `base/postgres.yaml` StatefulSet + PVC | Drop it from `resources`, override `PERSIST_DB_*` on the backend |
+There is nothing to install, nothing to provision, and **no database user or password to choose**,
+including on first run. The server listens on a loopback port picked at startup and accepts local
+connections without one, which is what an instance started, used and stopped by a single process
+should do. A password stored beside the data it protects, on the same disk, readable by the same
+user, would add a setup step and no security.
 
-Using a hosted database (Neon, RDS, Cloud SQL) is just three env vars:
-
-```bash
-PERSIST_DB_URL=jdbc:postgresql://ep-xxx.eu-west-2.aws.neon.tech/neondb?sslmode=require
-PERSIST_DB_USER=neondb_owner
-PERSIST_DB_PASSWORD=...
-```
+There is also no seed file and no migration step. Every store issues `create table if not exists`
+on startup and the default organization row is created with them, so an empty directory becomes a
+working database on its own — and first run and upgrade stay one code path rather than two that
+can drift apart.
 
 Notes:
 
-- **Set a real password before deploying anywhere shared.** Kustomize's `base/postgres.yaml` ships
-  a placeholder you must replace; Helm generates one on first install and reuses it on upgrade.
-- `PERSIST_ENABLED=false` runs without a database entirely — everything stays in memory and is
-  lost on restart.
-- The backend tolerates a briefly unreachable database at startup rather than crash-looping
-  (`initialization-fail-timeout=-1`), so a slow database doesn't take the app down with it.
+- **Persistence is always on and is not configurable.** It used to be, and the switch was a trap:
+  it only ever covered run history, while the credential, account and mail stores needed a database
+  regardless — so turning it off produced a build where stored secrets silently did not work.
+- **pgvector is not included.** These binaries do not ship it, so MCP tool search ranks by word
+  overlap rather than semantically. The app detects this and says so rather than pretending.
+- Running the backend by hand does **not** activate the embedded database — that lives in the
+  `desktop` profile. Point `PERSIST_DB_*` at a PostgreSQL of your own for development.
+- An unreachable database never crash-loops the app (`initialization-fail-timeout=-1`); each store
+  logs and reports itself unavailable instead.
 
 ## Context folders
 
@@ -660,18 +613,23 @@ database-only compromise, or a read-only SQL injection. It does **not** protect 
 compromises the application or the host, because the key has to be reachable by the process to be
 usable. The secret does not disappear — it collapses to one key, which is then the thing to guard.
 
-`CONCENTUS_SECRET_KEY` is **required**: the backend refuses to start without it. Every credential
-it holds depends on that key, so starting anyway would leave a half-working deployment — credential
-fields that silently cannot save, mail triggers quietly not polling. It fails once, at startup, with
-the command to generate one. Changing the key makes existing credentials unreadable; they have to
-be re-entered.
+**In the app there is nothing to do.** The shell generates the key on first launch and stores it in
+your OS keyring — DPAPI on Windows, libsecret on Linux — so the ciphertext in the database is
+readable only by you, on this machine. Where no keyring is available the key falls back to a
+permission-protected file and the log says so, because a Linux box without a keyring daemon is a
+real configuration rather than a broken one.
+
+Running the backend by hand, `CONCENTUS_SECRET_KEY` is **required** and it refuses to start without
+one. Every credential it holds depends on that key, so starting anyway would leave a half-working
+install — credential fields that silently cannot save, mail triggers quietly not polling. Changing
+the key makes existing credentials unreadable; they have to be re-entered.
 
 ### Git providers, and why OAuth is the wrong route here
 
 The MCP registration is a header, not a browser flow — `claude mcp add --transport http … -H "<header>"`.
-So any credential that works as a header works headlessly, which is what makes this usable from
-Docker at all: the interactive OAuth sign-in needs a terminal and a browser, and a container has
-neither. `GET /api/mcp/capabilities` reports that, and the UI offers the token route instead of a
+So any credential that works as a header works without a browser, which is what makes this usable
+from a cron or mail trigger at all: an interactive OAuth sign-in needs someone present, and a flow
+that fires at 7am does not have one. `GET /api/mcp/capabilities` reports that, and the UI offers the token route instead of a
 button that would start a sign-in it can never finish.
 
 | Provider | Credential | Header |

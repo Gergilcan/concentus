@@ -48,7 +48,13 @@ if (!app.requestSingleInstanceLock()) {
 async function main(): Promise<void> {
   await app.whenReady()
   registerIpc()
-  Menu.setApplicationMenu(buildMenu())
+  // No application menu. The UI has its own navigation, and a File/View/Edit bar above it is a
+  // second, emptier navigation that belongs to a different application — the window should look
+  // like Concentus, not like a browser someone put Concentus inside. Removing it costs nothing
+  // functionally: Chromium handles clipboard and text-editing shortcuts in web content itself,
+  // and the one menu item that did something specific — opening the logs folder — is still on the
+  // failure window, which is when it is actually needed.
+  Menu.setApplicationMenu(null)
   await launch()
 
   app.on('window-all-closed', () => {
@@ -92,7 +98,11 @@ function showMainWindow(port: number): void {
     minHeight: 600,
     show: false,
     title: 'Concentus',
-    backgroundColor: '#17171a',
+    icon: appIcon(),
+    // Belt and braces alongside setApplicationMenu(null): this also stops the bar reappearing when
+    // Alt is pressed, which is the Windows default for a hidden menu.
+    autoHideMenuBar: true,
+    backgroundColor: '#0b0e14',
     webPreferences: {
       // No preload and no node access: this window loads the application's own UI over HTTP, and
       // it has no reason to reach the main process. Keeping it a plain browsing context means a
@@ -144,6 +154,8 @@ function showFailureWindow(message: string): void {
     width: 900,
     height: 760,
     title: 'Concentus — startup failed',
+    icon: appIcon(),
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -172,33 +184,13 @@ function registerIpc(): void {
   ipcMain.on('failure:quit', () => app.quit())
 }
 
-function buildMenu(): Menu {
-  return Menu.buildFromTemplate([
-    {
-      label: 'File',
-      submenu: [
-        {
-          label: 'Open Logs Folder',
-          click: () => shell.showItemInFolder(shellLogFile()),
-        },
-        { type: 'separator' },
-        { role: 'quit' },
-      ],
-    },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
-      ],
-    },
-    { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
-  ])
+/**
+ * The application icon.
+ *
+ * Windows takes it from the executable, which electron-builder stamps from build/icon.ico, so
+ * this is really for Linux — where the window and taskbar entry get their icon from the running
+ * process, not from the .desktop file, and default to a blank one without it.
+ */
+function appIcon(): string {
+  return path.join(__dirname, '..', 'build', 'icon.png')
 }
