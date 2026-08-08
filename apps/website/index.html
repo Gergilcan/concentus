@@ -295,7 +295,7 @@
       <a href="#download">Download</a>
       <a href="#" data-gh>GitHub</a>
     </nav>
-    <a class="btn btn-primary btn-sm nav-cta" href="#" data-gh="/releases/latest">Download</a>
+    <a class="btn btn-primary btn-sm nav-cta" href="#download">Download</a>
   </div>
 </header>
 
@@ -584,6 +584,9 @@
         <span class="eyebrow">Download</span>
         <h2>Install it. Open it. That's the setup.</h2>
         <p>The app carries its own Java runtime and its own PostgreSQL, so there are no prerequisites and nothing to configure — and it touches neither, if you already have them installed.</p>
+        <!-- Filled in by the script below; empty until then, rather than showing a version that
+             would be wrong the moment one is released. -->
+        <p class="note" id="release-line" style="margin-top:6px"></p>
       </div>
 
       <div class="methods">
@@ -592,9 +595,13 @@
           <h3>Installer</h3>
           <p>A per-user install — no administrator rights needed.</p>
           <p style="margin-top:14px">
-            <a class="btn btn-primary btn-sm" href="#" data-gh="/releases/latest">Download for Windows
+            <!-- href is the releases page, and JS below swaps in the file itself once it knows the
+                 current version. That order matters: the link works before the script runs, with
+                 the script blocked, and if the API is unreachable. -->
+            <a class="btn btn-primary btn-sm" href="#" data-gh="/releases/latest" data-dl=".exe">Download for Windows
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
             </a>
+            <span class="note" data-size-for=".exe"></span>
           </p>
         </div>
 
@@ -608,10 +615,12 @@
 # or
 sudo apt install ./concentus_*_amd64.deb</code></pre>
           <p style="margin-top:14px">
-            <a class="btn btn-primary btn-sm" href="#" data-gh="/releases/latest">Download for Linux
+            <a class="btn btn-primary btn-sm" href="#" data-gh="/releases/latest" data-dl=".AppImage">Download AppImage
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
             </a>
+            <a class="btn btn-ghost btn-sm" href="#" data-gh="/releases/latest" data-dl=".deb" style="margin-left:8px">.deb</a>
           </p>
+          <p class="note"><span data-size-for=".AppImage"></span> <span data-size-for=".deb"></span></p>
         </div>
 
         <div class="method" data-reveal>
@@ -648,7 +657,7 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
       <h2 data-reveal>Build your first flow in minutes.</h2>
       <p data-reveal>Install the app, sign in to Claude once, and run a multi-agent flow on your own subscription — no API key, no setup tax.</p>
       <div class="row" data-reveal>
-        <a class="btn btn-primary" href="#" data-gh="/releases/latest">Download Concentus
+        <a class="btn btn-primary" href="#download">Download Concentus
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
         </a>
         <a class="btn btn-ghost" href="#" data-gh>View on GitHub</a>
@@ -709,6 +718,51 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
     a.setAttribute('target', '_blank');
     a.setAttribute('rel', 'noopener');
   });
+
+  // Point the download buttons at the actual files of the newest release.
+  //
+  // Resolved at runtime rather than written into the page, because the asset names carry the
+  // version — a hardcoded link is wrong the moment anything ships, and a link to the releases page
+  // makes someone hunt for the right file among three. The buttons already work without this;
+  // everything here is an upgrade applied only once it succeeds.
+  (function () {
+    // NOT /releases/latest: that endpoint ignores pre-releases and 404s while the newest build is
+    // one. Listing and picking is the only way to always have something to offer.
+    fetch('https://api.github.com/repos/Gergilcan/concentus/releases?per_page=10')
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error(r.status)); })
+      .then(function (releases) {
+        var published = (releases || []).filter(function (r) { return !r.draft; });
+        // A stable release wins; a pre-release is offered only when it is all there is, and is
+        // labelled so nobody mistakes it for finished.
+        var rel = published.filter(function (r) { return !r.prerelease; })[0] || published[0];
+        if (!rel || !rel.assets || !rel.assets.length) return;
+
+        var found = 0;
+        document.querySelectorAll('[data-dl]').forEach(function (a) {
+          var ext = a.getAttribute('data-dl');
+          var asset = rel.assets.filter(function (x) {
+            return x.name.slice(-ext.length).toLowerCase() === ext.toLowerCase();
+          })[0];
+          if (!asset) return;
+          a.setAttribute('href', asset.browser_download_url);
+          found++;
+          var size = document.querySelector('[data-size-for="' + ext + '"]');
+          if (size) size.textContent = ext.replace('.', '') + ' · ' + Math.round(asset.size / 1048576) + ' MB';
+        });
+        if (!found) return;
+
+        var line = document.getElementById('release-line');
+        if (line) {
+          line.textContent = 'Latest: ' + rel.tag_name +
+            (rel.prerelease ? ' (pre-release)' : '') +
+            (rel.published_at ? ' · ' + new Date(rel.published_at).toLocaleDateString() : '');
+        }
+      })
+      .catch(function () {
+        // Rate-limited, offline, or the repo moved. The buttons still open the releases page, which
+        // is where they pointed before this ran.
+      });
+  })();
 </script>
 </body>
 </html>
