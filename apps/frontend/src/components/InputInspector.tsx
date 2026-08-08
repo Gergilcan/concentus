@@ -65,38 +65,17 @@ export function InputInspector({ data, set }: Props) {
         />
       )}
 
-      <SelectField
-        label="Permissions for this flow's agents"
-        value={data.permissionMode ?? ''}
-        onChange={(v) => set({ permissionMode: v })}
-      >
-        <option value="">Deployment default (CLAUDE_PERMISSION_MODE)</option>
-        <option value="plan">Plan only — proposes, changes nothing</option>
-        <option value="default">Ask — prompts before each sensitive action</option>
-        <option value="acceptEdits">Auto-accept file edits, ask for the rest</option>
-        <option value="bypassPermissions">Bypass all checks</option>
-      </SelectField>
-      <p className={styles.hint}>
-        Applies to the Claude backends, which is where an agent can actually touch this machine.
-        <b> Bypass</b> is what the deployment default has been: no prompts at all. It is the only
-        mode that works unattended — and also the one where a flow triggered by a stranger's email
-        runs shell commands without asking.
-        <br />
-        <b>Ask</b> and <b>Auto-accept edits</b> need somebody at the keyboard: there is no console
-        here to answer a prompt, so an unattended run under them stalls rather than proceeding.{' '}
-        <b>Plan</b> is the safe way to see what a flow <i>would</i> do — it produces a plan and
-        changes nothing.
-        {data.mode !== 'manual' &&
-          (data.permissionMode ?? '') !== '' &&
-          data.permissionMode !== 'bypassPermissions' &&
-          data.permissionMode !== 'plan' && (
-            <>
-              <br />
-              <b>This flow starts on its own</b> ({data.mode}), so nobody will be there to answer a
-              permission prompt — expect it to stall.
-            </>
-          )}
-      </p>
+      {/* Permissions used to live here. They moved to the coordinator agent, which is the node
+          that actually corresponds to the process the setting configures. Flows saved with a value
+          here still honour it — see TriggerSpec — so nothing silently changed under anyone; it is
+          simply no longer editable in the place that suggested it was a property of the trigger. */}
+      {(data.permissionMode ?? '') !== '' && (
+        <p className={styles.hint}>
+          This flow sets permissions (<code>{data.permissionMode}</code>) on its trigger, which is
+          where they used to live. They still apply. To change them, open the <b>coordinator</b>{' '}
+          agent — setting them there replaces this.
+        </p>
+      )}
 
       {data.mode === 'cron' && (
         <Field label="Cron expression" value={data.cron} placeholder="0 9 * * *" onChange={(v) => set({ cron: v })} />

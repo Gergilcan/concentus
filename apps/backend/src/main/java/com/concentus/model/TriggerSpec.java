@@ -43,6 +43,7 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
     }
 
     public static TriggerSpec from(FlowGraph flow) {
+        String permissions = permissionModeFor(flow);
         for (FlowNode n : flow.nodesOrEmpty()) {
             if ("input".equalsIgnoreCase(n.type())) {
                 Map<String, Object> d = n.dataOrEmpty();
@@ -52,10 +53,39 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
                         str(d, "cron", ""),
                         str(d, "secret", ""),
                         str(d, "authParam", DEFAULT_AUTH_PARAM),
-                        permissionModeOf(str(d, "permissionMode", "")));
+                        permissions);
             }
         }
-        return new TriggerSpec("manual", "", "", "", DEFAULT_AUTH_PARAM, "");
+        return new TriggerSpec("manual", "", "", "", DEFAULT_AUTH_PARAM, permissions);
+    }
+
+    /**
+     * The run's permission mode: the coordinator's, or the input node's for flows saved before it
+     * moved there.
+     *
+     * <p>It is set on the coordinator because that is the node it corresponds to — a local run
+     * launches one {@code claude} process for the whole flow, and {@code --permission-mode}
+     * governs that process. It used to be on the input node, which read as a property of how the
+     * flow starts rather than of what it may do.
+     *
+     * <p>The fallback is what keeps that move from being a silent widening of permissions. A flow
+     * saved with {@code plan} on its trigger and nothing on its coordinator must keep planning; if
+     * the old value were ignored it would quietly become the default instead, which is
+     * {@code bypassPermissions} — the change nobody would notice until an agent had already done
+     * something. The coordinator wins when both are set, so editing it is what takes effect.
+     */
+    private static String permissionModeFor(FlowGraph flow) {
+        String fromInput = "";
+        for (FlowNode n : flow.nodesOrEmpty()) {
+            Map<String, Object> d = n.dataOrEmpty();
+            if ("agent".equalsIgnoreCase(n.type()) && "coordinator".equalsIgnoreCase(str(d, "role", ""))) {
+                String mode = permissionModeOf(str(d, "permissionMode", ""));
+                if (!mode.isBlank()) return mode;
+            } else if ("input".equalsIgnoreCase(n.type())) {
+                fromInput = permissionModeOf(str(d, "permissionMode", ""));
+            }
+        }
+        return fromInput;
     }
 
     /** The run should immediately fire {@link #prompt} as its first turn (Run button / prompt & cron modes). */

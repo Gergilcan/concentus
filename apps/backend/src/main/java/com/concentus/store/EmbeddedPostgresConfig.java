@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -55,6 +56,17 @@ public class EmbeddedPostgresConfig {
      * reaches through {@code POST /actuator/shutdown} when its window closes, so the database is
      * closed properly instead of being killed mid-write.
      */
+    /**
+     * The major version of the bundled binaries, so a data directory written by a different one is
+     * caught here rather than by PostgreSQL failing to start. Kept in step with
+     * {@code embedded-postgres-binaries.version} in the pom.
+     */
+    private final int majorVersion;
+
+    public EmbeddedPostgresConfig(@Value("${app.embedded-postgres.major-version:17}") int majorVersion) {
+        this.majorVersion = majorVersion;
+    }
+
     @Bean(destroyMethod = "close")
     public EmbeddedPostgres embeddedPostgres(@Value("${app.data-dir}") String dataDir) throws IOException {
         Path pgdata = Path.of(dataDir).toAbsolutePath().resolve("pgdata");
@@ -66,9 +78,18 @@ public class EmbeddedPostgresConfig {
         boolean firstRun = isEmpty(pgdata);
         if (firstRun) log.info("Preparing the embedded database for first use in {} …", pgdata);
 
+        requireMatchingMajorVersion(pgdata);
         clearStalePidFile(pgdata);
 
+        // Where the server binaries are unpacked. Overridden off the default (the system temp
+        // directory) for two reasons: temp is swept by the OS, which would silently discard the
+        // pgvector files copied in below, and it is shared with everything else on the machine.
+        // Under the app's own data directory they persist and belong to us.
+        Path binaries = Path.of(dataDir).toAbsolutePath().resolve("pg-binaries");
+        Files.createDirectories(binaries);
+
         EmbeddedPostgres postgres = EmbeddedPostgres.builder()
+                .setOverrideWorkingDirectory(binaries.toFile())
                 .setDataDirectory(pgdata)
                 // The default is 10s, which is fine for an ordinary start and not fine for the one
                 // that matters: after an unclean shutdown PostgreSQL replays its WAL before
@@ -87,6 +108,11 @@ public class EmbeddedPostgresConfig {
 
         log.info("Embedded PostgreSQL ready on port {} in {} ms (data: {})",
                 postgres.getPort(), System.currentTimeMillis() - start, pgdata);
+
+        // After start, not before: the extension's files are read when `create extension` runs,
+        // which ToolSearchIndex does later, so there is nothing to gain from delaying the server
+        // for them — and locating the unpacked distribution is only possible once it exists.
+        unpackedDistribution(binaries).ifPresent(PgVectorInstaller::installInto);
         return postgres;
     }
 
@@ -99,6 +125,55 @@ public class EmbeddedPostgresConfig {
     @Bean
     public DataSource dataSource(EmbeddedPostgres postgres) {
         return postgres.getPostgresDatabase();
+    }
+
+    /**
+     * Refuse to start on a data directory written by a different PostgreSQL major version.
+     *
+     * <p>A major upgrade changes the on-disk format, so the server would fail anyway — but it fails
+     * with a message about the data directory being incompatible, which reads like corruption. This
+     * says what actually happened and what to do, and it says it before anything is touched.
+     *
+     * <p>Deliberately fails rather than recreating the directory. Doing it automatically would mean
+     * deleting the user's runs, credentials and flow history to fix a version number, which is not
+     * a decision this code gets to make quietly.
+     */
+    private void requireMatchingMajorVersion(Path pgdata) throws IOException {
+        Path versionFile = pgdata.resolve("PG_VERSION");
+        if (!Files.isRegularFile(versionFile)) return;   // fresh directory: nothing to disagree with
+
+        String found = Files.readString(versionFile).trim();
+        // PG_VERSION holds just the major ("14", "17") from 10 onwards.
+        String expected = String.valueOf(majorVersion);
+        if (found.equals(expected)) return;
+
+        throw new IllegalStateException(
+                "The database in " + pgdata + " was created by PostgreSQL " + found
+                        + ", but this version of Concentus embeds PostgreSQL " + expected
+                        + ". A major version cannot read another's data directory.\n"
+                        + "Runs, credentials and flow history live there; flows, agents and MCP "
+                        + "definitions do not — those are files alongside it and are unaffected.\n"
+                        + "To start fresh, delete: " + pgdata);
+    }
+
+    /**
+     * The unpacked PostgreSQL distribution inside the binaries directory.
+     *
+     * <p>Found by looking rather than computed: zonky names the folder {@code PG-<hash>} after a
+     * digest of the archive it unpacked, which is not something to reproduce here — it would become
+     * wrong the moment the version changes. Since this directory is ours alone, there is normally
+     * exactly one; if a version bump leaves an older one behind, the newest is the live one.
+     */
+    private static Optional<Path> unpackedDistribution(Path binaries) {
+        try (var entries = Files.list(binaries)) {
+            return entries
+                    .filter(Files::isDirectory)
+                    .filter(p -> p.getFileName().toString().startsWith("PG-"))
+                    .max(Comparator.comparingLong(p -> p.toFile().lastModified()));
+        } catch (IOException e) {
+            log.warn("Could not inspect {} for the unpacked PostgreSQL: {}", binaries, e.getMessage());
+            return Optional.empty();
+        }
     }
 
     private static boolean isEmpty(Path dir) throws IOException {

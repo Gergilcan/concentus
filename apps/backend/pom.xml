@@ -27,7 +27,16 @@
         <jsoup.version>1.21.1</jsoup.version>
         <tess4j.version>5.16.0</tess4j.version>
         <embedded-postgres.version>2.1.0</embedded-postgres.version>
-        <embedded-postgres-binaries.version>14.15.0</embedded-postgres-binaries.version>
+        <!--
+            The PostgreSQL the app embeds. 17.5.0 is the newest zonky publishes — there is no 18,
+            which is worth knowing before someone tries to raise it again.
+
+            Changing the MAJOR version here is not just a number: a data directory initialised by
+            one major cannot be read by another, so EmbeddedPostgresConfig checks the two agree and
+            says so plainly rather than letting PostgreSQL fail with a lock-file-shaped error. Keep
+            app.embedded-postgres.major-version in step with this.
+        -->
+        <embedded-postgres-binaries.version>17.5.0</embedded-postgres-binaries.version>
     </properties>
 
     <dependencies>

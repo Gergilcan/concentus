@@ -130,7 +130,8 @@ public class ToolSearchIndex {
             vectorReady = true;
         } catch (RuntimeException e) {
             log.warn("pgvector is not available ({}), so MCP tool search will rank lexically. "
-                    + "Use the pgvector/pgvector image to enable it.", e.getMessage());
+                    + "The extension is built per platform and shipped with the installer; a "
+                    + "locally built jar carries none.", e.getMessage());
         }
     }
 

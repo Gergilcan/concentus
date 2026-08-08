@@ -212,6 +212,15 @@ export type AgentNodeData = {
   contextFolders?: string[]
   /** Path to an existing CLAUDE.md, or a folder containing one, to load as context. */
   claudeMdPath?: string
+  /**
+   * How much the run may do without asking. **Coordinator only.**
+   *
+   * Not a per-agent setting even though it lives on an agent: a local run launches one `claude`
+   * process for the whole flow, and `--permission-mode` applies to that process. The coordinator
+   * is that process, so this is the one node where the control is not a lie — sub-agents
+   * deliberately do not offer it rather than showing a switch that would silently do nothing.
+   */
+  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | ''
 }
 
 export type McpNodeData = {

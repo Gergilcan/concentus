@@ -75,6 +75,36 @@ export function AgentInspector({ data, set }: Props) {
           onChange={(v) => set({ description: v })}
         />
       )}
+
+      {/* Coordinator only, and not for tidiness: a local run launches one `claude` process for the
+          whole flow and --permission-mode applies to that process. Offering it per sub-agent would
+          be a control that silently does nothing, or worse, four controls that contradict. */}
+      {data.role === 'coordinator' && (
+        <>
+          <SelectField
+            label="Permissions for this flow's agents"
+            value={data.permissionMode ?? ''}
+            onChange={(v) => set({ permissionMode: v })}
+          >
+            <option value="">Default (bypass — no prompts)</option>
+            <option value="plan">Plan only — proposes, changes nothing</option>
+            <option value="default">Ask — prompts before each sensitive action</option>
+            <option value="acceptEdits">Auto-accept file edits, ask for the rest</option>
+            <option value="bypassPermissions">Bypass all checks</option>
+          </SelectField>
+          <p className={styles.hint}>
+            Set on the coordinator because it applies to the whole run: one <code>claude</code>{' '}
+            process runs the coordinator and every sub-agent, and this is what that process is
+            allowed to do. Sub-agents have no separate setting for the same reason.
+            <br />
+            <b>Bypass</b> is the default and the only mode that works unattended — no prompts at
+            all, which is also what lets a flow started by a stranger's email run shell commands
+            without asking. <b>Ask</b> and <b>Auto-accept edits</b> need somebody at the keyboard;
+            there is no console here to answer a prompt, so an unattended run under them stalls.{' '}
+            <b>Plan</b> is the safe way to see what a flow <i>would</i> do.
+          </p>
+        </>
+      )}
       <TextArea label="System prompt" rows={6} value={data.systemPrompt} onChange={(v) => set({ systemPrompt: v })} />
 
       <TextArea

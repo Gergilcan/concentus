@@ -5,6 +5,7 @@ import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, EFFORT_OPTIONS } from '../constants.
 import { CredentialsPanel } from './CredentialsPanel.tsx'
 import { CrudPanel } from './CrudPanel.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
+import { ModelField } from './ModelField.tsx'
 import styles from './resources.module.scss'
 
 type Tab = 'agents' | 'mcp' | 'databases' | 'credentials'
@@ -41,7 +42,19 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
             title="Agents"
             fields={[
               { key: 'name', label: 'Name' },
-              { key: 'model', label: 'Model', placeholder: DEFAULT_MODEL },
+              {
+                key: 'model',
+                label: 'Model',
+                // The same picker the canvas uses, rather than a text box you had to already know
+                // the answer to fill in — grouped by family, with rates and any locally-served
+                // models the backend reports.
+                render: (value, onChange) => (
+                  <ModelField
+                    value={String(value ?? DEFAULT_MODEL)}
+                    onChange={(v) => onChange(v)}
+                  />
+                ),
+              },
               { key: 'effort', label: 'Effort', type: 'select', options: [...EFFORT_OPTIONS] },
               { key: 'maxTokens', label: 'Max tokens', type: 'number' },
               { key: 'systemPrompt', label: 'System prompt', type: 'textarea' },

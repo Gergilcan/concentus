@@ -8,6 +8,18 @@ export interface Field {
   type?: 'text' | 'number' | 'textarea' | 'select'
   options?: string[]
   placeholder?: string
+  /**
+   * Renders this field with a real component instead of a bare input.
+   *
+   * Exists because some values deserve the same control here that they get on the canvas. A model
+   * is the clearest case: on a node it is a grouped picker showing rates and locally-served
+   * models, and as a text box it was a field you had to already know the answer to type into. One
+   * control, used in both places, so the two cannot drift apart.
+   *
+   * A field that supplies this owns its whole row, label included — the components used here
+   * render their own, and the wrapper would produce a second one.
+   */
+  render?: (value: unknown, onChange: (next: unknown) => void) => ReactNode
 }
 
 interface Props<T> {
@@ -107,7 +119,10 @@ export function CrudPanel<T extends Record<string, unknown>>({
       </div>
 
       <div className={styles.crudForm}>
-        {fields.map((f) => (
+        {fields.map((f) =>
+          f.render ? (
+            <div key={f.key}>{f.render(draft[f.key], (v) => set(f.key, v))}</div>
+          ) : (
           <label key={f.key} className={styles.field}>
             <span>{f.label}</span>
             {f.type === 'textarea' ? (
@@ -133,7 +148,8 @@ export function CrudPanel<T extends Record<string, unknown>>({
               />
             )}
           </label>
-        ))}
+          ),
+        )}
 
         <div className={styles.crudActions}>
           <button className={styles.saveBtn} onClick={() => void onSave()}>
