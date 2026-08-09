@@ -1,4 +1,5 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { KnowledgeDef, KnowledgeDoc, KnowledgeHit } from '../api/types.ts'
 import { CrudPanel } from './CrudPanel.tsx'
@@ -64,6 +65,25 @@ export function buildTree(docs: KnowledgeDoc[]): TreeNode {
 }
 
 const PAGE_SIZE = 20
+
+/**
+ * Extensions the backend can extract text from. One list: it also builds the picker's `accept`
+ * attribute and the folder-import filter, which were three hand-kept copies that already
+ * disagreed on order.
+ */
+const SUPPORTED = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.html']
+const ACCEPT = SUPPORTED.join(',')
+
+/** Adds or removes a key, returning a new Set — the two toggles here were the same five lines. */
+function toggled<T>(prev: Set<T>, key: T): Set<T> {
+  const next = new Set(prev)
+  if (!next.delete(key)) next.add(key)
+  return next
+}
+
+function indexable(files: File[]): File[] {
+  return files.filter((f) => SUPPORTED.some((ext) => f.name.toLowerCase().endsWith(ext)))
+}
 
 /**
  * Folder names excluded by default when importing a folder.
@@ -153,28 +173,31 @@ function Documents({ baseId }: { baseId: string }) {
   }, [refresh, refreshStatus])
 
   // Tabs show only the types actually present — five empty tabs teach nothing.
-  const countsByType = docs.reduce<Record<string, number>>((acc, d) => {
-    const t = typeOf(d.name)
-    acc[t] = (acc[t] ?? 0) + 1
-    return acc
-  }, {})
-  const filtered = typeTab === 'all' ? docs : docs.filter((d) => typeOf(d.name) === typeTab)
+  const countsByType = useMemo(
+    () =>
+      docs.reduce<Record<string, number>>((acc, d) => {
+        const t = typeOf(d.name)
+        acc[t] = (acc[t] ?? 0) + 1
+        return acc
+      }, {}),
+    [docs],
+  )
+  // Memoised together: a repo-sized base rebuilt the whole tree on every keystroke in the search
+  // box and on every status poll, then re-walked each visible folder to count it.
+  const filtered = useMemo(
+    () => (typeTab === 'all' ? docs : docs.filter((d) => typeOf(d.name) === typeTab)),
+    [docs, typeTab],
+  )
 
   // The whole base, not a page of it: what gets paginated is the rows on screen, which depends
   // on what is expanded, so the tree has to exist in full before it can be sliced.
-  const tree = buildTree(filtered)
-  const rows = flattenTree(tree, expanded)
+  const tree = useMemo(() => buildTree(filtered), [filtered])
+  const rows = useMemo(() => flattenTree(tree, expanded), [tree, expanded])
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const safePage = Math.min(page, pages - 1)
   const pageRows = rows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
 
-  const toggleFolder = (f: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(f)) next.delete(f)
-      else next.add(f)
-      return next
-    })
+  const toggleFolder = (f: string) => setExpanded((prev) => toggled(prev, f))
 
   const deleteFolder = async (node: TreeNode) => {
     const total = countUnder(node)
@@ -186,7 +209,7 @@ function Documents({ baseId }: { baseId: string }) {
       setNote(`Deleted ${result.deleted} document(s) from ${node.path}.`)
       refresh()
     } catch (e) {
-      setNote(e instanceof Error ? e.message : String(e))
+      setNote(errMessage(e))
     }
   }
 
@@ -238,22 +261,23 @@ function Documents({ baseId }: { baseId: string }) {
    * spot: dropping a repository in and only then discovering node_modules went with it costs a
    * long wait and a base that has to be cleaned out document by document.
    */
-  const pendingUsable = pending?.filter((f) =>
-    SUPPORTED.some((ext) => f.name.toLowerCase().endsWith(ext)),
-  )
+  const pendingUsable = useMemo(() => (pending ? indexable(pending) : undefined), [pending])
 
   // Every folder name appearing anywhere in the picked tree, with how many indexable files sit
   // under it. By name rather than by full path because that is how the intent is actually held:
   // "not node_modules", wherever it happens to be nested.
-  const folderCounts = new Map<string, number>()
-  for (const file of pendingUsable ?? []) {
-    for (const segment of new Set(pathSegments(relPath(file)))) {
-      folderCounts.set(segment, (folderCounts.get(segment) ?? 0) + 1)
+  const folderNames = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const file of pendingUsable ?? []) {
+      for (const segment of new Set(pathSegments(relPath(file)))) {
+        counts.set(segment, (counts.get(segment) ?? 0) + 1)
+      }
     }
-  }
-  const folderNames = [...folderCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-  const selected = (pendingUsable ?? []).filter(
-    (f) => !pathSegments(relPath(f)).some((s) => excluded.has(s)),
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  }, [pendingUsable])
+  const selected = useMemo(
+    () => (pendingUsable ?? []).filter((f) => !pathSegments(relPath(f)).some((s) => excluded.has(s))),
+    [pendingUsable, excluded],
   )
 
   const pickFolder = (files: File[]) => {
@@ -265,9 +289,7 @@ function Documents({ baseId }: { baseId: string }) {
   }
 
   const upload = async (files: File[]) => {
-    const usable = files.filter((f) =>
-      SUPPORTED.some((ext) => f.name.toLowerCase().endsWith(ext)),
-    )
+    const usable = indexable(files)
     const skipped = files.length - usable.length
     if (usable.length === 0) {
       setNote(
@@ -293,12 +315,12 @@ function Documents({ baseId }: { baseId: string }) {
           file,
           // The folder picker exposes the path inside the chosen folder; keeping it in the stored
           // name is what makes the folder tree possible at all.
-          (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name,
+          relPath(file),
         )
         chunks += result.chunks
         done += 1
       } catch (e) {
-        failures.push(`${file.name} (${e instanceof Error ? e.message : String(e)})`)
+        failures.push(`${file.name} (${errMessage(e)})`)
       }
     }
     refresh()
@@ -315,7 +337,7 @@ function Documents({ baseId }: { baseId: string }) {
     try {
       setHits(await api.searchKnowledge(baseId, query.trim(), 5))
     } catch (e) {
-      setNote(e instanceof Error ? e.message : String(e))
+      setNote(errMessage(e))
     }
   }
 
@@ -385,14 +407,7 @@ function Documents({ baseId }: { baseId: string }) {
                     <input
                       type="checkbox"
                       checked={!excluded.has(name)}
-                      onChange={() =>
-                        setExcluded((prev) => {
-                          const next = new Set(prev)
-                          if (next.has(name)) next.delete(name)
-                          else next.add(name)
-                          return next
-                        })
-                      }
+                      onChange={() => setExcluded((prev) => toggled(prev, name))}
                     />
                     <span className={styles.kbFolderName}>{name}</span>
                     <span className={styles.muted}>{count}</span>
@@ -432,7 +447,7 @@ function Documents({ baseId }: { baseId: string }) {
           type="file"
           hidden
           multiple
-          accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt,.md,.html"
+          accept={ACCEPT}
           onChange={(e) => {
             const files = Array.from(e.target.files ?? [])
             if (files.length > 0) void upload(files)

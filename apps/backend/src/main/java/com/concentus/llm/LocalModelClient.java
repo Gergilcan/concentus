@@ -41,6 +41,13 @@ public class LocalModelClient {
     /** Stable id for errors and for {@code AgentRun.backend}. */
     public static final String ID = "local-model";
 
+    /**
+     * For the static recovery path below, which cannot reach the injected mapper. One shared
+     * instance rather than one per parse: ObjectMapper is thread-safe once configured, and that
+     * path sits in the middle of streaming.
+     */
+    private static final ObjectMapper RECOVERY_MAPPER = new ObjectMapper();
+
     private final String baseUrl;
     private final String apiKey;
     private final ObjectMapper mapper;
@@ -302,7 +309,7 @@ public class LocalModelClient {
 
         JsonNode node;
         try {
-            node = new ObjectMapper().readTree(body);
+            node = RECOVERY_MAPPER.readTree(body);
         } catch (Exception e) {
             return null;
         }

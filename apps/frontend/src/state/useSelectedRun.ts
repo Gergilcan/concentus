@@ -58,18 +58,36 @@ export function useSelectedRun(pushError: (m: string) => void, runs: RunSummary[
       return
     }
     let alive = true
-    const tick = () =>
+    let inFlight = false
+    const tick = () => {
+      // Three guards the sibling poller in useFlowsAndRuns already had, and this one did not:
+      // a hidden tab polled forever, a slow response stacked requests behind each other, and a
+      // finished run kept being re-priced server-side 40 times a minute for nothing.
+      if (inFlight || document.visibilityState === 'hidden') return
+      inFlight = true
       api
         .getRunNodes(selectedRun)
         .then((r) => alive && setRunExec(r))
         .catch((e) => alive && pushError(errMessage(e)))
+        .finally(() => {
+          inFlight = false
+        })
+    }
     tick()
+    // A finished run is read once and then left alone: its node state cannot change again, so
+    // an interval on it is pure waste for as long as the selection lasts.
+    const status = runs.find((r) => r.id === selectedRun)?.status
+    if (status === 'TERMINATED' || status === 'ERROR') {
+      return () => {
+        alive = false
+      }
+    }
     const t = setInterval(tick, RUN_POLL_INTERVAL_MS)
     return () => {
       alive = false
       clearInterval(t)
     }
-  }, [selectedRun, setActiveRun, setRunExec, pushError])
+  }, [selectedRun, setActiveRun, setRunExec, pushError, runs])
 
   return [selectedRun, setSelectedRun] as const
 }

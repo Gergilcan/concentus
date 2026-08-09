@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { BackendFlow, FlowVersionInfo } from '../api/types.ts'
 import { Modal } from './Modal.tsx'
@@ -107,7 +108,7 @@ export function VersionsModal({
       await api.restoreFlowVersion(flow.id, version)
       onClose()
     } catch (e) {
-      pushError(e instanceof Error ? e.message : String(e))
+      pushError(errMessage(e))
     } finally {
       setBusy(false)
     }

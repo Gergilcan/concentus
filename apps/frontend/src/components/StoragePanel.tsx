@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { StorageConfig } from '../api/types.ts'
 import { Field, SelectField } from './fields.tsx'
@@ -44,7 +45,7 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
     try {
       setTest(await api.testStorage(draft))
     } catch (e) {
-      setTest({ ok: false, detail: e instanceof Error ? e.message : String(e) })
+      setTest({ ok: false, detail: errMessage(e) })
     } finally {
       setTesting(false)
     }
@@ -62,7 +63,7 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
           : 'Saved.',
       )
     } catch (e) {
-      pushError(e instanceof Error ? e.message : String(e))
+      pushError(errMessage(e))
     }
   }
 

@@ -1,4 +1,5 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
+import { errMessage } from '../utils/errMessage.ts'
 import { api, openRunSocket, type RunSocketStatus } from '../api/client.ts'
 import type { RunStatus } from '../api/types.ts'
 import { useFlowStore } from '../state/store.ts'
@@ -74,7 +75,7 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
       await api.sendCommand(runId, text)
       setCmd('')
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(errMessage(e))
     } finally {
       setSending(false)
     }
@@ -86,7 +87,7 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
     try {
       await (choice === 'approve' ? api.approveRun(runId) : api.rejectRun(runId))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(errMessage(e))
     } finally {
       setDeciding(false)
     }
@@ -105,7 +106,7 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
     try {
       await api.retryRun(runId)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(errMessage(e))
     }
   }
 

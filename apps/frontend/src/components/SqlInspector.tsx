@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { DatabaseDef, SqlNodeData, SqlPreview } from '../api/types.ts'
 import { CredentialField } from './CredentialField.tsx'
@@ -44,7 +45,7 @@ export function SqlInspector({ data, set }: Props) {
       })
       setPreview(r)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(errMessage(e))
     } finally {
       setLoading(false)
     }

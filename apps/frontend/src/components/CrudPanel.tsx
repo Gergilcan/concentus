@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react'
+import { errMessage } from '../utils/errMessage.ts'
 import { cx } from '../utils/cx.ts'
 import styles from './resources.module.scss'
 
@@ -69,7 +70,7 @@ export function CrudPanel<T extends Record<string, unknown>>({
       setDraft(saved)
       setStatus('Saved')
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e))
+      setStatus(errMessage(e))
     }
   }
 
@@ -85,7 +86,7 @@ export function CrudPanel<T extends Record<string, unknown>>({
       setDraft(empty())
       setStatus('Deleted')
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e))
+      setStatus(errMessage(e))
     }
   }
 

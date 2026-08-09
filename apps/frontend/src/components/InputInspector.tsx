@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { clockTime } from '../utils/format.ts'
 import type { Credential, InputNodeData, MailDeviceCode, MailOAuthDefaults, MailStatus } from '../api/types.ts'
 import { api } from '../api/client.ts'
 import { useFlowStore } from '../state/store.ts'
@@ -383,7 +384,7 @@ function MailTriggerStatus({ flowId }: { flowId: string | null }) {
       <p className={styles.hint}>
         <b>{STATE_LABEL[status?.state ?? 'waiting'] ?? status?.state}</b>
         {status?.detail ? ` — ${status.detail}` : ''}
-        {status?.at ? ` (${new Date(status.at).toLocaleTimeString()})` : ''}
+        {status?.at ? ` (${clockTime(status.at)})` : ''}
       </p>
       {status?.runsStarted !== undefined && status.runsStarted > 0 && (
         <p className={styles.hint}>
@@ -463,7 +464,7 @@ function MicrosoftSignIn({
       setStatus('Waiting for you to enter the code…')
       poll(started, Date.now() + started.expiresIn * 1000)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errMessage(e))
       setBusy(false)
     }
   }
@@ -500,7 +501,7 @@ function MicrosoftSignIn({
             setError(result.error ?? 'Sign-in did not complete.')
           }
         } catch (e) {
-          setError(e instanceof Error ? e.message : String(e))
+          setError(errMessage(e))
           setBusy(false)
           setCode(null)
         }

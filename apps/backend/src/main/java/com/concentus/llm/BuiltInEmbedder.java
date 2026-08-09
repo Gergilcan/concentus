@@ -52,10 +52,21 @@ public class BuiltInEmbedder {
 
     private static final Logger log = LoggerFactory.getLogger(BuiltInEmbedder.class);
 
-    /** Where the model publishes its ONNX export. Overridable to point at a different model. */
+    /**
+     * The model, fixed rather than configurable. It was two @Value knobs nothing set and nothing
+     * could safely use: the "query: "/"passage: " prefixes below and the name shown in the UI are
+     * E5-specific, so pointing these elsewhere produced wrong prefixes and a UI naming the wrong
+     * model — an option that lies is worse than no option.
+     */
+    public static final String MODEL_NAME = "multilingual-e5-small";
+    private static final String MODEL_URL =
+            "https://huggingface.co/Xenova/multilingual-e5-small/resolve/main/onnx/model_quantized.onnx";
+    private static final String TOKENIZER_URL =
+            "https://huggingface.co/Xenova/multilingual-e5-small/resolve/main/tokenizer.json";
+
+    private final Path dir;
     private final String modelUrl;
     private final String tokenizerUrl;
-    private final Path dir;
 
     public enum State { NOT_DOWNLOADED, DOWNLOADING, READY, ERROR }
 
@@ -68,23 +79,42 @@ public class BuiltInEmbedder {
     private OrtSession session;
     private HuggingFaceTokenizer tokenizer;
 
-    public BuiltInEmbedder(
-            @Value("${app.data-dir}") String dataDir,
-            @Value("${embedding.builtin.model-url:https://huggingface.co/Xenova/multilingual-e5-small/resolve/main/onnx/model_quantized.onnx}") String modelUrl,
-            @Value("${embedding.builtin.tokenizer-url:https://huggingface.co/Xenova/multilingual-e5-small/resolve/main/tokenizer.json}") String tokenizerUrl) {
+    // Explicit: a second, package-private constructor exists for tests, and Spring will not choose
+    // between two candidates on its own — it looks for a no-arg one and fails.
+    @org.springframework.beans.factory.annotation.Autowired
+    public BuiltInEmbedder(@Value("${app.data-dir}") String dataDir) {
+        this(dataDir, MODEL_URL, TOKENIZER_URL);
+    }
+
+    /**
+     * Visible for tests, which point the download at an unreachable URL to exercise the failure
+     * path. Deliberately not a configuration property: the "query: "/"passage: " prefixes and the
+     * name shown in the UI are E5-specific, so a knob aiming this elsewhere would lie.
+     */
+    BuiltInEmbedder(String dataDir, String modelUrl, String tokenizerUrl) {
         this.dir = Path.of(dataDir).toAbsolutePath().resolve("models").resolve("embedding");
         this.modelUrl = modelUrl;
         this.tokenizerUrl = tokenizerUrl;
-        // Load eagerly if a previous session already downloaded it; a failure here degrades to
-        // NOT_DOWNLOADED rather than stopping the app — the download button then offers a redo.
-        if (Files.isRegularFile(modelFile()) && Files.isRegularFile(tokenizerFile())) {
-            try {
-                load();
-            } catch (Exception e) {
-                log.warn("Built-in embedding model present but unloadable ({}); offering re-download.",
-                        e.getMessage());
-                state.set(State.NOT_DOWNLOADED);
-            }
+    }
+
+    /**
+     * Loads an already-downloaded model, off the startup path.
+     *
+     * <p>Opening the ONNX session reads ~130 MB and builds a tokenizer; doing that in the
+     * constructor put it on Spring's context-startup thread for every launch, including the many
+     * that never embed anything. A failure degrades to NOT_DOWNLOADED rather than stopping the
+     * app — the download button then offers a redo.
+     */
+    @org.springframework.context.event.EventListener(
+            org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    void loadIfPresent() {
+        if (!Files.isRegularFile(modelFile()) || !Files.isRegularFile(tokenizerFile())) return;
+        try {
+            load();
+        } catch (Exception e) {
+            log.warn("Built-in embedding model present but unloadable ({}); offering re-download.",
+                    e.getMessage());
+            state.set(State.NOT_DOWNLOADED);
         }
     }
 

@@ -45,10 +45,10 @@ export function compact(n: number): string {
   return String(n)
 }
 
-export function money(usd: number): string {
-  if (!usd) return '$0'
-  return usd < 0.01 ? `<$0.01` : `$${usd.toFixed(2)}`
-}
+// money lives in utils/format.ts, shared with the run console. Re-exported so the dashboard's
+// existing imports keep working while there is only one implementation: two copies meant the
+// same cost could render differently on the flow cards and in the console, invisibly.
+export { money } from '../utils/format.ts'
 
 export function triggerOf(flow: BackendFlow): { label: string; tone: string; scheduled: boolean } {
   const input = flow.nodes.find((n) => n.type === 'input')

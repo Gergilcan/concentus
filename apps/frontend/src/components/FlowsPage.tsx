@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { errMessage } from '../utils/errMessage.ts'
 import type { BackendFlow, RunSummary } from '../api/types.ts'
 import { FlowCard } from './FlowCard.tsx'
 import { SettingsModal, VersionsModal } from './FlowModals.tsx'
@@ -64,7 +65,7 @@ export function FlowsPage({
     try {
       await onSaveFlow({ ...flow, ...changes })
     } catch (e) {
-      pushError(e instanceof Error ? e.message : String(e))
+      pushError(errMessage(e))
     }
   }
 
@@ -72,7 +73,7 @@ export function FlowsPage({
     try {
       await onSaveFlow(normalizeImportedFlow(JSON.parse(await file.text()) as BackendFlow))
     } catch (e) {
-      pushError(e instanceof Error ? e.message : String(e))
+      pushError(errMessage(e))
     }
   }
 

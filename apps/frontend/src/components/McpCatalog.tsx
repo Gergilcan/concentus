@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { McpDef } from '../api/types.ts'
 import panels from './panels.module.scss'
@@ -91,7 +92,7 @@ export function McpCatalog({ onAdded }: { onAdded: () => void }) {
       )
       onAdded()
     } catch (e) {
-      setNote(e instanceof Error ? e.message : String(e))
+      setNote(errMessage(e))
     }
   }
 

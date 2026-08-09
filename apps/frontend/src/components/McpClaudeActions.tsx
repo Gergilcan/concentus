@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { McpCapabilities, McpServerInfo } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
@@ -66,7 +67,7 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
       setStatus(r.status)
       load()
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e))
+      setStatus(errMessage(e))
     } finally {
       setBusy(false)
     }
@@ -81,7 +82,7 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
       setStatus(r.status)
       load()
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e))
+      setStatus(errMessage(e))
     } finally {
       setBusy(false)
     }
@@ -95,7 +96,7 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
       setStatus(r.status)
       load()
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e))
+      setStatus(errMessage(e))
     } finally {
       setBusy(false)
     }

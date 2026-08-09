@@ -2,6 +2,7 @@ package com.concentus.service;
 
 import com.concentus.integration.content.AttachmentExtractionService;
 import com.concentus.integration.content.AttachmentExtractionService.RawAttachment;
+import com.concentus.llm.BuiltInEmbedder;
 import com.concentus.llm.LocalModelClient;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -49,12 +50,12 @@ public class KnowledgeService {
     private final JdbcTemplate jdbc;
     private final AttachmentExtractionService extraction;
     private final LocalModelClient models;
-    private final com.concentus.llm.BuiltInEmbedder builtIn;
+    private final BuiltInEmbedder builtIn;
     private final ObjectMapper mapper;
     private final String embeddingModel;
 
     public KnowledgeService(JdbcTemplate jdbc, AttachmentExtractionService extraction,
-                            LocalModelClient models, com.concentus.llm.BuiltInEmbedder builtIn,
+                            LocalModelClient models, BuiltInEmbedder builtIn,
                             ObjectMapper mapper,
                             @Value("${local-model.embedding-model:bge-m3}") String embeddingModel) {
         this.jdbc = jdbc;
@@ -101,13 +102,29 @@ public class KnowledgeService {
         // the old one answering queries beside the new.
         long now = System.currentTimeMillis();
         jdbc.update("delete from knowledge_chunks where base_id = ? and doc_name = ?", baseId, filename);
-        for (int i = 0; i < chunks.size(); i++) {
-            jdbc.update("""
-                    insert into knowledge_chunks (base_id, doc_name, seq, content, embedding, created_at)
-                    values (?, ?, ?, ?, ?, ?)
-                    """, baseId, filename, i, chunks.get(i),
-                    embedded ? toJson(embedding.vectors().get(i)) : null, now);
-        }
+        // One batch, not one round trip per chunk: a document capped at MAX_CHUNKS_PER_DOC was
+        // 2000 separate statements, and a folder import runs that back to back per file.
+        List<String> finalChunks = chunks;
+        Embeddings finalEmbedding = embedding;
+        jdbc.batchUpdate("""
+                insert into knowledge_chunks (base_id, doc_name, seq, content, embedding, created_at)
+                values (?, ?, ?, ?, ?, ?)
+                """, new org.springframework.jdbc.core.BatchPreparedStatementSetter() {
+            @Override
+            public void setValues(java.sql.PreparedStatement ps, int i) throws java.sql.SQLException {
+                ps.setString(1, baseId);
+                ps.setString(2, filename);
+                ps.setInt(3, i);
+                ps.setString(4, finalChunks.get(i));
+                ps.setString(5, finalEmbedding == null ? null : toJson(finalEmbedding.vectors().get(i)));
+                ps.setLong(6, now);
+            }
+
+            @Override
+            public int getBatchSize() {
+                return finalChunks.size();
+            }
+        });
 
         String detail = (embedded
                 ? "Indexed with semantic embeddings (" + embedding.model() + ")."
@@ -219,26 +236,24 @@ public class KnowledgeService {
     }
 
     public EmbeddingStatus status() {
-        switch (builtIn.state()) {
-            case READY -> {
-                return new EmbeddingStatus(true, "Semantic ranking with the built-in model (multilingual-e5-small).");
-            }
-            case DOWNLOADING -> {
-                return new EmbeddingStatus(false, "Downloading the built-in embedding model… "
-                        + builtIn.progressPercent() + "%");
-            }
-            case ERROR -> {
-                return new EmbeddingStatus(false, "The built-in model download failed: "
+        // NOT_DOWNLOADED falls through to the model-server checks below; every other state is
+        // answered here, so the switch needs no do-nothing branch to say so.
+        if (builtIn.state() != BuiltInEmbedder.State.NOT_DOWNLOADED) {
+            return switch (builtIn.state()) {
+                case READY -> new EmbeddingStatus(true,
+                        "Semantic ranking with the built-in model (" + BuiltInEmbedder.MODEL_NAME + ").");
+                case DOWNLOADING -> new EmbeddingStatus(false,
+                        "Downloading the built-in embedding model… " + builtIn.progressPercent() + "%");
+                default -> new EmbeddingStatus(false, "The built-in model download failed: "
                         + builtIn.error() + ". Try again, or use a model server.");
-            }
-            default -> { /* NOT_DOWNLOADED: fall through to the server checks */ }
+            };
         }
         if (!models.isConfigured()) {
             return new EmbeddingStatus(false,
                     "Download the built-in model below for semantic search — or install Ollama "
                             + "and pull " + embeddingModel + ".");
         }
-        java.util.Set<String> served;
+        Set<String> served;
         try {
             served = models.listModels();
         } catch (RuntimeException e) {
