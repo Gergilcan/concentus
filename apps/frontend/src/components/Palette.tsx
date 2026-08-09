@@ -1,6 +1,5 @@
 import { useFlowStore } from '../state/store.ts'
 import { cx } from '../utils/cx.ts'
-import { RagPanel } from './RagPanel.tsx'
 import styles from './panels.module.scss'
 
 export function Palette() {
@@ -34,7 +33,6 @@ export function Palette() {
         Hover any button or field for help · shortcuts ⓘ
       </p>
 
-      <RagPanel />
     </aside>
   )
 }

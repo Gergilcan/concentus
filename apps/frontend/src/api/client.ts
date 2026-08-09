@@ -11,6 +11,7 @@ import type {
   MailSignInResult,
   BackendFlow,
   DatabaseDef,
+  EmbedderStatus,
   KnowledgeDef,
   KnowledgeDoc,
   KnowledgeHit,
@@ -21,7 +22,6 @@ import type {
   McpServerInfo,
   NodeExecReport,
   ModelCatalog,
-  RagStatus,
   RemoteRepoList,
   RunDetail,
   RunEvent,
@@ -181,6 +181,10 @@ export const api = {
   // slash inside a path segment.
   deleteKnowledgeDoc: (id: string, docName: string) =>
     req<void>(`/knowledge/${id}/documents?name=${encodeURIComponent(docName)}`, { method: 'DELETE' }),
+  // The built-in embedding model: no server, no Docker — the backend runs it in-process.
+  embedderStatus: () => req<EmbedderStatus>('/knowledge/embedder'),
+  embedderDownload: () => req<void>('/knowledge/embedder/download', { method: 'POST' }),
+  deleteEmbedder: () => req<void>('/knowledge/embedder', { method: 'DELETE' }),
   searchKnowledge: (id: string, query: string, topK = 5) =>
     req<KnowledgeHit[]>(`/knowledge/${id}/search`, {
       method: 'POST',
@@ -302,7 +306,6 @@ export const api = {
     ),
 
   // rag
-  ragStatus: () => req<RagStatus>('/rag/status'),
   ragPreview: (source: SqlSourceInput) =>
     req<SqlPreview>('/rag/preview', { method: 'POST', body: JSON.stringify(source) }),
 }

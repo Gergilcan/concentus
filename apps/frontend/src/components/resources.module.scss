@@ -338,3 +338,38 @@
     }
   }
 }
+
+/* ---- built-in embedding model ---- */
+.embedder {
+  margin: 4px 0 12px;
+}
+.embedderRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+}
+.okDot {
+  color: #4ade80;
+}
+.errText {
+  color: t.$danger;
+}
+.progress {
+  width: 180px;
+  height: 6px;
+}
+.linkBtn {
+  background: none;
+  border: none;
+  color: t.$muted;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+
+  &:hover {
+    color: t.$text;
+  }
+}

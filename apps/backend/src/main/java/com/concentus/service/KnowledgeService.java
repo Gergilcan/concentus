@@ -49,15 +49,18 @@ public class KnowledgeService {
     private final JdbcTemplate jdbc;
     private final AttachmentExtractionService extraction;
     private final LocalModelClient models;
+    private final com.concentus.llm.BuiltInEmbedder builtIn;
     private final ObjectMapper mapper;
     private final String embeddingModel;
 
     public KnowledgeService(JdbcTemplate jdbc, AttachmentExtractionService extraction,
-                            LocalModelClient models, ObjectMapper mapper,
+                            LocalModelClient models, com.concentus.llm.BuiltInEmbedder builtIn,
+                            ObjectMapper mapper,
                             @Value("${local-model.embedding-model:bge-m3}") String embeddingModel) {
         this.jdbc = jdbc;
         this.extraction = extraction;
         this.models = models;
+        this.builtIn = builtIn;
         this.mapper = mapper;
         this.embeddingModel = embeddingModel;
     }
@@ -91,8 +94,8 @@ public class KnowledgeService {
         boolean truncated = chunks.size() > MAX_CHUNKS_PER_DOC;
         if (truncated) chunks = chunks.subList(0, MAX_CHUNKS_PER_DOC);
 
-        List<float[]> vectors = tryEmbed(chunks);
-        boolean embedded = vectors != null;
+        Embeddings embedding = tryEmbed(chunks, false);
+        boolean embedded = embedding != null;
 
         // Replace-then-insert, so re-uploading a corrected document does not leave stale chunks of
         // the old one answering queries beside the new.
@@ -103,11 +106,11 @@ public class KnowledgeService {
                     insert into knowledge_chunks (base_id, doc_name, seq, content, embedding, created_at)
                     values (?, ?, ?, ?, ?, ?)
                     """, baseId, filename, i, chunks.get(i),
-                    embedded ? toJson(vectors.get(i)) : null, now);
+                    embedded ? toJson(embedding.vectors().get(i)) : null, now);
         }
 
         String detail = (embedded
-                ? "Indexed with semantic embeddings (" + embeddingModel + ")."
+                ? "Indexed with semantic embeddings (" + embedding.model() + ")."
                 : "Indexed without embeddings — the embedding model is not reachable, so retrieval "
                         + "ranks by word overlap. Re-upload once it is to upgrade.")
                 + (truncated ? " Document was capped at " + MAX_CHUNKS_PER_DOC + " chunks." : "");
@@ -159,8 +162,8 @@ public class KnowledgeService {
 
         float[] queryVector = null;
         if (rows.stream().anyMatch(r -> r.embedding() != null)) {
-            List<float[]> embedded = tryEmbed(List.of(query));
-            if (embedded != null) queryVector = embedded.get(0);
+            Embeddings embedded = tryEmbed(List.of(query), true);
+            if (embedded != null && !embedded.vectors().isEmpty()) queryVector = embedded.vectors().get(0);
         }
 
         Set<String> queryWords = words(query);
@@ -179,11 +182,6 @@ public class KnowledgeService {
         return hits.subList(0, Math.min(k, hits.size()));
     }
 
-    /** Whether searches will rank semantically right now — shown in the UI, not guessed at. */
-    public boolean semanticAvailable() {
-        return models.isConfigured();
-    }
-
     /**
      * The embedding pipeline's actual state, checked rather than inferred.
      *
@@ -195,18 +193,32 @@ public class KnowledgeService {
     }
 
     public EmbeddingStatus status() {
+        switch (builtIn.state()) {
+            case READY -> {
+                return new EmbeddingStatus(true, "Semantic ranking with the built-in model (multilingual-e5-small).");
+            }
+            case DOWNLOADING -> {
+                return new EmbeddingStatus(false, "Downloading the built-in embedding model… "
+                        + builtIn.progressPercent() + "%");
+            }
+            case ERROR -> {
+                return new EmbeddingStatus(false, "The built-in model download failed: "
+                        + builtIn.error() + ". Try again, or use a model server.");
+            }
+            default -> { /* NOT_DOWNLOADED: fall through to the server checks */ }
+        }
         if (!models.isConfigured()) {
             return new EmbeddingStatus(false,
-                    "No model server is configured. Install Ollama — the desktop app looks at "
-                            + "localhost:11434 on its own — then pull " + embeddingModel + ".");
+                    "Download the built-in model below for semantic search — or install Ollama "
+                            + "and pull " + embeddingModel + ".");
         }
         java.util.Set<String> served;
         try {
             served = models.listModels();
         } catch (RuntimeException e) {
             return new EmbeddingStatus(false,
-                    "The model server at " + models.baseUrl() + " is not answering. "
-                            + "Start Ollama (or your server) and this upgrades on its own.");
+                    "The model server at " + models.baseUrl() + " is not answering. Start it — "
+                            + "or download the built-in model below, which needs no server.");
         }
         boolean present = served.stream().anyMatch(m ->
                 m.equalsIgnoreCase(embeddingModel)
@@ -247,11 +259,28 @@ public class KnowledgeService {
         return out;
     }
 
-    /** The embeddings, or null when the server is absent or refuses — never an exception. */
-    private List<float[]> tryEmbed(List<String> texts) {
+    /**
+     * The embeddings, or null when nothing can produce them — never an exception.
+     *
+     * <p>The built-in model wins when ready: it is the one the user explicitly downloaded, it runs
+     * in-process, and it needs no server to be up. Ollama (or any OpenAI-shaped server) remains
+     * the alternative for anyone wanting a larger model such as bge-m3.
+     */
+    /** The vectors and which model produced them, so the UI can name it instead of guessing. */
+    private record Embeddings(List<float[]> vectors, String model) {
+    }
+
+    private Embeddings tryEmbed(List<String> texts, boolean queries) {
+        if (builtIn.isReady()) {
+            try {
+                return new Embeddings(builtIn.embed(texts, queries), "built-in multilingual-e5-small");
+            } catch (RuntimeException e) {
+                log.warn("Built-in embedding failed ({}); trying the model server.", e.getMessage());
+            }
+        }
         if (!models.isConfigured()) return null;
         try {
-            return models.embed(embeddingModel, texts);
+            return new Embeddings(models.embed(embeddingModel, texts), embeddingModel);
         } catch (RuntimeException e) {
             log.warn("Embedding unavailable ({}); falling back to word overlap.", e.getMessage());
             return null;

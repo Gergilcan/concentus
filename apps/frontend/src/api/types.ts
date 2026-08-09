@@ -331,11 +331,6 @@ export interface FlowVersionInfo {
   createdAt: number
 }
 
-export interface RagStatus {
-  enabled: boolean
-  message: string
-  sources: unknown[]
-}
 
 export interface AuthStatus {
   mode: string
@@ -546,4 +541,13 @@ export type KnowledgeHit = {
   seq: number
   content: string
   score: number
+}
+
+/** The built-in, in-process embedding model — downloaded on demand from the app. */
+export interface EmbedderStatus {
+  state: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'READY' | 'ERROR'
+  percent: number
+  error: string
+  sizeMb: number
+  model: string
 }

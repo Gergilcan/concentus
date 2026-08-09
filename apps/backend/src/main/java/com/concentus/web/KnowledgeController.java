@@ -27,10 +27,41 @@ public class KnowledgeController {
 
     private final KnowledgeStore store;
     private final KnowledgeService service;
+    private final com.concentus.llm.BuiltInEmbedder embedder;
 
-    public KnowledgeController(KnowledgeStore store, KnowledgeService service) {
+    public KnowledgeController(KnowledgeStore store, KnowledgeService service,
+                               com.concentus.llm.BuiltInEmbedder embedder) {
         this.store = store;
         this.service = service;
+        this.embedder = embedder;
+    }
+
+    /**
+     * The built-in embedding model: download it, drop it, see how far a download has got.
+     *
+     * <p>Polled while downloading rather than streamed — 130 MB behind a frozen button is
+     * indistinguishable from a hang, and a poll needs no new transport.
+     */
+    @GetMapping("/embedder")
+    public Map<String, Object> embedderStatus() {
+        return Map.of(
+                "state", embedder.state().name(),
+                "percent", embedder.progressPercent(),
+                "error", embedder.error(),
+                "sizeMb", 130,
+                "model", "multilingual-e5-small");
+    }
+
+    @PostMapping("/embedder/download")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void downloadEmbedder() {
+        embedder.download();
+    }
+
+    @DeleteMapping("/embedder")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteEmbedder() throws IOException {
+        embedder.delete();
     }
 
     @GetMapping

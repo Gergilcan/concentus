@@ -3,7 +3,6 @@ package com.concentus.web;
 import com.concentus.config.AgentSpec.SqlSourceSpec;
 import com.concentus.service.SqlRagRetriever;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,15 +24,6 @@ public class RagController {
 
     public RagController(SqlRagRetriever retriever) {
         this.retriever = retriever;
-    }
-
-    @GetMapping("/status")
-    public Map<String, Object> status() {
-        return Map.of(
-                "enabled", true,
-                "message", "SQL (JDBC) RAG sources are supported. Connect a SQL node to an agent; its query "
-                        + "rows are retrieved and injected into that agent's context when the flow runs.",
-                "sources", List.of("sql"));
     }
 
     /** Runs a SQL source's query and returns the rows, or a 400 with the DB error. */

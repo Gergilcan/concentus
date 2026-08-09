@@ -35,8 +35,13 @@ class KnowledgeServiceTest {
         // A real extractor for plain text; the heavier formats have their own suites.
         var extraction = new AttachmentExtractionService(
                 List.of(new PlainTextExtractor()), new AttachmentPolicy(10_485_760, 31_457_280, 15));
+        var builtIn = mock(com.concentus.llm.BuiltInEmbedder.class);
+        when(builtIn.state()).thenReturn(com.concentus.llm.BuiltInEmbedder.State.NOT_DOWNLOADED);
+        when(builtIn.isReady()).thenReturn(false);
+        // A built-in embedder that is never ready: these tests cover the model-server and
+        // word-overlap paths, and the in-process model has its own suite.
         service = new KnowledgeService(TestDatabase.jdbc(), extraction, models,
-                new ObjectMapper(), "bge-m3");
+                builtIn, new ObjectMapper(), "bge-m3");
     }
 
     @Test
@@ -127,7 +132,7 @@ class KnowledgeServiceTest {
         // Sin servidor configurado.
         when(models.isConfigured()).thenReturn(false);
         assertThat(service.status().semantic()).isFalse();
-        assertThat(service.status().detail()).contains("No model server");
+        assertThat(service.status().detail()).contains("Download the built-in model");
 
         // Configurado pero sin responder.
         when(models.isConfigured()).thenReturn(true);

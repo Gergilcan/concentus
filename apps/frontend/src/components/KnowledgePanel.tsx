@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client.ts'
 import type { KnowledgeDef, KnowledgeDoc, KnowledgeHit } from '../api/types.ts'
 import { CrudPanel } from './CrudPanel.tsx'
+import { EmbeddingModelPanel } from './EmbeddingModelPanel.tsx'
 import panels from './panels.module.scss'
 import styles from './resources.module.scss'
 
@@ -51,6 +52,10 @@ function Documents({ baseId }: { baseId: string }) {
     api.knowledgeDocs(baseId).then(setDocs).catch(() => setDocs([]))
   }, [baseId])
 
+  const refreshStatus = useCallback(() => {
+    api.knowledgeStatus().then(setStatus).catch(() => setStatus(null))
+  }, [])
+
   useEffect(() => {
     refresh()
     setNote(null)
@@ -58,8 +63,8 @@ function Documents({ baseId }: { baseId: string }) {
     setTypeTab('all')
     setPage(0)
     setCollapsed(new Set())
-    api.knowledgeStatus().then(setStatus).catch(() => setStatus(null))
-  }, [refresh])
+    refreshStatus()
+  }, [refresh, refreshStatus])
 
   // Tabs show only the types actually present — five empty tabs teach nothing.
   const countsByType = docs.reduce<Record<string, number>>((acc, d) => {
@@ -151,6 +156,7 @@ function Documents({ baseId }: { baseId: string }) {
   return (
     <div className={styles.kbDocs}>
       <h4 className={styles.h4}>Documents</h4>
+      <EmbeddingModelPanel onReady={refreshStatus} />
       {status && !status.semantic && (
         <p className={panels.hint} title={status.detail}>
           Ranking by word overlap. ⓘ
