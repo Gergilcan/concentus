@@ -1,0 +1,55 @@
+{
+  "id": "mailbox-assistant",
+  "name": "Mailbox assistant (IMAP)",
+  "mode": "local",
+  "enabled": false,
+  "favorite": false,
+  "tags": ["mail", "triage"],
+  "nodes": [
+    {
+      "id": "in-1",
+      "type": "input",
+      "role": null,
+      "data": {
+        "mode": "mail",
+        "prompt": "A new message arrived. Triage it following your instructions.",
+        "cron": "",
+        "secret": "",
+        "authParam": "",
+        "mailHost": "",
+        "mailPort": 993,
+        "mailSsl": true,
+        "mailUsername": "",
+        "mailCredentialId": "",
+        "mailFolder": "INBOX",
+        "mailFrom": "",
+        "mailSubjectContains": "",
+        "mailBodyContains": "",
+        "mailUnseenOnly": true,
+        "mailFlaggedOnly": false,
+        "mailWithAttachmentsOnly": false,
+        "mailPollSeconds": 120,
+        "mailMaxPerPoll": 5,
+        "mailMoveToFolder": "",
+        "mailMarkSeen": false,
+        "mailFlagAfter": false,
+        "_pos": { "x": 40, "y": 200 }
+      }
+    },
+    {
+      "id": "agent-1",
+      "type": "agent",
+      "role": "coordinator",
+      "data": {
+        "name": "Mail Triage",
+        "model": "claude-sonnet-5",
+        "effort": "medium",
+        "maxTokens": 16000,
+        "description": "Reads each incoming message and produces a triage note and a draft reply when one is due.",
+        "systemPrompt": "You triage incoming mail. You receive the message already read: sender, subject, body, and the text of any attachments.\n\nFor each message produce:\n1. TRIAGE — one line: who wants what, and how urgent it actually is (not how urgent it claims to be).\n2. ACTION — what the owner of this mailbox should do: reply / forward to X / calendar / archive / needs a decision only they can make.\n3. DRAFT — when the action is 'reply', a draft in the sender's language, matching their register, answering exactly what was asked. No filler, no invented commitments.\n\nNever send anything. You prepare; the owner decides.\n\nSet the mailbox connection on the Input node (host, username, credential) before enabling this flow.",
+        "_pos": { "x": 360, "y": 200 }
+      }
+    }
+  ],
+  "edges": [{ "id": "e-in", "source": "in-1", "target": "agent-1" }]
+}

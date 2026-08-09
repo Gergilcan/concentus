@@ -249,4 +249,21 @@ class FlowCompilerTest {
         return compiled.subAgents().stream()
                 .filter(s -> nodeId.equals(s.nodeId)).findFirst().orElseThrow();
     }
+
+    @Test
+    void perAgentToolAllowlistFlowsThroughToTheSpec() {
+        FlowNode coord = new FlowNode("c", "agent", "coordinator", Map.of("name", "Lead", "systemPrompt", "x"));
+        FlowNode sub = new FlowNode("s", "agent", "subagent", Map.of(
+                "name", "Reviewer", "systemPrompt", "x",
+                "tools", java.util.List.of("Read", "Grep", "Glob")));
+        FlowGraph flow = new FlowGraph("f", "F", "local", java.util.List.of(coord, sub),
+                java.util.List.of(new FlowEdge("e1", "c", "s")), null, java.util.List.of(), null, null);
+
+        CompiledFlow compiled = new FlowCompiler().compile(flow);
+
+        assertThat(compiled.subAgents().get(0).tools).containsExactly("Read", "Grep", "Glob");
+        // Blank stays blank — the executor omits the frontmatter line, which the CLI reads as
+        // "inherit all"; an empty list would instead mean "none".
+        assertThat(compiled.coordinator().tools).isEmpty();
+    }
 }

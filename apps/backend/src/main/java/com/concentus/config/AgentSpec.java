@@ -40,6 +40,12 @@ public class AgentSpec {
     public List<SkillSpec> skills = new ArrayList<>();
     public List<McpServerSpec> mcpServers = new ArrayList<>();
     public List<RepoSpec> repositories = new ArrayList<>();
+    /**
+     * Tools this agent may use, written into the subagent's frontmatter. Empty means "inherit
+     * everything", which is the CLI's own default. This is the one per-agent permission Claude
+     * Code actually enforces — unlike the permission mode, which is per process.
+     */
+    public List<String> tools = new ArrayList<>();
     public List<SqlSourceSpec> ragSources = new ArrayList<>();
     public List<KnowledgeSourceSpec> knowledgeSources = new ArrayList<>();
     /**

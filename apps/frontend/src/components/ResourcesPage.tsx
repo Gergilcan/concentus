@@ -5,6 +5,7 @@ import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, EFFORT_OPTIONS } from '../constants.
 import { CredentialsPanel } from './CredentialsPanel.tsx'
 import { CrudPanel } from './CrudPanel.tsx'
 import { KnowledgePanel } from './KnowledgePanel.tsx'
+import { McpCatalog } from './McpCatalog.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import { ModelField } from './ModelField.tsx'
 import { StoragePanel } from './StoragePanel.tsx'
@@ -14,6 +15,9 @@ type Tab = 'agents' | 'mcp' | 'databases' | 'knowledge' | 'credentials' | 'stora
 
 export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
   const [tab, setTab] = useState<Tab>('agents')
+  // Remounts the MCP CrudPanel after a catalog add, so the new definition appears in its list —
+  // the panel loads on mount and has no other way to be told.
+  const [mcpListVersion, setMcpListVersion] = useState(0)
 
   return (
     <div className={styles.resources}>
@@ -83,7 +87,10 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
         )}
 
         {tab === 'mcp' && (
+          <>
+          <McpCatalog onAdded={() => setMcpListVersion((v) => v + 1)} />
           <CrudPanel<McpDef>
+            key={mcpListVersion}
             title="MCP Servers"
             fields={[
               { key: 'name', label: 'Name', placeholder: 'linear' },
@@ -111,6 +118,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
               />
             )}
           />
+          </>
         )}
 
         {tab === 'databases' && (

@@ -171,6 +171,7 @@ public class FlowCompiler {
         s.mode = flow.modeOrDefault();
         s.nodeId = node.id();
         s.name = str(d, "name", node.id());
+        s.tools = strList(d, "tools");
         s.description = str(d, "description", "");
         s.systemPrompt = str(d, "systemPrompt", "");
         s.contextFolders = strList(d, "contextFolders");

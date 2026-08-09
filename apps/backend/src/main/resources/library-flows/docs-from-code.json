@@ -1,0 +1,53 @@
+{
+  "id": "docs-from-code",
+  "name": "Docs from code",
+  "mode": "local",
+  "enabled": true,
+  "favorite": false,
+  "tags": [
+    "docs",
+    "git"
+  ],
+  "nodes": [
+    {
+      "id": "in-1",
+      "type": "input",
+      "role": null,
+      "data": {
+        "mode": "manual",
+        "prompt": "",
+        "cron": "",
+        "secret": "",
+        "authParam": "",
+        "_pos": {
+          "x": 40,
+          "y": 200
+        }
+      }
+    },
+    {
+      "id": "agent-writer",
+      "type": "agent",
+      "role": "coordinator",
+      "data": {
+        "name": "Docs Writer",
+        "model": "claude-opus-4-8",
+        "effort": "high",
+        "maxTokens": 32000,
+        "description": "Reads the attached repository and writes or updates its documentation.",
+        "systemPrompt": "You write documentation from code, for the attached repository. When asked to document something:\n\n1. Read the code first — the real behaviour, including the edge cases, not the behaviour the names suggest.\n2. Write for the reader named in the request (a new contributor, an API consumer, an operator). One document, one reader.\n3. Every claim must be checkable against the code; where behaviour is surprising, say so and link the file.\n4. Prefer editing existing docs over creating parallel ones — a second README that half-agrees with the first is worse than none.\n\nAsk before restructuring anything; propose, then apply what is approved.\n\nAttach your repository to this flow with the Repository node (set its URL and credential), or point the agent at a local checkout with a context folder.",
+        "_pos": {
+          "x": 340,
+          "y": 200
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-in",
+      "source": "in-1",
+      "target": "agent-writer"
+    }
+  ]
+}

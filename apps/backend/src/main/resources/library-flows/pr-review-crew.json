@@ -1,0 +1,109 @@
+{
+  "id": "pr-review-crew",
+  "name": "PR review crew",
+  "mode": "local",
+  "enabled": true,
+  "favorite": false,
+  "tags": [
+    "code",
+    "review",
+    "git"
+  ],
+  "nodes": [
+    {
+      "id": "in-1",
+      "type": "input",
+      "role": null,
+      "data": {
+        "mode": "manual",
+        "prompt": "",
+        "cron": "",
+        "secret": "",
+        "authParam": "",
+        "_pos": {
+          "x": 40,
+          "y": 220
+        }
+      }
+    },
+    {
+      "id": "agent-lead",
+      "type": "agent",
+      "role": "coordinator",
+      "data": {
+        "name": "Review Lead",
+        "model": "claude-opus-4-8",
+        "effort": "high",
+        "maxTokens": 32000,
+        "description": "Coordinates a code review across specialised reviewers.",
+        "systemPrompt": "You coordinate a code review. Given a branch, a diff, or a description of recent changes in the attached repository:\n\n1. Survey what changed and split the review by area.\n2. Delegate backend files to the Backend Reviewer and frontend files to the Frontend Reviewer, each with the specific files and the risks to look for.\n3. Merge their findings, discard duplicates, and rank by severity: correctness first, then security, then maintainability. Style nits last, and only when they obscure meaning.\n4. Produce one review: a short verdict, then findings each with file, line, what is wrong, and a concrete fix.\n\nBe specific or be silent — a finding without a file and a reason is noise.\n\nWorks on whatever it is given: attach a Repository node or a context folder to review a checkout, or simply paste a diff into the run.",
+        "permissionMode": "plan",
+        "_pos": {
+          "x": 320,
+          "y": 220
+        }
+      }
+    },
+    {
+      "id": "agent-backend",
+      "type": "agent",
+      "role": "subagent",
+      "data": {
+        "name": "Backend Reviewer",
+        "model": "claude-sonnet-5",
+        "effort": "high",
+        "maxTokens": 16000,
+        "description": "Use for backend code: services, persistence, APIs, concurrency. Give it only the backend part of the diff.",
+        "systemPrompt": "You review backend code. For each file you are given, look for: correctness bugs, missing error handling, SQL and injection risks, concurrency hazards, and resources that are opened but never closed. Report each finding as file, line, problem, concrete fix. Do not restyle code that works.",
+        "tools": [
+          "Read",
+          "Grep",
+          "Glob"
+        ],
+        "_pos": {
+          "x": 620,
+          "y": 100
+        }
+      }
+    },
+    {
+      "id": "agent-frontend",
+      "type": "agent",
+      "role": "subagent",
+      "data": {
+        "name": "Frontend Reviewer",
+        "model": "claude-sonnet-5",
+        "effort": "high",
+        "maxTokens": 16000,
+        "description": "Use for frontend code: components, state, styles, accessibility. Give it only the frontend part of the diff.",
+        "systemPrompt": "You review frontend code. For each file you are given, look for: state bugs and stale closures, missing loading/error states, accessibility problems, and dead or duplicated styles. Report each finding as file, line, problem, concrete fix. Do not restyle code that works.",
+        "tools": [
+          "Read",
+          "Grep",
+          "Glob"
+        ],
+        "_pos": {
+          "x": 620,
+          "y": 340
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-in",
+      "source": "in-1",
+      "target": "agent-lead"
+    },
+    {
+      "id": "e-b",
+      "source": "agent-lead",
+      "target": "agent-backend"
+    },
+    {
+      "id": "e-f",
+      "source": "agent-lead",
+      "target": "agent-frontend"
+    }
+  ]
+}
