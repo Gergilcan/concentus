@@ -59,8 +59,11 @@ async function req<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIME
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   const method = (init?.method ?? 'GET').toUpperCase()
+  // FormData must NOT carry a Content-Type here: the browser sets it with the multipart boundary,
+  // and forcing application/json is why the upload used to bypass req() entirely — losing the
+  // timeout and duplicating the CSRF and error-body handling at its call site.
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
     ...((init?.headers as Record<string, string>) ?? {}),
   }
   if (method !== 'GET' && method !== 'HEAD') {
@@ -163,31 +166,17 @@ export const api = {
     req<KnowledgeDef>('/knowledge', { method: 'POST', body: JSON.stringify(k) }),
   deleteKnowledge: (id: string) => req<void>(`/knowledge/${id}`, { method: 'DELETE' }),
   knowledgeDocs: (id: string) => req<KnowledgeDoc[]>(`/knowledge/${id}/documents`),
-  uploadKnowledgeDoc: async (id: string, file: File, name?: string) => {
+  uploadKnowledgeDoc: (id: string, file: File, name?: string) => {
     const form = new FormData()
     // The third argument overrides the filename the server sees — how a folder upload keeps its
     // relative path ("manuals/intro.pdf") instead of flattening to the basename.
     form.append('file', file, name ?? file.name)
-    // Straight fetch rather than req(): multipart must NOT carry the JSON content type — the
-    // browser sets the boundary itself — but the CSRF header is still required on a POST.
-    const headers: Record<string, string> = {}
-    const token = csrfToken()
-    if (token) headers['X-XSRF-TOKEN'] = token
-    const res = await fetch(`/api/knowledge/${id}/documents`, {
-      method: 'POST',
-      body: form,
-      headers,
-      credentials: 'same-origin',
-    })
-    if (!res.ok) {
-      let message = `${res.status} ${res.statusText}`
-      try {
-        const body = (await res.json()) as { error?: string }
-        if (body?.error) message = body.error
-      } catch { /* non-JSON error body */ }
-      throw new Error(message)
-    }
-    return (await res.json()) as { docName: string; chunks: number; embedded: boolean; detail: string }
+    // 5 minutes, not the default 30s: a large PDF is extracted and embedded before the response.
+    return req<{ docName: string; chunks: number; embedded: boolean; detail: string }>(
+      `/knowledge/${id}/documents`,
+      { method: 'POST', body: form },
+      300_000,
+    )
   },
   // name as a query param: folder-upload names contain slashes, and Tomcat rejects an encoded
   // slash inside a path segment.
