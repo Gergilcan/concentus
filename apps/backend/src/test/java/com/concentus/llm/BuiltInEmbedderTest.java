@@ -67,6 +67,7 @@ class BuiltInEmbedderTest {
         String dir = System.getenv("CONCENTUS_TEST_MODEL_DIR");
         assumeThat(dir).as("CONCENTUS_TEST_MODEL_DIR with a downloaded model").isNotNull();
         BuiltInEmbedder embedder = withModelDir(dir);
+        embedder.loadIfPresent();
         assumeThat(embedder.isReady()).as("model loaded").isTrue();
 
         List<float[]> passages = embedder.embed(List.of(
@@ -83,5 +84,34 @@ class BuiltInEmbedderTest {
         double dot = 0;
         for (int i = 0; i < a.length; i++) dot += a[i] * b[i];
         return dot; // both are L2-normalised by the embedder
+    }
+
+    @Test
+    void batchedEmbeddingsMatchSingleOnes() {
+        String dir = System.getenv("CONCENTUS_TEST_MODEL_DIR");
+        assumeThat(dir).as("CONCENTUS_TEST_MODEL_DIR with a downloaded model").isNotNull();
+        BuiltInEmbedder embedder = withModelDir(dir);
+        embedder.loadIfPresent();
+        assumeThat(embedder.isReady()).as("model loaded").isTrue();
+
+        // Texts of very different lengths, so batch padding actually differs from per-text runs.
+        List<String> texts = List.of(
+                "corto",
+                "Las devoluciones de productos se procesan en un plazo de treinta dias naturales "
+                        + "desde que recibimos el paquete en nuestro almacen central de Valencia.",
+                "medio texto aqui");
+        List<float[]> batched = embedder.embed(texts, false);
+        // One-element calls take the single-text path through the same code.
+        for (int i = 0; i < texts.size(); i++) {
+            float[] single = embedder.embed(List.of(texts.get(i)), false).get(0);
+            double dot = 0;
+            for (int d = 0; d < single.length; d++) dot += single[d] * batched.get(i)[d];
+            // Both are L2-normalised. Not 0.999+: the model is int8-quantized and its scale
+            // factors depend on tensor content, so batch composition moves the last decimals —
+            // measured at ~0.995 here. What retrieval needs is ranking stability, which the
+            // cross-lingual test above pins; a genuine padding leak into the pooled result
+            // would collapse this similarity far below 0.98, not shave thousandths off it.
+            org.assertj.core.api.Assertions.assertThat(dot).isGreaterThan(0.98);
+        }
     }
 }
