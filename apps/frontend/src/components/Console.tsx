@@ -110,6 +110,15 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
     }
   }
 
+  // One derived notice rendered in two places, instead of the same strings written twice with
+  // complementary conditions — the copies had already drifted.
+  const connNotice =
+    connStatus === 'reconnecting'
+      ? 'Connection lost — reconnecting…'
+      : connStatus === 'disconnected'
+        ? 'Disconnected from run output.'
+        : null
+
   const totals = useFlowStore((s) => s.runTotals)
   const hasTotals = totals.input > 0 || totals.output > 0
 
@@ -147,13 +156,7 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
       )}
       <div className={styles.log}>
         {events.length === 0 && (
-          <div className={styles.logMuted}>
-            {connStatus === 'reconnecting'
-              ? 'Reconnecting…'
-              : connStatus === 'disconnected'
-                ? 'Disconnected from run output.'
-                : 'Waiting for output…'}
-          </div>
+          <div className={styles.logMuted}>{connNotice ?? 'Waiting for output…'}</div>
         )}
         {agentFilter && shown.length === 0 && (
           <div className={styles.logMuted}>No output from {filteredName} yet.</div>
@@ -172,12 +175,7 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
         <div ref={bottomRef} />
       </div>
 
-      {connStatus === 'reconnecting' && events.length > 0 && (
-        <div className={styles.err}>Connection lost — reconnecting…</div>
-      )}
-      {connStatus === 'disconnected' && events.length > 0 && (
-        <div className={styles.err}>Disconnected from run output.</div>
-      )}
+      {connNotice && events.length > 0 && <div className={styles.err}>{connNotice}</div>}
 
       {err && <div className={styles.err}>{err}</div>}
 
