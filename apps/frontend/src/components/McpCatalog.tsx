@@ -24,8 +24,11 @@ interface CatalogEntry {
 }
 
 const CATALOG: CatalogEntry[] = [
-  { name: 'github', url: 'https://api.githubcopilot.com/mcp/', auth: 'oauth',
-    note: 'Issues, PRs, repos. Sign in from the node after adding.' },
+  // GitHub is the ecosystem's known exception: its MCP server does not support dynamic client
+  // registration, so the OAuth sign-in the other entries use fails with "Incompatible auth
+  // server". A fine-grained PAT over the Authorization header is the supported route.
+  { name: 'github', url: 'https://api.githubcopilot.com/mcp/', auth: 'token',
+    note: 'Needs a fine-grained personal access token stored as a credential — its OAuth rejects automated sign-in.' },
   { name: 'linear', url: 'https://mcp.linear.app/mcp', auth: 'oauth',
     note: 'Issues and projects. Sign in from the node after adding.' },
   { name: 'notion', url: 'https://mcp.notion.com/mcp', auth: 'oauth',
