@@ -159,7 +159,11 @@ public class LocalClaudeExecutor {
             }
         }
 
-        try (BufferedReader reader = proc.inputReader()) {
+        // UTF-8 explicitly. Process.inputReader() with no argument decodes with `native.encoding`
+        // — the OS charset, which on a Spanish Windows is Cp1252 — while the CLI emits UTF-8. The
+        // mismatch does not fail: it silently turns every accent, curly quote and em dash in the
+        // agent's output into mojibake, and file.encoding being UTF-8 does not cover this reader.
+        try (BufferedReader reader = proc.inputReader(StandardCharsets.UTF_8)) {
             String line;
             while ((line = reader.readLine()) != null) {
                 streamHandler.handleLine(run, line);
