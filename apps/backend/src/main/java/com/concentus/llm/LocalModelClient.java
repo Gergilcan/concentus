@@ -1,5 +1,6 @@
 package com.concentus.llm;
 
+import com.concentus.support.Texts;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -350,7 +351,7 @@ public class LocalModelClient {
 
     /** Turns the server's rejection into something that names the likely cause. */
     private String explain(int status, String body, String model) {
-        String brief = brief(body);
+        String brief = Texts.brief(body, 400);
         if (status == 404) {
             return "The local model server has no model '" + model + "' (404). Pull it first — e.g. "
                     + "`ollama pull " + model + "` — and check the id matches exactly, tag included.";
@@ -390,10 +391,4 @@ public class LocalModelClient {
         }
     }
 
-    /** Error bodies can be enormous; keep the console line readable. */
-    private static String brief(String body) {
-        if (body == null) return "";
-        String t = body.strip();
-        return t.length() <= 400 ? t : t.substring(0, 400) + "…";
-    }
 }

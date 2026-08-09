@@ -154,12 +154,8 @@ public class CloudStreamEventHandler {
 
     /** Display name for a node, preferring the compiled flow's agent name. */
     private static String labelFor(AgentRun run, String nodeId, String fallbackName) {
-        if (run.compiled != null && nodeId != null) {
-            if (nodeId.equals(run.compiled.coordinator().nodeId)) return run.compiled.coordinator().name;
-            for (AgentSpec s : run.compiled.subAgents()) {
-                if (nodeId.equals(s.nodeId)) return s.name;
-            }
-        }
+        String name = run.compiled == null ? null : run.compiled.agentName(nodeId);
+        if (name != null) return name;
         return fallbackName != null ? fallbackName : nodeId;
     }
 

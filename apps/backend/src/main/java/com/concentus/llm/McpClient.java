@@ -1,5 +1,6 @@
 package com.concentus.llm;
 
+import com.concentus.support.Texts;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -195,7 +196,7 @@ public class McpClient implements AutoCloseable {
             }
             if (res.statusCode() / 100 != 2) {
                 throw new LlmException(serverName,
-                        serverName + " returned " + res.statusCode() + ": " + brief(res.body()));
+                        serverName + " returned " + res.statusCode() + ": " + Texts.brief(res.body(), 300));
             }
             // Notifications are answered 202 with no body.
             if (!expectResult) return new Response(mapper.createObjectNode(), sessionId);
@@ -242,11 +243,6 @@ public class McpClient implements AutoCloseable {
         throw new LlmException(serverName, "No JSON-RPC response found in the SSE stream from " + serverName);
     }
 
-    private static String brief(String body) {
-        if (body == null) return "";
-        String t = body.strip();
-        return t.length() <= 300 ? t : t.substring(0, 300) + "…";
-    }
 
     @Override
     public void close() {
