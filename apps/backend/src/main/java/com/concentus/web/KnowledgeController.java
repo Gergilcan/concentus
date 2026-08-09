@@ -118,6 +118,12 @@ public class KnowledgeController {
         service.deleteDocument(id, docName);
     }
 
+    /** Deletes a folder and everything under it; returns how many documents went. */
+    @DeleteMapping("/{id}/folders")
+    public Map<String, Object> deleteFolder(@PathVariable String id, @RequestParam("path") String folder) {
+        return Map.of("deleted", service.deleteFolder(id, folder));
+    }
+
     /** Try a query before wiring the base into a flow — a bad ranking should cost a click here. */
     @PostMapping("/{id}/search")
     public List<KnowledgeService.Hit> search(@PathVariable String id,

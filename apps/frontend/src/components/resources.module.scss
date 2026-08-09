@@ -114,10 +114,18 @@
 .crudForm {
   overflow: auto;
   padding: 18px 20px;
-  max-width: 720px;
+  // Was a flat 720px, which left a document tree squeezed into a third of a wide window while
+  // the rest sat empty. It fills its grid column now; text fields keep a readable measure via
+  // .field below, so only the things that genuinely want room — the tree, hit previews — take it.
+  // min-width:0 because a grid item defaults to min-content and a long path would push the
+  // column wider than the window rather than eliding.
+  min-width: 0;
 }
 
 .field {
+  // Plain inputs and textareas do not become more readable by being wider, so the measure that
+  // used to come from the form's own ceiling is kept here, where it only affects them.
+  max-width: 720px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -413,4 +421,17 @@
   white-space: nowrap;
   flex: 1;
   min-width: 0;
+}
+
+/* A folder row carries two actions, so the toggle is a button inside the row rather than
+   being the row — a button nested in a button is invalid and browsers drop one of them. */
+.kbFolderRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .kbFolder {
+    flex: 1;
+    min-width: 0;
+  }
 }

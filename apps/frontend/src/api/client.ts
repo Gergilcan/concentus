@@ -179,6 +179,11 @@ export const api = {
   // slash inside a path segment.
   deleteKnowledgeDoc: (id: string, docName: string) =>
     req<void>(`/knowledge/${id}/documents?name=${encodeURIComponent(docName)}`, { method: 'DELETE' }),
+  /** Deletes a folder and every document under it; returns how many went. */
+  deleteKnowledgeFolder: (id: string, path: string) =>
+    req<{ deleted: number }>(`/knowledge/${id}/folders?path=${encodeURIComponent(path)}`, {
+      method: 'DELETE',
+    }),
   // The built-in embedding model: no server, no Docker — the backend runs it in-process.
   embedderStatus: () => req<EmbedderStatus>('/knowledge/embedder'),
   embedderDownload: () => req<void>('/knowledge/embedder/download', { method: 'POST' }),

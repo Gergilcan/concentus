@@ -136,6 +136,32 @@ public class KnowledgeService {
                 baseId, docName) > 0;
     }
 
+    /**
+     * Deletes every document stored under a folder, and reports how many there were.
+     *
+     * <p>The count is of documents, not chunks — that is the unit the user sees — and it is
+     * gathered before the delete because afterwards there is nothing left to count.
+     *
+     * <p>The folder name goes into a LIKE pattern, so its wildcards are escaped: a folder called
+     * {@code 100%_done} would otherwise match siblings it has no business deleting. Trailing
+     * slashes are trimmed, and an empty prefix is refused rather than being allowed to expand into
+     * "everything" through a {@code '/%'} pattern that matches every nested document.
+     */
+    public int deleteFolder(String baseId, String folder) {
+        String prefix = folder == null ? "" : folder.replaceAll("/+$", "");
+        if (prefix.isBlank()) {
+            throw new IllegalArgumentException("A folder is required.");
+        }
+        String pattern = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "/%";
+        Integer docs = jdbc.queryForObject("""
+                select count(distinct doc_name) from knowledge_chunks
+                 where base_id = ? and doc_name like ? escape '\\'
+                """, Integer.class, baseId, pattern);
+        jdbc.update("delete from knowledge_chunks where base_id = ? and doc_name like ? escape '\\'",
+                baseId, pattern);
+        return docs == null ? 0 : docs;
+    }
+
     /** Everything a deleted base would otherwise leave behind. */
     public void deleteAll(String baseId) {
         jdbc.update("delete from knowledge_chunks where base_id = ?", baseId);

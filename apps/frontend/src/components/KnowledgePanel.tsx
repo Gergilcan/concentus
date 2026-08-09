@@ -78,6 +78,36 @@ export const DEFAULT_EXCLUDES = [
   '.git', '.next', '.nuxt', '.gradle', '.idea', '.vs', '.cache', '.venv', 'venv', '__pycache__',
 ]
 
+/** One line of the rendered tree: a folder header or a document, at a nesting depth. */
+export type TreeRow =
+  | { kind: 'folder'; node: TreeNode; depth: number }
+  | { kind: 'file'; doc: KnowledgeDoc; depth: number }
+
+/**
+ * Flattens the tree into the rows actually on screen, honouring what is expanded.
+ *
+ * <p>This is what pagination counts. Paginating files alone made a page of twenty files render as
+ * anything from twenty to sixty lines depending on how many folder headers came with them, and a
+ * collapsed folder still consumed its files' worth of the page while showing one line. Twenty
+ * <em>rows</em> is the thing the user can actually see and count.
+ */
+export function flattenTree(node: TreeNode, expanded: Set<string>, depth = 0): TreeRow[] {
+  const rows: TreeRow[] = []
+  for (const child of node.folders.values()) {
+    rows.push({ kind: 'folder', node: child, depth })
+    if (expanded.has(child.path)) rows.push(...flattenTree(child, expanded, depth + 1))
+  }
+  for (const doc of node.files) rows.push({ kind: 'file', doc, depth })
+  return rows
+}
+
+/** Documents anywhere under a folder — what deleting it would actually take. */
+export function countUnder(node: TreeNode): number {
+  let total = node.files.length
+  for (const child of node.folders.values()) total += countUnder(child)
+  return total
+}
+
 /** Every folder name along a file's path, minus the chosen root and the file itself. */
 export function pathSegments(relativePath: string): string[] {
   const parts = relativePath.split('/')
@@ -93,7 +123,10 @@ function Documents({ baseId }: { baseId: string }) {
   const [status, setStatus] = useState<{ semantic: boolean; detail: string } | null>(null)
   const [typeTab, setTypeTab] = useState<string>('all')
   const [page, setPage] = useState(0)
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  // Expanded, not collapsed: the default is everything folded, and tracking what the user opened
+  // means a folder that appears after an upload starts folded too, instead of needing to be added
+  // to a collapse set nobody remembered to update.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // A picked folder, held until its exclusions are confirmed.
   const [pending, setPending] = useState<File[] | null>(null)
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
@@ -114,7 +147,7 @@ function Documents({ baseId }: { baseId: string }) {
     setHits(null)
     setTypeTab('all')
     setPage(0)
-    setCollapsed(new Set())
+    setExpanded(new Set())
     setPending(null)
     refreshStatus()
   }, [refresh, refreshStatus])
@@ -126,61 +159,73 @@ function Documents({ baseId }: { baseId: string }) {
     return acc
   }, {})
   const filtered = typeTab === 'all' ? docs : docs.filter((d) => typeOf(d.name) === typeTab)
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const safePage = Math.min(page, pages - 1)
-  const pageDocs = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
 
-  // The tree is built from the page, not the whole base: paging whole folders would make page
-  // size depend on folder shape, and 20 files per page is the thing worth keeping steady.
-  const tree = buildTree(pageDocs)
+  // The whole base, not a page of it: what gets paginated is the rows on screen, which depends
+  // on what is expanded, so the tree has to exist in full before it can be sliced.
+  const tree = buildTree(filtered)
+  const rows = flattenTree(tree, expanded)
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const safePage = Math.min(page, pages - 1)
+  const pageRows = rows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
 
   const toggleFolder = (f: string) =>
-    setCollapsed((prev) => {
+    setExpanded((prev) => {
       const next = new Set(prev)
       if (next.has(f)) next.delete(f)
       else next.add(f)
       return next
     })
 
-  /** One folder level: its own row, then its subfolders, then its files. */
-  const renderNode = (node: TreeNode, depth: number): ReactNode => (
-    <div key={node.path || '(root)'}>
-      {node.path !== '' && (
-        <button
-          className={styles.kbFolder}
-          style={{ paddingLeft: depth * 14 }}
-          onClick={() => toggleFolder(node.path)}
-          title={node.path}
-        >
-          <span>{collapsed.has(node.path) ? '▸' : '▾'}</span>
-          <span className={styles.kbFolderName}>{node.name}/</span>
+  const deleteFolder = async (node: TreeNode) => {
+    const total = countUnder(node)
+    if (!confirm(`Delete "${node.path}" and the ${total} document(s) under it? This cannot be undone.`)) {
+      return
+    }
+    try {
+      const result = await api.deleteKnowledgeFolder(baseId, node.path)
+      setNote(`Deleted ${result.deleted} document(s) from ${node.path}.`)
+      refresh()
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const renderRow = (row: TreeRow): ReactNode =>
+    row.kind === 'folder' ? (
+      // A row, not a single button: the toggle and the delete are two actions, and a button
+      // inside a button is invalid HTML that browsers resolve by dropping one of them.
+      <div key={`d:${row.node.path}`} className={styles.kbFolderRow} style={{ paddingLeft: row.depth * 14 }}>
+        <button className={styles.kbFolder} onClick={() => toggleFolder(row.node.path)} title={row.node.path}>
+          <span>{expanded.has(row.node.path) ? '▾' : '▸'}</span>
+          <span className={styles.kbFolderName}>{row.node.name}/</span>
+          <span className={styles.muted}>{countUnder(row.node)}</span>
         </button>
-      )}
-      {!collapsed.has(node.path) && (
-        <>
-          {[...node.folders.values()].map((child) => renderNode(child, depth + 1))}
-          {node.files.map((d) => (
-            <div key={d.name} className={styles.kbDoc} style={{ paddingLeft: (depth + 1) * 14 }}>
-              {/* The full stored path, not the basename: a file's folder is part of what it is,
-                  and at a glance "intro.pdf" three times over says nothing. */}
-              <span className={styles.kbDocName} title={d.name}>
-                {d.name}
-              </span>
-              <span className={styles.muted}>
-                {d.chunks} passage(s){d.embedded ? '' : ' · word-overlap only'}
-              </span>
-              <button
-                className={styles.delBtn}
-                onClick={() => void api.deleteKnowledgeDoc(baseId, d.name).then(refresh)}
-              >
-                Delete
-              </button>
-            </div>
-          ))}
-        </>
-      )}
-    </div>
-  )
+        <button
+          className={styles.delBtn}
+          title={`Delete this folder and everything under it`}
+          onClick={() => void deleteFolder(row.node)}
+        >
+          Delete
+        </button>
+      </div>
+    ) : (
+      <div key={`f:${row.doc.name}`} className={styles.kbDoc} style={{ paddingLeft: row.depth * 14 }}>
+        {/* The full stored path, not the basename: a file's folder is part of what it is, and at
+            a glance "intro.pdf" three times over says nothing. */}
+        <span className={styles.kbDocName} title={row.doc.name}>
+          {row.doc.name}
+        </span>
+        <span className={styles.muted}>
+          {row.doc.chunks} passage(s){row.doc.embedded ? '' : ' · word-overlap only'}
+        </span>
+        <button
+          className={styles.delBtn}
+          onClick={() => void api.deleteKnowledgeDoc(baseId, row.doc.name).then(refresh)}
+        >
+          Delete
+        </button>
+      </div>
+    )
 
   /** Extensions the backend can extract text from; anything else in a folder is skipped, counted. */
   const SUPPORTED = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.html']
@@ -313,12 +358,12 @@ function Documents({ baseId }: { baseId: string }) {
         </div>
       )}
 
-      {renderNode(tree, 0)}
+      {pageRows.map(renderRow)}
 
       {pages > 1 && (
         <div className={styles.kbPager}>
           <button disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>‹</button>
-          <span className={styles.muted}>{safePage + 1} / {pages}</span>
+          <span className={styles.muted}>{safePage + 1} / {pages} · {rows.length} rows</span>
           <button disabled={safePage >= pages - 1} onClick={() => setPage(safePage + 1)}>›</button>
         </div>
       )}

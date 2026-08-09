@@ -154,4 +154,37 @@ class KnowledgeServiceTest {
         when(models.listModels()).thenReturn(java.util.Set.of("bge-m3:latest", "qwen3:14b"));
         assertThat(service.status().semantic()).isTrue();
     }
+
+    @Test
+    void deletingAFolderTakesEverythingUnderItAndNothingBeside() {
+        when(models.isConfigured()).thenReturn(false);
+        service.ingest("kb1", "docs/a.txt", "contenido uno".getBytes(StandardCharsets.UTF_8));
+        service.ingest("kb1", "docs/deep/b.txt", "contenido dos".getBytes(StandardCharsets.UTF_8));
+        // A sibling whose name STARTS with the folder name: the classic prefix-delete casualty.
+        service.ingest("kb1", "docs-archive/c.txt", "contenido tres".getBytes(StandardCharsets.UTF_8));
+        service.ingest("kb1", "root.txt", "contenido cuatro".getBytes(StandardCharsets.UTF_8));
+
+        assertThat(service.deleteFolder("kb1", "docs")).isEqualTo(2);
+
+        assertThat(service.documents("kb1")).extracting(KnowledgeService.DocInfo::name)
+                .containsExactlyInAnyOrder("docs-archive/c.txt", "root.txt");
+    }
+
+    @Test
+    void aFolderNameWithSqlWildcardsMatchesItselfOnly() {
+        when(models.isConfigured()).thenReturn(false);
+        service.ingest("kb1", "100%_done/a.txt", "contenido equis".getBytes(StandardCharsets.UTF_8));
+        service.ingest("kb1", "1000_done/b.txt", "contenido ye".getBytes(StandardCharsets.UTF_8));
+
+        // Unescaped, '%' and '_' are LIKE wildcards and this would take the sibling too.
+        assertThat(service.deleteFolder("kb1", "100%_done")).isEqualTo(1);
+        assertThat(service.documents("kb1")).extracting(KnowledgeService.DocInfo::name)
+                .containsExactly("1000_done/b.txt");
+    }
+
+    @Test
+    void anEmptyFolderIsRefusedRatherThanDeletingTheWholeBase() {
+        assertThatThrownBy(() -> service.deleteFolder("kb1", "/"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }

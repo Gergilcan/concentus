@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_EXCLUDES, buildTree, pathSegments } from './KnowledgePanel.tsx'
+import { DEFAULT_EXCLUDES, buildTree, countUnder, flattenTree, pathSegments } from './KnowledgePanel.tsx'
 import type { KnowledgeDoc } from '../api/types.ts'
 
 const doc = (name: string): KnowledgeDoc => ({ name, chunks: 1, embedded: true, createdAt: 0 })
@@ -59,5 +59,49 @@ describe('pathSegments', () => {
 
     expect(nested.some((s) => excluded.has(s))).toBe(true)
     expect(pathSegments('myrepo/src/main/x.txt').some((s) => excluded.has(s))).toBe(false)
+  })
+})
+
+describe('flattenTree', () => {
+  const docs = [doc('a/1.txt'), doc('a/deep/2.txt'), doc('b/3.txt'), doc('root.txt')]
+
+  it('shows only top-level folders and root files when nothing is expanded', () => {
+    const rows = flattenTree(buildTree(docs), new Set())
+
+    // Everything starts folded, so a base with thousands of files opens as a handful of rows.
+    expect(rows.map((r) => (r.kind === 'folder' ? `[${r.node.path}]` : r.doc.name))).toEqual([
+      '[a]',
+      '[b]',
+      'root.txt',
+    ])
+  })
+
+  it('reveals a folder’s contents when it is expanded, and only that folder’s', () => {
+    const rows = flattenTree(buildTree(docs), new Set(['a']))
+
+    expect(rows.map((r) => (r.kind === 'folder' ? `[${r.node.path}]` : r.doc.name))).toEqual([
+      '[a]',
+      '[a/deep]', // present but still folded — expanding a parent must not expand its children
+      'a/1.txt',
+      '[b]',
+      'root.txt',
+    ])
+  })
+
+  it('indents each level so depth reflects nesting', () => {
+    const rows = flattenTree(buildTree(docs), new Set(['a', 'a/deep']))
+    const deepFile = rows.find((r) => r.kind === 'file' && r.doc.name === 'a/deep/2.txt')
+
+    expect(deepFile?.depth).toBe(2)
+  })
+})
+
+describe('countUnder', () => {
+  it('counts documents at every depth, which is what deleting a folder takes', () => {
+    const tree = buildTree([doc('a/1.txt'), doc('a/deep/2.txt'), doc('a/deep/deeper/3.txt'), doc('b/4.txt')])
+
+    // The count shown in the confirm must be the true total, not the rows currently visible.
+    expect(countUnder(tree.folders.get('a')!)).toBe(3)
+    expect(countUnder(tree.folders.get('b')!)).toBe(1)
   })
 })
