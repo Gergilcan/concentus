@@ -11,6 +11,10 @@ import type {
   MailSignInResult,
   BackendFlow,
   DatabaseDef,
+  EmbedderStatus,
+  KnowledgeDef,
+  KnowledgeDoc,
+  KnowledgeHit,
   LibraryAgent,
   FlowVersionInfo,
   McpDef,
@@ -18,9 +22,7 @@ import type {
   McpServerInfo,
   NodeExecReport,
   ModelCatalog,
-  RagStatus,
   RemoteRepoList,
-  RunDetail,
   RunEvent,
   RunSummary,
   StorageConfig,
@@ -111,7 +113,6 @@ export const api = {
 
   // runs
   listRuns: () => req<RunSummary[]>('/runs'),
-  getRun: (id: string) => req<RunDetail>(`/runs/${id}`),
   getRunNodes: (id: string) => req<NodeExecReport>(`/runs/${id}/nodes`),
   /** The flow snapshot this run executed (works for ad-hoc runs and edited/deleted flows). */
   getRunFlow: (id: string) => req<BackendFlow>(`/runs/${id}/flow`),
@@ -138,6 +139,59 @@ export const api = {
     req<{ ok: boolean; detail: string }>('/storage/test', {
       method: 'POST',
       body: JSON.stringify(s),
+    }),
+
+  // Knowledge bases: document collections agents retrieve from. The upload is multipart, so it
+  // bypasses req()'s JSON defaults.
+  listKnowledge: () => req<KnowledgeDef[]>('/knowledge'),
+  knowledgeStatus: () => req<{ semantic: boolean; detail: string }>('/knowledge/status'),
+  saveKnowledge: (k: KnowledgeDef) =>
+    req<KnowledgeDef>('/knowledge', { method: 'POST', body: JSON.stringify(k) }),
+  deleteKnowledge: (id: string) => req<void>(`/knowledge/${id}`, { method: 'DELETE' }),
+  knowledgeDocs: (id: string) => req<KnowledgeDoc[]>(`/knowledge/${id}/documents`),
+  uploadKnowledgeDoc: async (id: string, file: File, name?: string) => {
+    const form = new FormData()
+    // The third argument overrides the filename the server sees — how a folder upload keeps its
+    // relative path ("manuals/intro.pdf") instead of flattening to the basename.
+    form.append('file', file, name ?? file.name)
+    // Straight fetch rather than req(): multipart must NOT carry the JSON content type — the
+    // browser sets the boundary itself — but the CSRF header is still required on a POST.
+    const headers: Record<string, string> = {}
+    const token = csrfToken()
+    if (token) headers['X-XSRF-TOKEN'] = token
+    const res = await fetch(`/api/knowledge/${id}/documents`, {
+      method: 'POST',
+      body: form,
+      headers,
+      credentials: 'same-origin',
+    })
+    if (!res.ok) {
+      let message = `${res.status} ${res.statusText}`
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body?.error) message = body.error
+      } catch { /* non-JSON error body */ }
+      throw new Error(message)
+    }
+    return (await res.json()) as { docName: string; chunks: number; embedded: boolean; detail: string }
+  },
+  // name as a query param: folder-upload names contain slashes, and Tomcat rejects an encoded
+  // slash inside a path segment.
+  deleteKnowledgeDoc: (id: string, docName: string) =>
+    req<void>(`/knowledge/${id}/documents?name=${encodeURIComponent(docName)}`, { method: 'DELETE' }),
+  /** Deletes a folder and every document under it; returns how many went. */
+  deleteKnowledgeFolder: (id: string, path: string) =>
+    req<{ deleted: number }>(`/knowledge/${id}/folders?path=${encodeURIComponent(path)}`, {
+      method: 'DELETE',
+    }),
+  // The built-in embedding model: no server, no Docker — the backend runs it in-process.
+  embedderStatus: () => req<EmbedderStatus>('/knowledge/embedder'),
+  embedderDownload: () => req<void>('/knowledge/embedder/download', { method: 'POST' }),
+  deleteEmbedder: () => req<void>('/knowledge/embedder', { method: 'DELETE' }),
+  searchKnowledge: (id: string, query: string, topK = 5) =>
+    req<KnowledgeHit[]>(`/knowledge/${id}/search`, {
+      method: 'POST',
+      body: JSON.stringify({ query, topK }),
     }),
 
   listDatabases: () => req<DatabaseDef[]>('/databases'),
@@ -180,13 +234,6 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   signOut: () => req<void>('/account/logout', { method: 'POST' }),
-  changePassword: (currentPassword: string, newPassword: string) =>
-    req<void>('/account/password', {
-      method: 'POST',
-      body: JSON.stringify({ currentPassword, newPassword }),
-    }),
-
-  /** Per-model rates for the cost estimate, plus which execution backends can run right now. */
   listModels: () => req<ModelCatalog>('/models'),
 
   // stored credentials (write-only: nothing here ever returns a secret)
@@ -255,7 +302,6 @@ export const api = {
     ),
 
   // rag
-  ragStatus: () => req<RagStatus>('/rag/status'),
   ragPreview: (source: SqlSourceInput) =>
     req<SqlPreview>('/rag/preview', { method: 'POST', body: JSON.stringify(source) }),
 }

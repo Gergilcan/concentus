@@ -231,29 +231,36 @@
     padding: 8px 10px;
   }
 
+  // Shape only. The colour of each button lives on its own class below, so all three are
+  // declared the same way — previously the primary look came from this element selector and
+  // the other two had to fight it off with !important on every property.
   button {
-    background: t.$accent;
-    border: 1px solid t.$accent;
-    color: #08111f;
+    background: transparent;
+    border: 1px solid t.$border;
+    color: t.$muted;
     border-radius: 6px;
     padding: 8px 14px;
     font-weight: 600;
   }
-}
 
-.stopBtn {
-  background: transparent !important;
-  border-color: t.$danger !important;
-  color: t.$danger !important;
-}
+  // Nested on purpose: a class inside .cmdRow outranks the `button` rule above it. Declared at
+  // the top level instead, each of these would lose to it and need !important on every property,
+  // which is how they were written before.
+  .sendBtn {
+    background: t.$accent;
+    border-color: t.$accent;
+    color: #08111f;
+  }
 
-.retryBtn {
-  background: transparent !important;
-  border-color: t.$border !important;
-  color: t.$muted !important;
+  .stopBtn {
+    border-color: t.$danger;
+    color: t.$danger;
+  }
 
-  &:hover {
-    border-color: t.$accent !important;
-    color: t.$text !important;
+  .retryBtn {
+    &:hover {
+      border-color: t.$accent;
+      color: t.$text;
+    }
   }
 }

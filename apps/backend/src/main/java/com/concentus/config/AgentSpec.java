@@ -40,7 +40,14 @@ public class AgentSpec {
     public List<SkillSpec> skills = new ArrayList<>();
     public List<McpServerSpec> mcpServers = new ArrayList<>();
     public List<RepoSpec> repositories = new ArrayList<>();
+    /**
+     * Tools this agent may use, written into the subagent's frontmatter. Empty means "inherit
+     * everything", which is the CLI's own default. This is the one per-agent permission Claude
+     * Code actually enforces — unlike the permission mode, which is per process.
+     */
+    public List<String> tools = new ArrayList<>();
     public List<SqlSourceSpec> ragSources = new ArrayList<>();
+    public List<KnowledgeSourceSpec> knowledgeSources = new ArrayList<>();
     /**
      * Local host folders this agent should read as context, passed to the CLI as {@code --add-dir}.
      * Without these an agent only sees its scratch workspace and has to guess from names — which
@@ -288,6 +295,23 @@ public class AgentSpec {
         /** Same as {@link #resolvePassword()}, resolving through {@code lookup} (for tests). */
         public String resolvePassword(Function<String, String> lookup) {
             return resolveCredential(credentialId, lookup);
+        }
+    }
+
+    /**
+     * A knowledge base wired to this agent: the passages relevant to the run's prompt are
+     * retrieved and injected as context, alongside the SQL sources.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class KnowledgeSourceSpec {
+        /** Canvas node id this spec came from (for per-node execution reporting). */
+        public String nodeId;
+        public String baseId;
+        public String label;
+        public int topK = 5;
+
+        public String label() {
+            return (label == null || label.isBlank()) ? "knowledge" : label;
         }
     }
 

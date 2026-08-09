@@ -82,11 +82,11 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
       </SelectField>
 
       {mode === 'embedded' ? (
-        <p className={panels.hint}>
-          A real PostgreSQL that starts and stops with the app, in your app-data folder. Right for
-          one person on one machine: no server to run, no credentials to manage, and it is backed
-          up by whatever backs up that folder — which for most laptops is nothing, so this is the
-          trade-off to be aware of.
+        <p
+          className={panels.hint}
+          title="A real PostgreSQL in your app-data folder, started and stopped with the app. No server, no credentials — but only as backed up as that folder is."
+        >
+          Ships with the app; nothing to install. ⓘ
         </p>
       ) : (
         <>
@@ -104,14 +104,11 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
             placeholder={config.hasPassword ? '•••••••• (unchanged)' : ''}
             onChange={setPassword}
           />
-          <p className={panels.hint}>
-            For a team: shared between installs, backed up and audited like any other database.
-            PostgreSQL only — the schema uses <code>jsonb</code> and partial indexes. Concentus
-            creates its own tables on first connection, so an empty database is all it needs.
-            <br />
-            <b>Nothing is copied over.</b> Switching does not move your existing runs, credentials
-            or flow history to the new database; it starts empty. Flows, agents and MCP definitions
-            are files rather than rows, so those come with you either way.
+          <p
+            className={panels.hint}
+            title="PostgreSQL only (the schema uses jsonb). An empty database is all it needs — tables are created on first connection. Switching copies nothing over: the new database starts empty."
+          >
+            For teams: shared, backed up, audited. Nothing is migrated when switching. ⓘ
           </p>
         </>
       )}
@@ -136,11 +133,11 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
       )}
 
       {pendingRestart && (
-        <p className={panels.hint}>
-          <b>Restart required.</b> This app is running on the <b>{config.activeMode}</b> database.
-          The setting is read when Concentus starts, because every part of the app opens its tables
-          against one connection — swapping it underneath a running process would leave half of it
-          talking to the old database.
+        <p
+          className={panels.hint}
+          title="The setting is read at startup: every store opens its tables against one connection, so it cannot be swapped under a running app."
+        >
+          <b>Restart required</b> — currently running on the <b>{config.activeMode}</b> database. ⓘ
         </p>
       )}
     </div>

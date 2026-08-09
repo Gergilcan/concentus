@@ -39,7 +39,7 @@ const MAX_RUN_EVENTS = 4000
 /** The field each node kind uses as its human-facing identifier, if it has one. */
 function nameKey(kind: NodeKind): 'name' | 'label' | null {
   if (kind === 'agent' || kind === 'mcp') return 'name'
-  if (kind === 'sql') return 'label'
+  if (kind === 'sql' || kind === 'knowledge') return 'label'
   return null
 }
 
@@ -142,6 +142,8 @@ function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
       return { kind: 'mcp', name: 'github', url: 'https://api.githubcopilot.com/mcp/', credentialId: '' }
     case 'repo':
       return { kind: 'repo', provider: 'github', url: '', credentialId: '', mountPath: '', branch: '' }
+    case 'knowledge':
+      return { kind: 'knowledge', label: 'knowledge', baseId: '', topK: 5 }
     case 'sql':
       return {
         kind: 'sql',

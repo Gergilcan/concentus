@@ -1,10 +1,12 @@
 package com.concentus.store;
 
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
+import org.junit.jupiter.api.Assumptions;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.Locale;
 
 /**
  * One real PostgreSQL, shared by every test that needs storage.
@@ -19,7 +21,7 @@ import java.io.UncheckedIOException;
  * {@link #reset(JdbcTemplate)} gives each test a clean table, which is what isolation actually
  * needs here.
  */
-final class TestDatabase {
+public final class TestDatabase {
 
     private static EmbeddedPostgres postgres;
     private static JdbcTemplate jdbc;
@@ -27,12 +29,25 @@ final class TestDatabase {
     private TestDatabase() {
     }
 
-    static synchronized JdbcTemplate jdbc() {
+    public static synchronized JdbcTemplate jdbc() {
         if (jdbc == null) {
             try {
                 postgres = EmbeddedPostgres.builder().setPort(0).start();
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
+            } catch (IOException | RuntimeException e) {
+                // PostgreSQL refuses to run under an account with administrative rights on Windows.
+                // That is every GitHub Windows runner, and any developer working from an elevated
+                // shell — neither of which is a broken build, so these tests step aside there with
+                // a reason rather than failing.
+                //
+                // Only on Windows: on Linux, which is where CI runs the suite, a database that will
+                // not start IS a broken build and must fail.
+                if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
+                    Assumptions.abort(
+                            "Skipped: the embedded PostgreSQL could not start (" + e.getMessage() + "). "
+                            + "On Windows it refuses to run from an elevated shell — run these tests "
+                            + "from a normal, non-administrator terminal.");
+                }
+                throw e instanceof IOException io ? new UncheckedIOException(io) : (RuntimeException) e;
             }
             jdbc = new JdbcTemplate(postgres.getPostgresDatabase());
             // The real migrations, so the tests run against the schema the app actually ships
@@ -48,7 +63,7 @@ final class TestDatabase {
      * <p>For the tests that need a schema of their own — chiefly the baseline case, which has to
      * start from a database this run has never migrated.
      */
-    static javax.sql.DataSource freshDatabase(String name) {
+    public static javax.sql.DataSource freshDatabase(String name) {
         jdbc();  // make sure the server is up
         jdbc.execute("drop database if exists " + name);
         jdbc.execute("create database " + name);
@@ -61,7 +76,7 @@ final class TestDatabase {
      * <p>Deletes rather than drops: the table belongs to the migrations now, and dropping it would
      * leave Flyway's history claiming a schema that is no longer there.
      */
-    static void reset(JdbcTemplate template) {
+    public static void reset(JdbcTemplate template) {
         template.execute("delete from resources");
     }
 }

@@ -1,0 +1,53 @@
+{
+  "id": "webhook-issue-triage",
+  "name": "Issue triage (webhook)",
+  "mode": "local",
+  "enabled": false,
+  "favorite": false,
+  "tags": ["webhook", "issues"],
+  "nodes": [
+    {
+      "id": "in-1",
+      "type": "input",
+      "role": null,
+      "data": {
+        "mode": "webhook",
+        "prompt": "An issue event arrived from the tracker. Triage it following your instructions. The event payload follows.",
+        "cron": "",
+        "secret": "",
+        "authParam": "Linear-Signature",
+        "_pos": { "x": 40, "y": 200 }
+      }
+    },
+    {
+      "id": "agent-1",
+      "type": "agent",
+      "role": "coordinator",
+      "data": {
+        "name": "Issue Triage",
+        "model": "claude-sonnet-5",
+        "effort": "medium",
+        "maxTokens": 16000,
+        "description": "Reads each incoming issue event and produces a triage assessment.",
+        "systemPrompt": "You triage issues as they arrive from the tracker's webhook. From the event payload:\n\n1. Classify: bug / feature request / question / noise.\n2. For bugs: judge severity from what is actually described — affected users and data loss beat adjectives. Note what reproduction information is missing.\n3. For features: state the underlying need in one line, separate from the requested solution.\n4. Suggest labels and, when the description names an area of the codebase, a likely owner.\n\nOutput a short triage note. If the MCP node for your tracker is connected and signed in, apply the labels; otherwise end with the suggested ones for a human to apply.\n\nSet the webhook secret on the Input node, then point your tracker's webhook at the URL shown there.",
+        "_pos": { "x": 360, "y": 200 }
+      }
+    },
+    {
+      "id": "mcp-tracker",
+      "type": "mcp",
+      "role": null,
+      "data": {
+        "name": "linear",
+        "url": "https://mcp.linear.app/mcp",
+        "credentialId": "",
+        "authHeader": "",
+        "_pos": { "x": 360, "y": 400 }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e-in", "source": "in-1", "target": "agent-1" },
+    { "id": "e-mcp", "source": "mcp-tracker", "target": "agent-1" }
+  ]
+}

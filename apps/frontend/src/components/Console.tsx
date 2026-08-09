@@ -1,14 +1,11 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { api, openRunSocket, type RunSocketStatus } from '../api/client.ts'
+import type { RunStatus } from '../api/types.ts'
 import { useFlowStore } from '../state/store.ts'
-import { usd } from './NodeExecView.tsx'
+import { clockTime, money } from '../utils/format.ts'
 import { agentKey } from '../utils/agentKey.ts'
 import { cx } from '../utils/cx.ts'
 import styles from './runs.module.scss'
-
-function fmt(ts: number): string {
-  return new Date(ts).toLocaleTimeString()
-}
 
 /** Stable hue per agent name, so an agent keeps the same colour for the whole run. */
 function hueOf(name: string): number {
@@ -17,7 +14,12 @@ function hueOf(name: string): number {
   return h
 }
 
-export function Console({ runId }: { runId: string }) {
+export function Console({ runId, status }: { runId: string; status?: RunStatus }) {
+  // Stopping only means something while something is running. STARTING and RUNNING are the states
+  // with work to interrupt; IDLE is a turn-based run waiting for its next command, with no process
+  // to kill, and TERMINATED and ERROR are over. Offering the button there invites a click that
+  // does nothing and leaves the user unsure whether it worked.
+  const canStop = status === 'STARTING' || status === 'RUNNING'
   // Events live in the store so a node's inspector can render its own agent's slice
   // of the same stream — one socket, many views.
   const events = useFlowStore((s) => s.runEvents)
@@ -104,7 +106,7 @@ export function Console({ runId }: { runId: string }) {
           Σ execution tokens · in {totals.input.toLocaleString()} · out {totals.output.toLocaleString()}
           {totals.costUsd > 0 && (
             <span title="Sum of each block priced at its own model's rate, with cached tokens weighted. Runs on a Claude subscription have no per-token bill — treat this as equivalent usage.">
-              {' '}· ≈{usd(totals.costUsd)}
+              {' '}· ≈{money(totals.costUsd)}
             </span>
           )}
         </div>
@@ -144,7 +146,7 @@ export function Console({ runId }: { runId: string }) {
         )}
         {shown.map((e, i) => (
           <div key={i} className={cx(styles.line, styles['t_' + e.type])}>
-            <span className={styles.lts}>{fmt(e.ts)}</span>
+            <span className={styles.lts}>{clockTime(e.ts)}</span>
             {e.agent && (
               <span className={styles.who} style={{ '--h': hueOf(e.agent) } as CSSProperties}>
                 {e.agent}
@@ -174,10 +176,15 @@ export function Console({ runId }: { runId: string }) {
           }}
           placeholder="Send a command to the running agents…"
         />
-        <button onClick={() => void send()} disabled={sending}>
+        <button className={styles.sendBtn} onClick={() => void send()} disabled={sending}>
           Send
         </button>
-        <button className={styles.stopBtn} onClick={() => void stop()}>
+        <button
+          className={styles.stopBtn}
+          onClick={() => void stop()}
+          disabled={!canStop}
+          title={canStop ? 'Stop the agents' : 'Nothing is running to stop'}
+        >
           Stop
         </button>
         <button

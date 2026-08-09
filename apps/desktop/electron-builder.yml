@@ -6,6 +6,14 @@ directories:
   output: release
   buildResources: build
 
+# Where the auto-updater looks for new versions. electron-builder also writes app-update.yml into
+# the packaged app from this block — without it, electron-updater has no feed and errors at
+# startup. Publishing itself stays off (--publish never); the release workflow uploads the assets.
+publish:
+  provider: github
+  owner: Gergilcan
+  repo: concentus
+
 # Only the compiled shell. The UI is not here — it is inside the backend jar, served over
 # loopback — so there is no renderer bundle to include.
 files:
@@ -38,6 +46,13 @@ nsis:
 
 linux:
   category: Development
+  # Without this the .deb is named after the npm package — "desktop_1.0.0_amd64.deb" — which says
+  # nothing about what it installs. Linux only: the NSIS name ("Concentus Setup 1.0.0.exe") is
+  # already the convention on Windows.
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  # Pairs with desktopName in package.json so the window manager associates running windows with
+  # the installed .desktop entry, rather than showing the app as an unknown one in the taskbar.
+  syncDesktopName: true
   target:
     - target: AppImage
       arch: [x64]

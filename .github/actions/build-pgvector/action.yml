@@ -90,11 +90,86 @@ runs:
         cd /d "%RUNNER_TEMP%\pgvector"
         REM PGROOT was exported by the previous step and is what Makefile.win reads.
         nmake /F Makefile.win || exit /b 1
-        set "DEST=%GITHUB_WORKSPACE%\apps\backend\src\main\resources\pgvector\windows-amd64"
-        mkdir "%DEST%"
-        copy vector.dll "%DEST%\" || exit /b 1
-        copy vector.control "%DEST%\" || exit /b 1
-        copy sql\*.sql "%DEST%\" || exit /b 1
-        cd /d "%DEST%"
-        dir /b *.sql > sql-files.txt
-        dir
+
+    # Staged in PowerShell rather than with cmd's `copy`. `copy src "%DEST%\"` — a quoted path
+    # ending in a backslash — is a long-standing cmd hazard, and here it silently produced files
+    # holding each other's contents: vector.dll contained the control file, vector.control
+    # contained the SQL. Every command reported success and the artifact was scrambled.
+    - name: Stage pgvector (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $src = "$env:RUNNER_TEMP\pgvector"
+        $dest = "apps/backend/src/main/resources/pgvector/windows-amd64"
+        New-Item -ItemType Directory -Force -Path $dest | Out-Null
+        Copy-Item -LiteralPath "$src\vector.dll"     -Destination "$dest\vector.dll"     -Force
+        Copy-Item -LiteralPath "$src\vector.control" -Destination "$dest\vector.control" -Force
+        Copy-Item -Path "$src\sql\*.sql" -Destination $dest -Force
+        (Get-ChildItem $dest -Filter *.sql).Name | Set-Content -Encoding ascii "$dest\sql-files.txt"
+        Get-ChildItem $dest | Format-Table Name, Length
+
+    # Checks that what was staged is what it claims to be.
+    #
+    # This exists because the build reported success while producing files that held each other's
+    # contents — a compiled library named vector.control, an SQL script named vector.dll — and
+    # nothing noticed until PostgreSQL refused the extension on a developer's machine. A build step
+    # that cannot fail is not a check; these assertions are the check.
+    - name: Verify the staged extension
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ "${RUNNER_OS}" = "Windows" ]; then
+          dir="apps/backend/src/main/resources/pgvector/windows-amd64"; lib="vector.dll"; magic="4d5a"
+        else
+          dir="apps/backend/src/main/resources/pgvector/linux-amd64"; lib="vector.so"; magic="7f454c46"
+        fi
+
+        fail() { echo "::error::$1"; exit 1; }
+
+        [ -f "$dir/$lib" ] || fail "$lib is missing from $dir"
+        # The shared library must actually be a shared library — PE starts 4d5a ("MZ"), ELF
+        # 7f454c46. Compared as hex rather than with grep, which is not dependable on binary input.
+        # This is the assertion that would have caught the scrambled artifact immediately.
+        sig=$(head -c 4 "$dir/$lib" | od -An -tx1 | tr -d ' \n')
+        case "$sig" in
+          ${magic}*) ;;
+          *) fail "$lib is not a native library — it begins ${sig}, expected ${magic}" ;;
+        esac
+        # A real build is hundreds of kilobytes; a text file that landed under this name is not.
+        size=$(wc -c < "$dir/$lib")
+        [ "$size" -gt 50000 ] || fail "$lib is only ${size} bytes, which is too small to be the compiled extension"
+
+        [ -f "$dir/vector.control" ] || fail "vector.control is missing"
+        grep -q "default_version" "$dir/vector.control" \
+          || fail "vector.control does not look like a control file"
+
+        # The install script PostgreSQL runs for a fresh CREATE EXTENSION. An upgrade script landing
+        # under this name is exactly what produced "type sparsevec is only a shell" in testing.
+        install_script=$(grep -o "default_version *= *'[^']*'" "$dir/vector.control" | grep -o "'[^']*'" | tr -d "'")
+        [ -f "$dir/vector--${install_script}.sql" ] || fail "vector--${install_script}.sql is missing"
+        grep -q "CREATE TYPE sparsevec" "$dir/vector--${install_script}.sql" \
+          || fail "vector--${install_script}.sql is not the full install script"
+
+        echo "Verified: $lib ($size bytes), vector.control, vector--${install_script}.sql"
+        ls -la "$dir"
+
+    # A file at the pgvector/ level so the platform directory survives the upload.
+    #
+    # upload-artifact roots the zip at the common ancestor of the files it matches. With only
+    # windows-amd64/ inside, that ancestor WAS windows-amd64, so the zip contained the files at its
+    # root and the platform folder vanished — and PgVectorInstaller, which looks under
+    # pgvector/<platform>/, then found nothing.
+    - name: Describe the payload
+      shell: bash
+      run: |
+        cat > apps/backend/src/main/resources/pgvector/README.txt <<'EOF'
+        pgvector, compiled by CI for one platform.
+
+        Unzip this so the platform directory ends up at:
+            apps/backend/src/main/resources/pgvector/<platform>/
+
+        Then rebuild the backend jar. PgVectorInstaller copies these into the embedded PostgreSQL on
+        startup and the log should say "Installed pgvector into ...". That directory is gitignored:
+        it is build output, not source.
+        EOF
+        cat apps/backend/src/main/resources/pgvector/README.txt

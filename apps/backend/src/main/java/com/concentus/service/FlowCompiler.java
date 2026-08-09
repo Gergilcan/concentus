@@ -4,6 +4,7 @@ import com.concentus.config.AgentSpec;
 import com.concentus.config.AgentSpec.McpServerSpec;
 import com.concentus.config.AgentSpec.ModelSpec;
 import com.concentus.config.AgentSpec.RepoSpec;
+import com.concentus.config.AgentSpec.KnowledgeSourceSpec;
 import com.concentus.config.AgentSpec.SqlSourceSpec;
 import com.concentus.model.FlowEdge;
 import com.concentus.model.FlowGraph;
@@ -34,6 +35,7 @@ public class FlowCompiler {
         List<FlowNode> mcps = byType(flow, "mcp");
         List<FlowNode> repos = byType(flow, "repo");
         List<FlowNode> sqls = byType(flow, "sql");
+        List<FlowNode> knowledges = byType(flow, "knowledge");
 
         if (agents.isEmpty()) {
             throw new IllegalArgumentException("Flow has no agent nodes.");
@@ -55,7 +57,7 @@ public class FlowCompiler {
             throw new IllegalArgumentException("Flow has more than one coordinator — mark exactly one.");
         }
 
-        AgentSpec coordinator = buildAgentSpec(coordinatorNode, flow, mcps, repos, sqls);
+        AgentSpec coordinator = buildAgentSpec(coordinatorNode, flow, mcps, repos, sqls, knowledges);
 
         // Every agent reachable from the coordinator through agent-to-agent edges — not just the
         // directly linked ones. A reviewer wired behind an engineer exists to review that
@@ -63,7 +65,7 @@ public class FlowCompiler {
         Delegation tree = delegationTree(coordinatorNode, agents, flow.edgesOrEmpty());
         List<AgentSpec> subAgents = new ArrayList<>();
         for (FlowNode n : tree.ordered()) {
-            subAgents.add(buildAgentSpec(n, flow, mcps, repos, sqls));
+            subAgents.add(buildAgentSpec(n, flow, mcps, repos, sqls, knowledges));
         }
 
         assignCliNames(coordinator, subAgents);
@@ -162,12 +164,14 @@ public class FlowCompiler {
     }
 
     private AgentSpec buildAgentSpec(FlowNode node, FlowGraph flow,
-                                     List<FlowNode> mcps, List<FlowNode> repos, List<FlowNode> sqls) {
+                                     List<FlowNode> mcps, List<FlowNode> repos, List<FlowNode> sqls,
+                                     List<FlowNode> knowledges) {
         Map<String, Object> d = node.dataOrEmpty();
         AgentSpec s = new AgentSpec();
         s.mode = flow.modeOrDefault();
         s.nodeId = node.id();
         s.name = str(d, "name", node.id());
+        s.tools = strList(d, "tools");
         s.description = str(d, "description", "");
         s.systemPrompt = str(d, "systemPrompt", "");
         s.contextFolders = strList(d, "contextFolders");
@@ -217,6 +221,15 @@ public class FlowCompiler {
             spec.credentialId = str(qd, "credentialId", null);
             spec.query = str(qd, "query", "");
             spec.maxRows = (int) lng(qd, "maxRows", 50);
+            return spec;
+        });
+        collectConnected(flow, node, knowledges, s.knowledgeSources, kb -> {
+            Map<String, Object> kd = kb.dataOrEmpty();
+            KnowledgeSourceSpec spec = new KnowledgeSourceSpec();
+            spec.nodeId = kb.id();
+            spec.baseId = str(kd, "baseId", "");
+            spec.label = str(kd, "label", kb.id());
+            spec.topK = (int) lng(kd, "topK", 5);
             return spec;
         });
 

@@ -97,9 +97,8 @@ jobs:
       # else exercises it, and a failure at release time is a failure while cutting a release. This
       # job is the difference between finding that out now and finding it out then.
       #
-      # NOT continue-on-error here, unlike the release workflow. There the trade is "ship an
-      # installer without semantic ranking rather than no installer"; here there is nothing to
-      # ship, so a break should be loud.
+      # Required, as it is in the release workflow. An installer is supposed to contain the
+      # extension, so a build that cannot produce it is a failure in both places.
       - name: Build pgvector
         uses: ./.github/actions/build-pgvector
         with:

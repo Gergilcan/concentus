@@ -1,0 +1,38 @@
+{
+  "id": "daily-briefing",
+  "name": "Daily briefing (cron)",
+  "mode": "local",
+  "enabled": false,
+  "favorite": false,
+  "tags": ["cron", "research"],
+  "nodes": [
+    {
+      "id": "in-1",
+      "type": "input",
+      "role": null,
+      "data": {
+        "mode": "cron",
+        "prompt": "Write today's briefing. Topics: (edit this prompt with the topics you care about — e.g. your industry, your competitors, a technology). Research each with web search, then write the briefing per your instructions.",
+        "cron": "0 7 * * 1-5",
+        "secret": "",
+        "authParam": "",
+        "_pos": { "x": 40, "y": 200 }
+      }
+    },
+    {
+      "id": "agent-1",
+      "type": "agent",
+      "role": "coordinator",
+      "data": {
+        "name": "Briefing Writer",
+        "model": "claude-sonnet-5",
+        "effort": "medium",
+        "maxTokens": 16000,
+        "description": "Researches a fixed set of topics each morning and writes a short briefing.",
+        "systemPrompt": "You write a morning briefing. For each topic you are given: search for developments from the last 24 hours, keep only what someone tracking the topic would act on or want to know, and drop everything that is a rehash. Output: one section per topic, at most three bullets each, one line per bullet with a source. If nothing happened on a topic, say 'nothing new' — an empty section is information too. No preamble, no sign-off.",
+        "_pos": { "x": 340, "y": 200 }
+      }
+    }
+  ],
+  "edges": [{ "id": "e-in", "source": "in-1", "target": "agent-1" }]
+}

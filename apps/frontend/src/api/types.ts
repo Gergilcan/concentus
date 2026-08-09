@@ -18,7 +18,7 @@ export interface RunSummary {
   estimatedCostUsd?: number
 }
 
-export type RunEventType = 'system' | 'status' | 'agent_message' | 'tool_use' | 'error'
+type RunEventType ='system' | 'status' | 'agent_message' | 'tool_use' | 'error'
 
 export interface RunEvent {
   type: RunEventType
@@ -69,7 +69,7 @@ export interface ModelRate {
 }
 
 /** An execution backend and whether it can run right now. */
-export interface BackendStatus {
+interface BackendStatus {
   /** `local` (claude CLI on a subscription) or `cloud` (ANTHROPIC_API_KEY). */
   id: string
   name: string
@@ -118,7 +118,7 @@ export interface NodeExecReport {
 // `type` aliases (not interfaces) so they satisfy React Flow's
 // `Record<string, unknown>` node-data constraint.
 
-export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'input'
+export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'knowledge' | 'input'
 
 export type InputNodeData = {
   kind: 'input'
@@ -212,6 +212,8 @@ export type AgentNodeData = {
   contextFolders?: string[]
   /** Path to an existing CLAUDE.md, or a folder containing one, to load as context. */
   claudeMdPath?: string
+  /** Tools this sub-agent may use — the one permission Claude Code enforces per agent. Empty = all. */
+  tools?: string[]
   /**
    * How much the run may do without asking. **Coordinator only.**
    *
@@ -276,7 +278,16 @@ export type SqlNodeData = {
   maxRows: number
 }
 
-export type AppNodeData = AgentNodeData | McpNodeData | RepoNodeData | SqlNodeData | InputNodeData
+export type KnowledgeNodeData = {
+  kind: 'knowledge'
+  label: string
+  /** Which knowledge base to retrieve from — created under Resources → Knowledge. */
+  baseId: string
+  /** How many passages to inject. */
+  topK: number
+}
+
+export type AppNodeData = AgentNodeData | McpNodeData | RepoNodeData | SqlNodeData | KnowledgeNodeData | InputNodeData
 
 export interface SqlPreview {
   columns: string[]
@@ -294,7 +305,7 @@ export interface BackendFlowNode {
   data: Record<string, unknown>
 }
 
-export interface BackendFlowEdge {
+interface BackendFlowEdge {
   id: string
   source: string
   target: string
@@ -320,11 +331,6 @@ export interface FlowVersionInfo {
   createdAt: number
 }
 
-export interface RagStatus {
-  enabled: boolean
-  message: string
-  sources: unknown[]
-}
 
 export interface AuthStatus {
   mode: string
@@ -514,4 +520,34 @@ export interface McpToolList {
   ok: boolean
   tools?: McpToolInfo[]
   error?: string
+}
+
+/** A named collection of documents agents retrieve from (Resources → Knowledge). */
+export type KnowledgeDef = {
+  id?: string
+  name: string
+  description?: string
+}
+
+export type KnowledgeDoc = {
+  name: string
+  chunks: number
+  embedded: boolean
+  createdAt: number
+}
+
+export type KnowledgeHit = {
+  docName: string
+  seq: number
+  content: string
+  score: number
+}
+
+/** The built-in, in-process embedding model — downloaded on demand from the app. */
+export interface EmbedderStatus {
+  state: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'READY' | 'ERROR'
+  percent: number
+  error: string
+  sizeMb: number
+  model: string
 }

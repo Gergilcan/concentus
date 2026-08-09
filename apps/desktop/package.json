@@ -4,13 +4,26 @@
   "private": true,
   "version": "1.0.0",
   "description": "Concentus desktop shell — supervises the backend and hosts its UI in a window.",
+  "homepage": "http://www.concentus-ai.com/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Gergilcan/concentus.git"
+  },
+  "author": {
+    "name": "Gerard Gilabert",
+    "email": "gila791@hotmail.com"
+  },
+  "desktopName": "concentus.desktop",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b --noEmit",
     "start": "pnpm build && electron .",
     "payload": "node scripts/prepare-payload.mjs",
-    "package": "pnpm build && pnpm payload && electron-builder"
+    "package": "pnpm build && pnpm payload && electron-builder --publish never"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

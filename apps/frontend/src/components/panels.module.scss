@@ -60,6 +60,9 @@
 .addSql span {
   color: t.$sql;
 }
+.addKnowledge span {
+  color: t.$knowledge;
+}
 
 .previewBtn {
   background: t.$panel-2;
@@ -203,29 +206,6 @@
   border-radius: 6px;
   padding: 3px 8px;
   font-size: 11px;
-}
-
-.rag {
-  margin-top: 18px;
-  border-top: 1px dashed t.$border;
-  padding-top: 14px;
-}
-
-.soon {
-  font-size: 9px;
-  background: t.$border;
-  color: t.$muted;
-  padding: 1px 6px;
-  border-radius: 8px;
-  margin-left: 6px;
-  vertical-align: middle;
-}
-
-.ragMsg {
-  color: t.$muted;
-  font-size: 12px;
-  line-height: 1.5;
-  margin: 0 0 10px;
 }
 
 .mcpActions {

@@ -1,4 +1,5 @@
 import type { NodeExec, NodeExecStatus } from '../api/types.ts'
+import { money } from '../utils/format.ts'
 import { cx } from '../utils/cx.ts'
 import styles from './panels.module.scss'
 
@@ -9,7 +10,7 @@ const STATUS_LABEL: Record<NodeExecStatus, string> = {
   failed: 'Failed',
 }
 
-export function StatusBadge({ status }: { status?: NodeExecStatus }) {
+function StatusBadge({ status }: { status?: NodeExecStatus }) {
   const s = status ?? 'pending'
   return <span className={cx(styles.statusPill, styles['st_' + s])}>{STATUS_LABEL[s]}</span>
 }
@@ -18,7 +19,7 @@ function fmt(n: number): string {
   return (n ?? 0).toLocaleString()
 }
 
-export function TokenLine({ exec }: { exec?: NodeExec }) {
+function TokenLine({ exec }: { exec?: NodeExec }) {
   if (!exec) return null
   // Cached tokens are shown apart from fresh input rather than added into it: resuming a session
   // re-reads the whole history from cache each turn, so cache reads dwarf everything else while
@@ -40,18 +41,11 @@ export function TokenLine({ exec }: { exec?: NodeExec }) {
             `Runs on a Claude subscription have no per-token bill — treat this as equivalent usage.`
           }
         >
-          {' '}· ≈{usd(cost)}
+          {' '}· ≈{money(cost)}
         </span>
       )}
     </div>
   )
-}
-
-/** Sub-cent costs are common per block, so don't round them away to $0.00. */
-export function usd(n: number): string {
-  if (!n) return '$0'
-  if (n < 0.01) return '<$0.01'
-  return `$${n.toFixed(2)}`
 }
 
 export function InputView({ exec }: { exec?: NodeExec }) {

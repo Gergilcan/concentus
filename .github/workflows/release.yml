@@ -48,14 +48,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # A full JDK, not a JRE: the payload script needs jlink and the jmods directory to build the
-      # runtime that ships inside the installer.
+      # Zulu rather than Temurin, for one specific reason: the payload script builds the bundled
+      # runtime with jlink, and jlink needs the JDK's `jmods` directory. The Temurin 25 build this
+      # workflow was getting does not ship one, so the first release failed after the jar had
+      # already been built. Zulu includes it.
+      #
+      # A missing jmods no longer stops the build — prepare-payload.mjs falls back to copying the
+      # whole JDK — but that fallback exists for a bad day, not as the normal path: it produces a
+      # noticeably larger installer.
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: zulu
           java-version: "25"
           cache: maven
+
+      # Cheap, and answers the question above directly in the log instead of leaving it to be
+      # inferred from a failure ten minutes later.
+      - name: Check the JDK can trim a runtime
+        shell: bash
+        run: |
+          if [ -d "$JAVA_HOME/jmods" ]; then
+            echo "jmods present ($(ls "$JAVA_HOME/jmods" | wc -l) modules) — jlink will trim the runtime."
+          else
+            echo "::warning::$JAVA_HOME has no jmods; the whole JDK will be bundled and the installer will be larger."
+          fi
 
       - uses: pnpm/action-setup@v4
 
@@ -66,13 +83,17 @@ jobs:
           cache: pnpm
 
       # Compiled here because it cannot be compiled anywhere else: it is C, built against the
-      # PostgreSQL server headers, for one OS and one major version. The result is copied into the
-      # embedded server at startup (see PgVectorInstaller) so MCP tool search can rank by meaning.
+      # PostgreSQL server headers, for one OS and one major version. It has to run BEFORE the jar
+      # is packaged — it stages into src/main/resources, so `mvn package` carries it into the jar
+      # and the jar into the installer. That is what makes the extension part of what a user
+      # installs rather than something they fetch.
       #
-      # continue-on-error: losing semantic ranking is a degraded feature the app already handles
-      # and reports; losing the installer over it would be the wrong trade.
+      # Required, not continue-on-error. It was the latter on the reasoning that an installer
+      # without semantic ranking beats no installer — but that silently ships an .exe missing a
+      # feature it is supposed to contain, and nobody would notice until a user's log said the
+      # build carried none. CI now compiles this on every push, so a break is caught long before a
+      # release; by the time a tag is cut, a failure here is a real problem and should stop.
       - name: Build pgvector
-        continue-on-error: true
         uses: ./.github/actions/build-pgvector
         with:
           pg-major: ${{ env.PG_MAJOR }}
@@ -91,9 +112,15 @@ jobs:
       # OS-activated Maven profile, so this jar is only valid for the runner that built it. That
       # is why the whole build runs per platform rather than building one jar and packaging it
       # twice.
+      # Tests are CI's job, not this one's. Running them here again buys nothing — the commit being
+      # tagged has already been through them — and it makes cutting a release depend on the test
+      # suite working in an environment it was never meant to run in. That is not hypothetical: the
+      # store tests need a real PostgreSQL, and PostgreSQL refuses to start under the
+      # administrative account GitHub's Windows runner uses, so the release failed on a platform
+      # difference that had nothing to do with packaging.
       - name: Build backend jar
         working-directory: apps/backend
-        run: mvn -B -q clean package
+        run: mvn -B -q clean package -DskipTests
 
       - name: Build installer
         working-directory: apps/desktop

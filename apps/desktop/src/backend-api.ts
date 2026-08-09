@@ -77,7 +77,16 @@ function request<T>(port: number, path: string, method: string, body?: unknown):
   })
 }
 
+/** The slice of a run summary the notifier needs; the API returns more, which is ignored. */
+export interface RunLite {
+  id: string
+  status: string
+  flowName: string | null
+  error?: string | null
+}
+
 export const backendApi = {
+  listRuns: (port: number) => request<RunLite[]>(port, '/api/runs', 'GET'),
   getStorage: (port: number) => request<StorageConfig>(port, '/api/storage', 'GET'),
   testStorage: (port: number, draft: StorageDraft) =>
     request<{ ok: boolean; detail: string }>(port, '/api/storage/test', 'POST', draft),

@@ -40,20 +40,25 @@ class SchemaMigratorTest {
 
     @Test
     void aDatabaseFromBeforeMigrationsIsBaselinedRatherThanRejected() {
-        // What an install that predates Flyway looks like: the tables are there, created ad-hoc,
-        // and there is no history table to say so.
+        // What an install that predates Flyway actually looks like: the tables it had are there,
+        // created ad-hoc, there is no history table — and crucially NO `resources` table, because
+        // that one arrived with the move of flows into the database, after those installs existed.
+        //
+        // This is the case that broke a real installation. Baselining at V1 records V1 as already
+        // applied, so a `resources` table living only in V1 is never created, and every flow, agent
+        // and MCP definition silently has nowhere to go. It is why the table is also created by a
+        // migration above the baseline.
         DataSource ds = TestDatabase.freshDatabase("migrate_legacy");
         JdbcTemplate jdbc = new JdbcTemplate(ds);
         jdbc.execute("create table runs (id text primary key, initial_prompt text)");
-        jdbc.execute("create table resources (kind text, id text, sort_key text, json text, "
-                + "updated_at bigint, primary key (kind, id))");
 
         assertThat(SchemaMigrator.migrate(ds)).isTrue();
 
-        // Baselined at V1: the history exists, and the hand-made tables are left exactly as they
-        // were rather than the migration trying to create them again and failing.
+        // Baselined: the history exists and the hand-made table is left as it was.
         assertThat(tableExists(jdbc, "flyway_schema_history")).isTrue();
         assertThat(tableExists(jdbc, "runs")).isTrue();
+        // And the table the baseline could not know about was still created.
+        assertThat(tableExists(jdbc, "resources")).isTrue();
         jdbc.update("insert into resources (kind, id, json, updated_at) values ('flow','f1','{}',1)");
         assertThat(jdbc.queryForObject("select count(*) from resources", Integer.class)).isEqualTo(1);
     }
@@ -63,11 +68,17 @@ class SchemaMigratorTest {
         DataSource ds = TestDatabase.freshDatabase("migrate_twice");
 
         assertThat(SchemaMigrator.migrate(ds)).isTrue();
+        JdbcTemplate jdbc = new JdbcTemplate(ds);
+        Integer afterFirst = jdbc.queryForObject(
+                "select count(*) from flyway_schema_history where success", Integer.class);
+
         assertThat(SchemaMigrator.migrate(ds)).isTrue();
 
-        JdbcTemplate jdbc = new JdbcTemplate(ds);
+        // The count, not a fixed number: what matters is that a second run applies nothing new,
+        // and asserting "exactly one migration exists" would fail every time one is added.
         assertThat(jdbc.queryForObject(
-                "select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(1);
+                "select count(*) from flyway_schema_history where success", Integer.class))
+                .isEqualTo(afterFirst);
     }
 
     @Test

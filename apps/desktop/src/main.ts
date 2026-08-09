@@ -1,12 +1,16 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, Notification, dialog, ipcMain, Menu, shell } from 'electron'
 import * as path from 'node:path'
 import { RunningBackend, backendLogTail, startBackend, stopBackend } from './backend'
 import { StorageDraft, backendApi } from './backend-api'
 import { resolveClaudeCli } from './claude-cli'
+import { installClaude, installCommand } from './claude-install'
 import { failurePage } from './failure-page'
 import { OnboardingState, StorageState, onboardingPage } from './onboarding-page'
 import { backendLogFile, shellLogFile } from './paths'
+import { resetRunNotifications, startRunNotifications } from './run-notifications'
 import { loadSettings, saveSettings } from './settings'
+import { applyStartWithSystem, createTray } from './tray'
+import { startAutoUpdates } from './updater'
 import { log } from './log'
 
 /**
@@ -25,6 +29,11 @@ import { log } from './log'
  * answer, and the logger makes that call as soon as anything is logged.
  */
 app.setName('Concentus')
+// Windows identifies a taskbar button by its AppUserModelID, not by the window. Without one set
+// here, Electron derives it from the running executable — electron.exe when unpackaged — so the
+// taskbar shows Electron's icon and name however the window is decorated. It must match the
+// appId in electron-builder.yml, or a packaged build gets a second, unpinnable identity.
+if (process.platform === 'win32') app.setAppUserModelId('com.concentus.desktop')
 
 let backend: RunningBackend | null = null
 let mainWindow: BrowserWindow | null = null
@@ -40,6 +49,11 @@ let quitting = false
  * that was not found when it spawned is baked in as "not configured", and only a restart fixes it.
  */
 let backendClaudeCommand: string | null = null
+/**
+ * Launched by the login item, which passes --hidden: the backend comes up and the tray appears,
+ * but no window opens over whatever the user signed in to do.
+ */
+const startHidden = process.argv.includes('--hidden')
 
 /**
  * Two copies of this app would fight over the port, the data directory and the run state in it.
@@ -49,11 +63,9 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    const win = mainWindow ?? failureWindow
-    if (win) {
-      if (win.isMinimized()) win.restore()
-      win.focus()
-    }
+    // With background mode the first instance may be a tray icon with no window at all, and
+    // launching the app again is the most natural way to ask for one back.
+    openMainWindow()
   })
   void main()
 }
@@ -68,12 +80,22 @@ async function main(): Promise<void> {
   // and the one menu item that did something specific — opening the logs folder — is still on the
   // failure window, which is when it is actually needed.
   Menu.setApplicationMenu(null)
+  createTray({ openWindow: openMainWindow, quit: () => { quitting = true; app.quit() } })
+  // Re-assert on every start: an update can move the installed binary, and a login item pointing
+  // at last version's path launches nothing.
+  if (loadSettings().startWithSystem) applyStartWithSystem(true)
+  startAutoUpdates()
   await launch()
+  startRunNotifications({
+    port: () => backend?.port ?? null,
+    onClick: openMainWindow,
+    isWindowFocused: () => !!mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused(),
+  })
 
   app.on('window-all-closed', () => {
-    // No macOS exception here on purpose: this app owns a backend process, and leaving it running
-    // with no window would be a background service the user never asked for and cannot see.
-    app.quit()
+    // In background mode the tray is the app now; everywhere else, no window means no app —
+    // leaving a backend running with no way to see it would be a service nobody asked for.
+    if (!loadSettings().runInBackground || quitting) app.quit()
   })
 
   // Stop the backend before the process goes away, and hold up the quit until it has.
@@ -93,7 +115,11 @@ async function launch(): Promise<void> {
   try {
     backend = await startBackend()
     backendClaudeCommand = (await claudeState()).command
-    if (await shouldOnboard()) {
+    if (startHidden) {
+      // An autostarted session: the tray is the whole UI until the user asks for more. The wizard,
+      // if due, waits for a launch the user actually initiated.
+      log.info('Started hidden into the tray.')
+    } else if (await shouldOnboard()) {
       showOnboardingWindow()
     } else {
       showMainWindow(backend.port)
@@ -134,6 +160,23 @@ async function shouldOnboard(): Promise<boolean> {
   return !state.command || !state.loggedIn
 }
 
+/** Bring the app to the front, whatever state it is in — hidden, minimised, or not yet created. */
+function openMainWindow(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+    return
+  }
+  const win = failureWindow ?? onboardingWindow
+  if (win) {
+    win.show()
+    win.focus()
+    return
+  }
+  if (backend) showMainWindow(backend.port)
+}
+
 function showMainWindow(port: number): void {
   failureWindow?.close()
   failureWindow = null
@@ -161,6 +204,25 @@ function showMainWindow(port: number): void {
 
   // Ready-to-show rather than showing immediately, to avoid a flash of empty window.
   mainWindow.once('ready-to-show', () => mainWindow?.show())
+  // Close-to-tray. Read at close time, not window-creation time, so flipping the tray checkbox
+  // applies to the window that is already open.
+  mainWindow.on('close', (event) => {
+    if (quitting || !loadSettings().runInBackground) return
+    event.preventDefault()
+    mainWindow?.hide()
+    const settings = loadSettings()
+    if (!settings.trayTipShown) {
+      // Said exactly once: an app that visibly closed but is still running is the surprise this
+      // explains — repeating it every close would be nagging.
+      saveSettings({ ...settings, trayTipShown: true })
+      try {
+        new Notification({
+          title: 'Concentus is still running',
+          body: 'Triggers keep firing. Quit from the tray icon.',
+        }).show()
+      } catch { /* no notification support — the tray icon still tells the story */ }
+    }
+  })
   mainWindow.on('closed', () => {
     mainWindow = null
   })
@@ -281,6 +343,23 @@ function registerIpc(): void {
     return state
   })
 
+  ipcMain.handle('onboarding:install-command', () => installCommand())
+
+  ipcMain.handle('onboarding:install', async (event) => {
+    const result = await installClaude((line) => {
+      // Streamed to the window that asked, so a long install shows progress rather than freezing.
+      if (!event.sender.isDestroyed()) event.sender.send('onboarding:install-output', line)
+    })
+    if (!result.ok) return { ...result, state: await claudeState() }
+
+    // The installer puts the binary where discovery already looks, so the same re-check that
+    // follows a manual install applies here — including restarting the backend, which reads the
+    // CLI path once at startup.
+    const state = await claudeState()
+    await adoptClaudeCommand(state.command)
+    return { ...result, state }
+  })
+
   ipcMain.handle('onboarding:locate', async () => {
     if (!onboardingWindow) return null
     // The escape hatch for the machine where discovery fails — a CLI installed somewhere no
@@ -366,6 +445,8 @@ async function restartBackend(): Promise<void> {
   backend = null
   try {
     backend = await startBackend()
+    // A fresh backend has a fresh run registry; announcing its list as news would be wrong.
+    resetRunNotifications()
     // The port is stable by design, but re-point the window rather than assume it.
     if (mainWindow) void mainWindow.loadURL(`http://127.0.0.1:${backend.port}`)
   } catch (err) {
@@ -378,10 +459,16 @@ async function restartBackend(): Promise<void> {
 /**
  * The application icon.
  *
- * Windows takes it from the executable, which electron-builder stamps from build/icon.ico, so
- * this is really for Linux — where the window and taskbar entry get their icon from the running
- * process, not from the .desktop file, and default to a blank one without it.
+ * A packaged Windows build takes it from the executable, which electron-builder stamps from
+ * icon.ico — but an unpackaged run has no such executable of its own, so the window needs it
+ * explicitly. The .ico is preferred there because it carries several sizes: Windows picks 16px
+ * for the title bar and 32px for the taskbar, and downscaling one 256px PNG to 16px on the fly
+ * gives the muddy result that reads as "the icon is wrong".
+ *
+ * On Linux the window and taskbar entry take their icon from the running process rather than from
+ * the .desktop file, and default to a blank one without this.
  */
 function appIcon(): string {
-  return path.join(__dirname, '..', 'build', 'icon.png')
+  const file = process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+  return path.join(__dirname, '..', 'build', file)
 }
