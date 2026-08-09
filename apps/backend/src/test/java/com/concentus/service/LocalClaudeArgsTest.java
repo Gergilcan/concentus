@@ -21,8 +21,8 @@ class LocalClaudeArgsTest {
 
     private static LocalClaudeExecutor executor() {
         return new LocalClaudeExecutor(null, null, null, null, null,
-                new com.fasterxml.jackson.databind.ObjectMapper(),
-                "bypassPermissions", "data", true);
+                new com.fasterxml.jackson.databind.ObjectMapper(), null, null,
+                "bypassPermissions", "data", true, true);
     }
 
     private static AgentRun run() {
@@ -86,5 +86,17 @@ class LocalClaudeArgsTest {
                 List.of(Path.of("/a"), Path.of("/b")), false);
 
         assertThat(args).filteredOn("--add-dir"::equals).hasSize(2);
+    }
+
+    @org.junit.jupiter.api.Test
+    void runsAreConfinedToTheFlowsMcpServers() {
+        List<String> a = args("hola", false);
+
+        // --strict-mcp-config junto a un --mcp-config del propio run: sin el primero, el CLI
+        // sumaría la lista personal del usuario a la del flujo, que es la exposición que se cierra.
+        int cfg = a.indexOf("--mcp-config");
+        org.assertj.core.api.Assertions.assertThat(cfg).isGreaterThanOrEqualTo(0);
+        org.assertj.core.api.Assertions.assertThat(a.get(cfg + 1)).endsWith("mcp-config.json");
+        org.assertj.core.api.Assertions.assertThat(a).contains("--strict-mcp-config");
     }
 }

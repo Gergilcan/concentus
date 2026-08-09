@@ -17,7 +17,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
@@ -48,6 +50,13 @@ public class LocalClaudeExecutor {
     private final String permissionMode;
     private final String dataDir;
     private final boolean autoRegisterMcp;
+    private final ObjectMapper mapper;
+    private final com.concentus.llm.McpOAuthStore mcpOAuthStore;
+    private final com.concentus.auth.OrgContext orgContext;
+    /** See {@link #writeMcpConfig}: runs see only the flow's MCP servers, not the user's list. */
+    private final boolean strictMcp;
+    /** The per-run MCP config file, inside the run's workdir. */
+    static final String MCP_CONFIG_FILE = "mcp-config.json";
 
     /**
      * Above this many characters the prompt goes in on stdin instead of as a {@code -p} argument.
@@ -67,18 +76,25 @@ public class LocalClaudeExecutor {
                                McpRegistry mcpRegistry, ContextFolderResolver contextFolders,
                                GitWorkspace gitWorkspace,
                                ObjectMapper mapper,
+                               com.concentus.llm.McpOAuthStore mcpOAuthStore,
+                               com.concentus.auth.OrgContext orgContext,
                                @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                                @Value("${app.data-dir}") String dataDir,
-                               @Value("${local.auto-register-mcp:true}") boolean autoRegisterMcp) {
+                               @Value("${local.auto-register-mcp:true}") boolean autoRegisterMcp,
+                               @Value("${local.strict-mcp:true}") boolean strictMcp) {
         this.support = support;
         this.ragInjector = ragInjector;
         this.mcpRegistry = mcpRegistry;
         this.contextFolders = contextFolders;
         this.gitWorkspace = gitWorkspace;
         this.streamHandler = new LocalStreamEventHandler(mapper);
+        this.mapper = mapper;
+        this.mcpOAuthStore = mcpOAuthStore;
+        this.orgContext = orgContext;
         this.permissionMode = permissionMode;
         this.dataDir = dataDir;
         this.autoRegisterMcp = autoRegisterMcp;
+        this.strictMcp = strictMcp;
     }
 
     /** Runs one turn and streams events into the run. Blocking — call on a worker thread. */
@@ -287,6 +303,78 @@ public class LocalClaudeExecutor {
         }
 
         registerMcpServers(run);
+        writeMcpConfig(run, workdir);
+    }
+
+    /**
+     * Writes the run's own MCP configuration: exactly the servers wired into this flow.
+     *
+     * <p>This is what confines a run to its flow. Without it the CLI used the user's whole MCP
+     * list, so an agent in a "summarise my mail" flow could also see the Holded server registered
+     * last month for something else — every tool the user had ever configured, exposed to every
+     * flow. The config file plus {@code --strict-mcp-config} makes the canvas the truth: what is
+     * drawn is what the run can reach, and a flow with no MCP nodes reaches nothing.
+     *
+     * <p>Written even when empty, deliberately — an absent file would mean "fall back to the
+     * user's list", which is the exposure this exists to close.
+     *
+     * <p>Auth per server, in order: the node's stored credential; else an OAuth grant Concentus
+     * holds for that URL (refreshed on read); else no header, which leaves room for a grant the
+     * CLI itself holds from {@code claude mcp login}. The file lands in the run's scratch workdir;
+     * the token was already stored by {@code claude mcp add -H} in the user's own config before
+     * this change, so this moves where a token rests rather than newly exposing one.
+     */
+    private void writeMcpConfig(AgentRun run, Path workdir) throws IOException {
+        if (!strictMcp) return;
+
+        Map<String, McpServerSpec> byName = new LinkedHashMap<>();
+        for (McpServerSpec m : run.compiled.coordinator().mcpServers) {
+            if (m.name != null && !m.name.isBlank()) byName.putIfAbsent(m.name.toLowerCase(), m);
+        }
+        for (AgentSpec sub : run.compiled.subAgents()) {
+            for (McpServerSpec m : sub.mcpServers) {
+                if (m.name != null && !m.name.isBlank()) byName.putIfAbsent(m.name.toLowerCase(), m);
+            }
+        }
+
+        var servers = mapper.createObjectNode();
+        for (McpServerSpec m : byName.values()) {
+            var server = mapper.createObjectNode();
+            server.put("type", "http");
+            server.put("url", m.url);
+            String token = m.resolveToken();
+            String header = null;
+            String value = null;
+            if (token != null && !token.isBlank()) {
+                header = m.authHeader == null || m.authHeader.isBlank()
+                        ? McpRegistry.DEFAULT_AUTH_HEADER : m.authHeader.trim();
+                value = McpRegistry.DEFAULT_AUTH_HEADER.equalsIgnoreCase(header)
+                        ? "Bearer " + token : token;
+            } else {
+                String granted = mcpOAuthStore
+                        .accessToken(orgContext.defaultOrganizationId(), m.url)
+                        .orElse(null);
+                if (granted != null) {
+                    header = McpRegistry.DEFAULT_AUTH_HEADER;
+                    value = "Bearer " + granted;
+                }
+            }
+            if (header != null) {
+                var headers = mapper.createObjectNode();
+                headers.put(header, value);
+                server.set("headers", headers);
+            }
+            servers.set(m.name, server);
+        }
+
+        var root = mapper.createObjectNode();
+        root.set("mcpServers", servers);
+        Files.writeString(workdir.resolve(MCP_CONFIG_FILE), mapper.writeValueAsString(root));
+
+        run.emit(RunEvent.of("system", byName.isEmpty()
+                ? "MCP: this flow has no MCP nodes, so the run sees no MCP servers."
+                : "MCP: this run sees only the flow's server(s): "
+                        + String.join(", ", byName.keySet()) + "."));
     }
 
     /** Inlines the agent's referenced CLAUDE.md, if it names one and it passes the allowlist. */
@@ -424,8 +512,15 @@ public class LocalClaudeExecutor {
         a.add("--model");
         a.add(modelAlias(coord.model.id));
 
-        // MCP servers are registered into the user's Claude Code list (see registerMcpServers),
-        // so no --mcp-config / --strict-mcp-config here — claude uses the user's own MCP list.
+        // The run's own MCP configuration (see writeMcpConfig): only the flow's servers, with
+        // --strict-mcp-config so the user's personal MCP list stays theirs. Registration into the
+        // user list still happens separately — it is what `claude mcp login` and the tool picker
+        // need — but the run does not read it.
+        if (strictMcp) {
+            a.add("--mcp-config");
+            a.add(workdir.resolve(MCP_CONFIG_FILE).toString());
+            a.add("--strict-mcp-config");
+        }
         if (first) {
             a.add("--session-id");
             a.add(run.localSessionId);
