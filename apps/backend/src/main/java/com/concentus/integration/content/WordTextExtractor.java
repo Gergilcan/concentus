@@ -59,6 +59,6 @@ public class WordTextExtractor implements AttachmentTextExtractor {
             }
         }
         String text = out.toString().replaceAll("\\n{3,}", "\n\n").trim();
-        return text.length() > MAX_CHARS ? text.substring(0, MAX_CHARS) + "\n…(truncated)" : text;
+        return ExtractedText.clamp(text, MAX_CHARS);
     }
 }

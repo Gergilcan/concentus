@@ -177,6 +177,6 @@ public class ImageOcrExtractor implements AttachmentTextExtractor {
 
     private static String truncate(String text) {
         if (text == null) return "";
-        return text.length() > MAX_CHARS ? text.substring(0, MAX_CHARS) + "\n…(truncated)" : text;
+        return ExtractedText.clamp(text, MAX_CHARS);
     }
 }
