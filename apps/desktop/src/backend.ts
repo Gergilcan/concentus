@@ -67,7 +67,11 @@ async function choosePort(): Promise<number> {
   if (await isPortFree(preferred)) return preferred
 
   const fallback = await ephemeralPort()
-  log.warn(`Port ${preferred} is in use; moving to ${fallback}. MCP sign-ins may need redoing.`)
+  // Existing MCP authorizations are NOT affected, despite the OAuth redirect carrying the port:
+  // grants are stored per MCP url and renewed with a refresh_token grant, which by RFC 6749 §6
+  // carries no redirect_uri. A fresh sign-in re-registers the client with the current port. The
+  // earlier warning here claimed sign-ins would need redoing, which was never true.
+  log.warn(`Port ${preferred} is in use; moving to ${fallback} and remembering it.`)
   // Persisted so the move happens once rather than every launch — the whole point of a stable port.
   saveSettings({ ...settings, port: fallback })
   return fallback
