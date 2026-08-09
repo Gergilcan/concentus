@@ -17,6 +17,8 @@ import { log } from './log'
 const POLL_MS = 15_000
 /** Statuses worth interrupting someone for. IDLE is a run waiting for input, not an ending. */
 const FINAL = new Set(['TERMINATED', 'ERROR'])
+/** Not final — the run is paused mid-flight waiting for a person, which is worth interrupting for. */
+const AWAITING_APPROVAL = 'AWAITING_APPROVAL'
 
 let timer: NodeJS.Timeout | null = null
 let known: Map<string, string> | null = null
@@ -65,17 +67,29 @@ async function poll(options: NotifierOptions): Promise<void> {
   for (const run of runs) {
     const before = known.get(run.id)
     known.set(run.id, run.status)
-    if (!FINAL.has(run.status) || before === run.status) continue
+    const waiting = run.status === AWAITING_APPROVAL
+    if (!FINAL.has(run.status) && !waiting) continue
+    if (before === run.status) continue
     // A run first seen already-final was missed while the poller was down; still worth a toast in
     // background mode, which is exactly when it happens.
-    if (options.isWindowFocused()) continue
+    //
+    // An approval request is the exception to the focused-window rule: a run that stops to ask is
+    // waiting indefinitely, and the whole feature fails quietly if the ask is only visible to
+    // someone already looking at the right tab.
+    if (options.isWindowFocused() && !waiting) continue
 
     try {
       const failed = run.status === 'ERROR'
       const notification = new Notification({
-        title: failed ? 'Execution failed' : 'Execution finished',
-        body: `${run.flowName ?? 'Flow'}${failed && run.error ? ` — ${run.error}` : ''}`.slice(0, 200),
-        urgency: failed ? 'critical' : 'normal',
+        title: waiting
+          ? 'Approval needed'
+          : failed
+            ? 'Execution failed'
+            : 'Execution finished',
+        body: waiting
+          ? `${run.flowName ?? 'A flow'} has a plan waiting for you. Nothing has changed yet.`
+          : `${run.flowName ?? 'Flow'}${failed && run.error ? ` — ${run.error}` : ''}`.slice(0, 200),
+        urgency: failed || waiting ? 'critical' : 'normal',
       })
       notification.on('click', options.onClick)
       notification.show()

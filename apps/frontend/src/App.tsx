@@ -53,7 +53,7 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
   }, [toast])
 
   const { flows, runs, runsLoading, refreshFlows, refreshRuns } = useFlowsAndRuns(view, setToast)
-  const [selectedRun, setSelectedRun] = useSelectedRun(setToast)
+  const [selectedRun, setSelectedRun] = useSelectedRun(setToast, runs)
   const {
     onRunStarted,
     openFlow,

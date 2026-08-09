@@ -55,6 +55,20 @@ public class LocalClaudeExecutor {
     private final com.concentus.auth.OrgContext orgContext;
     /** See {@link #writeMcpConfig}: runs see only the flow's MCP servers, not the user's list. */
     private final boolean strictMcp;
+    /**
+     * The flow's own permission mode meaning "stop and ask a human before acting".
+     *
+     * <p>Not a CLI mode — the CLI has no way to ask anyone from a piped process. It is expressed
+     * as: run the first turn in `plan`, which proposes without touching anything, then hold the
+     * run until somebody approves and resume the same session with permission to act.
+     */
+    public static final String APPROVAL_MODE = "approval";
+
+    /** True while this run is in approval mode and nobody has approved it yet. */
+    static boolean awaitingApproval(AgentRun run) {
+        return APPROVAL_MODE.equalsIgnoreCase(run.permissionMode) && !run.approved;
+    }
+
     /** The per-run MCP config file, inside the run's workdir. */
     static final String MCP_CONFIG_FILE = "mcp-config.json";
 
@@ -174,7 +188,15 @@ public class LocalClaudeExecutor {
         } finally {
             run.localProcess = null;
             if (!"TERMINATED".equals(run.status) && !"ERROR".equals(run.status)) {
-                run.status = "IDLE";
+                // Not IDLE: idle means "waiting for whatever you want next", and this run is
+                // waiting for one specific answer. The distinct status is what lets the UI offer
+                // Approve/Reject and the desktop shell raise a notification.
+                boolean waiting = awaitingApproval(run);
+                run.status = waiting ? "AWAITING_APPROVAL" : "IDLE";
+                if (waiting) {
+                    run.emit(RunEvent.of("system",
+                            "Waiting for your approval — nothing has been changed yet."));
+                }
             }
         }
     }
@@ -511,8 +533,14 @@ public class LocalClaudeExecutor {
         // The run's own mode when its flow named one, otherwise the deployment default. Read from
         // the run rather than the flow so that editing the flow mid-run cannot change what an
         // already-running agent is permitted to do.
-        a.add(run.permissionMode == null || run.permissionMode.isBlank()
-                ? permissionMode : run.permissionMode);
+        // Approval mode is ours, not the CLI's: it maps to `plan` until a human approves — so the
+        // agent can read and propose but change nothing — and to full permission afterwards.
+        String mode = run.permissionMode == null || run.permissionMode.isBlank()
+                ? permissionMode : run.permissionMode;
+        if (APPROVAL_MODE.equalsIgnoreCase(mode)) {
+            mode = run.approved ? "bypassPermissions" : "plan";
+        }
+        a.add(mode);
         a.add("--model");
         a.add(modelAlias(coord.model.id));
 

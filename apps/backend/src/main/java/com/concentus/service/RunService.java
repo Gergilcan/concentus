@@ -443,6 +443,37 @@ public class RunService {
                 .build());
     }
 
+    /**
+     * A human approves the plan: the run resumes in the same Claude session, now permitted to act.
+     *
+     * <p>Resuming rather than restarting is the point — the agent already worked out what to do
+     * and said so; making it start over would both waste the tokens and risk it proposing
+     * something other than what was approved.
+     */
+    public void approve(String runId) {
+        AgentRun run = require(runId);
+        if (!"AWAITING_APPROVAL".equals(run.status)) {
+            throw new IllegalStateException("This execution is not waiting for approval.");
+        }
+        run.approved = true;
+        run.emit(RunEvent.of("system", "Approved — carrying out the plan."));
+        runStore.persist(run);
+        exec.submit(() -> runLocalTurn(run,
+                "Approved. Carry out the plan you proposed, exactly as described."));
+    }
+
+    /** A human declines: the run ends here, having changed nothing. */
+    public void reject(String runId) {
+        AgentRun run = require(runId);
+        if (!"AWAITING_APPROVAL".equals(run.status)) {
+            throw new IllegalStateException("This execution is not waiting for approval.");
+        }
+        run.status = "TERMINATED";
+        run.emit(RunEvent.of("system", "Rejected — the plan was not carried out."));
+        run.emit(RunEvent.of("status", "terminated"));
+        runStore.persist(run);
+    }
+
     public void stop(String runId) {
         AgentRun run = require(runId);
 

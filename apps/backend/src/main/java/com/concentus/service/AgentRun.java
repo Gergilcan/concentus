@@ -91,6 +91,12 @@ public class AgentRun {
      * what an already-running agent is allowed to do.
      */
     public volatile String permissionMode = "";
+    /**
+     * Set once a human has approved the plan, in approval mode. Not persisted as a permission:
+     * it is a fact about this run, and a restart that lost it would re-ask rather than proceed —
+     * which is the safe direction for the one setting whose whole point is asking first.
+     */
+    public volatile boolean approved = false;
 
     private final CopyOnWriteArrayList<RunEvent> buffer = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<Consumer<RunEvent>> listeners = new CopyOnWriteArrayList<>();

@@ -89,6 +89,18 @@ public class RunController {
         runService.sendCommand(id, req.text());
     }
 
+    @PostMapping("/{id}/approve")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void approve(@PathVariable String id) {
+        runService.approve(id);
+    }
+
+    @PostMapping("/{id}/reject")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void reject(@PathVariable String id) {
+        runService.reject(id);
+    }
+
     @PostMapping("/{id}/stop")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void stop(@PathVariable String id) {

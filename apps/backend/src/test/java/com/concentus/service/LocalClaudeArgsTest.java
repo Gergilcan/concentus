@@ -99,4 +99,42 @@ class LocalClaudeArgsTest {
         org.assertj.core.api.Assertions.assertThat(a.get(cfg + 1)).endsWith("mcp-config.json");
         org.assertj.core.api.Assertions.assertThat(a).contains("--strict-mcp-config");
     }
+
+    @org.junit.jupiter.api.Test
+    void approvalModeRunsThePlanningTurnWithNoPermissionToAct() {
+        AgentRun run = run();
+        run.permissionMode = LocalClaudeExecutor.APPROVAL_MODE;
+
+        List<String> a = executor().buildArgs("claude", run, Path.of("."), true, "hola", List.of(), false);
+
+        // 'approval' is ours, not the CLI's — passing it through verbatim would be rejected as an
+        // unknown mode, and passing bypassPermissions would let the agent act before anyone agreed.
+        int i = a.indexOf("--permission-mode");
+        org.assertj.core.api.Assertions.assertThat(a.get(i + 1)).isEqualTo("plan");
+    }
+
+    @org.junit.jupiter.api.Test
+    void onceApprovedTheSameRunIsAllowedToAct() {
+        AgentRun run = run();
+        run.permissionMode = LocalClaudeExecutor.APPROVAL_MODE;
+        run.approved = true;
+
+        List<String> a = executor().buildArgs("claude", run, Path.of("."), false, "go", List.of(), false);
+
+        int i = a.indexOf("--permission-mode");
+        org.assertj.core.api.Assertions.assertThat(a.get(i + 1)).isEqualTo("bypassPermissions");
+    }
+
+    @org.junit.jupiter.api.Test
+    void awaitingApprovalIsTrueOnlyBeforeSomeoneApproves() {
+        AgentRun run = run();
+        run.permissionMode = LocalClaudeExecutor.APPROVAL_MODE;
+        org.assertj.core.api.Assertions.assertThat(LocalClaudeExecutor.awaitingApproval(run)).isTrue();
+        run.approved = true;
+        org.assertj.core.api.Assertions.assertThat(LocalClaudeExecutor.awaitingApproval(run)).isFalse();
+
+        AgentRun normal = run();
+        normal.permissionMode = "bypassPermissions";
+        org.assertj.core.api.Assertions.assertThat(LocalClaudeExecutor.awaitingApproval(normal)).isFalse();
+    }
 }

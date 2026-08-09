@@ -1,6 +1,13 @@
 // ---- Run + event contracts (mirror the backend records) ----
 
-export type RunStatus = 'STARTING' | 'RUNNING' | 'IDLE' | 'ERROR' | 'TERMINATED'
+export type RunStatus =
+  | 'STARTING'
+  | 'RUNNING'
+  | 'IDLE'
+  /** Stopped mid-run in approval mode: a plan is on screen and a human has to answer. */
+  | 'AWAITING_APPROVAL'
+  | 'ERROR'
+  | 'TERMINATED'
 
 export interface RunSummary {
   id: string

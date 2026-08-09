@@ -120,6 +120,8 @@ export const api = {
     req<RunSummary>('/runs', { method: 'POST', body: JSON.stringify(flow) }),
   sendCommand: (runId: string, text: string) =>
     req<void>(`/runs/${runId}/commands`, { method: 'POST', body: JSON.stringify({ text }) }),
+  approveRun: (runId: string) => req<void>(`/runs/${runId}/approve`, { method: 'POST' }),
+  rejectRun: (runId: string) => req<void>(`/runs/${runId}/reject`, { method: 'POST' }),
   stopRun: (runId: string) => req<void>(`/runs/${runId}/stop`, { method: 'POST' }),
   retryRun: (runId: string) => req<RunSummary>(`/runs/${runId}/retry`, { method: 'POST' }),
 

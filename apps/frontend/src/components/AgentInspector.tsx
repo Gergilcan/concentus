@@ -103,6 +103,7 @@ export function AgentInspector({ data, set }: Props) {
             onChange={(v) => set({ permissionMode: v })}
           >
             <option value="">Default (bypass — no prompts)</option>
+            <option value="approval">Ask me to approve the plan, then act</option>
             <option value="plan">Plan only — proposes, changes nothing</option>
             <option value="default">Ask — prompts before each sensitive action</option>
             <option value="acceptEdits">Auto-accept file edits, ask for the rest</option>

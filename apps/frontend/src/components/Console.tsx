@@ -27,6 +27,7 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
   const clearRunEvents = useFlowStore((s) => s.clearRunEvents)
   const [cmd, setCmd] = useState('')
   const [sending, setSending] = useState(false)
+  const [deciding, setDeciding] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [connStatus, setConnStatus] = useState<RunSocketStatus>('connecting')
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -76,6 +77,18 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
       setErr(e instanceof Error ? e.message : String(e))
     } finally {
       setSending(false)
+    }
+  }
+
+  const decide = async (choice: 'approve' | 'reject') => {
+    setDeciding(true)
+    setErr(null)
+    try {
+      await (choice === 'approve' ? api.approveRun(runId) : api.rejectRun(runId))
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setDeciding(false)
     }
   }
 
@@ -166,6 +179,20 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
       )}
 
       {err && <div className={styles.err}>{err}</div>}
+
+      {status === 'AWAITING_APPROVAL' && (
+        <div className={styles.approvalRow}>
+          <span>
+            <b>Waiting for your approval.</b> The plan is above; nothing has been changed yet.
+          </span>
+          <button className={styles.sendBtn} onClick={() => void decide('approve')} disabled={deciding}>
+            Approve
+          </button>
+          <button className={styles.stopBtn} onClick={() => void decide('reject')} disabled={deciding}>
+            Reject
+          </button>
+        </div>
+      )}
 
       <div className={styles.cmdRow}>
         <input
