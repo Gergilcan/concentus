@@ -99,6 +99,18 @@ async function req<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIME
   return (text ? JSON.parse(text) : undefined) as T
 }
 
+/**
+ * The URL an external service must call to trigger a flow.
+ *
+ * Lives here because this file owns every other route: it was the one `/api/...` literal outside
+ * this module, and it is the one users copy-paste into Linear or GitHub — a rename that missed the
+ * component would have produced a plausible URL that 404s days later as "the webhook stopped
+ * firing".
+ */
+export function webhookUrl(flowId: string): string {
+  return `${location.origin}/api/webhooks/${flowId}`
+}
+
 export const api = {
   // flows
   listFlows: () => req<BackendFlow[]>('/flows'),
