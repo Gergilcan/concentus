@@ -121,4 +121,32 @@ class KnowledgeServiceTest {
         // Overlap: the head of a later chunk repeats the tail of the one before it.
         assertThat(chunks.get(1)).contains(chunks.get(0).substring(chunks.get(0).length() - 50));
     }
+
+    @Test
+    void statusNamesExactlyWhatIsMissing() {
+        // Sin servidor configurado.
+        when(models.isConfigured()).thenReturn(false);
+        assertThat(service.status().semantic()).isFalse();
+        assertThat(service.status().detail()).contains("No model server");
+
+        // Configurado pero sin responder.
+        when(models.isConfigured()).thenReturn(true);
+        when(models.baseUrl()).thenReturn("http://localhost:11434/v1");
+        when(models.listModels()).thenThrow(new RuntimeException("connection refused"));
+        assertThat(service.status().semantic()).isFalse();
+        assertThat(service.status().detail()).contains("not answering");
+    }
+
+    @Test
+    void statusReportsSemanticOnlyWhenTheEmbeddingModelIsServed() {
+        when(models.isConfigured()).thenReturn(true);
+
+        when(models.listModels()).thenReturn(java.util.Set.of("qwen3:14b"));
+        assertThat(service.status().semantic()).isFalse();
+        assertThat(service.status().detail()).contains("ollama pull bge-m3");
+
+        // El tag de versión cuenta como presente: "bge-m3:latest" ES bge-m3.
+        when(models.listModels()).thenReturn(java.util.Set.of("bge-m3:latest", "qwen3:14b"));
+        assertThat(service.status().semantic()).isTrue();
+    }
 }

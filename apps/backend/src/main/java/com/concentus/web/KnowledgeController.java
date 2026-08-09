@@ -38,10 +38,10 @@ public class KnowledgeController {
         return store.list();
     }
 
-    /** Semantic vs word-overlap, so the UI states which it is instead of the user guessing. */
+    /** Semantic vs word-overlap, and exactly which piece is missing when it is not semantic. */
     @GetMapping("/status")
-    public Map<String, Object> status() {
-        return Map.of("semantic", service.semanticAvailable());
+    public KnowledgeService.EmbeddingStatus status() {
+        return service.status();
     }
 
     @PostMapping
@@ -76,9 +76,14 @@ public class KnowledgeController {
         return service.ingest(id, name, file.getBytes());
     }
 
-    @DeleteMapping("/{id}/documents/{docName}")
+    /**
+     * The document name rides in a query parameter, not the path: folder uploads keep their
+     * relative path in the name ("manuals/intro.pdf"), and Tomcat rejects an encoded slash in a
+     * path segment outright.
+     */
+    @DeleteMapping("/{id}/documents")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteDocument(@PathVariable String id, @PathVariable String docName) {
+    public void deleteDocument(@PathVariable String id, @RequestParam("name") String docName) {
         service.deleteDocument(id, docName);
     }
 

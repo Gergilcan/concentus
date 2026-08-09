@@ -146,14 +146,16 @@ export const api = {
   // Knowledge bases: document collections agents retrieve from. The upload is multipart, so it
   // bypasses req()'s JSON defaults.
   listKnowledge: () => req<KnowledgeDef[]>('/knowledge'),
-  knowledgeStatus: () => req<{ semantic: boolean }>('/knowledge/status'),
+  knowledgeStatus: () => req<{ semantic: boolean; detail: string }>('/knowledge/status'),
   saveKnowledge: (k: KnowledgeDef) =>
     req<KnowledgeDef>('/knowledge', { method: 'POST', body: JSON.stringify(k) }),
   deleteKnowledge: (id: string) => req<void>(`/knowledge/${id}`, { method: 'DELETE' }),
   knowledgeDocs: (id: string) => req<KnowledgeDoc[]>(`/knowledge/${id}/documents`),
-  uploadKnowledgeDoc: async (id: string, file: File) => {
+  uploadKnowledgeDoc: async (id: string, file: File, name?: string) => {
     const form = new FormData()
-    form.append('file', file)
+    // The third argument overrides the filename the server sees — how a folder upload keeps its
+    // relative path ("manuals/intro.pdf") instead of flattening to the basename.
+    form.append('file', file, name ?? file.name)
     // Straight fetch rather than req(): multipart must NOT carry the JSON content type — the
     // browser sets the boundary itself — but the CSRF header is still required on a POST.
     const headers: Record<string, string> = {}
@@ -175,8 +177,10 @@ export const api = {
     }
     return (await res.json()) as { docName: string; chunks: number; embedded: boolean; detail: string }
   },
+  // name as a query param: folder-upload names contain slashes, and Tomcat rejects an encoded
+  // slash inside a path segment.
   deleteKnowledgeDoc: (id: string, docName: string) =>
-    req<void>(`/knowledge/${id}/documents/${encodeURIComponent(docName)}`, { method: 'DELETE' }),
+    req<void>(`/knowledge/${id}/documents?name=${encodeURIComponent(docName)}`, { method: 'DELETE' }),
   searchKnowledge: (id: string, query: string, topK = 5) =>
     req<KnowledgeHit[]>(`/knowledge/${id}/search`, {
       method: 'POST',

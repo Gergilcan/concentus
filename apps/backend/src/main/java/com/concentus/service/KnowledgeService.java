@@ -184,6 +184,41 @@ public class KnowledgeService {
         return models.isConfigured();
     }
 
+    /**
+     * The embedding pipeline's actual state, checked rather than inferred.
+     *
+     * <p>Three things must hold for semantic ranking, and telling the user <em>which one</em> is
+     * missing is the difference between "start Ollama" and a shrug: a server must be configured,
+     * it must answer, and it must serve the embedding model.
+     */
+    public record EmbeddingStatus(boolean semantic, String detail) {
+    }
+
+    public EmbeddingStatus status() {
+        if (!models.isConfigured()) {
+            return new EmbeddingStatus(false,
+                    "No model server is configured. Install Ollama — the desktop app looks at "
+                            + "localhost:11434 on its own — then pull " + embeddingModel + ".");
+        }
+        java.util.Set<String> served;
+        try {
+            served = models.listModels();
+        } catch (RuntimeException e) {
+            return new EmbeddingStatus(false,
+                    "The model server at " + models.baseUrl() + " is not answering. "
+                            + "Start Ollama (or your server) and this upgrades on its own.");
+        }
+        boolean present = served.stream().anyMatch(m ->
+                m.equalsIgnoreCase(embeddingModel)
+                        || m.toLowerCase(Locale.ROOT).startsWith(embeddingModel.toLowerCase(Locale.ROOT) + ":"));
+        if (!present) {
+            return new EmbeddingStatus(false,
+                    "The model server answers but does not serve '" + embeddingModel
+                            + "'. Run: ollama pull " + embeddingModel);
+        }
+        return new EmbeddingStatus(true, "Semantic ranking with '" + embeddingModel + "'.");
+    }
+
     // ---------------------------------------------------------------- internals
 
     /** Splits on paragraph boundaries where possible, hard-wrapping only oversized paragraphs. */

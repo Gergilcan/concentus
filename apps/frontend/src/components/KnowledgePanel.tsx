@@ -12,13 +12,38 @@ import styles from './resources.module.scss'
  * to discover a base retrieves nothing useful is here, with the query on screen, not mid-run with
  * an agent quietly working from empty context.
  */
+/** Type buckets for the tabs; extension-derived because that is all a name can tell us. */
+const DOC_TYPES: { key: string; label: string; exts: string[] }[] = [
+  { key: 'pdf', label: 'PDF', exts: ['.pdf'] },
+  { key: 'word', label: 'Word', exts: ['.doc', '.docx'] },
+  { key: 'sheet', label: 'Sheets', exts: ['.xls', '.xlsx', '.csv'] },
+  { key: 'text', label: 'Text', exts: ['.txt', '.md'] },
+  { key: 'html', label: 'HTML', exts: ['.html'] },
+]
+
+function typeOf(name: string): string {
+  const lower = name.toLowerCase()
+  return DOC_TYPES.find((t) => t.exts.some((e) => lower.endsWith(e)))?.key ?? 'other'
+}
+
+/** Folder part of a stored name ("manuals/intro.pdf" → "manuals"); root files group under "". */
+function folderOf(name: string): string {
+  const i = name.lastIndexOf('/')
+  return i < 0 ? '' : name.slice(0, i)
+}
+
+const PAGE_SIZE = 20
+
 function Documents({ baseId }: { baseId: string }) {
   const [docs, setDocs] = useState<KnowledgeDoc[]>([])
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<KnowledgeHit[] | null>(null)
-  const [semantic, setSemantic] = useState<boolean | null>(null)
+  const [status, setStatus] = useState<{ semantic: boolean; detail: string } | null>(null)
+  const [typeTab, setTypeTab] = useState<string>('all')
+  const [page, setPage] = useState(0)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const fileRef = useRef<HTMLInputElement>(null)
   const folderRef = useRef<HTMLInputElement>(null)
 
@@ -30,8 +55,40 @@ function Documents({ baseId }: { baseId: string }) {
     refresh()
     setNote(null)
     setHits(null)
-    api.knowledgeStatus().then((s) => setSemantic(s.semantic)).catch(() => setSemantic(null))
+    setTypeTab('all')
+    setPage(0)
+    setCollapsed(new Set())
+    api.knowledgeStatus().then(setStatus).catch(() => setStatus(null))
   }, [refresh])
+
+  // Tabs show only the types actually present — five empty tabs teach nothing.
+  const countsByType = docs.reduce<Record<string, number>>((acc, d) => {
+    const t = typeOf(d.name)
+    acc[t] = (acc[t] ?? 0) + 1
+    return acc
+  }, {})
+  const filtered = typeTab === 'all' ? docs : docs.filter((d) => typeOf(d.name) === typeTab)
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage = Math.min(page, pages - 1)
+  const pageDocs = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
+
+  // The current page grouped by folder, in first-appearance order. Grouping happens inside the
+  // page rather than paginating whole folders, so page size stays exactly 20 files whatever the
+  // folder shapes are.
+  const byFolder = new Map<string, KnowledgeDoc[]>()
+  for (const d of pageDocs) {
+    const f = folderOf(d.name)
+    if (!byFolder.has(f)) byFolder.set(f, [])
+    byFolder.get(f)!.push(d)
+  }
+
+  const toggleFolder = (f: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(f)) next.delete(f)
+      else next.add(f)
+      return next
+    })
 
   /** Extensions the backend can extract text from; anything else in a folder is skipped, counted. */
   const SUPPORTED = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.html']
@@ -60,7 +117,13 @@ function Documents({ baseId }: { baseId: string }) {
     for (const file of usable) {
       setNote(`Indexing ${done + 1}/${usable.length}: ${file.name}…`)
       try {
-        const result = await api.uploadKnowledgeDoc(baseId, file)
+        const result = await api.uploadKnowledgeDoc(
+          baseId,
+          file,
+          // The folder picker exposes the path inside the chosen folder; keeping it in the stored
+          // name is what makes the folder tree possible at all.
+          (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name,
+        )
         chunks += result.chunks
         done += 1
       } catch (e) {
@@ -88,26 +151,77 @@ function Documents({ baseId }: { baseId: string }) {
   return (
     <div className={styles.kbDocs}>
       <h4 className={styles.h4}>Documents</h4>
-      {semantic === false && (
-        <p className={panels.hint} title="Serve bge-m3 from a local model server (ollama pull bge-m3), then re-upload to rank by meaning.">
-          Ranking by word overlap — no embedding model. ⓘ
+      {status && !status.semantic && (
+        <p className={panels.hint} title={status.detail}>
+          Ranking by word overlap. ⓘ
         </p>
       )}
       {docs.length === 0 && <div className={styles.muted}>No documents yet.</div>}
-      {docs.map((d) => (
-        <div key={d.name} className={styles.kbDoc}>
-          <span className={styles.kbDocName}>{d.name}</span>
-          <span className={styles.muted}>
-            {d.chunks} passage(s){d.embedded ? '' : ' · word-overlap only'}
-          </span>
+
+      {docs.length > 0 && (
+        <div className={styles.kbTabs}>
           <button
-            className={styles.delBtn}
-            onClick={() => void api.deleteKnowledgeDoc(baseId, d.name).then(refresh)}
+            className={typeTab === 'all' ? styles.kbTabOn : ''}
+            onClick={() => { setTypeTab('all'); setPage(0) }}
           >
-            Delete
+            All ({docs.length})
           </button>
+          {DOC_TYPES.filter((t) => countsByType[t.key]).map((t) => (
+            <button
+              key={t.key}
+              className={typeTab === t.key ? styles.kbTabOn : ''}
+              onClick={() => { setTypeTab(t.key); setPage(0) }}
+            >
+              {t.label} ({countsByType[t.key]})
+            </button>
+          ))}
+          {countsByType.other ? (
+            <button
+              className={typeTab === 'other' ? styles.kbTabOn : ''}
+              onClick={() => { setTypeTab('other'); setPage(0) }}
+            >
+              Other ({countsByType.other})
+            </button>
+          ) : null}
+        </div>
+      )}
+
+      {[...byFolder.entries()].map(([folder, files]) => (
+        <div key={folder || '(root)'}>
+          {folder !== '' && (
+            <button className={styles.kbFolder} onClick={() => toggleFolder(folder)}>
+              <span>{collapsed.has(folder) ? '▸' : '▾'}</span>
+              <span className={styles.kbDocName} title={folder}>{folder}/</span>
+              <span className={styles.muted}>{files.length}</span>
+            </button>
+          )}
+          {(folder === '' || !collapsed.has(folder)) &&
+            files.map((d) => (
+              <div key={d.name} className={styles.kbDoc}>
+                <span className={styles.kbDocName} title={d.name}>
+                  {folder === '' ? d.name : d.name.slice(folder.length + 1)}
+                </span>
+                <span className={styles.muted}>
+                  {d.chunks} passage(s){d.embedded ? '' : ' · word-overlap only'}
+                </span>
+                <button
+                  className={styles.delBtn}
+                  onClick={() => void api.deleteKnowledgeDoc(baseId, d.name).then(refresh)}
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
         </div>
       ))}
+
+      {pages > 1 && (
+        <div className={styles.kbPager}>
+          <button disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>‹</button>
+          <span className={styles.muted}>{safePage + 1} / {pages}</span>
+          <button disabled={safePage >= pages - 1} onClick={() => setPage(safePage + 1)}>›</button>
+        </div>
+      )}
 
       <div className={styles.crudActions}>
         <button className={styles.newBtn} disabled={busy} onClick={() => fileRef.current?.click()}>
