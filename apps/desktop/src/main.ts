@@ -29,6 +29,11 @@ import { log } from './log'
  * answer, and the logger makes that call as soon as anything is logged.
  */
 app.setName('Concentus')
+// Windows identifies a taskbar button by its AppUserModelID, not by the window. Without one set
+// here, Electron derives it from the running executable — electron.exe when unpackaged — so the
+// taskbar shows Electron's icon and name however the window is decorated. It must match the
+// appId in electron-builder.yml, or a packaged build gets a second, unpinnable identity.
+if (process.platform === 'win32') app.setAppUserModelId('com.concentus.desktop')
 
 let backend: RunningBackend | null = null
 let mainWindow: BrowserWindow | null = null
@@ -213,7 +218,7 @@ function showMainWindow(port: number): void {
       try {
         new Notification({
           title: 'Concentus is still running',
-          body: 'Triggers keep firing in the background. Quit it from the tray icon.',
+          body: 'Triggers keep firing. Quit from the tray icon.',
         }).show()
       } catch { /* no notification support — the tray icon still tells the story */ }
     }
@@ -454,10 +459,16 @@ async function restartBackend(): Promise<void> {
 /**
  * The application icon.
  *
- * Windows takes it from the executable, which electron-builder stamps from build/icon.ico, so
- * this is really for Linux — where the window and taskbar entry get their icon from the running
- * process, not from the .desktop file, and default to a blank one without it.
+ * A packaged Windows build takes it from the executable, which electron-builder stamps from
+ * icon.ico — but an unpackaged run has no such executable of its own, so the window needs it
+ * explicitly. The .ico is preferred there because it carries several sizes: Windows picks 16px
+ * for the title bar and 32px for the taskbar, and downscaling one 256px PNG to 16px on the fly
+ * gives the muddy result that reads as "the icon is wrong".
+ *
+ * On Linux the window and taskbar entry take their icon from the running process rather than from
+ * the .desktop file, and default to a blank one without this.
  */
 function appIcon(): string {
-  return path.join(__dirname, '..', 'build', 'icon.png')
+  const file = process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+  return path.join(__dirname, '..', 'build', file)
 }

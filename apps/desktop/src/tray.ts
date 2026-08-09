@@ -41,11 +41,13 @@ function rebuildMenu(actions: TrayActions): void {
   if (!tray) return
   const settings = loadSettings()
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Open Concentus', click: actions.openWindow },
+    // Short labels, and no sublabels: `sublabel` renders on macOS only, so on the platforms this
+    // ships to it was invisible text making the menu template longer than the menu. The menu
+    // hangs off the Concentus tray icon, so repeating the name in every item earns nothing.
+    { label: 'Open', click: actions.openWindow },
     { type: 'separator' },
     {
-      label: 'Keep running in background',
-      sublabel: 'Closing the window keeps triggers firing',
+      label: 'Run in background',
       type: 'checkbox',
       checked: !!settings.runInBackground,
       click: (item) => {
@@ -55,8 +57,7 @@ function rebuildMenu(actions: TrayActions): void {
       },
     },
     {
-      label: 'Start with system',
-      sublabel: 'Launches hidden at sign-in',
+      label: 'Start at login',
       type: 'checkbox',
       checked: !!settings.startWithSystem,
       click: (item) => {
@@ -66,7 +67,7 @@ function rebuildMenu(actions: TrayActions): void {
       },
     },
     { type: 'separator' },
-    { label: 'Quit Concentus', click: actions.quit },
+    { label: 'Quit', click: actions.quit },
   ]))
 }
 
