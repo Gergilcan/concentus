@@ -118,7 +118,16 @@ public class WebhookController {
         String instruction = (trigger.prompt() == null || trigger.prompt().isBlank())
                 ? "A webhook event was received. Decide what to do and act on it."
                 : trigger.prompt();
-        String prompt = instruction + "\n\nEvent payload (JSON):\n```json\n" + payload + "\n```";
+        // Fenced like mail, not wrapped in a markdown block: a payload containing ``` closed that
+        // block and continued in the prompt's own voice. Webhook payloads are exactly as
+        // attacker-controlled as email bodies — anyone who learns the URL and secret, and any
+        // Linear or GitHub comment body riding along in an event. The metadata lines are
+        // established by this controller, not by anything the payload claims about itself.
+        String prompt = instruction
+                + "\n\nVerified request metadata (established by Concentus, not by the payload):"
+                + "\n- received: " + java.time.Instant.now()
+                + "\n- payload bytes: " + raw.length
+                + "\n\n" + com.concentus.integration.UntrustedContent.fenced("event payload", payload);
 
         try {
             RunSummary run = runService.start(flow, prompt);

@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Turns a fetched message into the first turn of an agent run.
@@ -46,7 +45,7 @@ public class MailPromptRenderer {
      *                           care about the body
      */
     public String render(FetchedMail mail, String instruction, boolean includeAttachments) {
-        String fence = "UNTRUSTED-" + UUID.randomUUID().toString().replace("-", "");
+        String fence = com.concentus.integration.UntrustedContent.newFence();
 
         StringBuilder content = new StringBuilder(bodyText(mail));
         if (includeAttachments && mail.hasAttachments()) {
