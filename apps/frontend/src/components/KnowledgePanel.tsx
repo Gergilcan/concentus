@@ -20,6 +20,7 @@ function Documents({ baseId }: { baseId: string }) {
   const [hits, setHits] = useState<KnowledgeHit[] | null>(null)
   const [semantic, setSemantic] = useState<boolean | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const folderRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(() => {
     api.knowledgeDocs(baseId).then(setDocs).catch(() => setDocs([]))
@@ -32,18 +33,47 @@ function Documents({ baseId }: { baseId: string }) {
     api.knowledgeStatus().then((s) => setSemantic(s.semantic)).catch(() => setSemantic(null))
   }, [refresh])
 
-  const upload = async (file: File) => {
+  /** Extensions the backend can extract text from; anything else in a folder is skipped, counted. */
+  const SUPPORTED = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.html']
+
+  const upload = async (files: File[]) => {
+    const usable = files.filter((f) =>
+      SUPPORTED.some((ext) => f.name.toLowerCase().endsWith(ext)),
+    )
+    const skipped = files.length - usable.length
+    if (usable.length === 0) {
+      setNote(
+        skipped > 0
+          ? `Nothing to index: ${skipped} file(s) skipped — supported types are ${SUPPORTED.join(', ')}.`
+          : 'No files selected.',
+      )
+      return
+    }
+
     setBusy(true)
     setNote(null)
-    try {
-      const result = await api.uploadKnowledgeDoc(baseId, file)
-      setNote(`${result.docName}: ${result.chunks} passage(s). ${result.detail}`)
-      refresh()
-    } catch (e) {
-      setNote(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy(false)
+    // Sequential, with a live counter: a folder can hold fifty documents, and parallel uploads
+    // would race the extractor and hide which file failed.
+    let done = 0
+    let chunks = 0
+    const failures: string[] = []
+    for (const file of usable) {
+      setNote(`Indexing ${done + 1}/${usable.length}: ${file.name}…`)
+      try {
+        const result = await api.uploadKnowledgeDoc(baseId, file)
+        chunks += result.chunks
+        done += 1
+      } catch (e) {
+        failures.push(`${file.name} (${e instanceof Error ? e.message : String(e)})`)
+      }
     }
+    refresh()
+    setBusy(false)
+    setNote(
+      `Indexed ${done} document(s), ${chunks} passage(s).` +
+        (skipped > 0 ? ` ${skipped} unsupported file(s) skipped.` : '') +
+        (failures.length > 0 ? ` Failed: ${failures.join('; ')}` : ''),
+    )
   }
 
   const search = async () => {
@@ -82,16 +112,35 @@ function Documents({ baseId }: { baseId: string }) {
 
       <div className={styles.crudActions}>
         <button className={styles.newBtn} disabled={busy} onClick={() => fileRef.current?.click()}>
-          {busy ? 'Indexing…' : 'Upload document'}
+          {busy ? 'Indexing…' : 'Upload documents'}
+        </button>
+        <button className={styles.newBtn} disabled={busy} onClick={() => folderRef.current?.click()}>
+          Upload folder
         </button>
         <input
           ref={fileRef}
           type="file"
           hidden
+          multiple
           accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt,.md,.html"
           onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) void upload(f)
+            const files = Array.from(e.target.files ?? [])
+            if (files.length > 0) void upload(files)
+            e.target.value = ''
+          }}
+        />
+        {/* webkitdirectory turns the picker into a folder picker; the browser then hands over
+            every file inside, recursively. Unsupported types are filtered with a count rather
+            than erroring — a real folder always has a .gitignore or a .png in it somewhere. */}
+        <input
+          ref={folderRef}
+          type="file"
+          hidden
+          multiple
+          {...({ webkitdirectory: '' } as Record<string, string>)}
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? [])
+            if (files.length > 0) void upload(files)
             e.target.value = ''
           }}
         />
@@ -143,8 +192,20 @@ export function KnowledgePanel() {
       load={api.listKnowledge}
       save={api.saveKnowledge}
       remove={api.deleteKnowledge}
-      // Documents only make sense on a saved base: an unsaved draft has no id to attach them to.
-      extra={(draft) => (draft.id ? <Documents baseId={draft.id} /> : null)}
+      // Documents attach to a saved base — an unsaved draft has no id to attach them to. Said on
+      // screen rather than implied by absence: a form showing only name and description reads as
+      // "this is all there is", and the documents section appearing only after Save looked exactly
+      // like the feature not existing.
+      extra={(draft) =>
+        draft.id ? (
+          <Documents baseId={draft.id} />
+        ) : (
+          <p className={panels.hint}>
+            <b>Save the base first</b> — then this panel grows a Documents section where you upload
+            files or whole folders, and a test search.
+          </p>
+        )
+      }
     />
   )
 }
