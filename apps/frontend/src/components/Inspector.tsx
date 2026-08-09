@@ -8,6 +8,7 @@ import { InputView, OutputView } from './NodeExecView.tsx'
 import { NodeLogView } from './NodeLogView.tsx'
 import { McpInspector } from './McpInspector.tsx'
 import { RepoInspector } from './RepoInspector.tsx'
+import { KnowledgeInspector } from './KnowledgeInspector.tsx'
 import { SqlInspector } from './SqlInspector.tsx'
 import styles from './panels.module.scss'
 
@@ -16,6 +17,7 @@ function title(data: AppNodeData): string {
   if (data.kind === 'input') return 'Input / trigger'
   if (data.kind === 'mcp') return 'MCP server'
   if (data.kind === 'sql') return 'SQL source'
+  if (data.kind === 'knowledge') return 'Knowledge base'
   return 'Repository'
 }
 
@@ -52,7 +54,7 @@ export function Inspector() {
   // Input/Output tabs only make sense for boxes that execute; only agents produce console
   // output, so Logs is theirs alone.
   const hasExecTabs =
-    data.kind === 'agent' || data.kind === 'sql' || data.kind === 'mcp' || data.kind === 'input'
+    data.kind === 'agent' || data.kind === 'sql' || data.kind === 'knowledge' || data.kind === 'mcp' || data.kind === 'input'
   // The Input node has an Output but no Input of its own: it is where the run's text comes *from*.
   // For a mail trigger that output is the email, which is the first thing anyone wants to read.
   const tabs: Tab[] =
@@ -112,6 +114,7 @@ export function Inspector() {
       {shownTab === 'properties' && data.kind === 'mcp' && <McpInspector data={data} set={set} />}
 
       {shownTab === 'properties' && data.kind === 'sql' && <SqlInspector data={data} set={set} />}
+      {shownTab === 'properties' && data.kind === 'knowledge' && <KnowledgeInspector data={data} set={set} />}
 
       {shownTab === 'properties' && data.kind === 'repo' && <RepoInspector data={data} set={set} />}
     </aside>

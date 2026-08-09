@@ -13,6 +13,8 @@ import java.util.Map;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ApiExceptionHandler.class);
+
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<Map<String, String>> notFound(NoResourceFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -45,6 +47,11 @@ public class ApiExceptionHandler {
         // Unlike badRequest/conflict above (whose messages come from our own validate() calls and
         // are safe to show), an unhandled Exception here may carry internals (stack details, driver
         // errors, etc.) that shouldn't reach the client — so this path never forwards e.getMessage().
+        //
+        // It IS logged, with the stack. Hiding it from the client without recording it anywhere
+        // made a 500 undiagnosable from both sides — the user saw "Internal server error" and the
+        // log saw nothing at all.
+        log.error("Unhandled exception on an API request", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", "Internal server error"));
     }

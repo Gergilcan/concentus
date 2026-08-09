@@ -21,7 +21,7 @@ import java.util.Locale;
  * {@link #reset(JdbcTemplate)} gives each test a clean table, which is what isolation actually
  * needs here.
  */
-final class TestDatabase {
+public final class TestDatabase {
 
     private static EmbeddedPostgres postgres;
     private static JdbcTemplate jdbc;
@@ -29,7 +29,7 @@ final class TestDatabase {
     private TestDatabase() {
     }
 
-    static synchronized JdbcTemplate jdbc() {
+    public static synchronized JdbcTemplate jdbc() {
         if (jdbc == null) {
             try {
                 postgres = EmbeddedPostgres.builder().setPort(0).start();
@@ -63,7 +63,7 @@ final class TestDatabase {
      * <p>For the tests that need a schema of their own — chiefly the baseline case, which has to
      * start from a database this run has never migrated.
      */
-    static javax.sql.DataSource freshDatabase(String name) {
+    public static javax.sql.DataSource freshDatabase(String name) {
         jdbc();  // make sure the server is up
         jdbc.execute("drop database if exists " + name);
         jdbc.execute("create database " + name);
@@ -76,7 +76,7 @@ final class TestDatabase {
      * <p>Deletes rather than drops: the table belongs to the migrations now, and dropping it would
      * leave Flyway's history claiming a schema that is no longer there.
      */
-    static void reset(JdbcTemplate template) {
+    public static void reset(JdbcTemplate template) {
         template.execute("delete from resources");
     }
 }

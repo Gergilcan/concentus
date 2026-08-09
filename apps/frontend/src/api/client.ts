@@ -11,6 +11,9 @@ import type {
   MailSignInResult,
   BackendFlow,
   DatabaseDef,
+  KnowledgeDef,
+  KnowledgeDoc,
+  KnowledgeHit,
   LibraryAgent,
   FlowVersionInfo,
   McpDef,
@@ -138,6 +141,46 @@ export const api = {
     req<{ ok: boolean; detail: string }>('/storage/test', {
       method: 'POST',
       body: JSON.stringify(s),
+    }),
+
+  // Knowledge bases: document collections agents retrieve from. The upload is multipart, so it
+  // bypasses req()'s JSON defaults.
+  listKnowledge: () => req<KnowledgeDef[]>('/knowledge'),
+  knowledgeStatus: () => req<{ semantic: boolean }>('/knowledge/status'),
+  saveKnowledge: (k: KnowledgeDef) =>
+    req<KnowledgeDef>('/knowledge', { method: 'POST', body: JSON.stringify(k) }),
+  deleteKnowledge: (id: string) => req<void>(`/knowledge/${id}`, { method: 'DELETE' }),
+  knowledgeDocs: (id: string) => req<KnowledgeDoc[]>(`/knowledge/${id}/documents`),
+  uploadKnowledgeDoc: async (id: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    // Straight fetch rather than req(): multipart must NOT carry the JSON content type — the
+    // browser sets the boundary itself — but the CSRF header is still required on a POST.
+    const headers: Record<string, string> = {}
+    const token = csrfToken()
+    if (token) headers['X-XSRF-TOKEN'] = token
+    const res = await fetch(`/api/knowledge/${id}/documents`, {
+      method: 'POST',
+      body: form,
+      headers,
+      credentials: 'same-origin',
+    })
+    if (!res.ok) {
+      let message = `${res.status} ${res.statusText}`
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body?.error) message = body.error
+      } catch { /* non-JSON error body */ }
+      throw new Error(message)
+    }
+    return (await res.json()) as { docName: string; chunks: number; embedded: boolean; detail: string }
+  },
+  deleteKnowledgeDoc: (id: string, docName: string) =>
+    req<void>(`/knowledge/${id}/documents/${encodeURIComponent(docName)}`, { method: 'DELETE' }),
+  searchKnowledge: (id: string, query: string, topK = 5) =>
+    req<KnowledgeHit[]>(`/knowledge/${id}/search`, {
+      method: 'POST',
+      body: JSON.stringify({ query, topK }),
     }),
 
   listDatabases: () => req<DatabaseDef[]>('/databases'),

@@ -23,6 +23,9 @@ export function Palette() {
       <button className={cx(styles.addBtn, styles.addSql)} onClick={() => addNode('sql')}>
         <span>🗄</span> SQL source (RAG)
       </button>
+      <button className={cx(styles.addBtn, styles.addKnowledge)} onClick={() => addNode('knowledge')}>
+        <span>📚</span> Knowledge base
+      </button>
 
       <p className={styles.hint}>
         Add an <b>Input</b> node to set how a run starts: <b>Manual</b>, a fixed <b>Prompt</b>, or

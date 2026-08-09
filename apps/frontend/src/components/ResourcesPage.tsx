@@ -4,12 +4,13 @@ import type { DatabaseDef, LibraryAgent, McpDef } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, EFFORT_OPTIONS } from '../constants.ts'
 import { CredentialsPanel } from './CredentialsPanel.tsx'
 import { CrudPanel } from './CrudPanel.tsx'
+import { KnowledgePanel } from './KnowledgePanel.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import { ModelField } from './ModelField.tsx'
 import { StoragePanel } from './StoragePanel.tsx'
 import styles from './resources.module.scss'
 
-type Tab = 'agents' | 'mcp' | 'databases' | 'credentials' | 'storage'
+type Tab = 'agents' | 'mcp' | 'databases' | 'knowledge' | 'credentials' | 'storage'
 
 export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
   const [tab, setTab] = useState<Tab>('agents')
@@ -28,6 +29,12 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           onClick={() => setTab('databases')}
         >
           Databases
+        </button>
+        <button
+          className={tab === 'knowledge' ? styles.active : ''}
+          onClick={() => setTab('knowledge')}
+        >
+          Knowledge
         </button>
         <button
           className={tab === 'credentials' ? styles.active : ''}
@@ -123,6 +130,8 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
             remove={api.deleteDatabase}
           />
         )}
+        {tab === 'knowledge' && <KnowledgePanel />}
+
         {tab === 'credentials' && <CredentialsPanel pushError={pushError} />}
 
         {tab === 'storage' && <StoragePanel pushError={pushError} />}

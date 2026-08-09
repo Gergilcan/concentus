@@ -186,3 +186,52 @@
     border-radius: 4px;
   }
 }
+
+/* ---- knowledge bases ---- */
+.h4 {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$muted;
+}
+.kbDocs {
+  border-top: 1px solid t.$border;
+  margin-top: 16px;
+}
+.kbDoc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dashed t.$border;
+  font-size: 13px;
+}
+.kbDocName {
+  font-weight: 600;
+}
+.kbDoc .delBtn {
+  margin-left: auto;
+}
+.kbSearch {
+  display: flex;
+  gap: 8px;
+  input {
+    flex: 1;
+  }
+}
+.kbHit {
+  border: 1px solid t.$border;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  font-size: 12.5px;
+}
+.kbHitHead {
+  color: t.$muted;
+  font-size: 11.5px;
+  margin-bottom: 4px;
+}
+.kbHitBody {
+  white-space: pre-wrap;
+}

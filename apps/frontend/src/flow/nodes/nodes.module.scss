@@ -95,6 +95,11 @@
   border-left: 3px solid t.$sql;
 }
 
+/* Knowledge shares the coordinator's violet: both are 'context brought to an agent'. */
+.knowledge {
+  border-left: 3px solid t.$knowledge;
+}
+
 .input {
   border-left: 3px solid t.$ok;
 }

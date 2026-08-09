@@ -118,7 +118,7 @@ export interface NodeExecReport {
 // `type` aliases (not interfaces) so they satisfy React Flow's
 // `Record<string, unknown>` node-data constraint.
 
-export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'input'
+export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'knowledge' | 'input'
 
 export type InputNodeData = {
   kind: 'input'
@@ -276,7 +276,16 @@ export type SqlNodeData = {
   maxRows: number
 }
 
-export type AppNodeData = AgentNodeData | McpNodeData | RepoNodeData | SqlNodeData | InputNodeData
+export type KnowledgeNodeData = {
+  kind: 'knowledge'
+  label: string
+  /** Which knowledge base to retrieve from — created under Resources → Knowledge. */
+  baseId: string
+  /** How many passages to inject. */
+  topK: number
+}
+
+export type AppNodeData = AgentNodeData | McpNodeData | RepoNodeData | SqlNodeData | KnowledgeNodeData | InputNodeData
 
 export interface SqlPreview {
   columns: string[]
@@ -514,4 +523,25 @@ export interface McpToolList {
   ok: boolean
   tools?: McpToolInfo[]
   error?: string
+}
+
+/** A named collection of documents agents retrieve from (Resources → Knowledge). */
+export type KnowledgeDef = {
+  id?: string
+  name: string
+  description?: string
+}
+
+export type KnowledgeDoc = {
+  name: string
+  chunks: number
+  embedded: boolean
+  createdAt: number
+}
+
+export type KnowledgeHit = {
+  docName: string
+  seq: number
+  content: string
+  score: number
 }
