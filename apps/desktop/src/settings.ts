@@ -29,13 +29,25 @@ export interface Settings {
    * ask about storage, or ask on every launch.
    */
   wizardCompleted?: boolean
+  /**
+   * Closing the window hides to the tray instead of quitting, so cron, mail and webhook triggers
+   * keep firing. Opt-in: an app that keeps running after being closed is a background service the
+   * user must have asked for, not a surprise found in Task Manager.
+   */
+  runInBackground?: boolean
+  /** Launch (hidden, into the tray) when the user signs in to the OS. */
+  startWithSystem?: boolean
+  /** The one-time balloon explaining that closing hid the app rather than quit it. */
+  trayTipShown?: boolean
 }
 
 export function loadSettings(): Settings {
   try {
     const file = settingsFile()
     if (!fs.existsSync(file)) return {}
-    return JSON.parse(fs.readFileSync(file, 'utf8')) as Settings
+    // BOM-tolerant: Notepad saves UTF-8 with a BOM, and a user hand-editing this file should not
+    // have their settings silently discarded over an invisible character.
+    return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, '')) as Settings
   } catch (err) {
     // Corrupt settings should not stop the app; defaults are all recoverable.
     log.warn(`Could not read settings: ${err instanceof Error ? err.message : String(err)}`)

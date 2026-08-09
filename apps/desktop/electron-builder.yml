@@ -6,6 +6,14 @@ directories:
   output: release
   buildResources: build
 
+# Where the auto-updater looks for new versions. electron-builder also writes app-update.yml into
+# the packaged app from this block — without it, electron-updater has no feed and errors at
+# startup. Publishing itself stays off (--publish never); the release workflow uploads the assets.
+publish:
+  provider: github
+  owner: Gergilcan
+  repo: concentus
+
 # Only the compiled shell. The UI is not here — it is inside the backend jar, served over
 # loopback — so there is no renderer bundle to include.
 files:

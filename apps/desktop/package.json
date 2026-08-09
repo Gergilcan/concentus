@@ -22,6 +22,9 @@
     "payload": "node scripts/prepare-payload.mjs",
     "package": "pnpm build && pnpm payload && electron-builder --publish never"
   },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
   "devDependencies": {
     "@types/node": "^24.10.1",
     "electron": "^43.3.0",
