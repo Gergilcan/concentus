@@ -1,12 +1,9 @@
 import { useMemo } from 'react'
+import { clockTime } from '../utils/format.ts'
 import { useFlowStore } from '../state/store.ts'
 import { agentKey } from '../utils/agentKey.ts'
 import { cx } from '../utils/cx.ts'
 import styles from './runs.module.scss'
-
-function fmt(ts: number): string {
-  return new Date(ts).toLocaleTimeString()
-}
 
 /**
  * One agent's own console output, shown inside its node inspector.
@@ -32,7 +29,7 @@ export function NodeLogView({ nodeId, label }: { nodeId: string; label: string }
     <div className={styles.nodeLog}>
       {mine.map((e, i) => (
         <div key={i} className={cx(styles.line, styles['t_' + e.type])}>
-          <span className={styles.lts}>{fmt(e.ts)}</span>
+          <span className={styles.lts}>{clockTime(e.ts)}</span>
           <span className={styles.ltext}>{e.text}</span>
         </div>
       ))}

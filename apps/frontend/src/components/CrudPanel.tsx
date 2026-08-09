@@ -2,7 +2,8 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { cx } from '../utils/cx.ts'
 import styles from './resources.module.scss'
 
-export interface Field {
+/** Renamed from `Field`: fields.tsx exports a *component* by that name. */
+interface FieldSpec {
   key: string
   label: string
   type?: 'text' | 'number' | 'textarea' | 'select'
@@ -24,7 +25,7 @@ export interface Field {
 
 interface Props<T> {
   title: string
-  fields: Field[]
+  fields: FieldSpec[]
   labelOf: (item: T) => string
   idOf: (item: T) => string | undefined
   empty: () => T

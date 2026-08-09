@@ -1,4 +1,5 @@
 import { api } from '../api/client.ts'
+import { errMessage } from '../utils/errMessage.ts'
 import type { RunSummary } from '../api/types.ts'
 import { useFlowStore } from '../state/store.ts'
 import { cx } from '../utils/cx.ts'
@@ -9,10 +10,6 @@ interface Props {
   onRunStarted: (r: RunSummary) => void
   onBackToFlows: () => void
   pushError: (m: string) => void
-}
-
-function msg(e: unknown): string {
-  return e instanceof Error ? e.message : String(e)
 }
 
 export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError }: Props) {
@@ -29,7 +26,7 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
       loadBackendFlow(saved)
       onFlowsChanged()
     } catch (e) {
-      pushError(msg(e))
+      pushError(errMessage(e))
     }
   }
 
@@ -38,7 +35,7 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
       const r = await api.startRun(useFlowStore.getState().toBackendFlow())
       onRunStarted(r)
     } catch (e) {
-      pushError(msg(e))
+      pushError(errMessage(e))
     }
   }
 

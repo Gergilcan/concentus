@@ -18,7 +18,7 @@ export interface RunSummary {
   estimatedCostUsd?: number
 }
 
-export type RunEventType = 'system' | 'status' | 'agent_message' | 'tool_use' | 'error'
+type RunEventType ='system' | 'status' | 'agent_message' | 'tool_use' | 'error'
 
 export interface RunEvent {
   type: RunEventType
@@ -69,7 +69,7 @@ export interface ModelRate {
 }
 
 /** An execution backend and whether it can run right now. */
-export interface BackendStatus {
+interface BackendStatus {
   /** `local` (claude CLI on a subscription) or `cloud` (ANTHROPIC_API_KEY). */
   id: string
   name: string
@@ -305,7 +305,7 @@ export interface BackendFlowNode {
   data: Record<string, unknown>
 }
 
-export interface BackendFlowEdge {
+interface BackendFlowEdge {
   id: string
   source: string
   target: string

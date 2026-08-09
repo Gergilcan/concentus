@@ -51,7 +51,7 @@ export function EmbeddingModelPanel({ onReady }: { onReady?: () => void }) {
             Semantic search is on — <b>{status.model}</b>, running inside the app.
           </span>
           <button
-            className={styles.linkBtn}
+            className={styles.textLink}
             title="Frees the disk space. Retrieval falls back to word overlap until you download it again."
             onClick={() => void api.deleteEmbedder().then(() => setStatus({ ...status, state: 'NOT_DOWNLOADED' }))}
           >

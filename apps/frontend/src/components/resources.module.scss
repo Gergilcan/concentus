@@ -360,7 +360,10 @@
   width: 180px;
   height: 6px;
 }
-.linkBtn {
+/* A text link, not a button — deliberately NOT called linkBtn: panels.module.scss defines that
+   name as an outlined button, and one name meaning two controls made identical JSX render
+   differently depending on which stylesheet the file happened to import. */
+.textLink {
   background: none;
   border: none;
   color: t.$muted;

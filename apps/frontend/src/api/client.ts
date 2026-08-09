@@ -23,7 +23,6 @@ import type {
   NodeExecReport,
   ModelCatalog,
   RemoteRepoList,
-  RunDetail,
   RunEvent,
   RunSummary,
   StorageConfig,
@@ -114,7 +113,6 @@ export const api = {
 
   // runs
   listRuns: () => req<RunSummary[]>('/runs'),
-  getRun: (id: string) => req<RunDetail>(`/runs/${id}`),
   getRunNodes: (id: string) => req<NodeExecReport>(`/runs/${id}/nodes`),
   /** The flow snapshot this run executed (works for ad-hoc runs and edited/deleted flows). */
   getRunFlow: (id: string) => req<BackendFlow>(`/runs/${id}/flow`),
@@ -231,13 +229,6 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   signOut: () => req<void>('/account/logout', { method: 'POST' }),
-  changePassword: (currentPassword: string, newPassword: string) =>
-    req<void>('/account/password', {
-      method: 'POST',
-      body: JSON.stringify({ currentPassword, newPassword }),
-    }),
-
-  /** Per-model rates for the cost estimate, plus which execution backends can run right now. */
   listModels: () => req<ModelCatalog>('/models'),
 
   // stored credentials (write-only: nothing here ever returns a secret)
