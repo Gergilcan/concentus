@@ -161,7 +161,6 @@ export const api = {
   // Knowledge bases: document collections agents retrieve from. The upload is multipart, so it
   // bypasses req()'s JSON defaults.
   listKnowledge: () => req<KnowledgeDef[]>('/knowledge'),
-  knowledgeStatus: () => req<{ semantic: boolean; detail: string }>('/knowledge/status'),
   saveKnowledge: (k: KnowledgeDef) =>
     req<KnowledgeDef>('/knowledge', { method: 'POST', body: JSON.stringify(k) }),
   deleteKnowledge: (id: string) => req<void>(`/knowledge/${id}`, { method: 'DELETE' }),

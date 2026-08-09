@@ -557,4 +557,7 @@ export interface EmbedderStatus {
   error: string
   sizeMb: number
   model: string
+  /** Whether search ranks by meaning right now, through EITHER the built-in model or a server. */
+  semantic: boolean
+  detail: string
 }

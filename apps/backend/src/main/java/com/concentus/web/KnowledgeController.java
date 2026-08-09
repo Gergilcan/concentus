@@ -44,12 +44,18 @@ public class KnowledgeController {
      */
     @GetMapping("/embedder")
     public Map<String, Object> embedderStatus() {
+        // Carries overall semantic availability too, not only the built-in model's state: with
+        // Ollama serving the embedding model, search IS semantic while the built-in model is
+        // absent, and a panel reading only the local state would claim word-overlap wrongly.
+        KnowledgeService.EmbeddingStatus overall = service.status();
         return Map.of(
                 "state", embedder.state().name(),
                 "percent", embedder.progressPercent(),
                 "error", embedder.error(),
                 "sizeMb", 130,
-                "model", "multilingual-e5-small");
+                "model", com.concentus.llm.BuiltInEmbedder.MODEL_NAME,
+                "semantic", overall.semantic(),
+                "detail", overall.detail());
     }
 
     @PostMapping("/embedder/download")

@@ -140,7 +140,6 @@ function Documents({ baseId }: { baseId: string }) {
   const [note, setNote] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<KnowledgeHit[] | null>(null)
-  const [status, setStatus] = useState<{ semantic: boolean; detail: string } | null>(null)
   const [typeTab, setTypeTab] = useState<string>('all')
   const [page, setPage] = useState(0)
   // Expanded, not collapsed: the default is everything folded, and tracking what the user opened
@@ -157,10 +156,6 @@ function Documents({ baseId }: { baseId: string }) {
     api.knowledgeDocs(baseId).then(setDocs).catch(() => setDocs([]))
   }, [baseId])
 
-  const refreshStatus = useCallback(() => {
-    api.knowledgeStatus().then(setStatus).catch(() => setStatus(null))
-  }, [])
-
   useEffect(() => {
     refresh()
     setNote(null)
@@ -169,8 +164,7 @@ function Documents({ baseId }: { baseId: string }) {
     setPage(0)
     setExpanded(new Set())
     setPending(null)
-    refreshStatus()
-  }, [refresh, refreshStatus])
+  }, [refresh])
 
   // Tabs show only the types actually present — five empty tabs teach nothing.
   const countsByType = useMemo(
@@ -344,12 +338,7 @@ function Documents({ baseId }: { baseId: string }) {
   return (
     <div className={styles.kbDocs}>
       <h4 className={styles.h4}>Documents</h4>
-      <EmbeddingModelPanel onReady={refreshStatus} />
-      {status && !status.semantic && (
-        <p className={panels.hint} title={status.detail}>
-          Ranking by word overlap. ⓘ
-        </p>
-      )}
+      <EmbeddingModelPanel />
       {docs.length === 0 && <div className={styles.muted}>No documents yet.</div>}
 
       {docs.length > 0 && (
