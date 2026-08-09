@@ -202,7 +202,8 @@ interface FlowState {
   onEdgesChange: (changes: EdgeChange[]) => void
   onConnect: (conn: Connection) => void
   deleteEdge: (id: string) => void
-  addNode: (kind: NodeKind) => void
+  /** `at` is a flow-space position, from a palette drag; omitted, the node cascades. */
+  addNode: (kind: NodeKind, at?: { x: number; y: number }) => void
   updateNodeData: (id: string, patch: Record<string, unknown>) => void
   deleteNode: (id: string) => void
   selectNode: (id: string | null) => void
@@ -272,14 +273,20 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   onConnect: (conn) => set((s) => ({ edges: addEdge({ ...conn, id: uid('e') }, s.edges) })),
   deleteEdge: (id) => set((s) => ({ edges: s.edges.filter((e) => e.id !== id) })),
 
-  addNode: (kind) =>
+  addNode: (kind, at) =>
     set((s) => {
       const isFirstAgent = kind === 'agent' && !s.nodes.some((n) => n.data.kind === 'agent')
-      spawnCount += 1
+      // The cascade is only for nodes with nowhere in particular to go. A dropped node has a
+      // position the user chose, and nudging it would move it out from under their cursor.
+      let position = at
+      if (!position) {
+        spawnCount += 1
+        position = { x: 120 + (spawnCount % 5) * 60, y: 80 + (spawnCount % 7) * 50 }
+      }
       const node: AppNode = {
         id: uid(kind),
         type: kind,
-        position: { x: 120 + (spawnCount % 5) * 60, y: 80 + (spawnCount % 7) * 50 },
+        position,
         data: defaultData(kind, isFirstAgent),
       }
       return { nodes: [...s.nodes, node], selectedId: node.id }

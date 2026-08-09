@@ -478,3 +478,27 @@ describe('useFlowStore flow metadata round-trip', () => {
     })
   })
 })
+
+describe('addNode placement', () => {
+  it('puts a dropped node exactly where it was dropped', () => {
+    useFlowStore.getState().newFlow()
+
+    useFlowStore.getState().addNode('agent', { x: 412, y: 233 })
+
+    const node = useFlowStore.getState().nodes.at(-1)!
+    // Untouched by the cascade: nudging it would move it out from under the cursor.
+    expect(node.position).toEqual({ x: 412, y: 233 })
+  })
+
+  it('still cascades a node added without a position', () => {
+    useFlowStore.getState().newFlow()
+
+    useFlowStore.getState().addNode('mcp')
+    useFlowStore.getState().addNode('mcp')
+
+    const [a, b] = useFlowStore.getState().nodes.slice(-2)
+    // Clicking remains available — a drag is not reachable by keyboard — and two clicks must not
+    // stack one node exactly on top of another.
+    expect(b.position).not.toEqual(a.position)
+  })
+})
