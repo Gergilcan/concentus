@@ -23,7 +23,11 @@ export function KnowledgeInspector({ data, set }: Props) {
     <>
       <Field label="Label" value={data.label} onChange={(v) => set({ label: v })} />
       <SelectField
-        label="Knowledge base"
+        label={
+          <span title="Managed under Resources → Knowledge. At run start, the passages most relevant to the run's prompt are injected into the connected agent.">
+            Knowledge base ⓘ
+          </span>
+        }
         value={data.baseId}
         onChange={(v) => set({ baseId: v })}
       >
@@ -40,17 +44,11 @@ export function KnowledgeInspector({ data, set }: Props) {
         value={data.topK}
         onChange={(v) => set({ topK: Math.max(1, Math.min(20, Number(v) || 5)) })}
       />
-      <p className={styles.hint}>
-        When a run starts, the passages most relevant to its prompt are retrieved from this base
-        and handed to the connected agent as context. Bases and their documents are managed under{' '}
-        <b>Resources → Knowledge</b>.
-        {bases.length === 0 && (
-          <>
-            <br />
-            <b>No bases exist yet</b> — create one there first.
-          </>
-        )}
-      </p>
+      {bases.length === 0 && (
+        <p className={styles.hint}>
+          No bases yet — create one under <b>Resources → Knowledge</b>.
+        </p>
+      )}
     </>
   )
 }

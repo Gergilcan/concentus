@@ -89,9 +89,8 @@ function Documents({ baseId }: { baseId: string }) {
     <div className={styles.kbDocs}>
       <h4 className={styles.h4}>Documents</h4>
       {semantic === false && (
-        <p className={panels.hint}>
-          No embedding model is reachable, so retrieval ranks by word overlap. Configure a local
-          model server (<code>ollama pull bge-m3</code>) and re-upload to rank by meaning.
+        <p className={panels.hint} title="Serve bge-m3 from a local model server (ollama pull bge-m3), then re-upload to rank by meaning.">
+          Ranking by word overlap — no embedding model. ⓘ
         </p>
       )}
       {docs.length === 0 && <div className={styles.muted}>No documents yet.</div>}
@@ -180,11 +179,7 @@ export function KnowledgePanel() {
       title="Knowledge bases"
       fields={[
         { key: 'name', label: 'Name' },
-        {
-          key: 'description',
-          label: 'Description',
-          placeholder: 'What lives here — it is how you will tell twelve bases apart',
-        },
+        { key: 'description', label: 'Description', placeholder: 'What lives here' },
       ]}
       labelOf={(k) => k.name}
       idOf={(k) => k.id}
@@ -201,8 +196,7 @@ export function KnowledgePanel() {
           <Documents baseId={draft.id} />
         ) : (
           <p className={panels.hint}>
-            <b>Save the base first</b> — then this panel grows a Documents section where you upload
-            files or whole folders, and a test search.
+            <b>Save the base first</b> — documents and search appear here after.
           </p>
         )
       }

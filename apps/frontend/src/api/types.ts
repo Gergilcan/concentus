@@ -212,6 +212,8 @@ export type AgentNodeData = {
   contextFolders?: string[]
   /** Path to an existing CLAUDE.md, or a folder containing one, to load as context. */
   claudeMdPath?: string
+  /** Tools this sub-agent may use — the one permission Claude Code enforces per agent. Empty = all. */
+  tools?: string[]
   /**
    * How much the run may do without asking. **Coordinator only.**
    *

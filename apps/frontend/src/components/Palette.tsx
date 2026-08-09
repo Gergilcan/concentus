@@ -8,39 +8,30 @@ export function Palette() {
   return (
     <aside className={styles.palette}>
       <h3 className={styles.h3}>Add node</h3>
-      <button className={cx(styles.addBtn, styles.addInput)} onClick={() => addNode('input')}>
+      <button className={cx(styles.addBtn, styles.addInput)} title="How a run starts: manual, a fixed prompt, cron, webhook, or incoming mail." onClick={() => addNode('input')}>
         <span>▶</span> Input / trigger
       </button>
-      <button className={cx(styles.addBtn, styles.addAgent)} onClick={() => addNode('agent')}>
+      <button className={cx(styles.addBtn, styles.addAgent)} title="Mark exactly one agent as coordinator and link it to the sub-agents it may delegate to." onClick={() => addNode('agent')}>
         <span>◆</span> Agent
       </button>
-      <button className={cx(styles.addBtn, styles.addMcp)} onClick={() => addNode('mcp')}>
+      <button className={cx(styles.addBtn, styles.addMcp)} title="Connect to the agent that should use its tools. Direction of the wire does not matter." onClick={() => addNode('mcp')}>
         <span>⚙</span> MCP server
       </button>
-      <button className={cx(styles.addBtn, styles.addRepo)} onClick={() => addNode('repo')}>
+      <button className={cx(styles.addBtn, styles.addRepo)} title="Clones the repository into the run and enables PRs/MRs. Connect it to an agent." onClick={() => addNode('repo')}>
         <span>🐙</span> Repository
       </button>
-      <button className={cx(styles.addBtn, styles.addSql)} onClick={() => addNode('sql')}>
+      <button className={cx(styles.addBtn, styles.addSql)} title="Runs a SQL query at run start and injects the rows into the connected agent." onClick={() => addNode('sql')}>
         <span>🗄</span> SQL source (RAG)
       </button>
-      <button className={cx(styles.addBtn, styles.addKnowledge)} onClick={() => addNode('knowledge')}>
+      <button className={cx(styles.addBtn, styles.addKnowledge)} title="Injects the passages most relevant to the run's prompt from a document base (Resources → Knowledge)." onClick={() => addNode('knowledge')}>
         <span>📚</span> Knowledge base
       </button>
 
-      <p className={styles.hint}>
-        Add an <b>Input</b> node to set how a run starts: <b>Manual</b>, a fixed <b>Prompt</b>, or
-        <b> Automatic</b> on a cron schedule. Mark exactly one agent as <b>coordinator</b>, and link it to the
-        sub-agents it may delegate to. Connect <b>MCP</b>, <b>Repository</b>, and <b>SQL</b> nodes to the
-        specific agent that should use them (direction doesn't matter).
-      </p>
-      <p className={styles.hint}>
-        Drag a node to move it. To remove a connection, hover it and click the <b>×</b>, or select it and
-        press <b>Delete</b>.
-      </p>
-      <p className={styles.hint}>
-        Copy blocks with <b>Ctrl/⌘+C</b> and paste with <b>Ctrl/⌘+V</b> — you can paste into a different
-        flow too. <b>Ctrl/⌘+D</b> duplicates the selection in place. Shift-drag to select several blocks at
-        once; connections between copied blocks are kept.
+      <p
+        className={styles.hint}
+        title="Move: drag. Delete a wire: hover it and click ×, or select it and press Delete. Copy/paste: Ctrl/Cmd+C / V — works across flows. Ctrl/Cmd+D duplicates in place. Shift-drag selects several; wires between copied blocks are kept."
+      >
+        Hover any button or field for help · shortcuts ⓘ
       </p>
 
       <RagPanel />

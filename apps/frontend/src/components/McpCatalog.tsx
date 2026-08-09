@@ -71,17 +71,18 @@ export function McpCatalog({ onAdded }: { onAdded: () => void }) {
       <h4 className={styles.h4}>Catalog — one click to add</h4>
       <div className={styles.catalogGrid}>
         {CATALOG.map((entry) => (
-          <button key={entry.name} className={styles.catalogItem} onClick={() => void add(entry)}>
+          <button
+            key={entry.name}
+            className={styles.catalogItem}
+            title={entry.note}
+            onClick={() => void add(entry)}
+          >
             <span className={styles.catalogName}>{entry.name}</span>
-            <span className={styles.catalogNote}>{entry.note}</span>
+            <span className={styles.catalogNote}>{entry.auth === 'oauth' ? 'OAuth sign-in' : entry.auth === 'token' ? 'needs a token' : 'no auth'}</span>
           </button>
         ))}
       </div>
       {note && <p className={panels.hint}>{note}</p>}
-      <p className={panels.hint}>
-        URLs current as of this build — a provider moving its endpoint means editing the definition
-        below, not reinstalling. Anything not listed here can be added by hand with its URL.
-      </p>
     </div>
   )
 }

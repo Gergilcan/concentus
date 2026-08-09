@@ -67,13 +67,25 @@ export function AgentInspector({ data, set }: Props) {
         onChange={(v) => set({ maxTokens: Number(v) })}
       />
       {data.role === 'subagent' && (
-        <TextArea
-          label="Delegate when… (routing)"
-          rows={3}
-          placeholder="Use PROACTIVELY for backend/Java work. Give it only the backend part of the plan."
-          value={data.description ?? ''}
-          onChange={(v) => set({ description: v })}
-        />
+        <>
+          <TextArea
+            label="Delegate when… (routing)"
+            rows={3}
+            placeholder="Use PROACTIVELY for backend/Java work. Give it only the backend part of the plan."
+            value={data.description ?? ''}
+            onChange={(v) => set({ description: v })}
+          />
+          <Field
+            label={
+              <span title="Enforced per sub-agent by Claude Code, whatever the flow's permission mode allows. Tool names as the CLI knows them: Read, Edit, Write, Bash, WebFetch, WebSearch… Blank inherits all tools.">
+                Allowed tools (blank = all) ⓘ
+              </span>
+            }
+            placeholder="Read, Grep, Glob"
+            value={(data.tools ?? []).join(', ')}
+            onChange={(v) => set({ tools: v.split(',').map((t) => t.trim()).filter(Boolean) })}
+          />
+        </>
       )}
 
       {/* Coordinator only, and not for tidiness: a local run launches one `claude` process for the
@@ -82,7 +94,11 @@ export function AgentInspector({ data, set }: Props) {
       {data.role === 'coordinator' && (
         <>
           <SelectField
-            label="Permissions for this flow's agents"
+            label={
+              <span title="Applies to the whole run: one claude process executes the coordinator and every sub-agent. Bypass is the only mode that works unattended; Ask and Auto-accept stall without someone at the keyboard; Plan proposes without changing anything.">
+                Permissions for this flow's agents ⓘ
+              </span>
+            }
             value={data.permissionMode ?? ''}
             onChange={(v) => set({ permissionMode: v })}
           >
@@ -92,23 +108,16 @@ export function AgentInspector({ data, set }: Props) {
             <option value="acceptEdits">Auto-accept file edits, ask for the rest</option>
             <option value="bypassPermissions">Bypass all checks</option>
           </SelectField>
-          <p className={styles.hint}>
-            Set on the coordinator because it applies to the whole run: one <code>claude</code>{' '}
-            process runs the coordinator and every sub-agent, and this is what that process is
-            allowed to do. Sub-agents have no separate setting for the same reason.
-            <br />
-            <b>Bypass</b> is the default and the only mode that works unattended — no prompts at
-            all, which is also what lets a flow started by a stranger's email run shell commands
-            without asking. <b>Ask</b> and <b>Auto-accept edits</b> need somebody at the keyboard;
-            there is no console here to answer a prompt, so an unattended run under them stalls.{' '}
-            <b>Plan</b> is the safe way to see what a flow <i>would</i> do.
-          </p>
         </>
       )}
       <TextArea label="System prompt" rows={6} value={data.systemPrompt} onChange={(v) => set({ systemPrompt: v })} />
 
       <TextArea
-        label="Context folders (one per line)"
+        label={
+          <span title="Folders this agent treats as its source of truth. Each path must sit under local.context-roots on the backend; rejected paths are reported in the run console. Cloud runs never touch your machine.">
+            Context folders (one per line) ⓘ
+          </span>
+        }
         rows={3}
         placeholder={'C:\\Users\\me\\code\\wirej\nC:\\Users\\me\\code\\concentus'}
         value={(data.contextFolders ?? []).join('\n')}
@@ -117,19 +126,15 @@ export function AgentInspector({ data, set }: Props) {
         onChange={(v) => set({ contextFolders: v.split('\n').map((s) => s.trim()).filter(Boolean) })}
       />
       <Field
-        label="CLAUDE.md path (file or folder)"
+        label={
+          <span title="An existing CLAUDE.md (or a folder holding one) loaded as project context for this agent.">
+            CLAUDE.md path (file or folder) ⓘ
+          </span>
+        }
         placeholder="C:\Users\me\code\wirej"
         value={data.claudeMdPath ?? ''}
         onChange={(v) => set({ claudeMdPath: v })}
       />
-      <p className={styles.hint}>
-        Folders this agent should treat as its source of truth — without them it only sees a scratch
-        workspace and guesses from names. Each path must sit under a directory configured in{' '}
-        <code>local.context-roots</code> on the backend, otherwise it's skipped and the reason is
-        shown in the run console. Used by <b>Claude local</b> and <b>API</b> runs; on API runs these
-        folders are also what the agent's file tools may read and write. Cloud runs execute in
-        Anthropic's sandbox with no access to your machine.
-      </p>
     </>
   )
 }
