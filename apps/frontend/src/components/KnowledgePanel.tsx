@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client.ts'
 import type { KnowledgeDef, KnowledgeDoc, KnowledgeHit } from '../api/types.ts'
 import { CrudPanel } from './CrudPanel.tsx'
@@ -27,13 +27,62 @@ function typeOf(name: string): string {
   return DOC_TYPES.find((t) => t.exts.some((e) => lower.endsWith(e)))?.key ?? 'other'
 }
 
-/** Folder part of a stored name ("manuals/intro.pdf" → "manuals"); root files group under "". */
-function folderOf(name: string): string {
-  const i = name.lastIndexOf('/')
-  return i < 0 ? '' : name.slice(0, i)
+/** A folder in the document tree. Files hold the full stored name, which is what rows display. */
+interface TreeNode {
+  name: string
+  path: string
+  folders: Map<string, TreeNode>
+  files: KnowledgeDoc[]
+}
+
+function emptyNode(name: string, path: string): TreeNode {
+  return { name, path, folders: new Map(), files: [] }
+}
+
+/**
+ * Builds the nested folder tree for a page of documents.
+ *
+ * <p>Nested rather than grouped by full folder string: "apps/backend/docs" was one flat header,
+ * which is a list of paths wearing a tree's clothes. Each segment is now its own level.
+ */
+export function buildTree(docs: KnowledgeDoc[]): TreeNode {
+  const root = emptyNode('', '')
+  for (const doc of docs) {
+    let node = root
+    for (const segment of doc.name.split('/').slice(0, -1)) {
+      const path = node.path ? `${node.path}/${segment}` : segment
+      let next = node.folders.get(segment)
+      if (!next) {
+        next = emptyNode(segment, path)
+        node.folders.set(segment, next)
+      }
+      node = next
+    }
+    node.files.push(doc)
+  }
+  return root
 }
 
 const PAGE_SIZE = 20
+
+/**
+ * Folder names excluded by default when importing a folder.
+ *
+ * Dropping a repository on a knowledge base should index the repository, not its dependencies:
+ * node_modules alone can be tens of thousands of files whose contents nobody wants an agent
+ * retrieving. Matched by path segment, so a nested apps/backend/target is caught as readily as a
+ * top-level one, and every entry is de-selectable — this is a default, not a policy.
+ */
+export const DEFAULT_EXCLUDES = [
+  'node_modules', 'target', 'dist', 'build', 'out', 'bin', 'obj', 'vendor', 'coverage',
+  '.git', '.next', '.nuxt', '.gradle', '.idea', '.vs', '.cache', '.venv', 'venv', '__pycache__',
+]
+
+/** Every folder name along a file's path, minus the chosen root and the file itself. */
+export function pathSegments(relativePath: string): string[] {
+  const parts = relativePath.split('/')
+  return parts.slice(1, -1)
+}
 
 function Documents({ baseId }: { baseId: string }) {
   const [docs, setDocs] = useState<KnowledgeDoc[]>([])
@@ -45,6 +94,9 @@ function Documents({ baseId }: { baseId: string }) {
   const [typeTab, setTypeTab] = useState<string>('all')
   const [page, setPage] = useState(0)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  // A picked folder, held until its exclusions are confirmed.
+  const [pending, setPending] = useState<File[] | null>(null)
+  const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const fileRef = useRef<HTMLInputElement>(null)
   const folderRef = useRef<HTMLInputElement>(null)
 
@@ -63,6 +115,7 @@ function Documents({ baseId }: { baseId: string }) {
     setTypeTab('all')
     setPage(0)
     setCollapsed(new Set())
+    setPending(null)
     refreshStatus()
   }, [refresh, refreshStatus])
 
@@ -77,15 +130,9 @@ function Documents({ baseId }: { baseId: string }) {
   const safePage = Math.min(page, pages - 1)
   const pageDocs = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
 
-  // The current page grouped by folder, in first-appearance order. Grouping happens inside the
-  // page rather than paginating whole folders, so page size stays exactly 20 files whatever the
-  // folder shapes are.
-  const byFolder = new Map<string, KnowledgeDoc[]>()
-  for (const d of pageDocs) {
-    const f = folderOf(d.name)
-    if (!byFolder.has(f)) byFolder.set(f, [])
-    byFolder.get(f)!.push(d)
-  }
+  // The tree is built from the page, not the whole base: paging whole folders would make page
+  // size depend on folder shape, and 20 files per page is the thing worth keeping steady.
+  const tree = buildTree(pageDocs)
 
   const toggleFolder = (f: string) =>
     setCollapsed((prev) => {
@@ -95,8 +142,82 @@ function Documents({ baseId }: { baseId: string }) {
       return next
     })
 
+  /** One folder level: its own row, then its subfolders, then its files. */
+  const renderNode = (node: TreeNode, depth: number): ReactNode => (
+    <div key={node.path || '(root)'}>
+      {node.path !== '' && (
+        <button
+          className={styles.kbFolder}
+          style={{ paddingLeft: depth * 14 }}
+          onClick={() => toggleFolder(node.path)}
+          title={node.path}
+        >
+          <span>{collapsed.has(node.path) ? '▸' : '▾'}</span>
+          <span className={styles.kbFolderName}>{node.name}/</span>
+        </button>
+      )}
+      {!collapsed.has(node.path) && (
+        <>
+          {[...node.folders.values()].map((child) => renderNode(child, depth + 1))}
+          {node.files.map((d) => (
+            <div key={d.name} className={styles.kbDoc} style={{ paddingLeft: (depth + 1) * 14 }}>
+              {/* The full stored path, not the basename: a file's folder is part of what it is,
+                  and at a glance "intro.pdf" three times over says nothing. */}
+              <span className={styles.kbDocName} title={d.name}>
+                {d.name}
+              </span>
+              <span className={styles.muted}>
+                {d.chunks} passage(s){d.embedded ? '' : ' · word-overlap only'}
+              </span>
+              <button
+                className={styles.delBtn}
+                onClick={() => void api.deleteKnowledgeDoc(baseId, d.name).then(refresh)}
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  )
+
   /** Extensions the backend can extract text from; anything else in a folder is skipped, counted. */
   const SUPPORTED = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.html']
+
+  const relPath = (f: File) =>
+    (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name
+
+  /**
+   * A picked folder waits here until the exclusions are settled, instead of uploading on the
+   * spot: dropping a repository in and only then discovering node_modules went with it costs a
+   * long wait and a base that has to be cleaned out document by document.
+   */
+  const pendingUsable = pending?.filter((f) =>
+    SUPPORTED.some((ext) => f.name.toLowerCase().endsWith(ext)),
+  )
+
+  // Every folder name appearing anywhere in the picked tree, with how many indexable files sit
+  // under it. By name rather than by full path because that is how the intent is actually held:
+  // "not node_modules", wherever it happens to be nested.
+  const folderCounts = new Map<string, number>()
+  for (const file of pendingUsable ?? []) {
+    for (const segment of new Set(pathSegments(relPath(file)))) {
+      folderCounts.set(segment, (folderCounts.get(segment) ?? 0) + 1)
+    }
+  }
+  const folderNames = [...folderCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  const selected = (pendingUsable ?? []).filter(
+    (f) => !pathSegments(relPath(f)).some((s) => excluded.has(s)),
+  )
+
+  const pickFolder = (files: File[]) => {
+    setNote(null)
+    setPending(files)
+    const present = new Set<string>()
+    for (const f of files) for (const s of pathSegments(relPath(f))) present.add(s)
+    setExcluded(new Set(DEFAULT_EXCLUDES.filter((d) => present.has(d))))
+  }
 
   const upload = async (files: File[]) => {
     const usable = files.filter((f) =>
@@ -192,40 +313,65 @@ function Documents({ baseId }: { baseId: string }) {
         </div>
       )}
 
-      {[...byFolder.entries()].map(([folder, files]) => (
-        <div key={folder || '(root)'}>
-          {folder !== '' && (
-            <button className={styles.kbFolder} onClick={() => toggleFolder(folder)}>
-              <span>{collapsed.has(folder) ? '▸' : '▾'}</span>
-              <span className={styles.kbDocName} title={folder}>{folder}/</span>
-              <span className={styles.muted}>{files.length}</span>
-            </button>
-          )}
-          {(folder === '' || !collapsed.has(folder)) &&
-            files.map((d) => (
-              <div key={d.name} className={styles.kbDoc}>
-                <span className={styles.kbDocName} title={d.name}>
-                  {folder === '' ? d.name : d.name.slice(folder.length + 1)}
-                </span>
-                <span className={styles.muted}>
-                  {d.chunks} passage(s){d.embedded ? '' : ' · word-overlap only'}
-                </span>
-                <button
-                  className={styles.delBtn}
-                  onClick={() => void api.deleteKnowledgeDoc(baseId, d.name).then(refresh)}
-                >
-                  Delete
-                </button>
-              </div>
-            ))}
-        </div>
-      ))}
+      {renderNode(tree, 0)}
 
       {pages > 1 && (
         <div className={styles.kbPager}>
           <button disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>‹</button>
           <span className={styles.muted}>{safePage + 1} / {pages}</span>
           <button disabled={safePage >= pages - 1} onClick={() => setPage(safePage + 1)}>›</button>
+        </div>
+      )}
+
+      {pending && (
+        <div className={styles.excludeBox}>
+          <div className={styles.excludeHead}>
+            Importing <b>{selected.length}</b> of {pendingUsable?.length ?? 0} indexable file(s)
+            {pending.length !== pendingUsable?.length && (
+              <span className={styles.muted}> · {pending.length - (pendingUsable?.length ?? 0)} unsupported</span>
+            )}
+          </div>
+          {folderNames.length > 0 && (
+            <>
+              <div className={styles.muted}>Untick a folder to leave it out (matches at any depth):</div>
+              <div className={styles.excludeList}>
+                {folderNames.map(([name, count]) => (
+                  <label key={name} className={styles.excludeItem} title={`${count} indexable file(s)`}>
+                    <input
+                      type="checkbox"
+                      checked={!excluded.has(name)}
+                      onChange={() =>
+                        setExcluded((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(name)) next.delete(name)
+                          else next.add(name)
+                          return next
+                        })
+                      }
+                    />
+                    <span className={styles.kbFolderName}>{name}</span>
+                    <span className={styles.muted}>{count}</span>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+          <div className={styles.crudActions}>
+            <button
+              className={styles.newBtn}
+              disabled={busy || selected.length === 0}
+              onClick={() => {
+                const files = selected
+                setPending(null)
+                void upload(files)
+              }}
+            >
+              {busy ? 'Indexing…' : `Index ${selected.length} file(s)`}
+            </button>
+            <button className={styles.textLink} onClick={() => setPending(null)}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
@@ -259,7 +405,7 @@ function Documents({ baseId }: { baseId: string }) {
           {...({ webkitdirectory: '' } as Record<string, string>)}
           onChange={(e) => {
             const files = Array.from(e.target.files ?? [])
-            if (files.length > 0) void upload(files)
+            if (files.length > 0) pickFolder(files)
             e.target.value = ''
           }}
         />

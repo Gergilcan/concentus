@@ -311,9 +311,10 @@
     width: 12px;
   }
 }
-/* Filenames get a hard ceiling; the full name lives in the hover title. */
+/* Full paths are shown now, so the ceiling is wider — but still a ceiling, and the
+   untruncated path stays in the hover title. */
 .kbDocName {
-  max-width: 260px;
+  max-width: 420px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -375,4 +376,41 @@
   &:hover {
     color: t.$text;
   }
+}
+
+/* ---- folder import: which folders to leave out ---- */
+.excludeBox {
+  border: 1px solid t.$border;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 10px 0;
+  background: t.$panel-2;
+}
+.excludeHead {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.excludeList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 2px 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 6px 0 10px;
+}
+.excludeItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 0;
+}
+/* Folder names keep their own ceiling; a deep path must not widen the panel. */
+.kbFolderName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }

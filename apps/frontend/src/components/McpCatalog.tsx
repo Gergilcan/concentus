@@ -21,24 +21,53 @@ interface CatalogEntry {
   url: string
   auth: 'oauth' | 'token' | 'none'
   note: string
+  /**
+   * Header the token goes in, when it is not `Authorization: Bearer`. Carried as data rather
+   * than decided by comparing the name — that comparison broke silently the moment the entries
+   * were capitalised, which is exactly the kind of bug a name check invites.
+   */
+  header?: string
 }
 
 const CATALOG: CatalogEntry[] = [
+  // Development
   // GitHub is the ecosystem's known exception: its MCP server does not support dynamic client
   // registration, so the OAuth sign-in the other entries use fails with "Incompatible auth
   // server". A fine-grained PAT over the Authorization header is the supported route.
-  { name: 'github', url: 'https://api.githubcopilot.com/mcp/', auth: 'token',
-    note: 'Needs a fine-grained personal access token stored as a credential — its OAuth rejects automated sign-in.' },
-  { name: 'linear', url: 'https://mcp.linear.app/mcp', auth: 'oauth',
-    note: 'Issues and projects. Sign in from the node after adding.' },
-  { name: 'notion', url: 'https://mcp.notion.com/mcp', auth: 'oauth',
+  { name: 'GitHub', url: 'https://api.githubcopilot.com/mcp/', auth: 'token',
+    note: 'Issues, PRs, repositories. Needs a fine-grained personal access token stored as a credential — its OAuth rejects automated sign-in.' },
+  { name: 'GitLab', url: 'https://gitlab.com/api/v4/mcp', auth: 'token', header: 'PRIVATE-TOKEN',
+    note: 'Issues, merge requests, pipelines. Needs a personal access token stored as a credential (PRIVATE-TOKEN header).' },
+  { name: 'Sentry', url: 'https://mcp.sentry.dev/mcp', auth: 'oauth',
+    note: 'Errors, issues and performance data. Sign in from the node after adding.' },
+
+  // Planning and docs
+  { name: 'Linear', url: 'https://mcp.linear.app/mcp', auth: 'oauth',
+    note: 'Issues, projects and cycles. Sign in from the node after adding.' },
+  { name: 'Notion', url: 'https://mcp.notion.com/mcp', auth: 'oauth',
     note: 'Pages and databases. Sign in from the node after adding.' },
-  { name: 'sentry', url: 'https://mcp.sentry.dev/mcp', auth: 'oauth',
-    note: 'Errors and performance issues.' },
-  { name: 'stripe', url: 'https://mcp.stripe.com', auth: 'oauth',
-    note: 'Customers, invoices, payments.' },
-  { name: 'gitlab', url: 'https://gitlab.com/api/v4/mcp', auth: 'token',
-    note: 'Needs a personal access token stored as a credential (PRIVATE-TOKEN header).' },
+  { name: 'Atlassian', url: 'https://mcp.atlassian.com/v1/sse', auth: 'oauth',
+    note: 'Jira issues and Confluence pages. Sign in from the node after adding.' },
+  { name: 'Asana', url: 'https://mcp.asana.com/sse', auth: 'oauth',
+    note: 'Tasks, projects and portfolios. Sign in from the node after adding.' },
+  { name: 'Intercom', url: 'https://mcp.intercom.com/mcp', auth: 'oauth',
+    note: 'Conversations and contacts from your support inbox.' },
+
+  // Business
+  { name: 'Stripe', url: 'https://mcp.stripe.com', auth: 'oauth',
+    note: 'Customers, invoices and payments.' },
+  { name: 'PayPal', url: 'https://mcp.paypal.com/mcp', auth: 'oauth',
+    note: 'Invoices, orders and transactions.' },
+  { name: 'Square', url: 'https://mcp.squareup.com/sse', auth: 'oauth',
+    note: 'Payments, catalogue and customers.' },
+  { name: 'HubSpot', url: 'https://mcp.hubspot.com/anthropic', auth: 'oauth',
+    note: 'CRM contacts, companies and deals.' },
+
+  // Data and content
+  { name: 'Cloudflare', url: 'https://observability.mcp.cloudflare.com/sse', auth: 'oauth',
+    note: 'Workers observability: logs and analytics.' },
+  { name: 'Figma', url: 'http://127.0.0.1:3845/mcp', auth: 'none',
+    note: 'Local only: needs Figma desktop running with its MCP server enabled in preferences.' },
 ]
 
 export function McpCatalog({ onAdded }: { onAdded: () => void }) {
@@ -51,7 +80,7 @@ export function McpCatalog({ onAdded }: { onAdded: () => void }) {
         name: entry.name,
         url: entry.url,
         credentialId: '',
-        authHeader: entry.auth === 'token' && entry.name === 'gitlab' ? 'PRIVATE-TOKEN' : '',
+        authHeader: entry.header ?? '',
       } as McpDef)
       setNote(
         entry.auth === 'oauth'
