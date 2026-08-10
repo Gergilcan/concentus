@@ -21,8 +21,8 @@ class FanoutArgsTest {
     private static FanoutExecutor executor() {
         return new FanoutExecutor(new LocalClaudeSupport("claude"),
                 new RagContextInjector(null, null), new ContextFolderResolver(""),
-                new com.fasterxml.jackson.databind.ObjectMapper(),
-                "data", "bypassPermissions", 2, 900, 1, (args, dir) -> {
+                new com.fasterxml.jackson.databind.ObjectMapper(), null,
+                "data", "bypassPermissions", 8734, 2, 900, 1, (args, dir) -> {
                     throw new UnsupportedOperationException("arg tests never spawn");
                 });
     }

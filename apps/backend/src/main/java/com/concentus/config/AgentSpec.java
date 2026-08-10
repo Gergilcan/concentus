@@ -45,6 +45,13 @@ public class AgentSpec {
      * rather than enabling anything — a typo must never switch a flow onto the experimental path.
      */
     public String execution = "";
+    /**
+     * The facade profile this agent runs behind when it executes as an independent worker —
+     * which MCP tools it may see, whether writes are blocked (read-only) or simulated (dry-run).
+     * A worker with MCP servers wired but no profile selected gets <b>no</b> MCP tools at all:
+     * "never the full tool set" is the rule, and an absent profile must not widen anything.
+     */
+    public String facadeProfileId = "";
 
     public ModelSpec model = new ModelSpec();
     public List<SkillSpec> skills = new ArrayList<>();

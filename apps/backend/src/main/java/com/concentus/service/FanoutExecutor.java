@@ -65,8 +65,10 @@ public class FanoutExecutor {
     private final RagContextInjector ragInjector;
     private final ContextFolderResolver contextFolders;
     private final ObjectMapper mapper;
+    private final com.concentus.store.FacadeProfileStore profiles;
     private final String dataDir;
     private final String permissionMode;
+    private final int serverPort;
     private final int timeoutSeconds;
     private final int retries;
     private final ProcessStarter starter;
@@ -76,27 +78,32 @@ public class FanoutExecutor {
     @Autowired
     public FanoutExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
                           ContextFolderResolver contextFolders, ObjectMapper mapper,
+                          com.concentus.store.FacadeProfileStore profiles,
                           @Value("${app.data-dir}") String dataDir,
                           @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
+                          @Value("${server.port:8734}") int serverPort,
                           @Value("${workers.max-concurrent:4}") int maxConcurrent,
                           @Value("${workers.timeout-seconds:900}") int timeoutSeconds,
                           @Value("${workers.retries:1}") int retries) {
-        this(support, ragInjector, contextFolders, mapper, dataDir, permissionMode, maxConcurrent,
-                timeoutSeconds, retries, (args, workdir) ->
+        this(support, ragInjector, contextFolders, mapper, profiles, dataDir, permissionMode,
+                serverPort, maxConcurrent, timeoutSeconds, retries, (args, workdir) ->
                         new ProcessBuilder(args).directory(workdir.toFile())
                                 .redirectErrorStream(true).start());
     }
 
     FanoutExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
                    ContextFolderResolver contextFolders, ObjectMapper mapper,
-                   String dataDir, String permissionMode, int maxConcurrent,
+                   com.concentus.store.FacadeProfileStore profiles,
+                   String dataDir, String permissionMode, int serverPort, int maxConcurrent,
                    int timeoutSeconds, int retries, ProcessStarter starter) {
         this.support = support;
         this.ragInjector = ragInjector;
         this.contextFolders = contextFolders;
         this.mapper = mapper;
+        this.profiles = profiles;
         this.dataDir = dataDir;
         this.permissionMode = permissionMode;
+        this.serverPort = serverPort;
         this.timeoutSeconds = Math.max(1, timeoutSeconds);
         this.retries = Math.max(0, retries);
         this.starter = starter;
@@ -324,22 +331,74 @@ public class FanoutExecutor {
         if (!run.workersPrepared.add(spec.nodeId)) return;
 
         ragInjector.inject(spec, run, m -> run.emit(RunEvent.of("system", m)));
+        boolean facade = resolveFacade(run, spec);
 
         StringBuilder md = new StringBuilder();
         md.append("You are ").append(spec.name).append(", one of several independent workers in a "
                 + "larger flow. Do only the task you are given, in your own workspace, and end "
                 + "with a plain report of what you found or produced — another step merges the "
                 + "workers' reports, so write yours to be read next to the others.\n");
+        if (facade) {
+            md.append("""
+
+                    Your MCP tools go through a controlled facade. Some write actions may be
+                    blocked or simulated (the result will say "DRY RUN"). A simulated action did
+                    NOT happen: report it as a proposed action for someone with write permission
+                    to confirm — never claim it was done.
+                    """);
+        }
         if (spec.systemPrompt != null && !spec.systemPrompt.isBlank()) {
             md.append('\n').append(spec.systemPrompt).append('\n');
         }
         LocalClaudeExecutor.appendContextFolderNote(spec, md);
         Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
 
+        // With a facade: exactly one server — this backend, scoped to this worker, authenticated
+        // by a token only this worker's process is given. Without one: empty and strict, which
+        // states "no servers" in both places rather than leaving one to be inferred.
         var root = mapper.createObjectNode();
-        root.putObject("mcpServers");
+        var servers = root.putObject("mcpServers");
+        if (facade) {
+            var server = servers.putObject("concentus-facade");
+            server.put("type", "http");
+            server.put("url", "http://127.0.0.1:" + serverPort + "/api/runs/" + run.id
+                    + "/workers/" + spec.nodeId + "/tools");
+            server.putObject("headers").put(
+                    com.concentus.web.RunToolsController.TOKEN_HEADER,
+                    run.workerToolTokens.get(spec.nodeId));
+        }
         Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
                 mapper.writeValueAsString(root));
+    }
+
+    /**
+     * Resolves and freezes this worker's facade profile, minting its endpoint token. Returns
+     * whether the worker gets a facade at all.
+     *
+     * <p>MCP servers wired but no profile (or a profile that no longer exists) means <b>no MCP
+     * tools</b>, said out loud: "never the full tool set" is the rule for workers, and a missing
+     * profile must fail closed rather than quietly expose everything the flow has.
+     */
+    private boolean resolveFacade(AgentRun run, AgentSpec spec) {
+        if (spec.mcpServers.isEmpty()) return false;
+        var profile = spec.facadeProfileId == null || spec.facadeProfileId.isBlank()
+                ? java.util.Optional.<com.concentus.model.FacadeProfile>empty()
+                : profiles.get(spec.facadeProfileId);
+        if (profile.isEmpty()) {
+            run.emit(RunEvent.of("system", "Worker '" + spec.name + "' has MCP server(s) wired "
+                    + "but no facade profile selected" + (spec.facadeProfileId == null
+                            || spec.facadeProfileId.isBlank() ? "" : " (the selected one no longer exists)")
+                    + " — it gets NO MCP tools this run. Pick a profile on the agent node "
+                    + "(Resources → Facades defines them).", spec.name, spec.nodeId));
+            return false;
+        }
+        run.workerFacadeProfiles.put(spec.nodeId, profile.get());
+        run.workerToolTokens.put(spec.nodeId, UUID.randomUUID().toString());
+        run.emit(RunEvent.of("system", "Worker '" + spec.name + "' runs behind facade profile '"
+                + profile.get().name() + "'" + (profile.get().readOnly() ? " (read-only)" : "")
+                + (profile.get().dryRunEnabled() && !profile.get().readOnly()
+                        ? " (writes are dry-run)" : "") + ".", spec.name, spec.nodeId));
+        return true;
     }
 
     /** Folder-safe, unique per agent: the compiler already made {@code cliName} both. */
@@ -511,12 +570,6 @@ public class FanoutExecutor {
      * codebase keeps paying for — the honest line is cheaper.
      */
     private void sayWhatIsMissing(AgentRun run, CompiledFlow flow) {
-        boolean anyMcp = flow.subAgents().stream().anyMatch(s -> !s.mcpServers.isEmpty());
-        if (anyMcp) {
-            run.emit(RunEvent.of("system", "Fan-out note: workers cannot reach MCP servers yet — "
-                    + "each runs with an empty, strict MCP config. The per-worker facade "
-                    + "(allowlist / read-only / dry-run) is the next step."));
-        }
         if (!flow.allRepos().isEmpty()) {
             run.emit(RunEvent.of("system", "Fan-out note: repository nodes are not cloned into "
                     + "workers yet. A flow that must push code still belongs on subagents "

@@ -258,6 +258,12 @@ export type AgentNodeData = {
    * no repository clones inside workers (the run console says so on every fan-out turn).
    */
   execution?: 'subagents' | 'fanout' | ''
+  /**
+   * Facade profile this agent runs behind as an independent worker (Resources → Facades).
+   * Sub-agents only. Without one, a worker with MCP nodes gets NO MCP tools — an absent profile
+   * fails closed rather than exposing the full tool set.
+   */
+  facadeProfileId?: string
 }
 
 export type McpNodeData = {
@@ -470,6 +476,22 @@ export type McpDef = {
   url: string
   credentialId: string
   authHeader?: string
+}
+
+/**
+ * What an independent worker may reach through its MCP facade. Enforced by the backend on every
+ * call — unlike node-level tool lists on the Claude path, which only steer.
+ */
+export type FacadeProfile = {
+  id?: string
+  name: string
+  description?: string
+  /** Case-insensitive substrings selecting the exposed tools; empty = all the node wired. */
+  tools?: string[]
+  /** Write-shaped tools are not exposed and not callable at all. */
+  readOnly?: boolean
+  /** Write-shaped tools answer "DRY RUN" instead of executing. Absent means ON (fail closed). */
+  dryRun?: boolean
 }
 
 export interface McpServerInfo {

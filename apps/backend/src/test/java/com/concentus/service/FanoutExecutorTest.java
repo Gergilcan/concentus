@@ -47,12 +47,15 @@ class FanoutExecutorTest {
                 """.formatted(text, result);
     }
 
+    private final com.concentus.store.FacadeProfileStore profiles =
+            org.mockito.Mockito.mock(com.concentus.store.FacadeProfileStore.class);
+
     private FanoutExecutor executor(FanoutExecutor.ProcessStarter starter, int timeoutSeconds,
                                     int retries) {
         return new FanoutExecutor(new LocalClaudeSupport("claude"),
                 new RagContextInjector(null, null), new ContextFolderResolver(""),
-                new com.fasterxml.jackson.databind.ObjectMapper(),
-                dataDir.toString(), "bypassPermissions", 4, timeoutSeconds, retries, starter);
+                new com.fasterxml.jackson.databind.ObjectMapper(), profiles,
+                dataDir.toString(), "bypassPermissions", 8734, 4, timeoutSeconds, retries, starter);
     }
 
     private static AgentSpec spec(String nodeId, String name, String cliName, String prompt) {
@@ -272,6 +275,53 @@ class FanoutExecutorTest {
 
         assertThat(run.status).isEqualTo("ERROR");
         assertThat(run.error).contains("at least one sub-agent");
+    }
+
+    @Test
+    void aWorkerWithMcpAndAProfileGetsItsFacadeAndOnlyItsFacade() throws Exception {
+        AgentSpec a = spec("n1", "Worker A", "worker-a", "");
+        AgentSpec.McpServerSpec mcp = new AgentSpec.McpServerSpec();
+        mcp.name = "holded";
+        mcp.url = "https://mcp.example.com/mcp";
+        a.mcpServers.add(mcp);
+        a.facadeProfileId = "fprof_1";
+        org.mockito.Mockito.when(profiles.get("fprof_1")).thenReturn(java.util.Optional.of(
+                new com.concentus.model.FacadeProfile("fprof_1", "reader", "", List.of("contact"),
+                        true, null)));
+        AgentRun run = run(a);
+
+        executor((args, dir) -> new FakeProcess(okStream("hola", "Informe"), 0), 900, 0)
+                .runTurn(run, run.compiled, "go");
+
+        String mcpConfig = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "workers", "worker-a", "mcp-config.json")));
+        // The ONLY server the worker sees is its own facade endpoint — never the real MCP URL.
+        assertThat(mcpConfig).contains("/api/runs/run-1/workers/n1/tools")
+                .doesNotContain("mcp.example.com");
+        assertThat(mcpConfig).contains(run.workerToolTokens.get("n1"));
+        assertThat(run.workerFacadeProfiles.get("n1").name()).isEqualTo("reader");
+        String claudeMd = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "workers", "worker-a", "CLAUDE.md")));
+        assertThat(claudeMd).contains("DRY RUN");
+    }
+
+    @Test
+    void aWorkerWithMcpButNoProfileGetsNoMcpAtAllAndIsToldWhy() throws Exception {
+        AgentSpec a = spec("n1", "Worker A", "worker-a", "");
+        AgentSpec.McpServerSpec mcp = new AgentSpec.McpServerSpec();
+        mcp.name = "holded";
+        mcp.url = "https://mcp.example.com/mcp";
+        a.mcpServers.add(mcp);
+        AgentRun run = run(a);
+
+        executor((args, dir) -> new FakeProcess(okStream("hola", "Informe"), 0), 900, 0)
+                .runTurn(run, run.compiled, "go");
+
+        String mcpConfig = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "workers", "worker-a", "mcp-config.json")));
+        assertThat(mcpConfig).isEqualTo("{\"mcpServers\":{}}");
+        assertThat(run.bufferedEvents()).anySatisfy(e ->
+                assertThat(e.text()).contains("no facade profile"));
     }
 
     @Test

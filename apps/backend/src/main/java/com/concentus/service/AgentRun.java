@@ -79,6 +79,19 @@ public class AgentRun {
      * turn would stack a second copy of the same rows onto the same prompt.
      */
     public final java.util.Set<String> workersPrepared = ConcurrentHashMap.newKeySet();
+    /**
+     * Each worker's facade profile, frozen when its workspace is prepared. Frozen like
+     * {@link #permissionMode}: editing a profile mid-run must not widen what an already-running
+     * worker may do — the next run picks the edit up.
+     */
+    public final Map<String, com.concentus.model.FacadeProfile> workerFacadeProfiles =
+            new ConcurrentHashMap<>();
+    /**
+     * Bearer per worker for its facade endpoint, keyed by agent node id. Per worker rather than
+     * the run's {@link #toolToken}: a worker holding the run-wide token could call the
+     * coordinator's tools endpoint and reach APIs its own facade never granted.
+     */
+    public final Map<String, String> workerToolTokens = new ConcurrentHashMap<>();
 
     // --- self-hosted model run state ---
     /**

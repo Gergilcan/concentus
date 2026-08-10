@@ -238,6 +238,15 @@ export const api = {
   saveMcpDef: (d: McpDef) => req<McpDef>('/mcp-defs', { method: 'POST', body: JSON.stringify(d) }),
   deleteMcpDef: (id: string) => req<void>(`/mcp-defs/${id}`, { method: 'DELETE' }),
 
+  // facade profiles (what an independent worker may reach through its MCP facade)
+  listFacadeProfiles: () => req<import('./types.ts').FacadeProfile[]>('/facade-profiles'),
+  saveFacadeProfile: (p: import('./types.ts').FacadeProfile) =>
+    req<import('./types.ts').FacadeProfile>('/facade-profiles', {
+      method: 'POST',
+      body: JSON.stringify(p),
+    }),
+  deleteFacadeProfile: (id: string) => req<void>(`/facade-profiles/${id}`, { method: 'DELETE' }),
+
   // mcp servers (Claude Code list)
   listMcpServers: () => req<McpServerInfo[]>('/mcp/servers'),
   mcpCapabilities: () => req<McpCapabilities>('/mcp/capabilities'),

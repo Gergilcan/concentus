@@ -184,6 +184,7 @@ public class FlowCompiler {
         // Only the coordinator's value is ever read, but it is carried for every agent so the
         // compiler doesn't need to know which node wins — validate() normalizes typos away.
         s.execution = str(d, "execution", "");
+        s.facadeProfileId = str(d, "facadeProfileId", "");
         s.contextFolders = strList(d, "contextFolders");
         s.claudeMdPath = str(d, "claudeMdPath", "");
 

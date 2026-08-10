@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.ts'
-import type { SkillInfo } from '../api/types.ts'
+import type { FacadeProfile, SkillInfo } from '../api/types.ts'
 import type { AgentNodeData, LibraryAgent } from '../api/types.ts'
 import { EFFORT_OPTIONS } from '../constants.ts'
 import { Field, SelectField, TextArea } from './fields.tsx'
@@ -15,6 +15,7 @@ interface Props {
 export function AgentInspector({ data, set }: Props) {
   const [library, setLibrary] = useState<LibraryAgent[]>([])
   const [skills, setSkills] = useState<SkillInfo[]>([])
+  const [facades, setFacades] = useState<FacadeProfile[]>([])
 
   useEffect(() => {
     api
@@ -22,6 +23,7 @@ export function AgentInspector({ data, set }: Props) {
       .then(setLibrary)
       .catch(() => setLibrary([]))
     api.listSkills().then(setSkills).catch(() => setSkills([]))
+    api.listFacadeProfiles().then(setFacades).catch(() => setFacades([]))
   }, [])
 
   const applyLibrary = (id: string) => {
@@ -88,6 +90,23 @@ export function AgentInspector({ data, set }: Props) {
             value={(data.tools ?? []).join(', ')}
             onChange={(v) => set({ tools: v.split(',').map((t) => t.trim()).filter(Boolean) })}
           />
+          <SelectField
+            label={
+              <span title="Used when the flow runs as independent workers: everything this worker reaches over MCP goes through this profile — allowlist, read-only, dry-run — enforced by the backend on every call. Without one, a worker with MCP nodes gets NO MCP tools. Define profiles under Resources → Facades.">
+                Facade profile (independent workers) ⓘ
+              </span>
+            }
+            value={data.facadeProfileId ?? ''}
+            onChange={(v) => set({ facadeProfileId: v })}
+          >
+            <option value="">— none: no MCP tools as a worker —</option>
+            {facades.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.readOnly ? ' (read-only)' : (p.dryRun ?? true) ? ' (dry-run writes)' : ''}
+              </option>
+            ))}
+          </SelectField>
         </>
       )}
 
