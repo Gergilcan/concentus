@@ -9,6 +9,8 @@ const listAgentsMock = vi.fn<() => Promise<LibraryAgent[]>>()
 vi.mock('../api/client.ts', () => ({
   api: {
     listAgents: (...args: unknown[]) => listAgentsMock(...(args as [])),
+    // The skills multiselect loads the installed list; empty keeps it out of these tests.
+    listSkills: () => Promise.resolve([]),
     // The model picker probes this for per-model rates.
     listModels: () =>
       Promise.resolve({ pricing: {}, fallback: { input: 3, output: 15 }, backends: [] }),

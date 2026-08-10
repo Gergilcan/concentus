@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.ts'
+import type { SkillInfo } from '../api/types.ts'
 import type { AgentNodeData, LibraryAgent } from '../api/types.ts'
 import { EFFORT_OPTIONS } from '../constants.ts'
 import { Field, SelectField, TextArea } from './fields.tsx'
@@ -13,12 +14,14 @@ interface Props {
 
 export function AgentInspector({ data, set }: Props) {
   const [library, setLibrary] = useState<LibraryAgent[]>([])
+  const [skills, setSkills] = useState<SkillInfo[]>([])
 
   useEffect(() => {
     api
       .listAgents()
       .then(setLibrary)
       .catch(() => setLibrary([]))
+    api.listSkills().then(setSkills).catch(() => setSkills([]))
   }, [])
 
   const applyLibrary = (id: string) => {
@@ -110,6 +113,31 @@ export function AgentInspector({ data, set }: Props) {
             <option value="bypassPermissions">Bypass all checks</option>
           </SelectField>
         </>
+      )}
+      {skills.length > 0 && (
+        <div
+          className={styles.field}
+          title="Installed under Resources → Skills. Assigned skills are put into the run's workspace and this agent is told they are its own — Claude Code does the discovering."
+        >
+          <span>Skills ⓘ</span>
+          {skills.map((sk) => (
+            <label key={sk.id} className={styles.checkField} title={sk.description}>
+              <input
+                type="checkbox"
+                checked={(data.skillIds ?? []).includes(sk.id)}
+                onChange={() => {
+                  const has = (data.skillIds ?? []).includes(sk.id)
+                  set({
+                    skillIds: has
+                      ? (data.skillIds ?? []).filter((id) => id !== sk.id)
+                      : [...(data.skillIds ?? []), sk.id],
+                  })
+                }}
+              />
+              {sk.name}
+            </label>
+          ))}
+        </div>
       )}
       <TextArea label="System prompt" rows={6} value={data.systemPrompt} onChange={(v) => set({ systemPrompt: v })} />
 

@@ -8,10 +8,11 @@ import { KnowledgePanel } from './KnowledgePanel.tsx'
 import { McpCatalog } from './McpCatalog.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import { ModelField } from './ModelField.tsx'
+import { SkillsPanel } from './SkillsPanel.tsx'
 import { StoragePanel } from './StoragePanel.tsx'
 import styles from './resources.module.scss'
 
-type Tab = 'agents' | 'mcp' | 'databases' | 'knowledge' | 'credentials' | 'storage'
+type Tab = 'agents' | 'mcp' | 'databases' | 'knowledge' | 'skills' | 'credentials' | 'storage'
 
 export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
   const [tab, setTab] = useState<Tab>('agents')
@@ -39,6 +40,9 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           onClick={() => setTab('knowledge')}
         >
           Knowledge
+        </button>
+        <button className={tab === 'skills' ? styles.active : ''} onClick={() => setTab('skills')}>
+          Skills
         </button>
         <button
           className={tab === 'credentials' ? styles.active : ''}
@@ -139,6 +143,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           />
         )}
         {tab === 'knowledge' && <KnowledgePanel />}
+        {tab === 'skills' && <SkillsPanel />}
 
         {tab === 'credentials' && <CredentialsPanel pushError={pushError} />}
 

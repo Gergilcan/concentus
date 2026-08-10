@@ -21,7 +21,7 @@ class LocalClaudeArgsTest {
 
     private static LocalClaudeExecutor executor() {
         return new LocalClaudeExecutor(null, null, null, null, null,
-                new com.fasterxml.jackson.databind.ObjectMapper(), null, null,
+                new com.fasterxml.jackson.databind.ObjectMapper(), null, null, null, null,
                 "bypassPermissions", "data", true, true, 8734);
     }
 

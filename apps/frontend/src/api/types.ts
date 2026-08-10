@@ -221,6 +221,8 @@ export type AgentNodeData = {
   claudeMdPath?: string
   /** Tools this sub-agent may use — the one permission Claude Code enforces per agent. Empty = all. */
   tools?: string[]
+  /** Installed skills assigned to this agent (Resources → Skills). */
+  skillIds?: string[]
   /**
    * How much the run may do without asking. **Coordinator only.**
    *
@@ -586,4 +588,12 @@ export interface ApiOperationView {
   hasBody: boolean
   /** Anything that is not GET/HEAD — ticked individually, never in bulk. */
   write: boolean
+}
+
+/** An installed Agent Skill, as listed (contents stay server-side). */
+export interface SkillInfo {
+  id: string
+  name: string
+  description: string
+  fileCount: number
 }

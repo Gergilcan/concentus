@@ -54,6 +54,8 @@ public class LocalClaudeExecutor {
     private final boolean autoRegisterMcp;
     private final ObjectMapper mapper;
     private final McpOAuthStore mcpOAuthStore;
+    private final com.concentus.store.SkillStore skillStore;
+    private final SkillService skillService;
     private final OrgContext orgContext;
     /** See {@link #writeMcpConfig}: runs see only the flow's MCP servers, not the user's list. */
     private final boolean strictMcp;
@@ -94,6 +96,8 @@ public class LocalClaudeExecutor {
                                GitWorkspace gitWorkspace,
                                ObjectMapper mapper,
                                McpOAuthStore mcpOAuthStore,
+                               com.concentus.store.SkillStore skillStore,
+                               SkillService skillService,
                                OrgContext orgContext,
                                @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                                @Value("${app.data-dir}") String dataDir,
@@ -108,6 +112,8 @@ public class LocalClaudeExecutor {
         this.streamHandler = new LocalStreamEventHandler(mapper);
         this.mapper = mapper;
         this.mcpOAuthStore = mcpOAuthStore;
+        this.skillStore = skillStore;
+        this.skillService = skillService;
         this.orgContext = orgContext;
         this.permissionMode = permissionMode;
         this.dataDir = dataDir;
@@ -322,6 +328,7 @@ public class LocalClaudeExecutor {
                 if (sub.systemPrompt != null) body.append(sub.systemPrompt).append('\n');
                 appendContextFolderNote(sub, body);
                 appendDelegationRoster(sub, body);
+                appendSkillRoster(sub, body);
                 String md = "---\n"
                         + "name: " + name + "\n"
                         + "description: " + delegationDescription(sub) + "\n"
@@ -335,6 +342,36 @@ public class LocalClaudeExecutor {
 
         registerMcpServers(run);
         writeMcpConfig(run, workdir);
+        materialiseSkills(run, flow, workdir);
+    }
+
+    /**
+     * Skills assigned to any agent, written once into the workspace's {@code .claude/skills/}.
+     *
+     * <p>Flow-level because Claude Code discovers skills per project, not per subagent; the
+     * per-agent part is the roster note appended to each agent's instructions. Steering, not
+     * enforcement — the same honest deal as context folders.
+     */
+    private void materialiseSkills(AgentRun run, CompiledFlow flow, Path workdir) {
+        java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+        for (AgentSpec agent : flow.allAgents()) {
+            for (AgentSpec.SkillSpec skill : agent.skills) {
+                if ("custom".equals(skill.type) && skill.id != null) ids.add(skill.id);
+            }
+        }
+        if (ids.isEmpty()) return;
+        java.util.List<com.concentus.model.SkillDef> defs = ids.stream()
+                .map(skillStore::get)
+                .flatMap(java.util.Optional::stream)
+                .toList();
+        try {
+            skillService.materialise(workdir, defs);
+            run.emit(RunEvent.of("system", defs.size() + " skill(s) installed for this run: "
+                    + defs.stream().map(com.concentus.model.SkillDef::name)
+                            .collect(Collectors.joining(", ")) + "."));
+        } catch (java.io.IOException e) {
+            run.emit(RunEvent.of("system", "Skills could not be installed: " + e.getMessage()));
+        }
     }
 
     /**
@@ -443,6 +480,26 @@ public class LocalClaudeExecutor {
             run.emit(RunEvent.of("system",
                     "CLAUDE.md could not be read for " + spec.name + ": " + e.getMessage()));
         }
+    }
+
+    /** Names the skills assigned to this agent, so it reaches for them instead of improvising. */
+    private void appendSkillRoster(AgentSpec spec, StringBuilder out) {
+        List<String> names = spec.skills.stream()
+                .filter(sk -> "custom".equals(sk.type) && sk.id != null)
+                .map(sk -> skillStore.get(sk.id).map(com.concentus.model.SkillDef::name).orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (names.isEmpty()) return;
+        out.append("
+## Skills assigned to you
+
+");
+        for (String n : names) out.append("- ").append(n).append('
+');
+        out.append("
+Use the Skill tool with these when the task matches; they are installed in "
+                + "this workspace.
+");
     }
 
     /**

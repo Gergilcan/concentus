@@ -205,6 +205,14 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ specUrl, specText }) },
       60_000,
     ),
+  // Agent Skills: the upload is multipart (a zipped skill folder).
+  listSkills: () => req<import('./types.ts').SkillInfo[]>('/skills'),
+  uploadSkill: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return req<import('./types.ts').SkillInfo>('/skills', { method: 'POST', body: form }, 120_000)
+  },
+  deleteSkill: (id: string) => req<void>(`/skills/${id}`, { method: 'DELETE' }),
   listDatabases: () => req<DatabaseDef[]>('/databases'),
   saveDatabase: (d: DatabaseDef) =>
     req<DatabaseDef>('/databases', { method: 'POST', body: JSON.stringify(d) }),

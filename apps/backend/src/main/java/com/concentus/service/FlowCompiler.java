@@ -173,6 +173,12 @@ public class FlowCompiler {
         s.nodeId = node.id();
         s.name = str(d, "name", node.id());
         s.tools = strList(d, "tools");
+        for (String skillId : strList(d, "skillIds")) {
+            AgentSpec.SkillSpec skill = new AgentSpec.SkillSpec();
+            skill.type = "custom";
+            skill.id = skillId;
+            s.skills.add(skill);
+        }
         s.description = str(d, "description", "");
         s.systemPrompt = str(d, "systemPrompt", "");
         s.contextFolders = strList(d, "contextFolders");
