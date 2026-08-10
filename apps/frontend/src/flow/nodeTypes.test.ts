@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AgentNode } from './nodes/AgentNode.tsx'
+import { ApiNode } from './nodes/ApiNode.tsx'
 import { InputNode } from './nodes/InputNode.tsx'
 import { McpNode } from './nodes/McpNode.tsx'
 import { KnowledgeNode } from './nodes/KnowledgeNode.tsx'
@@ -11,8 +12,8 @@ import { nodeTypes } from './nodeTypes.ts'
 // missing/extra key silently breaks rendering for that node kind (falls back to the
 // default renderer instead of erroring), so pin the exact key set and each mapping.
 describe('nodeTypes', () => {
-  it('has exactly the five expected node-kind keys, no more, no fewer', () => {
-    expect(Object.keys(nodeTypes).sort()).toEqual(['agent', 'input', 'knowledge', 'mcp', 'repo', 'sql'])
+  it('has exactly the seven expected node-kind keys, no more, no fewer', () => {
+    expect(Object.keys(nodeTypes).sort()).toEqual(['agent', 'api', 'input', 'knowledge', 'mcp', 'repo', 'sql'])
   })
 
   it('maps each key to the matching imported component', () => {
@@ -22,5 +23,6 @@ describe('nodeTypes', () => {
     expect(nodeTypes.repo).toBe(RepoNode)
     expect(nodeTypes.knowledge).toBe(KnowledgeNode)
     expect(nodeTypes.sql).toBe(SqlNode)
+    expect(nodeTypes.api).toBe(ApiNode)
   })
 })

@@ -410,3 +410,40 @@
   font-size: 11px;
   white-space: nowrap;
 }
+
+/* ---- api node inspector ---- */
+.addApi span { color: #e64980; }
+.opList {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid t.$border;
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin-top: 8px;
+  display: grid;
+  gap: 2px;
+}
+.opRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 0;
+  padding: 2px 0;
+
+  code {
+    font-weight: 700;
+    font-size: 10.5px;
+    width: 52px;
+    flex: none;
+  }
+}
+.opRead { color: t.$mcp; }
+.opWrite { color: t.$sql; }
+.opPath {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: t.$text;
+}

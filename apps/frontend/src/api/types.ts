@@ -125,7 +125,7 @@ export interface NodeExecReport {
 // `type` aliases (not interfaces) so they satisfy React Flow's
 // `Record<string, unknown>` node-data constraint.
 
-export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'knowledge' | 'input'
+export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'knowledge' | 'api' | 'input'
 
 export type InputNodeData = {
   kind: 'input'
@@ -294,7 +294,21 @@ export type KnowledgeNodeData = {
   topK: number
 }
 
-export type AppNodeData = AgentNodeData | McpNodeData | RepoNodeData | SqlNodeData | KnowledgeNodeData | InputNodeData
+export type ApiNodeData = {
+  kind: 'api'
+  label: string
+  /** URL of the OpenAPI 3.x document; or paste it into specInline when it is not fetchable. */
+  specUrl: string
+  specInline?: string
+  /** Overrides the spec's own servers[0].url when set. */
+  baseUrl?: string
+  credentialId?: string
+  authHeader?: string
+  /** Operation keys ("GET /pets") the agent may call. Empty = none — allowing is explicit. */
+  ops: string[]
+}
+
+export type AppNodeData = AgentNodeData | McpNodeData | RepoNodeData | SqlNodeData | KnowledgeNodeData | ApiNodeData | InputNodeData
 
 export interface SqlPreview {
   columns: string[]
@@ -560,4 +574,16 @@ export interface EmbedderStatus {
   /** Whether search ranks by meaning right now, through EITHER the built-in model or a server. */
   semantic: boolean
   detail: string
+}
+
+/** One operation from a parsed OpenAPI spec, as the API node inspector lists it. */
+export interface ApiOperationView {
+  key: string
+  method: string
+  path: string
+  description: string
+  paramCount: number
+  hasBody: boolean
+  /** Anything that is not GET/HEAD — ticked individually, never in bulk. */
+  write: boolean
 }

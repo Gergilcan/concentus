@@ -34,6 +34,9 @@ export function Palette() {
       <button className={cx(styles.addBtn, styles.addSql)} title="Runs a SQL query at run start and injects the rows into the connected agent." {...drag('sql')} onClick={() => addNode('sql')}>
         <span>🗄</span> SQL source (RAG)
       </button>
+      <button className={cx(styles.addBtn, styles.addApi)} title="Turn any REST API into typed tools: load its OpenAPI spec, tick the operations the agent may call." {...drag('api')} onClick={() => addNode('api')}>
+        <span>🌐</span> API (OpenAPI)
+      </button>
       <button className={cx(styles.addBtn, styles.addKnowledge)} title="Injects the passages most relevant to the run's prompt from a document base (Resources → Knowledge)." {...drag('knowledge')} onClick={() => addNode('knowledge')}>
         <span>📚</span> Knowledge base
       </button>

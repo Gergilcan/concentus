@@ -198,6 +198,13 @@ export const api = {
       body: JSON.stringify({ query, topK }),
     }),
 
+  /** Parses an OpenAPI spec (by URL or pasted) into the operations an API node could allow. */
+  previewApiSpec: (specUrl: string, specText?: string) =>
+    req<{ baseUrl: string; operations: import('./types.ts').ApiOperationView[] }>(
+      '/api-nodes/preview',
+      { method: 'POST', body: JSON.stringify({ specUrl, specText }) },
+      60_000,
+    ),
   listDatabases: () => req<DatabaseDef[]>('/databases'),
   saveDatabase: (d: DatabaseDef) =>
     req<DatabaseDef>('/databases', { method: 'POST', body: JSON.stringify(d) }),

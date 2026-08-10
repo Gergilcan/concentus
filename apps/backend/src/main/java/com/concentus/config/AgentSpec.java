@@ -47,6 +47,8 @@ public class AgentSpec {
      */
     public List<String> tools = new ArrayList<>();
     public List<SqlSourceSpec> ragSources = new ArrayList<>();
+    /** REST APIs this agent may call as typed tools, from OpenAPI specs on API nodes. */
+    public List<ApiSourceSpec> apiSources = new ArrayList<>();
     public List<KnowledgeSourceSpec> knowledgeSources = new ArrayList<>();
     /**
      * Local host folders this agent should read as context, passed to the CLI as {@code --add-dir}.
@@ -170,6 +172,26 @@ public class AgentSpec {
         public long maxTokens = 16000;
         /** low | medium | high | xhigh | max */
         public String effort = "high";
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class ApiSourceSpec {
+        public String nodeId;
+        public String label = "api";
+        public String specUrl = "";
+        /** A pasted spec, for APIs whose document is not fetchable from the app. */
+        public String specInline = "";
+        /** Overrides the spec's own servers[0].url when set. */
+        public String baseUrl = "";
+        public String credentialId = "";
+        /** Header the credential goes in; blank = Authorization: Bearer. */
+        public String authHeader = "";
+        /** Operation keys ("GET /pets") the agent may call. Empty = none — allow is explicit. */
+        public List<String> ops = new ArrayList<>();
+
+        public String resolveToken() {
+            return resolveCredential(credentialId, credentialLookup);
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

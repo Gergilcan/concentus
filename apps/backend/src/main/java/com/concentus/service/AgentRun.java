@@ -97,6 +97,12 @@ public class AgentRun {
      * which is the safe direction for the one setting whose whole point is asking first.
      */
     public volatile boolean approved = false;
+    /**
+     * Bearer for this run's local MCP tool endpoint (API nodes). Minted when the workspace is
+     * prepared; the CLI receives it inside its own mcp-config, so only the process this run
+     * spawned can call this run's tools.
+     */
+    public volatile String toolToken;
 
     private final CopyOnWriteArrayList<RunEvent> buffer = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<Consumer<RunEvent>> listeners = new CopyOnWriteArrayList<>();

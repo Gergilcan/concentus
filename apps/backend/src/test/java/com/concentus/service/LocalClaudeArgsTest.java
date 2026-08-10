@@ -22,7 +22,7 @@ class LocalClaudeArgsTest {
     private static LocalClaudeExecutor executor() {
         return new LocalClaudeExecutor(null, null, null, null, null,
                 new com.fasterxml.jackson.databind.ObjectMapper(), null, null,
-                "bypassPermissions", "data", true, true);
+                "bypassPermissions", "data", true, true, 8734);
     }
 
     private static AgentRun run() {

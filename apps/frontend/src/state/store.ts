@@ -144,6 +144,8 @@ function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
       return { kind: 'repo', provider: 'github', url: '', credentialId: '', mountPath: '', branch: '' }
     case 'knowledge':
       return { kind: 'knowledge', label: 'knowledge', baseId: '', topK: 5 }
+    case 'api':
+      return { kind: 'api', label: 'api', specUrl: '', ops: [] }
     case 'sql':
       return {
         kind: 'sql',

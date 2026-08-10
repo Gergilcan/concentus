@@ -57,6 +57,7 @@ public class LocalClaudeExecutor {
     private final OrgContext orgContext;
     /** See {@link #writeMcpConfig}: runs see only the flow's MCP servers, not the user's list. */
     private final boolean strictMcp;
+    private final int serverPort;
     /**
      * The flow's own permission mode meaning "stop and ask a human before acting".
      *
@@ -97,7 +98,8 @@ public class LocalClaudeExecutor {
                                @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                                @Value("${app.data-dir}") String dataDir,
                                @Value("${local.auto-register-mcp:true}") boolean autoRegisterMcp,
-                               @Value("${local.strict-mcp:true}") boolean strictMcp) {
+                               @Value("${local.strict-mcp:true}") boolean strictMcp,
+                               @Value("${server.port:8734}") int serverPort) {
         this.support = support;
         this.ragInjector = ragInjector;
         this.mcpRegistry = mcpRegistry;
@@ -111,6 +113,7 @@ public class LocalClaudeExecutor {
         this.dataDir = dataDir;
         this.autoRegisterMcp = autoRegisterMcp;
         this.strictMcp = strictMcp;
+        this.serverPort = serverPort;
     }
 
     /** Runs one turn and streams events into the run. Blocking — call on a worker thread. */
@@ -390,6 +393,31 @@ public class LocalClaudeExecutor {
                 server.set("headers", headers);
             }
             servers.set(m.name, server);
+        }
+
+        // API nodes become tools served by this very backend, per run. The CLI reaches them like
+        // any other MCP server; the per-run token in the header is what scopes it.
+        List<AgentSpec.ApiSourceSpec> apis = new ArrayList<>();
+        for (AgentSpec agent : run.compiled.allAgents()) apis.addAll(agent.apiSources);
+        if (!apis.isEmpty()) {
+            if (run.toolToken == null) run.toolToken = java.util.UUID.randomUUID().toString();
+            var server = mapper.createObjectNode();
+            server.put("type", "http");
+            server.put("url", "http://127.0.0.1:" + serverPort + "/api/runs/" + run.id + "/tools");
+            server.putObject("headers")
+                    .put(com.concentus.web.RunToolsController.TOKEN_HEADER, run.toolToken);
+            servers.set("concentus-apis", server);
+            for (AgentSpec.ApiSourceSpec api : apis) {
+                NodeExec ne = run.nodeExec(api.nodeId, "api", api.label);
+                if (ne != null) {
+                    ne.input = api.specUrl.isBlank() ? "(pasted spec)" : api.specUrl;
+                    ne.status = "passed";
+                    ne.output = api.ops.size() + " operation(s) exposed";
+                    ne.endedAt = System.currentTimeMillis();
+                }
+            }
+            run.emit(RunEvent.of("system", "API tools: " + apis.size() + " node(s), "
+                    + apis.stream().mapToInt(a -> a.ops.size()).sum() + " operation(s) allowed."));
         }
 
         var root = mapper.createObjectNode();

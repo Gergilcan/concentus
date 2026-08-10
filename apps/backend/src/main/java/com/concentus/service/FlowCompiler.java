@@ -36,6 +36,7 @@ public class FlowCompiler {
         List<FlowNode> repos = byType(flow, "repo");
         List<FlowNode> sqls = byType(flow, "sql");
         List<FlowNode> knowledges = byType(flow, "knowledge");
+        List<FlowNode> apis = byType(flow, "api");
 
         if (agents.isEmpty()) {
             throw new IllegalArgumentException("Flow has no agent nodes.");
@@ -57,7 +58,7 @@ public class FlowCompiler {
             throw new IllegalArgumentException("Flow has more than one coordinator — mark exactly one.");
         }
 
-        AgentSpec coordinator = buildAgentSpec(coordinatorNode, flow, mcps, repos, sqls, knowledges);
+        AgentSpec coordinator = buildAgentSpec(coordinatorNode, flow, mcps, repos, sqls, knowledges, apis);
 
         // Every agent reachable from the coordinator through agent-to-agent edges — not just the
         // directly linked ones. A reviewer wired behind an engineer exists to review that
@@ -65,7 +66,7 @@ public class FlowCompiler {
         Delegation tree = delegationTree(coordinatorNode, agents, flow.edgesOrEmpty());
         List<AgentSpec> subAgents = new ArrayList<>();
         for (FlowNode n : tree.ordered()) {
-            subAgents.add(buildAgentSpec(n, flow, mcps, repos, sqls, knowledges));
+            subAgents.add(buildAgentSpec(n, flow, mcps, repos, sqls, knowledges, apis));
         }
 
         assignCliNames(coordinator, subAgents);
@@ -165,7 +166,7 @@ public class FlowCompiler {
 
     private AgentSpec buildAgentSpec(FlowNode node, FlowGraph flow,
                                      List<FlowNode> mcps, List<FlowNode> repos, List<FlowNode> sqls,
-                                     List<FlowNode> knowledges) {
+                                     List<FlowNode> knowledges, List<FlowNode> apis) {
         Map<String, Object> d = node.dataOrEmpty();
         AgentSpec s = new AgentSpec();
         s.mode = flow.modeOrDefault();
@@ -230,6 +231,21 @@ public class FlowCompiler {
             spec.baseId = str(kd, "baseId", "");
             spec.label = str(kd, "label", kb.id());
             spec.topK = (int) lng(kd, "topK", 5);
+            return spec;
+        });
+        collectConnected(flow, node, apis, s.apiSources, api -> {
+            Map<String, Object> ad = api.dataOrEmpty();
+            AgentSpec.ApiSourceSpec spec = new AgentSpec.ApiSourceSpec();
+            spec.nodeId = api.id();
+            spec.label = str(ad, "label", api.id());
+            spec.specUrl = str(ad, "specUrl", "");
+            spec.specInline = str(ad, "specInline", "");
+            spec.baseUrl = str(ad, "baseUrl", "");
+            spec.credentialId = str(ad, "credentialId", "");
+            spec.authHeader = str(ad, "authHeader", "");
+            // Explicitly chosen operations only. An empty list exposes nothing — for the one node
+            // type that reaches out and changes external systems, allow is opt-in per operation.
+            spec.ops = strList(ad, "ops");
             return spec;
         });
 
