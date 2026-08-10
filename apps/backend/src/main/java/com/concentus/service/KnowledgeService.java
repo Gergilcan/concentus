@@ -194,14 +194,28 @@ public class KnowledgeService {
      * can coexist in one base.
      */
     public List<Hit> search(String baseId, String query, int topK) {
+        return search(baseId, query, null, topK);
+    }
+
+    /** The query's vector, or null when nothing can embed. For callers searching several bases. */
+    public float[] embedQuery(String query) {
+        Embeddings embedded = tryEmbed(List.of(query), true);
+        return embedded == null || embedded.vectors().isEmpty() ? null : embedded.vectors().get(0);
+    }
+
+    /**
+     * @param precomputed the query's vector from {@link #embedQuery}, so a run with three
+     *                    knowledge nodes embeds its prompt once, not three times; null re-embeds
+     *                    here (single-base callers, or nothing could embed)
+     */
+    public List<Hit> search(String baseId, String query, float[] precomputed, int topK) {
         int k = Math.max(1, Math.min(topK, 20));
         List<CachedChunk> rows = loadBase(baseId);
         if (rows.isEmpty()) return List.of();
 
-        float[] queryVector = null;
-        if (rows.stream().anyMatch(r -> r.vector() != null)) {
-            Embeddings embedded = tryEmbed(List.of(query), true);
-            if (embedded != null && !embedded.vectors().isEmpty()) queryVector = embedded.vectors().get(0);
+        float[] queryVector = precomputed;
+        if (queryVector == null && rows.stream().anyMatch(r -> r.vector() != null)) {
+            queryVector = embedQuery(query);
         }
 
         Set<String> queryWords = words(query);
