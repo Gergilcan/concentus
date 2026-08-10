@@ -165,8 +165,11 @@ function pruneForeignNatives(stagedJar) {
 
       prune(tree, (p) => {
         if (/\.pdb$/i.test(p) || /\.dSYM/.test(p)) return true
-        const native = p.match(/(?:^|[\\/])native[\\/](?:lib[\\/])?([^\\/]+)[\\/]/)
-        return native != null && !keep.includes(native[1])
+        // By path segment, not by "the directory after native/": the first version of this
+        // matched positionally, and regex backtracking let it capture the "lib" in
+        // native/lib/tokenizers.properties — deleting the version file the tokenizer refuses to
+        // load without. Platform directories are unmistakable by name.
+        return p.split(/[\\/]/).some((seg) => /^(win|linux|osx)-/.test(seg) && !keep.includes(seg))
       })
 
       // -M keeps the extracted MANIFEST.MF as-is instead of jar minting a fresh one.
