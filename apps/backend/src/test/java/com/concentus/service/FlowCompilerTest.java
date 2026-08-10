@@ -56,6 +56,30 @@ class FlowCompilerTest {
         assertThat(compiled.coordinator().nodeId).isEqualTo("a1");
     }
 
+    // ---------------------------------------------------- planner access setting
+
+    @Test
+    void coordinatorAccessPassesThroughAndTyposLandOnAuto() {
+        // Absent → auto (the derived rule decides at run time).
+        FlowNode absent = agent("a1", "coordinator", "Coord");
+        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(absent),
+                List.<FlowEdge>of(), null, List.<String>of(), null, null);
+        assertThat(compiler.compile(flow).coordinator().coordinatorAccess).isEmpty();
+
+        FlowNode forced = new FlowNode("a1", "agent", "coordinator",
+                Map.of("name", "Coord", "coordinatorAccess", "read-only"));
+        FlowGraph flow2 = new FlowGraph("f1", "Flow", "managed", List.of(forced),
+                List.<FlowEdge>of(), null, List.<String>of(), null, null);
+        assertThat(compiler.compile(flow2).coordinator().coordinatorAccess).isEqualTo("read-only");
+
+        // A typo can only ever land back on auto — it must never force a widening.
+        FlowNode typo = new FlowNode("a1", "agent", "coordinator",
+                Map.of("name", "Coord", "coordinatorAccess", "mayact"));
+        FlowGraph flow3 = new FlowGraph("f1", "Flow", "managed", List.of(typo),
+                List.<FlowEdge>of(), null, List.<String>of(), null, null);
+        assertThat(compiler.compile(flow3).coordinator().coordinatorAccess).isEmpty();
+    }
+
     // ------------------------------------------------------------- merge node
 
     @Test

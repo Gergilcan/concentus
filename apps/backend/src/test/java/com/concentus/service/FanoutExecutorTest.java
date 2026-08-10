@@ -293,9 +293,11 @@ class FanoutExecutorTest {
         executor(starter, 900, 0).runTurn(run, run.compiled, "Haz el cambio grande");
 
         assertThat(spawned).hasSize(3); // planner + two plan-born workers
-        // The planner is read-only and can only ever plan: no shell, no edits, no delegation.
-        assertThat(spawned.get(0)).containsSequence("--disallowedTools",
-                "Task,Bash,Write,Edit,NotebookEdit");
+        // A solo coordinator is the one doing the work, so under the auto rule it may act while
+        // planning — but delegation stays denied whatever the node says: a planner that could
+        // fan out again is an unbounded tree, not a configuration.
+        assertThat(spawned.get(0)).containsSequence("--disallowedTools", "Task");
+        assertThat(String.join(" ", spawned.get(0))).doesNotContain("Bash");
         String planMcp = Files.readString(
                 dataDir.resolve(Path.of("local", "run-1", "coordinator", "mcp-config.json")));
         assertThat(planMcp).contains("/api/runs/run-1/plan").doesNotContain("/tools");
@@ -318,6 +320,42 @@ class FanoutExecutorTest {
         assertThat(claudeA).contains("only backend facts");
         assertThat(run.workerFacadeProfiles).isEmpty(); // no MCP servers wired → no facade at all
         assertThat(run.status).isEqualTo("IDLE");
+    }
+
+    @Test
+    void plannerAccessDerivesFromWiringAndTheNodeCanForceEitherShape() {
+        // Auto: workers wired → hands off; solo → it is the one working, may act.
+        AgentSpec worker = spec("n1", "W", "w", "");
+        assertThat(FanoutExecutor.plannerReadOnly(run(worker).compiled)).isTrue();
+        assertThat(FanoutExecutor.plannerReadOnly(run().compiled)).isFalse();
+
+        // Forced, in both directions, regardless of wiring.
+        AgentRun forcedRo = run();
+        forcedRo.compiled.coordinator().coordinatorAccess = "read-only";
+        assertThat(FanoutExecutor.plannerReadOnly(forcedRo.compiled)).isTrue();
+        AgentRun forcedAct = run(worker);
+        forcedAct.compiled.coordinator().coordinatorAccess = "may-act";
+        assertThat(FanoutExecutor.plannerReadOnly(forcedAct.compiled)).isFalse();
+    }
+
+    @Test
+    void aForcedReadOnlyPlannerLosesEverythingButReading() {
+        AgentRun run = run();
+        run.compiled.coordinator().coordinatorAccess = "read-only";
+
+        List<List<String>> spawned = new CopyOnWriteArrayList<>();
+        FanoutExecutor.ProcessStarter starter = (args, workdir) -> {
+            spawned.add(args);
+            run.submittedPlan = new com.concentus.model.WorkPlan("g", List.of(
+                    new com.concentus.model.WorkPlan.WorkItem("a", null, "do it",
+                            null, null, null, null, null, "", null)));
+            return new FakeProcess(okStream("Plan listo", "Plan listo"), 0);
+        };
+
+        executor(starter, 900, 0).runTurn(run, run.compiled, "go");
+
+        assertThat(spawned.get(0)).containsSequence("--disallowedTools",
+                "Task,Bash,Write,Edit,NotebookEdit");
     }
 
     @Test

@@ -143,6 +143,21 @@ export function AgentInspector({ data, set }: Props) {
             <option value="">Subagents — one shared session</option>
             <option value="fanout">Independent workers — one process per sub-agent (experimental)</option>
           </SelectField>
+          {data.execution === 'fanout' && (
+            <SelectField
+              label={
+                <span title="What the coordinator's own process may do when it runs (it runs only when planning, i.e. with no sub-agents drawn). Auto: read-only exactly when sub-agents are wired to it — a coordinator with workers distributes, a solo one is doing the work and may act. Force either shape here. Delegation is denied in every case, so the fan-out stays one level deep.">
+                  Coordinator access ⓘ
+                </span>
+              }
+              value={data.coordinatorAccess ?? ''}
+              onChange={(v) => set({ coordinatorAccess: v })}
+            >
+              <option value="">Auto — read-only only if it has workers wired</option>
+              <option value="read-only">Read-only always — plans, never touches anything</option>
+              <option value="may-act">May act — can edit files and run commands</option>
+            </SelectField>
+          )}
         </>
       )}
       {skills.length > 0 && (

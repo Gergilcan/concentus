@@ -52,6 +52,20 @@ public class AgentSpec {
      * "never the full tool set" is the rule, and an absent profile must not widen anything.
      */
     public String facadeProfileId = "";
+    /**
+     * What the fan-out coordinator's own process may do. Coordinator only, fan-out only — the
+     * single-session path is governed by the flow's permission mode and gets no second knob.
+     *
+     * <p>{@code ""} (auto, the default): read-only exactly when the coordinator has sub-agents
+     * wired to it — a coordinator with workers exists to distribute, not to touch things, while
+     * a solo coordinator is the one doing the work and may act. {@code "read-only"} and
+     * {@code "may-act"} force either shape from the node's config. Delegation (Task) is denied
+     * in every case, or the fan-out stops being one level deep.
+     *
+     * <p>Normalized in {@link #validate()}: an unrecognized value means auto, so a typo can
+     * only ever land on the computed default, never silently force a widening.
+     */
+    public String coordinatorAccess = "";
 
     public ModelSpec model = new ModelSpec();
     public List<SkillSpec> skills = new ArrayList<>();
@@ -108,6 +122,11 @@ public class AgentSpec {
         // Only the one non-default value passes through; anything else means "subagents".
         execution = "fanout".equalsIgnoreCase(execution == null ? "" : execution.trim())
                 ? "fanout" : "";
+        String access = coordinatorAccess == null ? "" : coordinatorAccess.trim().toLowerCase();
+        coordinatorAccess = switch (access) {
+            case "read-only", "may-act" -> access;
+            default -> "";
+        };
     }
 
     private static void require(boolean cond, String message) {

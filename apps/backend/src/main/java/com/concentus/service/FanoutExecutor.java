@@ -220,8 +220,30 @@ public class FanoutExecutor {
 
     // ---------------------------------------------------------------- planning phase
 
-    /** Tools the planning process is denied: everything that changes anything, plus delegation. */
-    private static final String PLANNER_DISALLOWED = "Task,Bash,Write,Edit,NotebookEdit";
+    /** The read-only planner's denylist: everything that changes anything, plus delegation. */
+    private static final String PLANNER_READ_ONLY = "Task,Bash,Write,Edit,NotebookEdit";
+    /**
+     * The acting planner's denylist. Only delegation: a coordinator allowed to act may edit and
+     * run commands while planning, but a planner that could open its own fan-out would still
+     * turn bounded N processes into an unbounded tree.
+     */
+    private static final String PLANNER_MAY_ACT = "Task";
+
+    /**
+     * Whether this flow's planning coordinator keeps its hands off the machine.
+     *
+     * <p>The default is derived, not fixed: a coordinator with sub-agents wired to it exists to
+     * distribute work, so it plans read-only; a solo coordinator is the one doing the work and
+     * may act. The node's {@code coordinatorAccess} forces either shape when someone decides —
+     * and a typo, normalized away in the spec, can only ever land back on the derived rule.
+     */
+    static boolean plannerReadOnly(CompiledFlow flow) {
+        return switch (flow.coordinator().coordinatorAccess) {
+            case "read-only" -> true;
+            case "may-act" -> false;
+            default -> !flow.subAgents().isEmpty();
+        };
+    }
 
     /**
      * Runs the coordinator as a read-only planning process and returns the plan it submitted,
@@ -236,8 +258,20 @@ public class FanoutExecutor {
         AgentSpec coord = flow.coordinator();
         Path workdir = Path.of(dataDir, "local", run.id, "coordinator").toAbsolutePath().normalize();
         run.submittedPlan = null; // a stale plan from the previous turn must never run twice
-        run.emit(RunEvent.of("system", "Planning: the coordinator runs read-only and must submit "
-                + "a plan of independent work items (plan_submit).", coord.name, coord.nodeId));
+        boolean readOnly = plannerReadOnly(flow);
+        // Named on every planning turn, because it decides what the planner may do to this
+        // machine and is otherwise invisible until something has already happened.
+        run.emit(RunEvent.of("system", readOnly
+                ? "Planning: the coordinator runs read-only"
+                        + ("read-only".equals(coord.coordinatorAccess)
+                                ? " (forced on this node)" : " (it has workers wired to it)")
+                        + " and must submit a plan of independent work items (plan_submit)."
+                : "Planning: the coordinator MAY EDIT FILES AND RUN COMMANDS while planning"
+                        + ("may-act".equals(coord.coordinatorAccess)
+                                ? " (forced on this node)"
+                                : " (no sub-agents are wired to it, so it works alone)")
+                        + "; delegation stays denied. It must still submit a plan (plan_submit).",
+                coord.name, coord.nodeId));
 
         try {
             preparePlanningWorkspace(run, coord, workdir);
@@ -251,7 +285,7 @@ public class FanoutExecutor {
                         coord.name, coord.nodeId)));
 
         Outcome outcome = execute(run, coord, coordExec, cmd, userText, workdir, dirs,
-                PLANNER_DISALLOWED);
+                readOnly ? PLANNER_READ_ONLY : PLANNER_MAY_ACT);
         if ("TERMINATED".equals(run.status)) return null;
         if (!outcome.ok()) {
             if (coordExec != null) {

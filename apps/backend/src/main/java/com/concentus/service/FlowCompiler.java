@@ -196,6 +196,7 @@ public class FlowCompiler {
         // compiler doesn't need to know which node wins — validate() normalizes typos away.
         s.execution = str(d, "execution", "");
         s.facadeProfileId = str(d, "facadeProfileId", "");
+        s.coordinatorAccess = str(d, "coordinatorAccess", "");
         s.contextFolders = strList(d, "contextFolders");
         s.claudeMdPath = str(d, "claudeMdPath", "");
 

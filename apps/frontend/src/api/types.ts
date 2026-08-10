@@ -264,6 +264,13 @@ export type AgentNodeData = {
    * fails closed rather than exposing the full tool set.
    */
   facadeProfileId?: string
+  /**
+   * What the fan-out coordinator's own process may do. **Coordinator only, fan-out only.**
+   * Empty/absent = auto: read-only exactly when it has sub-agents wired (a coordinator with
+   * workers distributes, a solo one works). 'read-only' / 'may-act' force either shape.
+   * Delegation is denied in every case.
+   */
+  coordinatorAccess?: '' | 'read-only' | 'may-act'
 }
 
 export type McpNodeData = {
