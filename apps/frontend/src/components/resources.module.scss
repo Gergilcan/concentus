@@ -248,6 +248,14 @@
 .catalog {
   margin-bottom: 18px;
 }
+.catalogCat {
+  margin: 12px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: t.$muted;
+}
 .catalogGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
@@ -265,13 +273,44 @@
   cursor: pointer;
   color: t.$text;
 
-  &:hover {
+  &:hover:not(:disabled) {
     border-color: t.$accent;
   }
+}
+/* Already in the user's list: still readable, no longer a call to action. */
+.catalogAdded {
+  cursor: default;
+  opacity: 0.6;
+}
+.catalogHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 .catalogName {
   font-weight: 600;
   font-size: 13px;
+}
+.authPill {
+  font-size: 9.5px;
+  border: 1px solid t.$border;
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  color: t.$muted;
+}
+.auth_oauth {
+  color: t.$accent;
+  border-color: color-mix(in srgb, t.$accent 55%, transparent);
+}
+.auth_token {
+  color: t.$repo;
+  border-color: color-mix(in srgb, t.$repo 55%, transparent);
+}
+.authAdded {
+  color: t.$ok;
+  border-color: color-mix(in srgb, t.$ok 55%, transparent);
 }
 .catalogNote {
   color: t.$muted;
