@@ -65,7 +65,9 @@ concentus/
 ## Concepts
 
 - A **flow** is a multi-agent orchestration graph. **Agent** nodes (one marked *coordinator*),
-  plus **MCP**, **Repository**, **SQL** and **Knowledge** capability nodes. Connect a capability to
+  plus **MCP**, **Repository**, **SQL**, **Knowledge** and **API (OpenAPI)** capability nodes — an
+  API node turns any REST API into typed tools from its OpenAPI spec, with each operation
+  allowed explicitly — and, for fan-out flows, a **Merge** node. Connect a capability to
   an agent to grant access — and drag a node from the palette to place it wherever you want. Each sub-agent's *Delegate when…* description is what its delegator uses to route,
   and it receives only its own slice of the plan.
 - **Delegation chains** — an agent delegates to the agents wired *behind* it, so hierarchies work,
@@ -85,10 +87,11 @@ concentus/
   *Code Reviewer*s); they're registered under distinct names (`code-reviewer`, `code-reviewer-2`)
   so their definitions and logs stay separate.
 
-  Scoping is guidance, not enforcement: every agent in the flow is registered with the CLI, so an
-  agent is *told* which agents are its own to call, but nothing physically prevents it reaching
-  another. If a delegation targets an agent that isn't in the flow, the console says so instead of
-  failing silently.
+  Scoping is guidance, not enforcement — *on this path*: every agent in the flow is registered
+  with the CLI, so an agent is *told* which agents are its own to call, but nothing physically
+  prevents it reaching another. If a delegation targets an agent that isn't in the flow, the
+  console says so instead of failing silently. When you need real per-agent boundaries, that is
+  what [independent workers](#independent-workers-fan-out-execution) exist for.
 - An **Input / trigger** node sets how a flow starts:
   - **Manual** — run starts idle; you type the first message.
   - **Prompt** — pressing Run auto-sends a fixed prompt.
@@ -145,12 +148,74 @@ concentus/
   offers Approve/Reject; approving resumes the same session with permission to act. Sub-agents get
   the one permission Claude Code enforces per agent: a **tool allowlist** (`Read, Grep, Glob` on a
   reviewer means it cannot edit or run commands, whatever the flow's mode allows).
+- **Remote approvals** — an approval-mode flow can also ask in **Slack**: the request posts to a
+  channel and a ✅ / ❌ reaction decides it, no public URL anywhere (the app polls; rejection wins a
+  tie, requests expire after 48h). **Teams** gets notified with an Adaptive Card but cannot answer
+  back — receiving a reply would need a publicly reachable bot. See
+  [docs/remote-approvals.md](docs/remote-approvals.md).
+- **Shadow mode** — a triggered flow can run in shadow for its first days: it plans what it
+  *would* have done but changes nothing, so you can watch a cron or webhook trigger act before
+  trusting it. Manual runs stay real — you are present for those.
+- **Golden runs** — mark one execution as a flow's known-good reference, then replay its exact
+  input against the **edited** flow and diff the two runs side by side. The deliberate opposite of
+  retry, which replays against the flow as it *was*.
+- **Flow memory** — every saved flow keeps short notes that survive between runs
+  (`memory_read` / `memory_append` tools): decisions taken, state reached, approaches that failed.
+  Agents are told to read it before starting, so run N+1 stops redoing what run N learned.
+- **Budgets & usage** — a flow can carry a monthly USD ceiling; at or past it, new runs are
+  refused until next month (a run in flight always finishes). The **Usage** page shows measured
+  Claude consumption on the machine, and every run prices each block at its own model's rate.
+- **Skills** — upload Agent Skills (a zip with a `SKILL.md`) under Resources → Skills and assign
+  them per agent; they are installed into the run's workspace and the agent is told they are its
+  own.
+- **Copy as template** — share a flow's *shape* without sharing yourself: credentials, accounts,
+  hosts and local paths are deleted (not blanked) from the JSON, while prompts, wiring and public
+  endpoints stay. See [docs/templates.md](docs/templates.md).
 - **MCP isolation** — each run sees **only the MCP servers wired into its flow**, passed to the CLI
   via `--strict-mcp-config`. Your personal Claude Code MCP list stays yours; a flow with no MCP
   nodes reaches none. `LOCAL_STRICT_MCP=false` restores the old inherit-everything behaviour.
 - **Templates** — six starter flows come installed: a PR review crew, a cron daily briefing, a
   mailbox assistant, webhook issue triage, a docs writer, and the original quote-to-Holded flow.
   The ones needing configuration ship disabled and say on themselves what to set.
+
+## Independent workers (fan-out execution)
+
+The single shared session above has one structural limit: everything in it is *steered*, not
+*enforced* — one CLI process runs the whole flow, so folders, MCP servers and rosters are shared
+by construction. Setting the coordinator's **Execution** to **Independent workers** trades that
+model for real boundaries: **one `claude` process per worker**, each with its own workspace, its
+own instructions (never the whole flow's context), its own `--add-dir` grants, its own model —
+and true parallelism, where subagents in a shared session run one at a time. Workers cannot
+delegate (no Task tool) and cannot run shell commands; the fan-out is one level deep by
+construction.
+
+- **The drawn sub-agents are the plan.** Each runs the turn's instruction as its own process, and
+  the run ends with a combined report that names failed workers instead of hiding them.
+- **No sub-agents drawn? The coordinator plans.** It runs first as its own process and must
+  submit the work items through a `plan_submit` tool: unique ids, a self-contained prompt per
+  item, at most `workers.max-items` (default 8), and **no two items may declare the same file** —
+  parallel processes writing one file is silent corruption, so overlapping plans are rejected
+  with the items and the path named, and the coordinator repartitions. Plan-born workers appear
+  on the canvas as dashed boxes with live status, tokens and cost; they are part of the run, not
+  the drawn flow. By default the planner is read-only exactly when it has workers wired to it —
+  a coordinator with a crew distributes, a solo one works — and the node can force either shape.
+- **Facade profiles** (Resources → Facades) are how workers reach MCP — and the first per-agent
+  tool boundary Concentus actually *enforces*, on every listing and every call, rather than
+  writes into a prompt. A profile is an allowlist plus two dials: **read-only** (write-shaped
+  tools are not exposed and refuse to run) and **dry-run** (writes are simulated — the worker
+  gets back "DRY RUN — nothing was executed" and reports the action as proposed). Dry-run is ON
+  unless deliberately cleared, and what counts as a write fails closed: any tool name that is not
+  clearly a read is treated as one. A worker with MCP nodes but no profile gets **no** MCP tools
+  at all. The real MCP URLs and credentials never enter a worker's process: everything goes
+  through a per-worker endpoint with its own token.
+- **The Merge node** runs after every worker: one more process that receives all their reports
+  (failures included), reads their workspaces, and reconciles them into the run's answer. It is
+  the only fan-out process with shell access — running the tests belongs to the one step whose
+  job is verifying the combined result, not to N unattended workers.
+
+Two current limits, said where you can plan around them: repository nodes are **not cloned into
+workers** yet (a flow that pushes code stays on subagents execution), and workers run against
+your Claude login — pointing them at a local model gateway is future work.
 
 ## Install
 
@@ -795,9 +860,12 @@ java -cp target/concentus-backend.jar com.concentus.Main path/to/agent.yaml "you
 - Runs, events and per-node output are persisted (see [Persistence](#persistence-postgresql)), but
   the live handles to a running session are not — restarting the backend leaves history intact and
   drops anything mid-flight.
-- **Agent scoping steers, it doesn't isolate.** A local run is one CLI process for the whole flow,
-  so context folders and delegation rosters are written into each agent's instructions rather than
-  enforced: an agent is told which folders and which agents are its own, but can still reach the
-  others. Real isolation needs a process per agent. Two things ARE enforced: per-sub-agent **tool
-  allowlists** (by the CLI) and per-flow **MCP isolation** (by `--strict-mcp-config`).
+- **Agent scoping steers, it doesn't isolate — on the shared-session path.** A local run there is
+  one CLI process for the whole flow, so context folders and delegation rosters are written into
+  each agent's instructions rather than enforced: an agent is told which folders and which agents
+  are its own, but can still reach the others. Three things ARE enforced on that path:
+  per-sub-agent **tool allowlists** (by the CLI), per-flow **MCP isolation**
+  (by `--strict-mcp-config`) — and when you need the real thing, a process per agent with
+  enforced MCP facades is exactly what
+  [independent workers](#independent-workers-fan-out-execution) provide.
 - Built against `anthropic-java` 2.34.0 and Spring Boot 3.5.x on Java 25.
