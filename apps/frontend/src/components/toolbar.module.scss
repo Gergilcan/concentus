@@ -84,6 +84,14 @@
   background: t.$muted;
 }
 
+/* The installed release, next to the auth badge. Quiet on purpose: it answers "which version
+   am I on?" when someone asks, and earns no attention otherwise. */
+.version {
+  font-size: 11px;
+  color: t.$muted;
+  padding: 4px 6px;
+}
+
 .authOk {
   color: t.$ok;
   border-color: rgba(81, 207, 102, 0.4);

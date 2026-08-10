@@ -40,9 +40,19 @@ export function AuthBadge() {
       : styles.authKey
 
   return (
-    <span className={`${styles.auth} ${cls}`} title={status.hint ?? status.detail ?? ''}>
-      <span className={styles.authDot} />
-      {LABELS[status.source] ?? status.source}
-    </span>
+    <>
+      {status.appVersion && (
+        <span
+          className={styles.version}
+          title="Installed Concentus version. Updates download in the background and install when you quit."
+        >
+          v{status.appVersion}
+        </span>
+      )}
+      <span className={`${styles.auth} ${cls}`} title={status.hint ?? status.detail ?? ''}>
+        <span className={styles.authDot} />
+        {LABELS[status.source] ?? status.source}
+      </span>
+    </>
   )
 }

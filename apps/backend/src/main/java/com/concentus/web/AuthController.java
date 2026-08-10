@@ -12,13 +12,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AnthropicClientProvider provider;
+    private final String appVersion;
 
-    public AuthController(AnthropicClientProvider provider) {
+    public AuthController(AnthropicClientProvider provider,
+                          @org.springframework.beans.factory.annotation.Value("${app.version:}")
+                          String appVersion) {
         this.provider = provider;
+        this.appVersion = appVersion;
     }
 
     @GetMapping("/status")
     public AuthStatus status() {
-        return provider.status();
+        return provider.status().withAppVersion(appVersion);
     }
 }

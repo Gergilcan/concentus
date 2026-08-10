@@ -475,6 +475,29 @@ class FanoutExecutorTest {
     }
 
     @Test
+    void usageTotalsSurviveConcurrentWorkers() throws Exception {
+        // The regression CI caught for real: two workers each reported 10 input tokens and the
+        // run totalled 10, because `volatile +=` is a read-modify-write that loses updates.
+        AgentRun run = run();
+        int threads = 8, perThread = 1_000;
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+        CountDownLatch done = new CountDownLatch(threads);
+        for (int t = 0; t < threads; t++) {
+            pool.submit(() -> {
+                for (int i = 0; i < perThread; i++) run.accrueUsage(1, 2, 3, 4);
+                done.countDown();
+            });
+        }
+        assertThat(done.await(10, TimeUnit.SECONDS)).isTrue();
+        pool.shutdown();
+
+        assertThat(run.totalInputTokens).isEqualTo((long) threads * perThread);
+        assertThat(run.totalOutputTokens).isEqualTo(2L * threads * perThread);
+        assertThat(run.cacheReadTokens).isEqualTo(3L * threads * perThread);
+        assertThat(run.cacheWriteTokens).isEqualTo(4L * threads * perThread);
+    }
+
+    @Test
     void theFanoutFlagOnlyEngagesWhenTheCoordinatorNamesIt() {
         AgentSpec coord = new AgentSpec();
         coord.execution = "fanout";
