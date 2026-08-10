@@ -165,6 +165,11 @@ public class EmbeddedPostgresConfig {
                 // Emphatically not a scratch database: this is where the user's flows, runs and
                 // credentials live, and wiping it on start would be data loss on every launch.
                 .setCleanDataDirectory(false)
+                // Server messages in English whatever the OS locale. Not cosmetic: initdb on a
+                // Spanish Windows picks a Spanish locale, and its log lines then pass through
+                // zonky's reader with the wrong charset — the log fills with mojibake ("� listo")
+                // exactly where a startup failure would need to be read.
+                .setServerConfig("lc_messages", "C")
                 // 0 asks the OS for a free port. Nothing external connects, so the port need not
                 // be stable — unlike the application's own port, which is kept fixed for the sake
                 // of registered OAuth redirect URIs.

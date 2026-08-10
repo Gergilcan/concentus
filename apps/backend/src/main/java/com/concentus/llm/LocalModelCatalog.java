@@ -118,8 +118,10 @@ public class LocalModelCatalog {
             } catch (RuntimeException e) {
                 if (lastError == null) {
                     // Logged once per outage rather than every probe: this runs on a timer driven
-                    // by page loads, and a down server would otherwise fill the log.
-                    log.warn("Local model server at {} is unreachable: {}",
+                    // by page loads, and a down server would otherwise fill the log. INFO, not
+                    // WARN: on a desktop the default points at Ollama's address, and most machines
+                    // simply don't run one — the model picker already says so where it matters.
+                    log.info("Local model server at {} is unreachable: {}",
                             client.baseUrl(), e.getMessage());
                 }
                 models = Set.of();

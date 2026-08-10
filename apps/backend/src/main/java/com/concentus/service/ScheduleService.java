@@ -3,6 +3,7 @@ package com.concentus.service;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.TriggerSpec;
 import com.concentus.store.FlowStore;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -35,6 +36,19 @@ public class ScheduleService {
         scheduler.setPoolSize(2);
         scheduler.setThreadNamePrefix("flow-cron-");
         scheduler.initialize();
+    }
+
+    /**
+     * Stops the scheduler's threads when the context closes. Not optional hygiene: the scheduler
+     * is a field, not a bean, so Spring does not manage its lifecycle — and its threads are
+     * non-daemon, so without this the JVM never exits after a clean shutdown. That is exactly what
+     * happened: /actuator/shutdown answered 200, every shutdown hook ran, and the process sat
+     * there on an idle flow-cron thread until the desktop shell gave up and SIGKILLed it —
+     * orphaning the embedded postgres for the next launch's sweep to deal with.
+     */
+    @PreDestroy
+    void shutdown() {
+        scheduler.shutdown();
     }
 
     /** Cancel all jobs and re-register from the current set of saved flows. Idempotent. */

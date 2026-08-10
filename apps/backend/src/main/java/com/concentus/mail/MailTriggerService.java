@@ -93,9 +93,19 @@ public class MailTriggerService {
             MailTriggerSpec spec = MailTriggerSpec.from(flow);
             if (!spec.isConfigured()) {
                 // Said out loud: a half-configured mail node that silently does nothing is
-                // indistinguishable from a mailbox with no new mail.
-                log.warn("Flow '{}' has a mail trigger missing: {}. Not polling.",
-                        flow.name(), spec.missingFields());
+                // indistinguishable from a mailbox with no new mail. But only half-configured —
+                // a trigger with nothing filled in yet is a template or a work in progress, not a
+                // mistake, and warning about it on every launch teaches people to skim past
+                // warnings that matter.
+                boolean untouched = spec.host().isBlank() && spec.username().isBlank()
+                        && spec.credentialId().isBlank();
+                if (untouched) {
+                    log.info("Flow '{}' has a mail trigger that is not configured yet. Not polling.",
+                            flow.name());
+                } else {
+                    log.warn("Flow '{}' has a mail trigger missing: {}. Not polling.",
+                            flow.name(), spec.missingFields());
+                }
                 continue;
             }
             String flowId = flow.id();

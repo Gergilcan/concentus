@@ -47,12 +47,14 @@ public class AccountBootstrap {
     private final String adminPassword;
     private final boolean resetPassword;
     private final String organizationName;
+    private final boolean desktop;
 
     public AccountBootstrap(AccountStore accounts, PasswordEncoder encoder, OrgContext orgContext,
                             @Value("${app.auth.bootstrap-admin-email:}") String adminEmail,
                             @Value("${app.auth.bootstrap-admin-password:}") String adminPassword,
                             @Value("${app.auth.bootstrap-admin-password-reset:false}") boolean resetPassword,
-                            @Value("${app.organization-name:Concentus}") String organizationName) {
+                            @Value("${app.organization-name:Concentus}") String organizationName,
+                            @Value("${app.desktop:false}") boolean desktop) {
         this.accounts = accounts;
         this.encoder = encoder;
         this.orgContext = orgContext;
@@ -60,6 +62,7 @@ public class AccountBootstrap {
         this.adminPassword = adminPassword;
         this.resetPassword = resetPassword;
         this.organizationName = organizationName;
+        this.desktop = desktop;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -74,8 +77,15 @@ public class AccountBootstrap {
         accounts.createOrganization(orgContext.defaultOrganizationId(), organizationName);
 
         if (!orgContext.authEnabled()) {
-            log.warn("app.auth.enabled=false — the API is UNAUTHENTICATED. "
-                    + "Only use this for local development.");
+            // In the desktop build this is the designed state, not a misconfiguration: the socket
+            // is bound to loopback and the only user is the person at the machine, so warning on
+            // every launch would train them to ignore warnings. On a server it stays loud.
+            if (desktop) {
+                log.info("Desktop build: the API is bound to loopback and runs without accounts.");
+            } else {
+                log.warn("app.auth.enabled=false — the API is UNAUTHENTICATED. "
+                        + "Only use this for local development.");
+            }
             return;
         }
 
