@@ -43,7 +43,7 @@ class AccountBootstrapTest {
 
     private AccountBootstrap bootstrap(String email, String password, boolean reset) {
         return new AccountBootstrap(accounts, encoder, new OrgContext(ORG, true), email, password,
-                reset, "Concentus");
+                reset, "Concentus", false);
     }
 
     private static Accounts.UserAccount existing(String email) {
@@ -174,7 +174,7 @@ class AccountBootstrapTest {
     void theDefaultOrganizationIsCreatedEvenWithAuthDisabled() {
         // Integration rows are written against it either way.
         AccountBootstrap open = new AccountBootstrap(accounts, encoder, new OrgContext(ORG, false),
-                CONFIGURED_EMAIL, GOOD_PASSWORD, false, "Concentus");
+                CONFIGURED_EMAIL, GOOD_PASSWORD, false, "Concentus", false);
 
         open.bootstrap();
 

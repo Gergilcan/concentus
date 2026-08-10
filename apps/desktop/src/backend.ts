@@ -25,7 +25,9 @@ import { log } from './log'
 const DEFAULT_PORT = 8734
 /** How long to wait for the backend to report itself ready before giving up. */
 const STARTUP_TIMEOUT_MS = 120_000
-const HEALTH_POLL_INTERVAL_MS = 400
+// 150 rather than 400: the poll is a loopback GET that costs microseconds, and its interval is
+// pure added latency on every launch — readiness is only ever noticed up to one interval late.
+const HEALTH_POLL_INTERVAL_MS = 150
 /** Grace period for a clean shutdown before the process is killed outright. */
 const SHUTDOWN_TIMEOUT_MS = 8_000
 
@@ -33,6 +35,35 @@ export interface RunningBackend {
   port: number
   process: ChildProcess
 }
+
+/**
+ * Startup progress for the splash screen: a percentage and a line saying what is happening.
+ *
+ * The percentages are real rather than animated — each one is reported when a named startup
+ * milestone is actually observed in the backend's output, so the bar moves when the work moves.
+ */
+export type StartupProgress = (percent: number, label: string) => void
+
+/**
+ * The milestones, matched against the backend's stdout as it streams.
+ *
+ * Log lines are the one progress signal the backend already emits; matching them costs nothing at
+ * runtime and needs no channel the backend has to maintain. The fragile part is owned here: if a
+ * message changes and a milestone stops matching, the bar simply jumps at the next one that does —
+ * degraded, never wrong, because percentages only move forward.
+ */
+const STARTUP_MILESTONES: ReadonlyArray<{ pattern: RegExp; percent: number; label: string }> = [
+  { pattern: /Starting ConcentusApplication/, percent: 12, label: 'Starting the backend…' },
+  { pattern: /initialization completed in/, percent: 20, label: 'Preparing services…' },
+  { pattern: /Preparing the embedded database for first use/, percent: 24, label: 'First run: preparing the database…' },
+  { pattern: /Extracting Postgres/, percent: 28, label: 'Unpacking the database…' },
+  { pattern: /postmaster started/, percent: 36, label: 'Starting the database…' },
+  { pattern: /Embedded PostgreSQL ready|Using an external PostgreSQL/, percent: 46, label: 'Database ready' },
+  { pattern: /Schema .* up to date|Successfully applied|Schema is up to date/, percent: 52, label: 'Checking the schema…' },
+  { pattern: /Run persistence ready/, percent: 58, label: 'Opening the stores…' },
+  { pattern: /Tomcat started on port/, percent: 68, label: 'Starting the API…' },
+  { pattern: /Started ConcentusApplication/, percent: 76, label: 'Restoring runs and triggers…' },
+]
 
 /** True if nothing is listening on the port — i.e. we may take it. */
 function isPortFree(port: number): Promise<boolean> {
@@ -149,7 +180,15 @@ function stageJarForRun(jar: string): string {
   }
 }
 
-export async function startBackend(): Promise<RunningBackend> {
+export async function startBackend(onProgress?: StartupProgress): Promise<RunningBackend> {
+  let reported = 0
+  // Monotonic by construction: a late-matching early milestone must never pull the bar backwards.
+  const advance = (percent: number, label: string) => {
+    if (percent <= reported) return
+    reported = percent
+    try { onProgress?.(percent, label) } catch { /* the splash is cosmetic; never fail a start over it */ }
+  }
+
   const artifact = backendJar()
   if (!fs.existsSync(artifact)) {
     throw new Error(`Backend jar not found at ${artifact}. Build it with: pnpm backend:build`)
@@ -159,6 +198,7 @@ export async function startBackend(): Promise<RunningBackend> {
   // the preferred port, and sweeping it first is what lets this launch keep 8734 instead of
   // drifting to an ephemeral port. It also removes the orphaned embedded postgres that would
   // otherwise fail this start with "already running" on our own data directory.
+  advance(2, 'Checking for leftover processes…')
   await killOrphans()
 
   // After the sweep, deliberately: a leftover backend may still hold the previous staged copy,
@@ -169,7 +209,9 @@ export async function startBackend(): Promise<RunningBackend> {
   const port = await choosePort()
   const data = dataDir()
   const settings = loadSettings()
+  advance(4, 'Locating the claude CLI…')
   const claude = await resolveClaudeCli(settings.claudeCommand)
+  advance(6, 'Starting the Java runtime…')
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -188,29 +230,55 @@ export async function startBackend(): Promise<RunningBackend> {
     CONCENTUS_APP_VERSION: isPackaged() ? app.getVersion() : '',
   }
 
-  const args = [
-    '-jar',
-    jar,
-    '--spring.profiles.active=desktop',
-    `--server.port=${port}`,
-  ]
+  // onnxruntime loads its native library with System.load, which Java 24+ warns about at startup
+  // unless native access is granted. Granted everywhere the backend is launched from.
+  const args = ['--enable-native-access=ALL-UNNAMED']
+
+  // A packaged build runs the CDS-extracted layout the payload script staged, and it must mirror
+  // the training run exactly: same relative `-jar concentus-backend.jar`, same working directory,
+  // same bundled JVM — the archive records the class path as given, and relative paths are what
+  // let it validate wherever the app was installed (or wherever the AppImage mounted today).
+  // The archive is best effort at build time, so its flag is only passed when the file exists;
+  // without it the same layout still runs, just without the mapped classes.
+  const packagedRun = isPackaged()
+  const backendDir = path.dirname(jar)
+  if (packagedRun) {
+    if (fs.existsSync(path.join(backendDir, 'concentus-backend.jsa'))) {
+      args.push('-XX:SharedArchiveFile=concentus-backend.jsa')
+    }
+    args.push('-jar', path.basename(jar))
+  } else {
+    args.push('-jar', jar)
+  }
+  args.push('--spring.profiles.active=desktop', `--server.port=${port}`)
 
   log.info(`Starting backend: ${java} ${args.join(' ')}`)
   const child = spawn(java, args, {
     env,
-    // Anchored at the data directory rather than wherever the launcher happened to start us, so
-    // the backend's optional `.env` import cannot pick up a stray file from an unrelated folder.
-    cwd: data,
+    // In the repo: anchored at the data directory rather than wherever the launcher happened to
+    // start us, so the backend's optional `.env` import cannot pick up a stray file from an
+    // unrelated folder. Packaged: the backend payload directory, because the CDS archive's
+    // relative class path resolves against it — and it contains no `.env` to stray into.
+    cwd: packagedRun ? backendDir : data,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   })
 
   // The backend logs to its own file via the desktop profile; this catches what escapes Logback —
   // JVM crashes, missing-class errors, anything that happens before logging is configured.
-  child.stdout?.on('data', (chunk: Buffer) => log.info(`[backend] ${chunk.toString().trimEnd()}`))
+  // The same stream drives the splash screen's progress bar: startup milestones are recognised in
+  // the log lines as they happen, which is what makes the bar honest.
+  child.stdout?.on('data', (chunk: Buffer) => {
+    const text = chunk.toString()
+    log.info(`[backend] ${text.trimEnd()}`)
+    for (const milestone of STARTUP_MILESTONES) {
+      if (milestone.pattern.test(text)) advance(milestone.percent, milestone.label)
+    }
+  })
   child.stderr?.on('data', (chunk: Buffer) => log.warn(`[backend] ${chunk.toString().trimEnd()}`))
 
   await waitForReady(port, child)
+  advance(85, 'Backend ready')
   log.info(`Backend ready on 127.0.0.1:${port}`)
   return { port, process: child }
 }
