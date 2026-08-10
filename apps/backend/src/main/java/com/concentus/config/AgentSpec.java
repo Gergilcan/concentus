@@ -35,6 +35,16 @@ public class AgentSpec {
     /** When (and for what) the coordinator should delegate to this agent — its routing signal. */
     public String description = "";
     public String systemPrompt = "";
+    /**
+     * How the coordinator distributes work: {@code ""} (Claude Code subagents inside one CLI
+     * session — the default and the only behaviour that existed before this field) or
+     * {@code "fanout"} (one independent {@code claude} process per sub-agent). Read from the
+     * coordinator only; meaningless on sub-agents.
+     *
+     * <p>Normalized in {@link #validate()} so an unrecognized value falls back to the default
+     * rather than enabling anything — a typo must never switch a flow onto the experimental path.
+     */
+    public String execution = "";
 
     public ModelSpec model = new ModelSpec();
     public List<SkillSpec> skills = new ArrayList<>();
@@ -88,6 +98,9 @@ public class AgentSpec {
         cache.normalize();
         context.normalize();
         environment.normalize();
+        // Only the one non-default value passes through; anything else means "subagents".
+        execution = "fanout".equalsIgnoreCase(execution == null ? "" : execution.trim())
+                ? "fanout" : "";
     }
 
     private static void require(boolean cond, String message) {

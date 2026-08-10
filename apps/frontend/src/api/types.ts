@@ -249,6 +249,15 @@ export type AgentNodeData = {
    * deliberately do not offer it rather than showing a switch that would silently do nothing.
    */
   permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | ''
+  /**
+   * How the coordinator distributes work. **Coordinator only**, like `permissionMode`.
+   *
+   * Empty/absent = Claude Code subagents inside one CLI session (the behaviour every flow had
+   * before this existed). `fanout` = one independent `claude` process per sub-agent: own
+   * workspace, own instructions, own model, true parallelism — and, for now, no MCP servers and
+   * no repository clones inside workers (the run console says so on every fan-out turn).
+   */
+  execution?: 'subagents' | 'fanout' | ''
 }
 
 export type McpNodeData = {

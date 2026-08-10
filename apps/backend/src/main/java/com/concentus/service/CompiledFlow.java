@@ -12,6 +12,15 @@ import java.util.Map;
 public record CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents) {
 
     /**
+     * Whether this flow runs its sub-agents as independent {@code claude} processes (fan-out)
+     * instead of as Claude Code subagents inside the coordinator's session. Read from the
+     * coordinator because that is the node whose job the setting changes.
+     */
+    public boolean fanout() {
+        return "fanout".equalsIgnoreCase(coordinator.execution);
+    }
+
+    /**
      * Coordinator first, then sub-agents — the walk six call sites each wrote by hand, some
      * de-duplicating differently from others while iterating the same collection.
      */

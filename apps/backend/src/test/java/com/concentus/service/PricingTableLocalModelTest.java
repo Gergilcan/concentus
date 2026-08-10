@@ -73,6 +73,23 @@ class PricingTableLocalModelTest {
     }
 
     @Test
+    void anUnknownNonClaudeModelPricesAtAnExplicitZero() {
+        // A LiteLLM route or an Ollama tag the catalog has not seen: pricing it at Claude rates
+        // reports an authoritative-looking dollar figure for a bill that does not exist.
+        PricingTable pricing = table("");
+
+        assertThat(pricing.rateFor("qwen3:32b")).isEqualTo(PricingTable.FREE);
+        assertThat(pricing.costUsd("mistral-large", 1_000_000, 0, 0, 1_000_000)).isZero();
+    }
+
+    @Test
+    void anExplicitRateStillCostsAnUnknownNonClaudeModel() {
+        PricingTable pricing = table("mistral-large:2:6");
+
+        assertThat(pricing.rateFor("mistral-large").inputUsdPerMTok()).isEqualTo(2);
+    }
+
+    @Test
     void theFreeSetIsReplacedRatherThanAccumulated() {
         // It mirrors what the server currently serves; a model removed there must stop being free,
         // or an unrelated model that later takes its name would price at zero.

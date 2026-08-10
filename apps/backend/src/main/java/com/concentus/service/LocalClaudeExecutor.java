@@ -89,7 +89,7 @@ public class LocalClaudeExecutor {
      * <p>Deliberately well under the smallest limit: the rest of the command line — context
      * directories, the session id, the model — has to fit too.
      */
-    private static final int MAX_INLINE_PROMPT_CHARS = 4000;
+    static final int MAX_INLINE_PROMPT_CHARS = 4000;
 
     public LocalClaudeExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
                                McpRegistry mcpRegistry, ContextFolderResolver contextFolders,
@@ -552,7 +552,7 @@ public class LocalClaudeExecutor {
      * whole session, so this is what actually tells an agent which checkout is <em>its</em> one —
      * the guidance that stops a "WireJ" agent working in some other repo it can also see.
      */
-    private static void appendContextFolderNote(AgentSpec spec, StringBuilder out) {
+    static void appendContextFolderNote(AgentSpec spec, StringBuilder out) {
         if (spec.contextFolders == null || spec.contextFolders.isEmpty()) return;
         out.append("\n## Your context folders\n\n")
                 .append("Use these paths as the source of truth for your work:\n");
@@ -601,7 +601,7 @@ public class LocalClaudeExecutor {
      * <p>The stream is closed when the write finishes — that end-of-input is what tells the CLI
      * the prompt is complete.
      */
-    private static void writePromptToStdin(Process proc, String userText) {
+    static void writePromptToStdin(Process proc, String userText) {
         Thread writer = new Thread(() -> {
             try (var out = proc.getOutputStream()) {
                 out.write(userText.getBytes(StandardCharsets.UTF_8));
@@ -633,17 +633,7 @@ public class LocalClaudeExecutor {
         a.add("stream-json");
         a.add("--verbose");
         a.add("--permission-mode");
-        // The run's own mode when its flow named one, otherwise the deployment default. Read from
-        // the run rather than the flow so that editing the flow mid-run cannot change what an
-        // already-running agent is permitted to do.
-        // Approval mode is ours, not the CLI's: it maps to `plan` until a human approves — so the
-        // agent can read and propose but change nothing — and to full permission afterwards.
-        String mode = run.permissionMode == null || run.permissionMode.isBlank()
-                ? permissionMode : run.permissionMode;
-        if (APPROVAL_MODE.equalsIgnoreCase(mode)) {
-            mode = run.approved ? "bypassPermissions" : "plan";
-        }
-        a.add(mode);
+        a.add(effectivePermissionMode(run, permissionMode));
         a.add("--model");
         a.add(modelAlias(coord.model.id));
 
@@ -668,6 +658,25 @@ public class LocalClaudeExecutor {
         // only read the prompt from stdin, which is the point.
         if (promptOnStdin) a.add("-p");
         return a;
+    }
+
+    /**
+     * The CLI mode a run's turn actually gets. The run's own mode when its flow named one,
+     * otherwise the deployment default — read from the run rather than the flow so that editing
+     * the flow mid-run cannot change what an already-running agent is permitted to do.
+     *
+     * <p>Approval mode is ours, not the CLI's: it maps to {@code plan} until a human approves —
+     * so the agent can read and propose but change nothing — and to full permission afterwards.
+     * Shared with the fan-out executor so an independent worker can never be more permissive
+     * than the coordinator process would have been.
+     */
+    static String effectivePermissionMode(AgentRun run, String deploymentDefault) {
+        String mode = run.permissionMode == null || run.permissionMode.isBlank()
+                ? deploymentDefault : run.permissionMode;
+        if (APPROVAL_MODE.equalsIgnoreCase(mode)) {
+            return run.approved ? "bypassPermissions" : "plan";
+        }
+        return mode;
     }
 
     /**

@@ -56,7 +56,8 @@ class RunServiceTest {
         com.concentus.support.LocalClaudeSupport support = mock(com.concentus.support.LocalClaudeSupport.class);
         when(support.command()).thenReturn(java.util.Optional.of("claude"));
         return new com.concentus.execution.ExecutionBackends(List.of(
-                new com.concentus.execution.ClaudeCliExecutionBackend(localExecutor, support)));
+                new com.concentus.execution.ClaudeCliExecutionBackend(localExecutor,
+                        mock(FanoutExecutor.class), support)));
     }
 
     @AfterEach

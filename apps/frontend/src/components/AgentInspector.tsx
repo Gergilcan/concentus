@@ -112,6 +112,18 @@ export function AgentInspector({ data, set }: Props) {
             <option value="acceptEdits">Auto-accept file edits, ask for the rest</option>
             <option value="bypassPermissions">Bypass all checks</option>
           </SelectField>
+          <SelectField
+            label={
+              <span title="Subagents: one claude process runs the whole flow; sub-agents share its session, its folders and its MCP list, and run one at a time. Independent workers: one claude process per sub-agent — own workspace and instructions, own model, real parallelism; each worker is denied the Task tool so it cannot spawn more. Experimental: workers cannot reach MCP servers or repositories yet — the run console says so.">
+                Execution ⓘ
+              </span>
+            }
+            value={data.execution ?? ''}
+            onChange={(v) => set({ execution: v })}
+          >
+            <option value="">Subagents — one shared session</option>
+            <option value="fanout">Independent workers — one process per sub-agent (experimental)</option>
+          </SelectField>
         </>
       )}
       {skills.length > 0 && (

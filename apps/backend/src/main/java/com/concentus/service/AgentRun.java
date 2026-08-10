@@ -67,6 +67,19 @@ public class AgentRun {
     public volatile boolean localStarted = false;
     public volatile Process localProcess;
 
+    // --- fanout (independent worker processes) run state ---
+    /**
+     * Live worker processes by agent node id, so Stop can kill every one of them — a fan-out that
+     * only killed the coordinator would leave N orphaned {@code claude} processes still working.
+     */
+    public final Map<String, Process> workerProcesses = new ConcurrentHashMap<>();
+    /**
+     * Worker node ids whose workspace (CLAUDE.md, RAG injection) is already prepared. Guarded per
+     * run because RAG injection appends to the spec's system prompt — running it again on the next
+     * turn would stack a second copy of the same rows onto the same prompt.
+     */
+    public final java.util.Set<String> workersPrepared = ConcurrentHashMap.newKeySet();
+
     // --- self-hosted model run state ---
     /**
      * MCP sessions, kept for the life of the run.

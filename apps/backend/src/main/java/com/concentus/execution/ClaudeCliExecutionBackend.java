@@ -2,6 +2,7 @@ package com.concentus.execution;
 
 import com.concentus.service.AgentRun;
 import com.concentus.service.CompiledFlow;
+import com.concentus.service.FanoutExecutor;
 import com.concentus.service.LocalClaudeExecutor;
 import com.concentus.support.LocalClaudeSupport;
 import org.springframework.stereotype.Component;
@@ -19,10 +20,13 @@ import java.util.Locale;
 public class ClaudeCliExecutionBackend implements ExecutionBackend {
 
     private final LocalClaudeExecutor executor;
+    private final FanoutExecutor fanout;
     private final LocalClaudeSupport support;
 
-    public ClaudeCliExecutionBackend(LocalClaudeExecutor executor, LocalClaudeSupport support) {
+    public ClaudeCliExecutionBackend(LocalClaudeExecutor executor, FanoutExecutor fanout,
+                                     LocalClaudeSupport support) {
         this.executor = executor;
+        this.fanout = fanout;
         this.support = support;
     }
 
@@ -51,11 +55,20 @@ public class ClaudeCliExecutionBackend implements ExecutionBackend {
 
     @Override
     public void runTurn(AgentRun run, CompiledFlow flow, String userText) {
-        executor.runTurn(run, flow, userText);
+        // The flow's own choice, read from the run's compiled snapshot so editing the flow
+        // mid-run cannot move an already-running flow between execution styles.
+        if (flow.fanout()) {
+            fanout.runTurn(run, flow, userText);
+        } else {
+            executor.runTurn(run, flow, userText);
+        }
     }
 
     @Override
     public void stop(AgentRun run) {
+        // Workers first: executor.stop marks the run TERMINATED, and a fan-out that only killed
+        // the coordinator would leave N claude processes still working for a dead run.
+        fanout.stopWorkers(run);
         executor.stop(run);
     }
 }
