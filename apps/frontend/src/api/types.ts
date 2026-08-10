@@ -445,6 +445,8 @@ export interface AuthStatus {
   authenticated: boolean
   detail?: string | null
   hint?: string | null
+  /** Installed release version (from the desktop shell). Absent in dev / hand-run backends. */
+  appVersion?: string | null
 }
 
 // `type` aliases (not interfaces) so they satisfy the CrudPanel `Record<string, unknown>` constraint.

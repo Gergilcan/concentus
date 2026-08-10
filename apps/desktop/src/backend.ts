@@ -1,3 +1,4 @@
+import { app } from 'electron'
 import { ChildProcess, spawn } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as http from 'node:http'
@@ -182,6 +183,9 @@ export async function startBackend(): Promise<RunningBackend> {
     MCP_OAUTH_REDIRECT_BASE: `http://127.0.0.1:${port}`,
     // Blank is meaningful and safe: the backend then falls back to its own PATH resolution.
     CLAUDE_COMMAND: claude.command ?? '',
+    // What the header's version chip shows. Packaged only: a dev run's package.json version is
+    // a placeholder, and showing it would label every dev build as some unrelated release.
+    CONCENTUS_APP_VERSION: isPackaged() ? app.getVersion() : '',
   }
 
   const args = [

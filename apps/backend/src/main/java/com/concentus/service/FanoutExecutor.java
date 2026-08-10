@@ -480,6 +480,13 @@ public class FanoutExecutor {
             return new Attempt(false, false, null, "failed to start claude: " + e.getMessage());
         }
         run.workerProcesses.put(spec.nodeId, proc);
+        // Stop can race the spawn: stopWorkers() sweeps the map, and a process created after the
+        // sweep but registered here would be missed by it — an orphan working for a stopped run
+        // until its own timeout. Registering first and re-checking makes the pair safe in both
+        // orders: either the sweep sees the process, or this check sees the stop.
+        if ("TERMINATED".equals(run.status)) {
+            proc.destroy();
+        }
         if (promptOnStdin) {
             LocalClaudeExecutor.writePromptToStdin(proc, userText);
         } else {
@@ -734,10 +741,12 @@ public class FanoutExecutor {
             case "result" -> {
                 JsonNode usage = node.path("usage");
                 if (usage.isObject()) {
-                    run.totalInputTokens += usage.path("input_tokens").asLong(0);
-                    run.totalOutputTokens += usage.path("output_tokens").asLong(0);
-                    run.cacheReadTokens += usage.path("cache_read_input_tokens").asLong(0);
-                    run.cacheWriteTokens += usage.path("cache_creation_input_tokens").asLong(0);
+                    // Through the synchronized accrual: N workers report concurrently, and a
+                    // bare `volatile +=` here lost updates on CI's slower runners.
+                    run.accrueUsage(usage.path("input_tokens").asLong(0),
+                            usage.path("output_tokens").asLong(0),
+                            usage.path("cache_read_input_tokens").asLong(0),
+                            usage.path("cache_creation_input_tokens").asLong(0));
                 }
                 boolean bad = node.path("is_error").asBoolean(false);
                 String text = node.path("result").asText("");

@@ -81,12 +81,16 @@ public class SecurityConfig {
                     // These authenticate with a provider signature or a shared secret rather than
                     // a session cookie, so there is no session for CSRF to protect and no browser
                     // able to supply a token.
-                    // /runs/-/tools is called by the local claude CLI, which has no session and no
-                    // cookie; it authenticates every request with a per-run bearer token instead.
-                    .ignoringRequestMatchers("/api/webhooks/**", "/api/internal/**", "/api/runs/*/tools"))
+                    // The run tools endpoints are called by local claude CLI processes, which have
+                    // no session and no cookie; each authenticates every request with its own
+                    // bearer token instead — per run for /tools, per WORKER for the fan-out's
+                    // facade, and the run's token again for the planner's /plan.
+                    .ignoringRequestMatchers("/api/webhooks/**", "/api/internal/**",
+                            "/api/runs/*/tools", "/api/runs/*/workers/*/tools", "/api/runs/*/plan"))
             .authorizeHttpRequests(auth -> auth
                     .requestMatchers("/api/webhooks/**", "/api/internal/**").permitAll()
-                    .requestMatchers("/api/runs/*/tools").permitAll()
+                    .requestMatchers("/api/runs/*/tools", "/api/runs/*/workers/*/tools",
+                            "/api/runs/*/plan").permitAll()
                     // Signing in, and asking whether you are signed in, cannot themselves require
                     // a session.
                     .requestMatchers("/api/account/login", "/api/account/session").permitAll()

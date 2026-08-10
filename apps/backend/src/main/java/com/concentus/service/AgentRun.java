@@ -191,6 +191,22 @@ public class AgentRun {
     public volatile long cacheReadTokens;
     public volatile long cacheWriteTokens;
 
+    /**
+     * Adds one usage report to the run's totals.
+     *
+     * <p>Synchronized, and this is not defensive decoration: fan-out workers stream concurrently,
+     * and {@code volatile total += n} is a read-modify-write that loses updates under contention.
+     * CI caught it — two workers each reporting 10 input tokens totalled 10. The single-session
+     * paths accrue from one thread and were never wrong, but they use this too so there is one
+     * way to add usage rather than a safe one and a racy one.
+     */
+    public synchronized void accrueUsage(long input, long output, long cacheRead, long cacheWrite) {
+        totalInputTokens += input;
+        totalOutputTokens += output;
+        cacheReadTokens += cacheRead;
+        cacheWriteTokens += cacheWrite;
+    }
+
     /** Get or create the execution record for a node. Returns null if nodeId is unknown. */
     public NodeExec nodeExec(String nodeId, String kind, String label) {
         if (nodeId == null || nodeId.isBlank()) return null;

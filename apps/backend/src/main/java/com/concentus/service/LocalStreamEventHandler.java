@@ -180,10 +180,10 @@ final class LocalStreamEventHandler {
      */
     private void accrueTotals(AgentRun run, JsonNode usage) {
         if (!usage.isObject()) return;
-        run.totalInputTokens += usage.path("input_tokens").asLong(0);
-        run.cacheReadTokens += usage.path("cache_read_input_tokens").asLong(0);
-        run.cacheWriteTokens += usage.path("cache_creation_input_tokens").asLong(0);
-        run.totalOutputTokens += usage.path("output_tokens").asLong(0);
+        run.accrueUsage(usage.path("input_tokens").asLong(0),
+                usage.path("output_tokens").asLong(0),
+                usage.path("cache_read_input_tokens").asLong(0),
+                usage.path("cache_creation_input_tokens").asLong(0));
     }
 
     /** Sets status/error/endedAt on a node execution record; a no-op if {@code ne} is null. */
