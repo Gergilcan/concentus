@@ -213,6 +213,8 @@ export const api = {
     return req<import('./types.ts').SkillInfo>('/skills', { method: 'POST', body: form }, 120_000)
   },
   deleteSkill: (id: string) => req<void>(`/skills/${id}`, { method: 'DELETE' }),
+  /** Measured Claude consumption on this machine (CLI transcripts). Cached 30s server-side. */
+  usageSummary: () => req<import('./types.ts').UsageSummary>('/usage'),
   listDatabases: () => req<DatabaseDef[]>('/databases'),
   saveDatabase: (d: DatabaseDef) =>
     req<DatabaseDef>('/databases', { method: 'POST', body: JSON.stringify(d) }),

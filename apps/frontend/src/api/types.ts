@@ -601,3 +601,18 @@ export interface SkillInfo {
   description: string
   fileCount: number
 }
+
+/** Measured Claude consumption on this machine, from the CLI's transcripts. */
+export interface UsageWindow {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  estimatedUsd: number
+  messages: number
+}
+export interface UsageSummary {
+  available: boolean
+  windows: { last5h: UsageWindow; today: UsageWindow; week: UsageWindow }
+  models: Array<{ model: string } & Omit<UsageWindow, 'messages'>>
+}

@@ -1,7 +1,7 @@
 import { AuthBadge } from './AuthBadge.tsx'
 import styles from './appheader.module.scss'
 
-export type View = 'flows' | 'studio' | 'resources'
+export type View = 'flows' | 'studio' | 'resources' | 'usage'
 
 interface Props {
   view: View
@@ -29,6 +29,9 @@ export function AppHeader({ view, onView, signedInAs, onSignOut }: Props) {
           onClick={() => onView('resources')}
         >
           Resources
+        </button>
+        <button className={view === 'usage' ? styles.active : ''} onClick={() => onView('usage')}>
+          Usage
         </button>
       </nav>
       <div className={styles.spacer} />
