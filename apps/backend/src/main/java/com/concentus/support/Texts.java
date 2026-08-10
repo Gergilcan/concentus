@@ -16,6 +16,11 @@ public final class Texts {
     public static String brief(String body, int max) {
         if (body == null) return "";
         String t = body.strip();
-        return t.length() <= max ? t : t.substring(0, max) + "…";
+        if (t.length() <= max) return t;
+        // Surrogate-safe: cutting at a fixed index can split an emoji into a lone surrogate that
+        // some JSON writers refuse to encode. Step back one when the cut lands mid-pair.
+        int cut = max;
+        if (Character.isHighSurrogate(t.charAt(cut - 1))) cut--;
+        return t.substring(0, cut) + "…";
     }
 }

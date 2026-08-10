@@ -5,6 +5,7 @@ import com.concentus.model.RunSummary;
 import com.concentus.model.TriggerSpec;
 import com.concentus.service.RunService;
 import com.concentus.store.FlowStore;
+import com.concentus.support.Texts;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -111,10 +112,9 @@ public class WebhookController {
         }
         requireFreshTimestamp(raw);
 
-        String payload = new String(raw, StandardCharsets.UTF_8);
-        if (payload.length() > MAX_PAYLOAD) {
-            payload = payload.substring(0, MAX_PAYLOAD) + "\n…(payload truncated)";
-        }
+        // Texts.brief rather than a fixed-index substring, which could split an emoji in a Linear
+        // comment into a lone surrogate — the same latent bug just fixed in the extractors.
+        String payload = Texts.brief(new String(raw, StandardCharsets.UTF_8), MAX_PAYLOAD);
         String instruction = (trigger.prompt() == null || trigger.prompt().isBlank())
                 ? "A webhook event was received. Decide what to do and act on it."
                 : trigger.prompt();

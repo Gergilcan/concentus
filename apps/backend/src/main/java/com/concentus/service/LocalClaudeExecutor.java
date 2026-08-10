@@ -1,7 +1,9 @@
 package com.concentus.service;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.config.AgentSpec;
 import com.concentus.config.AgentSpec.McpServerSpec;
+import com.concentus.llm.McpOAuthStore;
 import com.concentus.model.NodeExec;
 import com.concentus.git.GitWorkspace;
 import com.concentus.model.RunEvent;
@@ -51,8 +53,8 @@ public class LocalClaudeExecutor {
     private final String dataDir;
     private final boolean autoRegisterMcp;
     private final ObjectMapper mapper;
-    private final com.concentus.llm.McpOAuthStore mcpOAuthStore;
-    private final com.concentus.auth.OrgContext orgContext;
+    private final McpOAuthStore mcpOAuthStore;
+    private final OrgContext orgContext;
     /** See {@link #writeMcpConfig}: runs see only the flow's MCP servers, not the user's list. */
     private final boolean strictMcp;
     /**
@@ -90,8 +92,8 @@ public class LocalClaudeExecutor {
                                McpRegistry mcpRegistry, ContextFolderResolver contextFolders,
                                GitWorkspace gitWorkspace,
                                ObjectMapper mapper,
-                               com.concentus.llm.McpOAuthStore mcpOAuthStore,
-                               com.concentus.auth.OrgContext orgContext,
+                               McpOAuthStore mcpOAuthStore,
+                               OrgContext orgContext,
                                @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                                @Value("${app.data-dir}") String dataDir,
                                @Value("${local.auto-register-mcp:true}") boolean autoRegisterMcp,
