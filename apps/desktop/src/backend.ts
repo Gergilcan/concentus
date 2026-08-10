@@ -2,7 +2,8 @@ import { ChildProcess, spawn } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as http from 'node:http'
 import * as net from 'node:net'
-import { backendJar, backendLogFile, dataDir, javaBinary } from './paths'
+import * as path from 'node:path'
+import { backendJar, backendLogFile, dataDir, isPackaged, javaBinary } from './paths'
 import { resolveClaudeCli } from './claude-cli'
 import { killOrphans } from './orphans'
 import { masterSecret } from './secret'
@@ -111,10 +112,46 @@ async function waitForReady(port: number, child: ChildProcess): Promise<void> {
   throw new Error(`The backend did not become ready within ${STARTUP_TIMEOUT_MS / 1000}s.`)
 }
 
+/**
+ * In the repo, run a COPY of the jar — never Maven's own artifact.
+ *
+ * A JVM keeps its jar open for its whole lifetime (classes are read from the zip on demand), and
+ * on Windows that open handle blocks `mvn clean` and lets `spring-boot:repackage` half-write the
+ * artifact a running app still holds — which is exactly how `target/concentus-backend.jar` kept
+ * ending up as "no main manifest attribute" whenever it was rebuilt with the app open. Staging a
+ * copy means the Maven artifact is always free to rebuild; the NEXT launch picks the build up.
+ *
+ * The copy keeps the same file name, because the orphan sweep identifies leftover backends by
+ * `concentus-backend.jar` appearing in a java command line — a renamed copy would escape it.
+ * Skipped when the source is unchanged (size+mtime), so a normal launch costs one stat, not an
+ * 80MB copy. Packaged builds run the installed jar directly: nothing ever rebuilds it in place.
+ */
+function stageJarForRun(jar: string): string {
+  if (isPackaged()) return jar
+  const staged = path.join(dataDir(), 'backend-run', 'concentus-backend.jar')
+  try {
+    const src = fs.statSync(jar)
+    const dst = fs.existsSync(staged) ? fs.statSync(staged) : null
+    if (!dst || dst.size !== src.size || dst.mtimeMs !== src.mtimeMs) {
+      fs.mkdirSync(path.dirname(staged), { recursive: true })
+      fs.copyFileSync(jar, staged)
+      // Mirror the source's mtime so the skip check above compares like with like next launch.
+      fs.utimesSync(staged, src.atime, src.mtime)
+      log.info(`Staged a fresh backend jar copy at ${staged}.`)
+    }
+    return staged
+  } catch (err) {
+    // Degrade to the old behaviour rather than refusing to start: running the artifact directly
+    // worked for months — its only cost is that rebuilding while the app runs corrupts the build.
+    log.warn(`Could not stage the backend jar (${err instanceof Error ? err.message : String(err)}); running ${jar} directly.`)
+    return jar
+  }
+}
+
 export async function startBackend(): Promise<RunningBackend> {
-  const jar = backendJar()
-  if (!fs.existsSync(jar)) {
-    throw new Error(`Backend jar not found at ${jar}. Build it with: pnpm backend:build`)
+  const artifact = backendJar()
+  if (!fs.existsSync(artifact)) {
+    throw new Error(`Backend jar not found at ${artifact}. Build it with: pnpm backend:build`)
   }
 
   // Before choosing a port, not after: a leftover backend from a hard-killed previous run holds
@@ -122,6 +159,10 @@ export async function startBackend(): Promise<RunningBackend> {
   // drifting to an ephemeral port. It also removes the orphaned embedded postgres that would
   // otherwise fail this start with "already running" on our own data directory.
   await killOrphans()
+
+  // After the sweep, deliberately: a leftover backend may still hold the previous staged copy,
+  // and copying over a locked file fails on Windows exactly like the problem this solves.
+  const jar = stageJarForRun(artifact)
 
   const java = javaBinary()
   const port = await choosePort()
