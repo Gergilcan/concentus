@@ -12,6 +12,7 @@ import type {
   BackendFlow,
   DatabaseDef,
   EmbedderStatus,
+  FlowMemoryView,
   KnowledgeDef,
   KnowledgeDoc,
   KnowledgeHit,
@@ -125,6 +126,9 @@ export const api = {
   listFlowVersions: (id: string) => req<FlowVersionInfo[]>(`/flows/${id}/versions`),
   restoreFlowVersion: (id: string, version: number) =>
     req<BackendFlow>(`/flows/${id}/versions/${version}/restore`, { method: 'POST' }),
+  /** Notes this flow's agents left for future runs (memory_append), newest first. */
+  getFlowMemory: (id: string) => req<FlowMemoryView>(`/flows/${id}/memory`),
+  clearFlowMemory: (id: string) => req<void>(`/flows/${id}/memory`, { method: 'DELETE' }),
 
   // runs
   listRuns: () => req<RunSummary[]>('/runs'),

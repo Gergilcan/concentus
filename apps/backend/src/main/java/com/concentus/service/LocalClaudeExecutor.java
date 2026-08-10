@@ -310,6 +310,7 @@ public class LocalClaudeExecutor {
         }
         appendContextFolderNote(coord, claudeMd);
         appendRepositoryNote(run, claudeMd);
+        appendMemoryNote(run, claudeMd);
         appendDelegationRoster(coord, claudeMd);
         if (!claudeMd.isEmpty()) {
             Files.writeString(workdir.resolve("CLAUDE.md"), claudeMd.toString());
@@ -433,10 +434,13 @@ public class LocalClaudeExecutor {
         }
 
         // API nodes become tools served by this very backend, per run. The CLI reaches them like
-        // any other MCP server; the per-run token in the header is what scopes it.
+        // any other MCP server; the per-run token in the header is what scopes it. The same
+        // endpoint also serves the flow's memory tools, which every saved flow gets — so the
+        // server entry is written whenever either is present, not only for API nodes.
         List<AgentSpec.ApiSourceSpec> apis = new ArrayList<>();
         for (AgentSpec agent : run.compiled.allAgents()) apis.addAll(agent.apiSources);
-        if (!apis.isEmpty()) {
+        boolean hasMemory = run.flowId != null && !run.flowId.isBlank();
+        if (!apis.isEmpty() || hasMemory) {
             if (run.toolToken == null) run.toolToken = java.util.UUID.randomUUID().toString();
             var server = mapper.createObjectNode();
             server.put("type", "http");
@@ -453,8 +457,14 @@ public class LocalClaudeExecutor {
                     ne.endedAt = System.currentTimeMillis();
                 }
             }
-            run.emit(RunEvent.of("system", "API tools: " + apis.size() + " node(s), "
-                    + apis.stream().mapToInt(a -> a.ops.size()).sum() + " operation(s) allowed."));
+            if (!apis.isEmpty()) {
+                run.emit(RunEvent.of("system", "API tools: " + apis.size() + " node(s), "
+                        + apis.stream().mapToInt(a -> a.ops.size()).sum() + " operation(s) allowed."));
+            }
+            if (hasMemory) {
+                run.emit(RunEvent.of("system",
+                        "Memory: this flow keeps notes across runs (memory_read / memory_append)."));
+            }
         }
 
         var root = mapper.createObjectNode();
@@ -480,6 +490,28 @@ public class LocalClaudeExecutor {
             run.emit(RunEvent.of("system",
                     "CLAUDE.md could not be read for " + spec.name + ": " + e.getMessage()));
         }
+    }
+
+    /**
+     * Tells the agent its flow has a memory, and what it is for.
+     *
+     * <p>Written into the instructions rather than left to tool discovery: a tool list says a
+     * memory <em>exists</em>, but not that reading it first is the expected opening move — without
+     * this note agents reliably redo whatever the previous run already learned.
+     */
+    private static void appendMemoryNote(AgentRun run, StringBuilder md) {
+        if (run.flowId == null || run.flowId.isBlank()) return;
+        md.append("""
+
+            ## Flow memory
+
+            This flow keeps a persistent memory: short notes that survive between runs, shared by
+            every execution of this flow. Read it with the `memory_read` tool before starting
+            work — a previous run may have left you something. When you learn something a future
+            run should know (a decision taken, state reached, an approach that failed), save it
+            with `memory_append`. Keep notes short and factual; they are shared notes for your
+            future self, not a transcript of this conversation.
+            """);
     }
 
     /** Names the skills assigned to this agent, so it reaches for them instead of improvising. */

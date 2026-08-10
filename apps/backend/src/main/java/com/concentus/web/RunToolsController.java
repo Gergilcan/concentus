@@ -6,6 +6,7 @@ import com.concentus.config.AgentSpec;
 import com.concentus.config.AgentSpec.ApiSourceSpec;
 import com.concentus.service.AgentRun;
 import com.concentus.service.RunService;
+import com.concentus.store.FlowMemoryStore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -22,7 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -45,17 +50,22 @@ public class RunToolsController {
     private static final Logger log = LoggerFactory.getLogger(RunToolsController.class);
     public static final String TOKEN_HEADER = "X-Concentus-Tools-Token";
 
+    /** How many notes {@code memory_read} returns — the newest ones, in chronological order. */
+    static final int MEMORY_READ_LIMIT = 50;
+
     private final RunService runs;
     private final OpenApiCatalog catalog;
     private final ApiCaller caller;
     private final ObjectMapper mapper;
+    private final FlowMemoryStore memory;
 
     public RunToolsController(RunService runs, OpenApiCatalog catalog, ApiCaller caller,
-                              ObjectMapper mapper) {
+                              ObjectMapper mapper, FlowMemoryStore memory) {
         this.runs = runs;
         this.catalog = catalog;
         this.caller = caller;
         this.mapper = mapper;
+        this.memory = memory;
     }
 
     @PostMapping
@@ -135,11 +145,100 @@ public class RunToolsController {
                     : tool.op().description()) + " [" + tool.op().key() + "]");
             t.set("inputSchema", catalog.inputSchema(tool.op()));
         });
+        if (hasMemory(run)) appendMemoryTools(tools);
         return result;
+    }
+
+    // ------------------------------------------------------------- flow memory
+
+    /**
+     * Memory belongs to a flow, not a run, so only runs of a saved flow get the tools. An ad-hoc
+     * canvas has no stable identity for notes to survive under — the tools are absent rather than
+     * present-but-failing, so the model never plans around a memory it cannot have.
+     */
+    private static boolean hasMemory(AgentRun run) {
+        return run.flowId != null && !run.flowId.isBlank();
+    }
+
+    private void appendMemoryTools(ArrayNode tools) {
+        ObjectNode read = tools.addObject();
+        read.put("name", "memory_read");
+        read.put("description", "Read this flow's persistent memory: notes that previous runs of "
+                + "this same flow left behind. Call it before starting work — an earlier run may "
+                + "already have learned something you are about to redo. Returns the newest "
+                + MEMORY_READ_LIMIT + " notes, oldest first.");
+        ObjectNode readSchema = read.putObject("inputSchema");
+        readSchema.put("type", "object");
+        readSchema.putObject("properties");
+
+        ObjectNode append = tools.addObject();
+        append.put("name", "memory_append");
+        append.put("description", "Leave a note in this flow's persistent memory, readable by "
+                + "every future run of this flow. Use it when you learn something a future run "
+                + "should know: a decision taken, state reached, an approach that failed. Keep it "
+                + "short and factual — memory is shared notes, not a transcript.");
+        ObjectNode appendSchema = append.putObject("inputSchema");
+        appendSchema.put("type", "object");
+        appendSchema.putObject("properties").putObject("note")
+                .put("type", "string")
+                .put("description", "The note to remember, at most "
+                        + FlowMemoryStore.MAX_NOTE_CHARS + " characters.");
+        appendSchema.putArray("required").add("note");
+    }
+
+    private ObjectNode memoryRead(AgentRun run) {
+        if (!memory.isAvailable()) {
+            return callResult(true, "Memory is unavailable right now: the database cannot be "
+                    + "reached. Work without it and say so in your answer.");
+        }
+        List<FlowMemoryStore.Note> notes = memory.recent(run.flowId, MEMORY_READ_LIMIT);
+        run.emit(com.concentus.model.RunEvent.of("tool_use",
+                "Memory: read " + notes.size() + " note(s)"));
+        if (notes.isEmpty()) {
+            return callResult(false, "This flow's memory is empty — no previous run has left a "
+                    + "note yet.");
+        }
+        int total = memory.count(run.flowId);
+        StringBuilder text = new StringBuilder();
+        text.append(total).append(" note(s)");
+        if (total > notes.size()) {
+            text.append(" — showing the newest ").append(notes.size());
+        }
+        text.append(", oldest first:\n");
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+        for (FlowMemoryStore.Note n : notes) {
+            String when = fmt.format(Instant.ofEpochMilli(n.createdAt())
+                    .atZone(ZoneId.systemDefault()));
+            text.append("\n[").append(when).append("] ").append(n.note());
+        }
+        return callResult(false, text.toString());
+    }
+
+    private ObjectNode memoryAppend(AgentRun run, JsonNode params) {
+        if (!memory.isAvailable()) {
+            return callResult(true, "The note was NOT saved: the database cannot be reached. "
+                    + "Do not claim it was remembered.");
+        }
+        String note = params.path("arguments").path("note").asText("");
+        try {
+            memory.append(run.flowId, run.id, note);
+        } catch (IllegalArgumentException e) {
+            return callResult(true, e.getMessage());
+        } catch (Exception e) {
+            return callResult(true, "The note was NOT saved: " + e.getMessage());
+        }
+        int total = memory.count(run.flowId);
+        run.emit(com.concentus.model.RunEvent.of("tool_use",
+                "Memory: note saved (" + total + " total)"));
+        return callResult(false, "Saved. This flow now has " + total + " note(s).");
     }
 
     private ObjectNode toolsCall(AgentRun run, JsonNode params) {
         String name = params.path("name").asText("");
+        if (hasMemory(run)) {
+            if ("memory_read".equals(name)) return memoryRead(run);
+            if ("memory_append".equals(name)) return memoryAppend(run, params);
+        }
         ResolvedTool tool = resolve(run).get(name);
         if (tool == null) {
             return callResult(true, "Unknown tool '" + name + "'. Call tools/list for the current set.");

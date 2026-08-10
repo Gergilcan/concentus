@@ -358,6 +358,25 @@ export interface FlowVersionInfo {
   createdAt: number
 }
 
+// --- Flow memory ------------------------------------------------------------
+
+/** One note an agent left for future runs of its flow (memory_append). */
+export interface FlowMemoryNote {
+  id: number
+  /** The run that wrote it — may no longer exist; the note deliberately outlives it. */
+  runId?: string | null
+  note: string
+  createdAt: number
+}
+
+/** A flow's persistent memory as the settings dialog shows it: newest first. */
+export interface FlowMemoryView {
+  /** False when the database is unreachable — the notes may exist but cannot be read. */
+  available: boolean
+  count: number
+  notes: FlowMemoryNote[]
+}
+
 
 export interface AuthStatus {
   mode: string
