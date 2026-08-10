@@ -412,7 +412,7 @@
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg></div>
           <div class="k">Tools</div>
           <h3>Bring your world in</h3>
-          <p>Connect MCP servers like GitHub and Linear. Studio registers and authorizes them for you.</p>
+          <p>A one-click catalog of MCP servers — GitHub, Linear, Notion, Stripe and more — each saying how it authenticates. Every run sees only the servers wired into its own flow, never your whole list.</p>
         </div>
         <div class="card" data-reveal style="--cc:var(--sql)">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
@@ -420,12 +420,24 @@
           <h3>Answers from your database</h3>
           <p>Point a SQL node at any JDBC database; its rows are retrieved and injected into agent context at run time.</p>
         </div>
+        <div class="card" data-reveal style="--cc:var(--accent)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15z"/></svg></div>
+          <div class="k">Knowledge</div>
+          <h3>Your documents, retrieved when relevant</h3>
+          <p>Upload PDFs, Word, Excel or whole folders into a knowledge base. Semantic search runs inside the app — a one-click model download, no Ollama, no Docker — and each run receives just the passages that matter to it.</p>
+        </div>
+        <div class="card" data-reveal style="--cc:var(--coord)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg></div>
+          <div class="k">Control</div>
+          <h3>Approve the plan before it acts</h3>
+          <p>Set a flow to propose first: the agent works out its plan, stops, and waits. You get a desktop notification, read the plan, and approve or reject — nothing changes until you say so.</p>
+        </div>
 
         <div class="card" data-reveal style="--cc:var(--repo)">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/></svg></div>
           <div class="k">Library</div>
           <h3>Reusable resources</h3>
-          <p>Save agents, MCP servers, and database connections once — then select them in any flow.</p>
+          <p>Save agents, MCP servers, database connections and knowledge bases once — then select them in any flow. Six starter templates come installed, from a PR review crew to a mailbox assistant.</p>
         </div>
         <div class="card" data-reveal style="--cc:var(--accent)">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8"/></svg></div>
@@ -437,7 +449,7 @@
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="4"/></svg></div>
           <div class="k">Efficiency</div>
           <h3>Lean by default</h3>
-          <p>Cheaper models for volume, stronger ones for judgment, and prompts written to spend tokens carefully.</p>
+          <p>Cheaper models for volume, stronger ones for judgment — and per-agent tool allowlists, so a reviewer that only needs to read can never edit or run commands.</p>
         </div>
 
         <div class="card wide" data-reveal style="--cc:var(--repo)">
@@ -728,8 +740,27 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
   (function () {
     // NOT /releases/latest: that endpoint ignores pre-releases and 404s while the newest build is
     // one. Listing and picking is the only way to always have something to offer.
-    fetch('https://api.github.com/repos/Gergilcan/concentus/releases?per_page=10')
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error(r.status)); })
+    //
+    // Cached for an hour: the unauthenticated API allows 60 requests/hour per IP, shared by every
+    // tab and every visitor behind one NAT. Without the cache, an office hitting the page burns
+    // the budget and everyone silently falls back to the releases page; with it, a release is at
+    // most an hour late for a repeat visitor, which a release page can afford.
+    var CACHE_KEY = 'concentus.releases';
+    var CACHE_TTL_MS = 60 * 60 * 1000;
+    function fetchReleases() {
+      try {
+        var cached = JSON.parse(localStorage.getItem(CACHE_KEY));
+        if (cached && Date.now() - cached.at < CACHE_TTL_MS) return Promise.resolve(cached.data);
+      } catch (e) { /* corrupt cache — refetch */ }
+      return fetch('https://api.github.com/repos/Gergilcan/concentus/releases?per_page=10')
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error(r.status)); })
+        .then(function (data) {
+          try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), data: data })); }
+          catch (e) { /* storage full or blocked — fine, just uncached */ }
+          return data;
+        });
+    }
+    fetchReleases()
       .then(function (releases) {
         var published = (releases || []).filter(function (r) { return !r.draft; });
         // A stable release wins; a pre-release is offered only when it is all there is, and is

@@ -79,6 +79,6 @@ public class SpreadsheetTextExtractor implements AttachmentTextExtractor {
             }
         }
         String text = out.toString().trim();
-        return text.length() > MAX_CHARS ? text.substring(0, MAX_CHARS) + "\n…(truncated)" : text;
+        return ExtractedText.clamp(text, MAX_CHARS);
     }
 }

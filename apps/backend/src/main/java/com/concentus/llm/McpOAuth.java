@@ -1,5 +1,6 @@
 package com.concentus.llm;
 
+import com.concentus.support.Texts;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -327,7 +328,7 @@ public class McpOAuth {
                 // The request body carries a code or a refresh token, so only the response is
                 // quoted — and that is redacted, since some servers echo the request back.
                 throw new OAuthNotSupported("The authorization server returned " + res.statusCode()
-                        + ": " + com.concentus.integration.Redact.secrets(brief(res.body())));
+                        + ": " + com.concentus.integration.Redact.secrets(Texts.brief(res.body(), 300)));
             }
             return mapper.readTree(res.body());
         } catch (OAuthNotSupported e) {
@@ -340,11 +341,6 @@ public class McpOAuth {
         }
     }
 
-    private static String brief(String body) {
-        if (body == null) return "";
-        String t = body.strip();
-        return t.length() <= 300 ? t : t.substring(0, 300) + "…";
-    }
 
     private static String enc(String s) {
         return URLEncoder.encode(s, StandardCharsets.UTF_8);

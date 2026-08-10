@@ -11,6 +11,31 @@ import java.util.Map;
 /** A flow reduced to executable specs: one coordinator plus its sub-agent roster. */
 public record CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents) {
 
+    /**
+     * Coordinator first, then sub-agents — the walk six call sites each wrote by hand, some
+     * de-duplicating differently from others while iterating the same collection.
+     */
+    public List<AgentSpec> allAgents() {
+        List<AgentSpec> all = new ArrayList<>(1 + subAgents.size());
+        all.add(coordinator);
+        all.addAll(subAgents);
+        return all;
+    }
+
+    /**
+     * Display name for an agent node id, or null when no agent has it. The scan both stream
+     * handlers kept privately — which meant cloud and local runs could label the same node
+     * differently.
+     */
+    public String agentName(String nodeId) {
+        if (nodeId == null) return null;
+        if (nodeId.equals(coordinator.nodeId)) return coordinator.name;
+        for (AgentSpec s : subAgents) {
+            if (nodeId.equals(s.nodeId)) return s.name;
+        }
+        return null;
+    }
+
     /** All repository mounts across coordinator + sub-agents, de-duplicated by URL. */
     public List<RepoSpec> allRepos() {
         Map<String, RepoSpec> byUrl = new LinkedHashMap<>();

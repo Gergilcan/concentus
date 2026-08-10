@@ -45,7 +45,7 @@ public final class HtmlToText {
                 .replaceAll("(?m)^[ \\t]+", "")
                 .replaceAll("\\n{3,}", "\n\n")
                 .trim();
-        return text.length() > MAX_LENGTH ? text.substring(0, MAX_LENGTH) + "\n…(truncated)" : text;
+        return ExtractedText.clamp(text, MAX_LENGTH);
     }
 
     private static void renderChildren(Element parent, StringBuilder out) {

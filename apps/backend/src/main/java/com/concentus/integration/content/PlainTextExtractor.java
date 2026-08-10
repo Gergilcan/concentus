@@ -28,6 +28,6 @@ public class PlainTextExtractor implements AttachmentTextExtractor {
         if (text.indexOf('�') >= 0) {
             text = new String(bytes, StandardCharsets.ISO_8859_1);
         }
-        return text.length() > MAX_CHARS ? text.substring(0, MAX_CHARS) + "\n…(truncated)" : text;
+        return ExtractedText.clamp(text, MAX_CHARS);
     }
 }

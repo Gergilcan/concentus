@@ -5,6 +5,7 @@ import com.concentus.model.RunSummary;
 import com.concentus.model.TriggerSpec;
 import com.concentus.service.RunService;
 import com.concentus.store.FlowStore;
+import com.concentus.support.Texts;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -111,14 +112,22 @@ public class WebhookController {
         }
         requireFreshTimestamp(raw);
 
-        String payload = new String(raw, StandardCharsets.UTF_8);
-        if (payload.length() > MAX_PAYLOAD) {
-            payload = payload.substring(0, MAX_PAYLOAD) + "\n…(payload truncated)";
-        }
+        // Texts.brief rather than a fixed-index substring, which could split an emoji in a Linear
+        // comment into a lone surrogate — the same latent bug just fixed in the extractors.
+        String payload = Texts.brief(new String(raw, StandardCharsets.UTF_8), MAX_PAYLOAD);
         String instruction = (trigger.prompt() == null || trigger.prompt().isBlank())
                 ? "A webhook event was received. Decide what to do and act on it."
                 : trigger.prompt();
-        String prompt = instruction + "\n\nEvent payload (JSON):\n```json\n" + payload + "\n```";
+        // Fenced like mail, not wrapped in a markdown block: a payload containing ``` closed that
+        // block and continued in the prompt's own voice. Webhook payloads are exactly as
+        // attacker-controlled as email bodies — anyone who learns the URL and secret, and any
+        // Linear or GitHub comment body riding along in an event. The metadata lines are
+        // established by this controller, not by anything the payload claims about itself.
+        String prompt = instruction
+                + "\n\nVerified request metadata (established by Concentus, not by the payload):"
+                + "\n- received: " + java.time.Instant.now()
+                + "\n- payload bytes: " + raw.length
+                + "\n\n" + com.concentus.integration.UntrustedContent.fenced("event payload", payload);
 
         try {
             RunSummary run = runService.start(flow, prompt);

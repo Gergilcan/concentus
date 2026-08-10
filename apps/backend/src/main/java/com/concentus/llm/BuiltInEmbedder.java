@@ -208,7 +208,10 @@ public class BuiltInEmbedder {
                 // because chunking upstream already keeps passages far below this.
                 .optMaxLength(512)
                 .optTruncation(true)
-                .optPadToMaxLength()
+                // Pad to the longest text in each batch, not always to 512: a one-word query used
+                // to cost a full 512-token forward pass, and every chunk paid for the padding of
+                // the ceiling rather than of its batch.
+                .optPadding(true)
                 .build();
         state.set(State.READY);
     }
@@ -228,42 +231,55 @@ public class BuiltInEmbedder {
      * @param queries true when embedding search queries, false for stored passages — E5's
      *                training makes the distinction, so this API does too
      */
+    /** Batch size per forward pass: big enough to amortise, small enough to keep memory flat. */
+    private static final int BATCH = 16;
+
     public synchronized List<float[]> embed(List<String> texts, boolean queries) {
         if (!isReady()) throw new IllegalStateException("The built-in embedding model is not ready.");
         String prefix = queries ? "query: " : "passage: ";
         List<float[]> out = new ArrayList<>(texts.size());
         try {
-            // Which tensors to feed is read from the model, not assumed: BERT-family exports want
-            // token_type_ids and fail deep inside a Gather node without it, while others declare
-            // only two inputs and reject a third. Since the model URL is configurable, asking the
-            // session is the only thing that stays correct across models.
             boolean wantsTypeIds = session.getInputNames().contains("token_type_ids");
+            for (int start = 0; start < texts.size(); start += BATCH) {
+                List<String> slice = texts.subList(start, Math.min(start + BATCH, texts.size()));
+                String[] prefixed = new String[slice.size()];
+                for (int i = 0; i < slice.size(); i++) prefixed[i] = prefix + slice.get(i);
 
-            for (String text : texts) {
-                Encoding encoding = tokenizer.encode(prefix + text);
-                long[] ids = encoding.getIds();
-                long[] mask = encoding.getAttentionMask();
+                // One forward pass per batch instead of per text: ingesting a document capped at
+                // 2000 chunks used to mean 2000 separate inferences.
+                Encoding[] encodings = tokenizer.batchEncode(prefixed);
+                int len = encodings[0].getIds().length;
+                long[][] ids = new long[encodings.length][];
+                long[][] mask = new long[encodings.length][];
+                long[][] typeIds = wantsTypeIds ? new long[encodings.length][] : null;
+                for (int i = 0; i < encodings.length; i++) {
+                    ids[i] = encodings[i].getIds();
+                    mask[i] = encodings[i].getAttentionMask();
+                    if (typeIds != null) {
+                        long[] t = encodings[i].getTypeIds();
+                        typeIds[i] = t != null && t.length == len ? t : new long[len];
+                    }
+                }
+
                 List<OnnxTensor> owned = new ArrayList<>(3);
                 try {
                     Map<String, OnnxTensor> inputs = new java.util.LinkedHashMap<>();
-                    OnnxTensor idsTensor = OnnxTensor.createTensor(environment, new long[][]{ids});
+                    OnnxTensor idsTensor = OnnxTensor.createTensor(environment, ids);
                     owned.add(idsTensor);
                     inputs.put("input_ids", idsTensor);
-                    OnnxTensor maskTensor = OnnxTensor.createTensor(environment, new long[][]{mask});
+                    OnnxTensor maskTensor = OnnxTensor.createTensor(environment, mask);
                     owned.add(maskTensor);
                     inputs.put("attention_mask", maskTensor);
-                    if (wantsTypeIds) {
-                        long[] typeIds = encoding.getTypeIds();
-                        // A single-sequence input is all zeros; some tokenizers return nothing at
-                        // all, and a wrong-length tensor is a crash rather than a bad answer.
-                        if (typeIds == null || typeIds.length != ids.length) typeIds = new long[ids.length];
-                        OnnxTensor typeTensor = OnnxTensor.createTensor(environment, new long[][]{typeIds});
+                    if (typeIds != null) {
+                        OnnxTensor typeTensor = OnnxTensor.createTensor(environment, typeIds);
                         owned.add(typeTensor);
                         inputs.put("token_type_ids", typeTensor);
                     }
                     try (OrtSession.Result result = session.run(inputs)) {
                         float[][][] hidden = (float[][][]) result.get(0).getValue();
-                        out.add(meanPool(hidden[0], mask));
+                        for (int i = 0; i < hidden.length; i++) {
+                            out.add(meanPool(hidden[i], mask[i]));
+                        }
                     }
                 } finally {
                     for (OnnxTensor t : owned) t.close();

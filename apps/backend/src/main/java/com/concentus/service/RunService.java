@@ -131,16 +131,16 @@ public class RunService {
                 + "subscription, or set ANTHROPIC_API_KEY to use the cloud API.";
         if (model == null || model.isBlank()) return base;
         // A backend that exists but is not answering is the more useful thing to report: it means
-        // the flow is configured correctly and the server is simply not up.
-        boolean selfHostedIsDown = backends.byId(com.concentus.llm.LocalModelClient.ID)
+        // the flow is configured correctly and the server is simply not up. The advice comes from
+        // the down backend itself — the last id comparison here sent everyone to `ollama serve`,
+        // whatever runtime a future backend actually needs.
+        return backends.all().stream()
                 .filter(b -> !b.isAvailable())
-                .isPresent();
-        if (selfHostedIsDown) {
-            return "This flow runs on '" + model + "'. No self-hosted model server is answering — "
-                    + "start it (e.g. `ollama serve`) and check LOCAL_MODEL_BASE_URL. If '" + model
-                    + "' was meant to be a Claude model instead: " + base;
-        }
-        return base;
+                .map(b -> b.unavailableHint(model))
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .map(hint -> hint + " If '" + model + "' was meant to be a Claude model instead: " + base)
+                .orElse(base);
     }
 
     /**
@@ -240,9 +240,7 @@ public class RunService {
             // Harmless on a backend that has no notion of a CLI session; the claude one needs it.
             run.localSessionId = UUID.randomUUID().toString();
             run.status = "IDLE";
-            String where = com.concentus.llm.LocalModelClient.ID.equals(backend)
-                    ? "Running on your own hardware — " + chosen.displayName()
-                    : "Local mode — running on your Claude subscription";
+            String where = chosen.startupDescription();
             // Named on every run, because it decides what the agent may do to this machine without
             // asking, and it is otherwise invisible until something has already happened.
             if (!run.permissionMode.isBlank()) {

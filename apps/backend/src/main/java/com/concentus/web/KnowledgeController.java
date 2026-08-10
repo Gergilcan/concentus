@@ -28,12 +28,15 @@ public class KnowledgeController {
     private final KnowledgeStore store;
     private final KnowledgeService service;
     private final com.concentus.llm.BuiltInEmbedder embedder;
+    private final com.concentus.integration.content.AttachmentExtractionService extraction;
 
     public KnowledgeController(KnowledgeStore store, KnowledgeService service,
-                               com.concentus.llm.BuiltInEmbedder embedder) {
+                               com.concentus.llm.BuiltInEmbedder embedder,
+                               com.concentus.integration.content.AttachmentExtractionService extraction) {
         this.store = store;
         this.service = service;
         this.embedder = embedder;
+        this.extraction = extraction;
     }
 
     /**
@@ -42,14 +45,26 @@ public class KnowledgeController {
      * <p>Polled while downloading rather than streamed — 130 MB behind a frozen button is
      * indistinguishable from a hang, and a poll needs no new transport.
      */
+    /** What the picker may offer — derived from the extractors actually present and working. */
+    @GetMapping("/capabilities")
+    public Map<String, Object> capabilities() {
+        return Map.of("extensions", extraction.supportedExtensions());
+    }
+
     @GetMapping("/embedder")
     public Map<String, Object> embedderStatus() {
+        // Carries overall semantic availability too, not only the built-in model's state: with
+        // Ollama serving the embedding model, search IS semantic while the built-in model is
+        // absent, and a panel reading only the local state would claim word-overlap wrongly.
+        KnowledgeService.EmbeddingStatus overall = service.status();
         return Map.of(
                 "state", embedder.state().name(),
                 "percent", embedder.progressPercent(),
                 "error", embedder.error(),
                 "sizeMb", 130,
-                "model", "multilingual-e5-small");
+                "model", com.concentus.llm.BuiltInEmbedder.MODEL_NAME,
+                "semantic", overall.semantic(),
+                "detail", overall.detail());
     }
 
     @PostMapping("/embedder/download")

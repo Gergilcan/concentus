@@ -205,11 +205,8 @@ final class LocalStreamEventHandler {
 
     private static String agentLabel(AgentRun run, String nodeId) {
         if (run.compiled == null || nodeId == null) return nodeId;
-        if (nodeId.equals(run.compiled.coordinator().nodeId)) return run.compiled.coordinator().name;
-        for (AgentSpec s : run.compiled.subAgents()) {
-            if (nodeId.equals(s.nodeId)) return s.name;
-        }
-        return nodeId;
+        String name = run.compiled.agentName(nodeId);
+        return name != null ? name : nodeId;
     }
 
     /**

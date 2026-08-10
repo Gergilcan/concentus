@@ -82,15 +82,20 @@ public class RagContextInjector {
                 ? run.initialPrompt
                 : spec.systemPrompt;
 
+        // Embedded once for every source: three knowledge nodes used to mean three identical
+        // inferences over the same prompt. Costs one embed even when every base is overlap-only,
+        // which at one short batched pass is cheaper than plumbing per-base awareness up here.
+        float[] queryVector = knowledge.embedQuery(query);
+
         StringBuilder ctx = new StringBuilder();
         for (AgentSpec.KnowledgeSourceSpec source : spec.knowledgeSources) {
             NodeExec ne = run == null ? null : run.nodeExec(source.nodeId, "knowledge", source.label());
             if (ne != null) {
                 ne.status = "running";
-                ne.input = query.length() > 400 ? query.substring(0, 400) + "…" : query;
+                ne.input = com.concentus.support.Texts.brief(query, 400);
             }
             try {
-                var hits = knowledge.search(source.baseId, query, source.topK);
+                var hits = knowledge.search(source.baseId, query, queryVector, source.topK);
                 ctx.append("\n\n# Retrieved context — ").append(source.label()).append('\n');
                 if (hits.isEmpty()) {
                     ctx.append("(no matching passages)");

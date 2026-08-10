@@ -34,10 +34,12 @@ interface TreeNode {
   path: string
   folders: Map<string, TreeNode>
   files: KnowledgeDoc[]
+  /** Documents anywhere under this folder — filled by buildTree, so no render walks the subtree. */
+  count: number
 }
 
 function emptyNode(name: string, path: string): TreeNode {
-  return { name, path, folders: new Map(), files: [] }
+  return { name, path, folders: new Map(), files: [], count: 0 }
 }
 
 /**
@@ -57,6 +59,8 @@ export function buildTree(docs: KnowledgeDoc[]): TreeNode {
         next = emptyNode(segment, path)
         node.folders.set(segment, next)
       }
+      // Every ancestor counts this document; the render used to re-walk each visible subtree.
+      next.count += 1
       node = next
     }
     node.files.push(doc)
@@ -67,22 +71,22 @@ export function buildTree(docs: KnowledgeDoc[]): TreeNode {
 const PAGE_SIZE = 20
 
 /**
- * Extensions the backend can extract text from. One list: it also builds the picker's `accept`
- * attribute and the folder-import filter, which were three hand-kept copies that already
- * disagreed on order.
+ * Until the backend answers, the safe common core. The real list comes from
+ * /knowledge/capabilities, because a hand-kept copy had already drifted twice: it offered
+ * .doc/.xls, which no extractor claims and which failed at ingest — and it silently dropped
+ * images, which the backend reads fine wherever OCR is installed.
  */
-const SUPPORTED = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.html']
-const ACCEPT = SUPPORTED.join(',')
+const FALLBACK_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.csv', '.txt', '.md', '.html']
+
+function indexable(files: File[], supported: string[]): File[] {
+  return files.filter((f) => supported.some((ext) => f.name.toLowerCase().endsWith(ext)))
+}
 
 /** Adds or removes a key, returning a new Set — the two toggles here were the same five lines. */
 function toggled<T>(prev: Set<T>, key: T): Set<T> {
   const next = new Set(prev)
   if (!next.delete(key)) next.add(key)
   return next
-}
-
-function indexable(files: File[]): File[] {
-  return files.filter((f) => SUPPORTED.some((ext) => f.name.toLowerCase().endsWith(ext)))
 }
 
 /**
@@ -123,9 +127,7 @@ export function flattenTree(node: TreeNode, expanded: Set<string>, depth = 0): T
 
 /** Documents anywhere under a folder — what deleting it would actually take. */
 export function countUnder(node: TreeNode): number {
-  let total = node.files.length
-  for (const child of node.folders.values()) total += countUnder(child)
-  return total
+  return node.count
 }
 
 /** Every folder name along a file's path, minus the chosen root and the file itself. */
@@ -140,7 +142,6 @@ function Documents({ baseId }: { baseId: string }) {
   const [note, setNote] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<KnowledgeHit[] | null>(null)
-  const [status, setStatus] = useState<{ semantic: boolean; detail: string } | null>(null)
   const [typeTab, setTypeTab] = useState<string>('all')
   const [page, setPage] = useState(0)
   // Expanded, not collapsed: the default is everything folded, and tracking what the user opened
@@ -149,6 +150,7 @@ function Documents({ baseId }: { baseId: string }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // A picked folder, held until its exclusions are confirmed.
   const [pending, setPending] = useState<File[] | null>(null)
+  const [supported, setSupported] = useState<string[]>(FALLBACK_EXTENSIONS)
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const fileRef = useRef<HTMLInputElement>(null)
   const folderRef = useRef<HTMLInputElement>(null)
@@ -156,10 +158,6 @@ function Documents({ baseId }: { baseId: string }) {
   const refresh = useCallback(() => {
     api.knowledgeDocs(baseId).then(setDocs).catch(() => setDocs([]))
   }, [baseId])
-
-  const refreshStatus = useCallback(() => {
-    api.knowledgeStatus().then(setStatus).catch(() => setStatus(null))
-  }, [])
 
   useEffect(() => {
     refresh()
@@ -169,8 +167,8 @@ function Documents({ baseId }: { baseId: string }) {
     setPage(0)
     setExpanded(new Set())
     setPending(null)
-    refreshStatus()
-  }, [refresh, refreshStatus])
+    api.knowledgeCapabilities().then((c) => setSupported(c.extensions)).catch(() => {})
+  }, [refresh])
 
   // Tabs show only the types actually present — five empty tabs teach nothing.
   const countsByType = useMemo(
@@ -250,9 +248,6 @@ function Documents({ baseId }: { baseId: string }) {
       </div>
     )
 
-  /** Extensions the backend can extract text from; anything else in a folder is skipped, counted. */
-  const SUPPORTED = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.html']
-
   const relPath = (f: File) =>
     (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name
 
@@ -261,7 +256,7 @@ function Documents({ baseId }: { baseId: string }) {
    * spot: dropping a repository in and only then discovering node_modules went with it costs a
    * long wait and a base that has to be cleaned out document by document.
    */
-  const pendingUsable = useMemo(() => (pending ? indexable(pending) : undefined), [pending])
+  const pendingUsable = useMemo(() => (pending ? indexable(pending, supported) : undefined), [pending, supported])
 
   // Every folder name appearing anywhere in the picked tree, with how many indexable files sit
   // under it. By name rather than by full path because that is how the intent is actually held:
@@ -289,12 +284,12 @@ function Documents({ baseId }: { baseId: string }) {
   }
 
   const upload = async (files: File[]) => {
-    const usable = indexable(files)
+    const usable = indexable(files, supported)
     const skipped = files.length - usable.length
     if (usable.length === 0) {
       setNote(
         skipped > 0
-          ? `Nothing to index: ${skipped} file(s) skipped — supported types are ${SUPPORTED.join(', ')}.`
+          ? `Nothing to index: ${skipped} file(s) skipped — supported types are ${supported.join(', ')}.`
           : 'No files selected.',
       )
       return
@@ -344,12 +339,7 @@ function Documents({ baseId }: { baseId: string }) {
   return (
     <div className={styles.kbDocs}>
       <h4 className={styles.h4}>Documents</h4>
-      <EmbeddingModelPanel onReady={refreshStatus} />
-      {status && !status.semantic && (
-        <p className={panels.hint} title={status.detail}>
-          Ranking by word overlap. ⓘ
-        </p>
-      )}
+      <EmbeddingModelPanel />
       {docs.length === 0 && <div className={styles.muted}>No documents yet.</div>}
 
       {docs.length > 0 && (
@@ -447,7 +437,7 @@ function Documents({ baseId }: { baseId: string }) {
           type="file"
           hidden
           multiple
-          accept={ACCEPT}
+          accept={supported.join(',')}
           onChange={(e) => {
             const files = Array.from(e.target.files ?? [])
             if (files.length > 0) void upload(files)

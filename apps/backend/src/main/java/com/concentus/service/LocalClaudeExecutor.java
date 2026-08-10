@@ -1,7 +1,9 @@
 package com.concentus.service;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.config.AgentSpec;
 import com.concentus.config.AgentSpec.McpServerSpec;
+import com.concentus.llm.McpOAuthStore;
 import com.concentus.model.NodeExec;
 import com.concentus.git.GitWorkspace;
 import com.concentus.model.RunEvent;
@@ -51,8 +53,8 @@ public class LocalClaudeExecutor {
     private final String dataDir;
     private final boolean autoRegisterMcp;
     private final ObjectMapper mapper;
-    private final com.concentus.llm.McpOAuthStore mcpOAuthStore;
-    private final com.concentus.auth.OrgContext orgContext;
+    private final McpOAuthStore mcpOAuthStore;
+    private final OrgContext orgContext;
     /** See {@link #writeMcpConfig}: runs see only the flow's MCP servers, not the user's list. */
     private final boolean strictMcp;
     /**
@@ -90,8 +92,8 @@ public class LocalClaudeExecutor {
                                McpRegistry mcpRegistry, ContextFolderResolver contextFolders,
                                GitWorkspace gitWorkspace,
                                ObjectMapper mapper,
-                               com.concentus.llm.McpOAuthStore mcpOAuthStore,
-                               com.concentus.auth.OrgContext orgContext,
+                               McpOAuthStore mcpOAuthStore,
+                               OrgContext orgContext,
                                @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                                @Value("${app.data-dir}") String dataDir,
                                @Value("${local.auto-register-mcp:true}") boolean autoRegisterMcp,
@@ -354,11 +356,8 @@ public class LocalClaudeExecutor {
         if (!strictMcp) return;
 
         Map<String, McpServerSpec> byName = new LinkedHashMap<>();
-        for (McpServerSpec m : run.compiled.coordinator().mcpServers) {
-            if (m.name != null && !m.name.isBlank()) byName.putIfAbsent(m.name.toLowerCase(), m);
-        }
-        for (AgentSpec sub : run.compiled.subAgents()) {
-            for (McpServerSpec m : sub.mcpServers) {
+        for (AgentSpec agent : run.compiled.allAgents()) {
+            for (McpServerSpec m : agent.mcpServers) {
                 if (m.name != null && !m.name.isBlank()) byName.putIfAbsent(m.name.toLowerCase(), m);
             }
         }
@@ -468,7 +467,7 @@ public class LocalClaudeExecutor {
             if (report) run.emit(RunEvent.of("system", "Context folder ignored — " + path + ": " + reason));
         };
         List<Path> all = new ArrayList<>();
-        for (AgentSpec spec : allAgents(flow)) {
+        for (AgentSpec spec : flow.allAgents()) {
             for (Path p : contextFolders.resolve(spec.contextFolders, onRejected)) {
                 if (!all.contains(p)) all.add(p);
             }
@@ -477,13 +476,6 @@ public class LocalClaudeExecutor {
             run.emit(RunEvent.of("system", "Context folders: "
                     + all.stream().map(Path::toString).collect(Collectors.joining(", "))));
         }
-        return all;
-    }
-
-    private static List<AgentSpec> allAgents(CompiledFlow flow) {
-        List<AgentSpec> all = new ArrayList<>();
-        all.add(flow.coordinator());
-        all.addAll(flow.subAgents());
         return all;
     }
 
@@ -573,9 +565,9 @@ public class LocalClaudeExecutor {
      * OAuth servers are added and the user is told to run {@code claude mcp login}.
      */
     private void registerMcpServers(AgentRun run) {
-        List<McpServerSpec> mcps = new ArrayList<>(run.compiled.coordinator().mcpServers);
-        for (AgentSpec sub : run.compiled.subAgents()) {
-            mcps.addAll(sub.mcpServers);
+        List<McpServerSpec> mcps = new ArrayList<>();
+        for (AgentSpec agent : run.compiled.allAgents()) {
+            mcps.addAll(agent.mcpServers);
         }
         if (mcps.isEmpty()) return;
 

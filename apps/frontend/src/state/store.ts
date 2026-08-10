@@ -222,6 +222,10 @@ interface FlowState {
   toBackendFlow: () => BackendFlow
 }
 
+// Module-level rather than store state: it is a memo of the last poll, not something any
+// component should render or subscribe to.
+let lastRunExecSignature: string | null = null
+
 export const useFlowStore = create<FlowState>((set, get) => ({
   flowId: null,
   name: 'Untitled flow',
@@ -249,13 +253,25 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     set((s) =>
       s.activeRunId === id
         ? {}
-        : { activeRunId: id, runExecByNode: {}, runTotals: { input: 0, output: 0, costUsd: 0 }, runEvents: [] },
+        : (lastRunExecSignature = null,
+           { activeRunId: id, runExecByNode: {}, runTotals: { input: 0, output: 0, costUsd: 0 }, runEvents: [] }),
     ),
   setRunExec: (report) => {
     if (!report) {
+      lastRunExecSignature = null
       set({ runExecByNode: {}, runTotals: { input: 0, output: 0, costUsd: 0 } })
       return
     }
+    // Bail out when the poll brought back the same state. Every node badge on the canvas and the
+    // console's token bar select these objects by reference, so unconditionally minting fresh ones
+    // re-rendered all of them at each poll — including on finished runs, whose payload is
+    // byte-identical every time. The signature is cheap and JSON-stable per node.
+    const signature = report.nodes
+      .map((n) => `${n.nodeId}|${n.status}|${n.inputTokens}|${n.outputTokens}|${n.endedAt ?? ''}`)
+      .join(';') + `#${report.totalInputTokens}|${report.totalOutputTokens}|${report.totalCostUsd ?? 0}`
+    if (signature === lastRunExecSignature) return
+    lastRunExecSignature = signature
+
     const byNode: Record<string, NodeExec> = {}
     for (const n of report.nodes) byNode[n.nodeId] = n
     set({

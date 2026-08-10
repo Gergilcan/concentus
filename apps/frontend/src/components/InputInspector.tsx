@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { clockTime } from '../utils/format.ts'
 import type { Credential, InputNodeData, MailDeviceCode, MailOAuthDefaults, MailStatus } from '../api/types.ts'
-import { api } from '../api/client.ts'
+import { api, webhookUrl } from '../api/client.ts'
 import { useFlowStore } from '../state/store.ts'
 import { CheckboxField, Field, SelectField, TextArea } from './fields.tsx'
 import { errMessage } from '../utils/errMessage.ts'
@@ -29,12 +29,12 @@ export function InputInspector({ data, set }: Props) {
   useEffect(reloadCredentials, [reloadCredentials])
 
   // No token in the URL: Linear authenticates by signing the body, not by echoing a secret back.
-  const webhookUrl = flowId ? `${location.origin}/api/webhooks/${flowId}` : null
+  const hookUrl = flowId ? webhookUrl(flowId) : null
 
   const copy = async () => {
-    if (!webhookUrl) return
+    if (!hookUrl) return
     try {
-      await navigator.clipboard.writeText(webhookUrl)
+      await navigator.clipboard.writeText(hookUrl)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {
@@ -110,11 +110,11 @@ export function InputInspector({ data, set }: Props) {
 
           <Field
             label="Webhook URL"
-            value={webhookUrl ?? 'Save the flow first to generate the URL.'}
+            value={hookUrl ?? 'Save the flow first to generate the URL.'}
             readOnly
-            onFocus={webhookUrl ? (e) => e.currentTarget.select() : undefined}
+            onFocus={hookUrl ? (e) => e.currentTarget.select() : undefined}
           />
-          {webhookUrl && (
+          {hookUrl && (
             <div className={styles.mcpBtns}>
               <button className={styles.previewBtn} onClick={() => void copy()}>
                 {copied ? 'Copied ✓' : 'Copy URL'}

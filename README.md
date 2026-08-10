@@ -56,7 +56,7 @@ concentus/
 │   └── frontend/           # Vite React TS SASS
 │       └── src/
 │           ├── flow/        # React Flow canvas + custom nodes
-│           ├── components/  # Toolbar, Palette, Inspector, RunsPanel, Console, RagPanel
+│           ├── components/  # Toolbar, Palette, Inspector, RunsPanel, Console, KnowledgePanel
 │           ├── state/       # zustand store (canvas <-> backend flow)
 │           ├── api/         # REST + WebSocket client, shared types
 │           └── styles/      # SASS theme + globals
@@ -65,8 +65,8 @@ concentus/
 ## Concepts
 
 - A **flow** is a multi-agent orchestration graph. **Agent** nodes (one marked *coordinator*),
-  plus **MCP**, **Repository**, and **SQL** capability nodes. Connect a capability to an agent to
-  grant access. Each sub-agent's *Delegate when…* description is what its delegator uses to route,
+  plus **MCP**, **Repository**, **SQL** and **Knowledge** capability nodes. Connect a capability to
+  an agent to grant access — and drag a node from the palette to place it wherever you want. Each sub-agent's *Delegate when…* description is what its delegator uses to route,
   and it receives only its own slice of the plan.
 - **Delegation chains** — an agent delegates to the agents wired *behind* it, so hierarchies work,
   not just a flat roster under the coordinator:
@@ -123,12 +123,34 @@ concentus/
     delegated), **Output** (what it handed back), status and token count, so a sub-agent's work is
     never folded into the coordinator's. Work that can't be traced to a specific agent is left
     unattributed rather than blamed on the coordinator.
-- **Agent library** — drop reusable agent YAMLs in `apps/backend/data/agents/` (same `AgentSpec`
-  format as the CLI; two examples are seeded). The agent node inspector's **Load from library**
-  dropdown populates a node from one, so you can swap agents easily.
-- **RAG** — add a **SQL source** node and connect it to an agent. At run time its query is executed
-  (generic JDBC; PostgreSQL bundled, add other drivers to the backend pom) and the rows are injected
-  into that agent's context. Test a query from the node inspector before running.
+- **Agent library** — reusable agents, MCP servers, database connections and knowledge bases are
+  managed under **Resources** and stored in the app's database (legacy YAMLs from
+  `apps/backend/data/agents/` are migrated in on first launch). The agent node inspector's
+  **Load from library** dropdown populates a node from one. The MCP tab also has a **one-click
+  catalog** — GitHub, Linear, Notion, Sentry, Stripe and more — each entry saying how it
+  authenticates, because that is the question that actually stops people.
+- **RAG** — two kinds of context, injected at run start:
+  - **SQL source** node: its query runs (generic JDBC; PostgreSQL bundled, add other drivers to the
+    backend pom) and the rows are injected into the connected agent's context. Test the query from
+    the node inspector before running.
+  - **Knowledge** node: pick a knowledge base (Resources → Knowledge — upload PDFs, Word, Excel,
+    text, or whole folders with per-folder exclusions), and the passages most relevant to the run's
+    prompt are injected into the connected agent, recorded per node. Semantic ranking runs
+    **inside the app**: a one-click ~130 MB model download (multilingual-e5-small over ONNX), no
+    Ollama and no Docker — though a model server serving `bge-m3` is picked up automatically if
+    you have one. Without either, retrieval falls back to word overlap and the UI says so.
+- **Permissions** — set on the coordinator, because one CLI process runs the whole flow. Modes:
+  bypass (default, the only one that works unattended), plan-only, and **"Ask me to approve the
+  plan, then act"** — the run stops after planning, raises a desktop notification, and the console
+  offers Approve/Reject; approving resumes the same session with permission to act. Sub-agents get
+  the one permission Claude Code enforces per agent: a **tool allowlist** (`Read, Grep, Glob` on a
+  reviewer means it cannot edit or run commands, whatever the flow's mode allows).
+- **MCP isolation** — each run sees **only the MCP servers wired into its flow**, passed to the CLI
+  via `--strict-mcp-config`. Your personal Claude Code MCP list stays yours; a flow with no MCP
+  nodes reaches none. `LOCAL_STRICT_MCP=false` restores the old inherit-everything behaviour.
+- **Templates** — six starter flows come installed: a PR review crew, a cron daily briefing, a
+  mailbox assistant, webhook issue triage, a docs writer, and the original quote-to-Holded flow.
+  The ones needing configuration ship disabled and say on themselves what to set.
 
 ## Install
 
@@ -172,6 +194,14 @@ app starts in — the first-run check then stays out of your way, since a local 
 The first launch takes about ten seconds longer than later ones: it unpacks the database and
 initialises it. After that, start-up is a couple of seconds.
 
+### Running in the background
+
+Closing the window can keep Concentus alive in the system tray, so cron, webhook and mail triggers
+keep firing — enable **Run in background** from the tray icon's menu, and optionally **Start at
+login**. The app checks GitHub Releases for updates every few hours and installs them on quit;
+desktop notifications tell you when a background run finishes, fails, or is waiting for your
+approval.
+
 ### Where your data lives
 
 Everything is under one folder, which is also all an uninstall needs to remove:
@@ -181,7 +211,8 @@ Everything is under one folder, which is also all an uninstall needs to remove:
 | Windows | `%APPDATA%\Concentus` |
 | Linux | `~/.config/Concentus` |
 
-It holds your flows, the agent library, MCP definitions, the `pgdata` database directory, and
+It holds the `pgdata` database directory — flows, executions, the agent library, MCP definitions,
+knowledge bases and credentials all live in that database — the downloaded embedding model, and
 `logs/` — `desktop.log` from the shell and `backend.log` from the backend. Those two logs are the
 first place to look if something fails to start; the failure window shows the tail of them and has
 a button to open the folder.
@@ -767,5 +798,6 @@ java -cp target/concentus-backend.jar com.concentus.Main path/to/agent.yaml "you
 - **Agent scoping steers, it doesn't isolate.** A local run is one CLI process for the whole flow,
   so context folders and delegation rosters are written into each agent's instructions rather than
   enforced: an agent is told which folders and which agents are its own, but can still reach the
-  others. Real isolation needs a process per agent.
+  others. Real isolation needs a process per agent. Two things ARE enforced: per-sub-agent **tool
+  allowlists** (by the CLI) and per-flow **MCP isolation** (by `--strict-mcp-config`).
 - Built against `anthropic-java` 2.34.0 and Spring Boot 3.5.x on Java 25.

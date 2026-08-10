@@ -1,9 +1,7 @@
 package com.concentus.web;
 
 import com.concentus.auth.OrgContext;
-import com.concentus.llm.McpOAuth;
-import com.concentus.llm.McpOAuthStore;
-import org.springframework.beans.factory.annotation.Value;
+import com.concentus.llm.McpOAuthFlow;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,10 +11,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.Duration;
-import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Signs Concentus in to an OAuth-protected MCP server, so a self-hosted model can use its tools.
@@ -26,52 +22,26 @@ import java.util.concurrent.ConcurrentHashMap;
  * reads as a broken flow rather than as a missing authorization. This gives the application its
  * own grant.
  *
- * <p>Two steps, because the flow goes through a browser. {@code /start} registers a client,
- * builds the authorization URL and hands it back; {@code /callback} is where the browser lands
- * afterwards, and is the only endpoint here that is reachable without a session — an OAuth
- * redirect arrives as a plain top-level navigation carrying no credentials of ours.
+ * <p>Thin by design: the flow itself — discovery, registration, the pending-PKCE map, the code
+ * exchange — lives in {@link McpOAuthFlow}, where it can be driven and tested without a servlet
+ * request. What stays here is HTTP: who may call, and what the browser tab shows.
+ *
+ * <p>{@code /callback} is the only endpoint reachable without a session — an OAuth redirect
+ * arrives as a plain top-level navigation carrying no credentials of ours.
  */
 @RestController
 @RequestMapping("/api/mcp/oauth")
 public class McpOAuthController {
 
-    private static final org.slf4j.Logger log =
-            org.slf4j.LoggerFactory.getLogger(McpOAuthController.class);
-
-    /** A pending authorization is short-lived; a stale one is a leak, not a feature. */
-    private static final Duration PENDING_TTL = Duration.ofMinutes(10);
-
-    private final McpOAuth oauth;
-    private final McpOAuthStore store;
+    private final McpOAuthFlow flow;
     private final OrgContext orgContext;
-    private final String redirectBase;
 
-    public McpOAuthController(McpOAuth oauth, McpOAuthStore store, OrgContext orgContext,
-                              @Value("${mcp.oauth.redirect-base:http://localhost:3000}") String redirectBase) {
-        this.oauth = oauth;
-        this.store = store;
+    public McpOAuthController(McpOAuthFlow flow, OrgContext orgContext) {
+        this.flow = flow;
         this.orgContext = orgContext;
-        this.redirectBase = redirectBase.replaceAll("/+$", "");
     }
-
-    /**
-     * An authorization in flight.
-     *
-     * <p>In memory, keyed by the {@code state} the authorization server will echo back. It must
-     * not be persisted: the code verifier is the secret that makes PKCE work, it is useful for
-     * minutes, and a restart mid-sign-in should simply mean starting again.
-     */
-    private record Pending(String mcpUrl, String organizationId, McpOAuth.Endpoints endpoints,
-                           McpOAuth.Registration registration, String codeVerifier, Instant startedAt) {
-    }
-
-    private final Map<String, Pending> pending = new ConcurrentHashMap<>();
 
     public record StartRequest(String url, String scope) {
-    }
-
-    private String redirectUri() {
-        return redirectBase + "/api/mcp/oauth/callback";
     }
 
     /**
@@ -94,30 +64,13 @@ public class McpOAuthController {
     @PostMapping("/start")
     public Map<String, Object> start(@RequestBody StartRequest body) {
         orgContext.requireAdmin();
-        String organizationId = grantOwner();
-        if (body.url() == null || body.url().isBlank()) {
-            return Map.of("ok", false, "error", "The MCP node has no URL yet.");
-        }
-        String mcpUrl = body.url().trim();
-
-        try {
-            McpOAuth.Endpoints endpoints = oauth.discover(mcpUrl);
-            McpOAuth.Registration registration =
-                    oauth.register(endpoints, redirectUri(), "Concentus AI");
-            String verifier = oauth.newCodeVerifier();
-            String state = oauth.newState();
-
-            expireStalePending();
-            pending.put(state, new Pending(mcpUrl, organizationId, endpoints, registration,
-                    verifier, Instant.now()));
-
-            return Map.of("ok", true,
-                    "authorizationUrl", oauth.authorizationUrl(endpoints, registration,
-                            redirectUri(), verifier, state, body.scope()),
-                    "redirectUri", redirectUri());
-        } catch (McpOAuth.OAuthNotSupported e) {
-            return Map.of("ok", false, "error", e.getMessage());
-        }
+        McpOAuthFlow.StartResult result = flow.start(grantOwner(), body.url(), body.scope());
+        Map<String, Object> out = new HashMap<>();
+        out.put("ok", result.ok());
+        out.put("redirectUri", result.redirectUri());
+        if (result.ok()) out.put("authorizationUrl", result.authorizationUrl());
+        else out.put("error", result.error());
+        return out;
     }
 
     /**
@@ -133,64 +86,23 @@ public class McpOAuthController {
                                            @RequestParam(required = false) String error,
                                            @RequestParam(name = "error_description", required = false)
                                            String errorDescription) {
-        if (error != null && !error.isBlank()) {
-            if (state != null) pending.remove(state);
-            return page("Sign-in was not completed",
-                    errorDescription == null || errorDescription.isBlank() ? error : errorDescription);
-        }
-        if (code == null || state == null) {
-            return page("Something is missing", "The authorization server sent no code.");
-        }
-
-        Pending p = pending.remove(state);
-        if (p == null) {
-            // Unknown state: expired, already used, or forged. All three get the same answer —
-            // accepting an unrecognised state is exactly the CSRF this parameter prevents.
-            //
-            // In practice the common cause is neither: the backend restarted between starting the
-            // sign-in and coming back, and this map is in memory. Worth saying, because "expired"
-            // on a sign-in that took twenty seconds is baffling otherwise.
-            log.warn("MCP OAuth callback carried an unknown state. {} sign-in(s) are pending; a "
-                    + "backend restart between starting and returning empties them.", pending.size());
-            return page("This sign-in is no longer valid",
-                    "Start it again from the MCP node. If the backend restarted while you were "
-                    + "signing in, that is why — the pending sign-in is held in memory.");
-        }
-
-        try {
-            McpOAuth.Tokens tokens = oauth.exchangeCode(p.endpoints(), p.registration(), code,
-                    redirectUri(), p.codeVerifier());
-            store.save(p.organizationId(), p.mcpUrl(),
-                    new McpOAuthStore.Session(p.endpoints(), p.registration(), tokens));
-            log.info("Authorized MCP server at {} for organization {}.", p.mcpUrl(), p.organizationId());
-            return page("Connected", "You can close this tab and go back to Concentus.");
-        } catch (RuntimeException e) {
-            // Logged as well as shown: the page is a dead-end tab someone closes, and this is the
-            // one place the authorization server's own reason is visible.
-            log.warn("MCP OAuth token exchange failed for {}: {}", p.mcpUrl(), e.getMessage());
-            return page("Could not finish the sign-in", e.getMessage());
-        }
+        McpOAuthFlow.CallbackOutcome outcome = flow.finish(code, state, error, errorDescription);
+        return page(outcome.title(), outcome.detail());
     }
 
     /** Whether a server is already authorized, for the button's label. */
     @GetMapping("/status")
     public Map<String, Object> status(@RequestParam String url) {
         orgContext.requireAdmin();
-        String organizationId = grantOwner();
-        boolean connected = store.accessToken(organizationId, url.trim()).isPresent();
-        return Map.of("connected", connected, "redirectUri", redirectUri());
+        return Map.of("connected", flow.connected(grantOwner(), url),
+                "redirectUri", flow.redirectUri());
     }
 
     @PostMapping("/disconnect")
     public Map<String, Object> disconnect(@RequestBody StartRequest body) {
         orgContext.requireAdmin();
-        store.forget(grantOwner(), body.url().trim());
+        flow.disconnect(grantOwner(), body.url());
         return Map.of("connected", false);
-    }
-
-    private void expireStalePending() {
-        Instant cutoff = Instant.now().minus(PENDING_TTL);
-        pending.values().removeIf(p -> p.startedAt().isBefore(cutoff));
     }
 
     /** Minimal self-contained page — this tab has no access to the SPA's assets. */

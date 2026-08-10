@@ -28,6 +28,25 @@ public interface ExecutionBackend {
     String displayName();
 
     /**
+     * One line naming where this run executes, shown at run start. On the backend rather than
+     * decided by id at the call site — that comparison was exactly the registry-bypass this
+     * interface exists to prevent, and a third backend would have been announced as "running on
+     * your Claude subscription".
+     */
+    default String startupDescription() {
+        return "Local mode — running on your Claude subscription";
+    }
+
+    /**
+     * How to bring this backend back when a flow needs it and it is not answering, or null when
+     * there is nothing actionable. Asked through the registry so the advice names the right
+     * runtime — the previous hardcoded message sent everyone to `ollama serve`.
+     */
+    default String unavailableHint(String model) {
+        return null;
+    }
+
+    /**
      * Whether this backend can execute right now — CLI installed, service reachable, credential
      * present. Checked so a missing dependency surfaces at launch rather than mid-turn, and so the
      * designer can avoid offering models it cannot actually run.

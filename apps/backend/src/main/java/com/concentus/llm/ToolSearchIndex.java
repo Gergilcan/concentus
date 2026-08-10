@@ -207,16 +207,29 @@ public class ToolSearchIndex {
             ensureTable(vectors.getFirst().length);
 
             jdbc.update("delete from mcp_tool_index where server_url = ?", serverUrl);
-            for (int i = 0; i < tools.size(); i++) {
-                ChatTypes.ToolSpec tool = tools.get(i);
-                jdbc.update("""
-                        insert into mcp_tool_index
-                          (server_url, tool_name, description, schema_json, corpus_hash, embedding)
-                        values (?, ?, ?, ?, ?, ?::vector)""",
-                        serverUrl, tool.name(), tool.description(),
-                        tool.parameters() == null ? "{}" : tool.parameters().toString(),
-                        hash, literal(vectors.get(i)));
-            }
+            // One batch, not one round trip per tool: the doc's own example server exposes 338.
+            jdbc.batchUpdate("""
+                    insert into mcp_tool_index
+                      (server_url, tool_name, description, schema_json, corpus_hash, embedding)
+                    values (?, ?, ?, ?, ?, ?::vector)""",
+                    new org.springframework.jdbc.core.BatchPreparedStatementSetter() {
+                        @Override
+                        public void setValues(java.sql.PreparedStatement ps, int i)
+                                throws java.sql.SQLException {
+                            ChatTypes.ToolSpec tool = tools.get(i);
+                            ps.setString(1, serverUrl);
+                            ps.setString(2, tool.name());
+                            ps.setString(3, tool.description());
+                            ps.setString(4, tool.parameters() == null ? "{}" : tool.parameters().toString());
+                            ps.setString(5, hash);
+                            ps.setString(6, literal(vectors.get(i)));
+                        }
+
+                        @Override
+                        public int getBatchSize() {
+                            return tools.size();
+                        }
+                    });
             log.info("Indexed {} tools from {} for semantic search.", tools.size(), serverUrl);
             return true;
         } catch (RuntimeException e) {

@@ -12,6 +12,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs'
+import * as os from 'node:os'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -119,6 +120,101 @@ function stageJar() {
   fs.copyFileSync(jar, path.join(target, 'concentus-backend.jar'))
   const mb = (fs.statSync(jar).size / 1024 / 1024).toFixed(1)
   console.log(`Staged backend jar (${mb} MB)`)
+  pruneForeignNatives(path.join(target, 'concentus-backend.jar'))
+}
+
+/**
+ * Strips what this platform's installer cannot use from the ONNX and tokenizer jars.
+ *
+ * Two kinds of dead weight ride inside them. Debug symbols: onnxruntime ships a 290 MB
+ * onnxruntime.pdb next to an 11 MB dll — Windows debug symbols, useless at runtime, carried in
+ * every installer on every OS. And foreign platforms: the Windows installer has no use for the
+ * macOS and Linux natives, nor Linux for Windows', yet both jars bundle all of them.
+ *
+ * Uses the JDK's own `jar` tool — extract the nested jar, delete on disk, re-create, and update
+ * the outer jar with `-0` (stored), which Spring Boot's loader requires for nested jars. Every
+ * step is inside a try/catch that restores the pristine jar on any failure: pruning is an
+ * optimization, and a fatter installer beats no installer.
+ */
+function pruneForeignNatives(stagedJar) {
+  const original = fs.readFileSync(stagedJar)
+  try {
+    const jarTool = path.join(jdkHome(), 'bin', exe('jar'))
+    if (!fs.existsSync(jarTool)) throw new Error(`jar tool not found at ${jarTool}`)
+
+    // x64 only, matching what electron-builder produces today. An arm64 build would need its own
+    // keep-set — and would fail loudly at model load, not silently, if this went stale.
+    const keep = isWindows ? ['win-x64', 'win-x86_64'] : ['linux-x64', 'linux-x86_64']
+    const inner = list(jarTool, stagedJar).filter(
+      (e) => /BOOT-INF\/lib\/(onnxruntime|tokenizers)-[^/]+\.jar$/.test(e),
+    )
+    if (inner.length === 0) {
+      console.log('No native-bearing jars found to prune (dependency renamed?) — skipping.')
+      return
+    }
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'prune-'))
+    execFileSync(jarTool, ['--extract', '--file', stagedJar, ...inner], { cwd: tmp })
+
+    for (const entry of inner) {
+      const innerJar = path.join(tmp, entry)
+      const before = fs.statSync(innerJar).size
+      const tree = innerJar + '.d'
+      fs.mkdirSync(tree, { recursive: true })
+      execFileSync(jarTool, ['--extract', '--file', innerJar], { cwd: tree })
+
+      prune(tree, (p) => {
+        if (/\.pdb$/i.test(p) || /\.dSYM/.test(p)) return true
+        // By path segment, not by "the directory after native/": the first version of this
+        // matched positionally, and regex backtracking let it capture the "lib" in
+        // native/lib/tokenizers.properties — deleting the version file the tokenizer refuses to
+        // load without. Platform directories are unmistakable by name.
+        return p.split(/[\\/]/).some((seg) => /^(win|linux|osx)-/.test(seg) && !keep.includes(seg))
+      })
+
+      // -M keeps the extracted MANIFEST.MF as-is instead of jar minting a fresh one.
+      fs.rmSync(innerJar)
+      execFileSync(jarTool, ['--create', '-M', '--file', innerJar, '-C', tree, '.'])
+      const after = fs.statSync(innerJar).size
+      console.log(
+        `Pruned ${path.basename(entry)}: ${(before / 1048576).toFixed(1)} MB -> ${(after / 1048576).toFixed(1)} MB`,
+      )
+    }
+
+    // -0 stores the updated entries uncompressed — Spring Boot's loader rejects nested jars that
+    // arrive deflated, so this flag is load-bearing, not an optimization knob.
+    execFileSync(jarTool, ['--update', '-0', '--file', stagedJar, ...inner], { cwd: tmp })
+    fs.rmSync(tmp, { recursive: true, force: true })
+    const mb = (fs.statSync(stagedJar).size / 1048576).toFixed(1)
+    console.log(`Backend jar after pruning: ${mb} MB`)
+  } catch (err) {
+    console.warn(`WARNING: native pruning failed (${err.message}); shipping the full jar.`)
+    fs.writeFileSync(stagedJar, original)
+  }
+}
+
+/** Entries of a jar, one per line. */
+function list(jarTool, jarFile) {
+  return execFileSync(jarTool, ['--list', '--file', jarFile], { encoding: 'utf8' })
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+}
+
+/** Deletes every file under `root` the predicate marks, then any directories left empty. */
+function prune(root, doomed) {
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) {
+        walk(p)
+        if (fs.readdirSync(p).length === 0) fs.rmdirSync(p)
+      } else if (doomed(path.relative(root, p))) {
+        fs.rmSync(p)
+      }
+    }
+  }
+  walk(root)
 }
 
 function report() {

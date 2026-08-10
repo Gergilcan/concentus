@@ -10,7 +10,7 @@ import styles from './resources.module.scss'
  * The model runs inside the backend; only the file is fetched, and it is fetched from here so the
  * choice — and the ~130 MB — stays the user's.
  */
-export function EmbeddingModelPanel({ onReady }: { onReady?: () => void }) {
+export function EmbeddingModelPanel() {
   const [status, setStatus] = useState<EmbedderStatus | null>(null)
   const wasDownloading = useRef(false)
 
@@ -21,9 +21,6 @@ export function EmbeddingModelPanel({ onReady }: { onReady?: () => void }) {
         const s = await api.embedderStatus()
         if (!live) return
         setStatus(s)
-        // Tell the parent once, on the downloading → ready edge, so the documents panel can
-        // refresh its own status line instead of showing "word overlap" until a remount.
-        if (wasDownloading.current && s.state === 'READY') onReady?.()
         wasDownloading.current = s.state === 'DOWNLOADING'
       } catch {
         if (live) setStatus(null)
@@ -38,7 +35,7 @@ export function EmbeddingModelPanel({ onReady }: { onReady?: () => void }) {
       live = false
       clearInterval(timer)
     }
-  }, [onReady])
+  }, [])
 
   if (!status) return null
 
@@ -69,6 +66,18 @@ export function EmbeddingModelPanel({ onReady }: { onReady?: () => void }) {
 
       {(status.state === 'NOT_DOWNLOADED' || status.state === 'ERROR') && (
         <div className={styles.embedderRow}>
+          {status.semantic ? (
+            <span className={styles.muted} title={status.detail}>
+              Semantic search is on via your model server. ⓘ
+            </span>
+          ) : (
+            <span
+              className={styles.muted}
+              title="Without an embedding model, retrieval ranks by shared words instead of meaning. The button fixes that — or serve bge-m3 from Ollama, which is picked up automatically."
+            >
+              Ranking by word overlap. ⓘ
+            </span>
+          )}
           <button className={styles.newBtn} onClick={() => void api.embedderDownload().then(() => setStatus({ ...status, state: 'DOWNLOADING', percent: 0 }))}>
             Enable semantic search
           </button>

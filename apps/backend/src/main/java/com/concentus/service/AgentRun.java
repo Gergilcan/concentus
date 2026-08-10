@@ -229,6 +229,22 @@ public class AgentRun {
      * rate is what makes a mixed-model flow (an Opus coordinator delegating to Sonnet sub-agents)
      * add up.
      */
+    /**
+     * The node list with each block's cost filled in. The one place per-node pricing happens:
+     * it lived in RunController before, so any other consumer of node execs — persistence, a
+     * websocket push, an export — silently reported $0 per node unless it remembered to price.
+     */
+    public List<NodeExec> pricedNodeExecList() {
+        List<NodeExec> nodes = nodeExecList();
+        if (pricing != null) {
+            for (NodeExec n : nodes) {
+                n.estimatedCostUsd = pricing.costUsd(
+                        n.model, n.inputTokens, n.cacheReadTokens, n.cacheWriteTokens, n.outputTokens);
+            }
+        }
+        return nodes;
+    }
+
     public double estimatedCostUsd() {
         PricingTable table = pricing;
         if (table == null) return 0d;

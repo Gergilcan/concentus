@@ -1,0 +1,13 @@
+# Line endings, settled once.
+#
+# Every text file is stored AND checked out as LF, on every platform. Without this, Windows'
+# default core.autocrlf=true made git print "LF will be replaced by CRLF" for nearly every file in
+# nearly every commit — hundreds of warnings drowning out anything real. All tooling in this repo
+# (tsc, vite, maven, electron-builder) is indifferent to endings; nothing here needs CRLF.
+* text=auto eol=lf
+
+# Binaries, never touched.
+*.png binary
+*.ico binary
+*.jar binary
+*.pdf binary
