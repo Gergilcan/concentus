@@ -68,12 +68,16 @@ class FanoutExecutorTest {
     }
 
     private static AgentRun run(AgentSpec... workers) {
+        return runWithMerger(null, workers);
+    }
+
+    private static AgentRun runWithMerger(AgentSpec merger, AgentSpec... workers) {
         AgentRun run = new AgentRun("run-1", "flow-1", "Flow", "local");
         AgentSpec coord = new AgentSpec();
         coord.nodeId = "c1";
         coord.name = "Coordinator";
         coord.execution = "fanout";
-        run.compiled = new CompiledFlow(coord, List.of(workers));
+        run.compiled = new CompiledFlow(coord, List.of(workers), merger);
         return run;
     }
 
@@ -322,6 +326,62 @@ class FanoutExecutorTest {
         assertThat(mcpConfig).isEqualTo("{\"mcpServers\":{}}");
         assertThat(run.bufferedEvents()).anySatisfy(e ->
                 assertThat(e.text()).contains("no facade profile"));
+    }
+
+    @Test
+    void theMergeStepRunsAfterTheWorkersAndSpeaksLast() throws Exception {
+        AgentSpec worker = spec("n1", "Worker A", "worker-a", "");
+        AgentSpec merger = spec("m1", "Merge", "merge", "Prefer the stricter reading.");
+        AgentRun run = runWithMerger(merger, worker);
+
+        List<List<String>> spawned = new CopyOnWriteArrayList<>();
+        // Like a real CLI stream, the result event repeats the final assistant text.
+        FanoutExecutor.ProcessStarter starter = (args, workdir) -> {
+            spawned.add(args);
+            return workdir.toString().contains("merge")
+                    ? new FakeProcess(okStream("Resultado final fusionado", "Resultado final fusionado"), 0)
+                    : new FakeProcess(okStream("Informe A", "Informe A"), 0);
+        };
+
+        executor(starter, 900, 0).runTurn(run, run.compiled, "Revisa el cambio");
+
+        assertThat(spawned).hasSize(2);
+        // The worker lost Bash; the merge kept it (its job is running the checks).
+        assertThat(spawned.get(0)).containsSequence("--disallowedTools", "Task,Bash");
+        assertThat(spawned.get(1)).containsSequence("--disallowedTools", "Task");
+        // The merge's prompt carries the worker's report; its CLAUDE.md carries its instructions.
+        String mergePrompt = String.join(" ", spawned.get(1));
+        assertThat(mergePrompt).contains("Informe A").contains("Worker A");
+        String mergeMd = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "merge", "CLAUDE.md")));
+        assertThat(mergeMd).contains("merge step").contains("Prefer the stricter reading.");
+
+        assertThat(exec(run, "m1").status).isEqualTo("passed");
+        assertThat(exec(run, "m1").output).contains("Resultado final fusionado");
+        assertThat(run.status).isEqualTo("IDLE");
+        // The run's last word is the merge's, not the raw combined report.
+        assertThat(run.finalOutput()).contains("Resultado final fusionado");
+    }
+
+    @Test
+    void aFailedMergeFailsTheRunButKeepsTheWorkersReport() {
+        AgentSpec worker = spec("n1", "Worker A", "worker-a", "");
+        AgentSpec merger = spec("m1", "Merge", "merge", "");
+        AgentRun run = runWithMerger(merger, worker);
+
+        FanoutExecutor.ProcessStarter starter = (args, workdir) ->
+                workdir.toString().contains("merge")
+                        ? new FakeProcess("{\"type\":\"result\",\"is_error\":true,\"result\":\"merge blew up\"}", 1)
+                        : new FakeProcess(okStream("hola", "Informe A"), 0);
+
+        executor(starter, 900, 0).runTurn(run, run.compiled, "go");
+
+        assertThat(run.status).isEqualTo("ERROR");
+        assertThat(run.error).contains("merge step failed");
+        assertThat(exec(run, "m1").status).isEqualTo("failed");
+        // The workers' work is not lost: the combined report still sits on the coordinator.
+        assertThat(exec(run, "c1").output).contains("Informe A");
+        assertThat(exec(run, "n1").status).isEqualTo("passed");
     }
 
     @Test

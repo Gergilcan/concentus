@@ -71,7 +71,18 @@ public class FlowCompiler {
 
         assignCliNames(coordinator, subAgents);
         assignRosters(coordinator, subAgents, coordinatorNode, tree);
-        return new CompiledFlow(coordinator, subAgents);
+
+        // The merge step of a fan-out flow. Same data shape as an agent node, so the same spec
+        // builder serves; at most one, because "the merge" must be a single answer.
+        List<FlowNode> merges = byType(flow, "merge");
+        if (merges.size() > 1) {
+            throw new IllegalArgumentException("Flow has more than one merge node — keep exactly one.");
+        }
+        AgentSpec merger = merges.isEmpty()
+                ? null
+                : buildAgentSpec(merges.get(0), flow, mcps, repos, sqls, knowledges, apis);
+
+        return new CompiledFlow(coordinator, subAgents, merger);
     }
 
     /** Agents reachable from the coordinator, plus who delegates to whom. */

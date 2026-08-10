@@ -8,8 +8,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** A flow reduced to executable specs: one coordinator plus its sub-agent roster. */
-public record CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents) {
+/**
+ * A flow reduced to executable specs: one coordinator plus its sub-agent roster, and — for
+ * fan-out flows — an optional merge step.
+ */
+public record CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger) {
+
+    /** The shape every caller had before the merge node existed: no merger. */
+    public CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents) {
+        this(coordinator, subAgents, null);
+    }
 
     /**
      * Whether this flow runs its sub-agents as independent {@code claude} processes (fan-out)

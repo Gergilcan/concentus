@@ -34,6 +34,7 @@ const STRIP_EVERYWHERE = [
   'contextFolders',
   'claudeMdPath',
   'skillIds',
+  'facadeProfileId',
 ]
 
 const STRIP_BY_TYPE: Record<string, string[]> = {

@@ -107,6 +107,10 @@
   border-left: 3px solid t.$ok;
 }
 
+.merge {
+  border-left: 3px solid t.$merge;
+}
+
 /* live run status + tokens shown on a node */
 .execBadge {
   display: inline-flex;

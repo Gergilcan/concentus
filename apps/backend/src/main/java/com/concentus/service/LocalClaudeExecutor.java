@@ -344,6 +344,13 @@ public class LocalClaudeExecutor {
         registerMcpServers(run);
         writeMcpConfig(run, workdir);
         materialiseSkills(run, flow, workdir);
+
+        // Said rather than silently skipped: the canvas shows the node, so the run must say why
+        // nothing ever lands on it here.
+        if (flow.merger() != null) {
+            run.emit(RunEvent.of("system", "This flow has a merge node, which only runs under "
+                    + "independent-workers execution — on subagents execution it is ignored."));
+        }
     }
 
     /**

@@ -4,6 +4,7 @@ import { ApiNode } from './nodes/ApiNode.tsx'
 import { InputNode } from './nodes/InputNode.tsx'
 import { McpNode } from './nodes/McpNode.tsx'
 import { KnowledgeNode } from './nodes/KnowledgeNode.tsx'
+import { MergeNode } from './nodes/MergeNode.tsx'
 import { RepoNode } from './nodes/RepoNode.tsx'
 import { SqlNode } from './nodes/SqlNode.tsx'
 import { nodeTypes } from './nodeTypes.ts'
@@ -12,8 +13,8 @@ import { nodeTypes } from './nodeTypes.ts'
 // missing/extra key silently breaks rendering for that node kind (falls back to the
 // default renderer instead of erroring), so pin the exact key set and each mapping.
 describe('nodeTypes', () => {
-  it('has exactly the seven expected node-kind keys, no more, no fewer', () => {
-    expect(Object.keys(nodeTypes).sort()).toEqual(['agent', 'api', 'input', 'knowledge', 'mcp', 'repo', 'sql'])
+  it('has exactly the eight expected node-kind keys, no more, no fewer', () => {
+    expect(Object.keys(nodeTypes).sort()).toEqual(['agent', 'api', 'input', 'knowledge', 'mcp', 'merge', 'repo', 'sql'])
   })
 
   it('maps each key to the matching imported component', () => {
@@ -24,5 +25,6 @@ describe('nodeTypes', () => {
     expect(nodeTypes.knowledge).toBe(KnowledgeNode)
     expect(nodeTypes.sql).toBe(SqlNode)
     expect(nodeTypes.api).toBe(ApiNode)
+    expect(nodeTypes.merge).toBe(MergeNode)
   })
 })

@@ -47,12 +47,24 @@ class FanoutArgsTest {
 
     private static List<String> args(String prompt, boolean promptOnStdin) {
         return executor().buildWorkerArgs("claude", run(), spec(), Path.of("wd"), List.of(),
-                "session-9", prompt, promptOnStdin);
+                "session-9", prompt, promptOnStdin, "Task,Bash");
     }
 
     @Test
-    void aWorkerCanNeverDelegate() {
-        assertThat(args("hola", false)).containsSequence("--disallowedTools", "Task");
+    void aWorkerCanNeitherDelegateNorRunShellCommands() {
+        // Task: a worker that could fan out again turns bounded N into an unbounded tree.
+        // Bash: verification commands belong to the single merge step, not to N unattended
+        // processes each with a shell.
+        assertThat(args("hola", false)).containsSequence("--disallowedTools", "Task,Bash");
+    }
+
+    @Test
+    void theMergeStepKeepsBashButStillCannotDelegate() {
+        List<String> a = executor().buildWorkerArgs("claude", run(), spec(), Path.of("wd"),
+                List.of(), "s", "merge it", false, "Task");
+
+        assertThat(a).containsSequence("--disallowedTools", "Task");
+        assertThat(a).doesNotContain("Task,Bash");
     }
 
     @Test
@@ -85,7 +97,7 @@ class FanoutArgsTest {
         run.permissionMode = LocalClaudeExecutor.APPROVAL_MODE;
 
         List<String> a = executor().buildWorkerArgs("claude", run, spec(), Path.of("wd"),
-                List.of(), "s", "hola", false);
+                List.of(), "s", "hola", false, "Task,Bash");
 
         assertThat(a).containsSequence("--permission-mode", "plan");
     }
@@ -99,7 +111,7 @@ class FanoutArgsTest {
     @Test
     void contextDirectoriesAreGrantedPerWorker() {
         List<String> a = executor().buildWorkerArgs("claude", run(), spec(), Path.of("wd"),
-                List.of(Path.of("/a"), Path.of("/b")), "s", "hola", false);
+                List.of(Path.of("/a"), Path.of("/b")), "s", "hola", false, "Task,Bash");
 
         assertThat(a).filteredOn("--add-dir"::equals).hasSize(2);
     }

@@ -140,7 +140,7 @@ export interface NodeExecReport {
 // `type` aliases (not interfaces) so they satisfy React Flow's
 // `Record<string, unknown>` node-data constraint.
 
-export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'knowledge' | 'api' | 'input'
+export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'knowledge' | 'api' | 'input' | 'merge'
 
 export type InputNodeData = {
   kind: 'input'
@@ -342,7 +342,22 @@ export type ApiNodeData = {
   ops: string[]
 }
 
-export type AppNodeData = AgentNodeData | McpNodeData | RepoNodeData | SqlNodeData | KnowledgeNodeData | ApiNodeData | InputNodeData
+/**
+ * The merge step of a fan-out flow: one more `claude` process that runs after every worker,
+ * reconciles their reports into the run's final answer, and — unlike the workers — may run
+ * commands, because verifying the combined result (tests, diffs) is exactly one process's job.
+ */
+export type MergeNodeData = {
+  kind: 'merge'
+  name: string
+  model: string
+  /** Merge instructions: how to reconcile, what to verify, what the final report must contain. */
+  systemPrompt: string
+  maxTokens: number
+  effort: string
+}
+
+export type AppNodeData = AgentNodeData | McpNodeData | RepoNodeData | SqlNodeData | KnowledgeNodeData | ApiNodeData | InputNodeData | MergeNodeData
 
 export interface SqlPreview {
   columns: string[]

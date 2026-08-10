@@ -25,6 +25,9 @@ export function Palette() {
       <button className={cx(styles.addBtn, styles.addAgent)} title="Mark exactly one agent as coordinator and link it to the sub-agents it may delegate to." {...drag('agent')} onClick={() => addNode('agent')}>
         <span>◆</span> Agent
       </button>
+      <button className={cx(styles.addBtn, styles.addMerge)} title="For flows running as independent workers: one more claude process that runs AFTER every worker, reconciles their reports into the final answer, and runs the verification commands (tests, diffs) the workers cannot. At most one per flow; ignored on subagents execution." {...drag('merge')} onClick={() => addNode('merge')}>
+        <span>⛙</span> Merge
+      </button>
       <button className={cx(styles.addBtn, styles.addMcp)} title="Connect to the agent that should use its tools. Direction of the wire does not matter." {...drag('mcp')} onClick={() => addNode('mcp')}>
         <span>⚙</span> MCP server
       </button>

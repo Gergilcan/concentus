@@ -38,7 +38,7 @@ const MAX_RUN_EVENTS = 4000
 
 /** The field each node kind uses as its human-facing identifier, if it has one. */
 function nameKey(kind: NodeKind): 'name' | 'label' | null {
-  if (kind === 'agent' || kind === 'mcp') return 'name'
+  if (kind === 'agent' || kind === 'mcp' || kind === 'merge') return 'name'
   if (kind === 'sql' || kind === 'knowledge') return 'label'
   return null
 }
@@ -155,6 +155,15 @@ function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
         credentialId: '',
         query: 'SELECT * FROM my_table LIMIT 20',
         maxRows: 50,
+      }
+    case 'merge':
+      return {
+        kind: 'merge',
+        name: 'Merge',
+        model: DEFAULT_MODEL,
+        systemPrompt: '',
+        maxTokens: DEFAULT_MAX_TOKENS,
+        effort: 'high',
       }
     case 'input':
       return {

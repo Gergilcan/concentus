@@ -168,7 +168,34 @@ public class FanoutExecutor {
             }
         }
 
-        report(run, coordExec, userText, outcomes);
+        long failed = outcomes.stream().filter(o -> !o.ok()).count();
+        writeCombinedReport(run, coordExec, outcomes, failed);
+
+        // A stopped run keeps saying it was stopped. Its workers were killed and every outcome
+        // reads "failed", but reporting that as ERROR would page someone about a run a human
+        // ended on purpose.
+        if ("TERMINATED".equals(run.status)) return;
+        if (failed == outcomes.size()) {
+            fail(run, "Every worker failed. The combined report lists each reason.");
+            return;
+        }
+
+        AgentSpec merger = flow.merger();
+        if (merger != null) {
+            runMerge(run, merger, cmd, userText, outcomes);
+            if ("ERROR".equals(run.status) || "TERMINATED".equals(run.status)) return;
+        }
+        settleIdle(run);
+    }
+
+    /** The turn ended without error: idle, or held for a human under approval mode. */
+    private static void settleIdle(AgentRun run) {
+        boolean waiting = LocalClaudeExecutor.awaitingApproval(run);
+        run.status = waiting ? "AWAITING_APPROVAL" : "IDLE";
+        if (waiting) {
+            run.emit(RunEvent.of("system",
+                    "Waiting for your approval — nothing has been changed yet."));
+        }
     }
 
     /** Kills every live worker of this run. The run's status is the caller's to set. */
@@ -203,19 +230,27 @@ public class FanoutExecutor {
                 run.emit(RunEvent.of("system",
                         "Context folder ignored — " + path + ": " + reason, spec.name, spec.nodeId)));
 
+        // No Bash, deliberately: a fan-out is N unattended processes, and N shells is N times
+        // the blast radius. Verification commands belong to the single merge step.
+        return finish(exec, execute(run, spec, exec, cmd, userText, workdir, dirs, "Task,Bash"));
+    }
+
+    /** The attempts loop shared by workers and the merge step. Does not settle NodeExec status. */
+    private Outcome execute(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
+                            String prompt, Path workdir, List<Path> dirs, String disallowedTools) {
         int attempts = 1 + retries;
         String lastError = null;
         for (int attempt = 1; attempt <= attempts; attempt++) {
             if ("TERMINATED".equals(run.status)) {
-                return finish(exec, new Outcome(spec, false, null, "run was stopped"));
+                return new Outcome(spec, false, null, "run was stopped");
             }
             if (attempt > 1) {
                 run.emit(RunEvent.of("system", "Retrying (" + attempt + "/" + attempts + ") after: "
                         + lastError, spec.name, spec.nodeId));
             }
-            Attempt result = attempt(run, spec, exec, cmd, userText, workdir, dirs);
+            Attempt result = attempt(run, spec, exec, cmd, prompt, workdir, dirs, disallowedTools);
             if (result.ok()) {
-                return finish(exec, new Outcome(spec, true, result.finalText(), null));
+                return new Outcome(spec, true, result.finalText(), null);
             }
             lastError = result.error();
             if (result.timedOut() || "TERMINATED".equals(run.status)) {
@@ -224,17 +259,17 @@ public class FanoutExecutor {
                 break;
             }
         }
-        return finish(exec, new Outcome(spec, false, null, lastError));
+        return new Outcome(spec, false, null, lastError);
     }
 
     private record Attempt(boolean ok, boolean timedOut, String finalText, String error) {
     }
 
     private Attempt attempt(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
-                            String userText, Path workdir, List<Path> dirs) {
+                            String userText, Path workdir, List<Path> dirs, String disallowedTools) {
         boolean promptOnStdin = userText.length() > LocalClaudeExecutor.MAX_INLINE_PROMPT_CHARS;
         List<String> args = buildWorkerArgs(cmd, run, spec, workdir, dirs,
-                UUID.randomUUID().toString(), userText, promptOnStdin);
+                UUID.randomUUID().toString(), userText, promptOnStdin, disallowedTools);
 
         Process proc;
         try {
@@ -410,7 +445,7 @@ public class FanoutExecutor {
     // load-bearing and silent when wrong.
     List<String> buildWorkerArgs(String cmd, AgentRun run, AgentSpec spec, Path workdir,
                                  List<Path> contextDirs, String sessionId, String userText,
-                                 boolean promptOnStdin) {
+                                 boolean promptOnStdin, String disallowedTools) {
         List<String> a = new ArrayList<>();
         a.add(cmd);
         if (!promptOnStdin) {
@@ -433,10 +468,10 @@ public class FanoutExecutor {
         a.add("--mcp-config");
         a.add(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE).toString());
         a.add("--strict-mcp-config");
-        // One level deep by construction: a worker that could open its own Task fan-out would turn
-        // a bounded N processes into an unbounded tree.
+        // Always at least Task: a worker that could open its own fan-out would turn a bounded N
+        // processes into an unbounded tree. Workers also lose Bash; the merge step keeps it.
         a.add("--disallowedTools");
-        a.add("Task");
+        a.add(disallowedTools);
         a.add("--session-id");
         a.add(sessionId);
         // Last and bare, exactly like the coordinator path: with nothing after it the CLI can
@@ -515,13 +550,23 @@ public class FanoutExecutor {
     // ---------------------------------------------------------------- reporting
 
     /**
-     * The combined report, until the merge node exists: what each worker concluded, failures
-     * included by name. Attributed to the coordinator node — it is the one box every flow has,
-     * and the report is the answer to the instruction that box received.
+     * What each worker concluded, failures included by name, on the coordinator's box — it is
+     * the one box every flow has, and the report is the answer to the instruction it received.
+     * When a merge node exists this is the merge's input record, not the run's last word.
      */
-    private void report(AgentRun run, NodeExec coordExec, String userText, List<Outcome> outcomes) {
-        long failed = outcomes.stream().filter(o -> !o.ok()).count();
+    private void writeCombinedReport(AgentRun run, NodeExec coordExec, List<Outcome> outcomes,
+                                     long failed) {
+        String report = combinedReport(outcomes, failed);
+        AgentSpec coord = run.compiled.coordinator();
+        if (coordExec != null) {
+            coordExec.appendOutput(report);
+            coordExec.status = failed == outcomes.size() ? "failed" : "passed";
+            coordExec.endedAt = System.currentTimeMillis();
+        }
+        run.emit(RunEvent.of("agent_message", report, coord.name, coord.nodeId));
+    }
 
+    private static String combinedReport(List<Outcome> outcomes, long failed) {
         StringBuilder md = new StringBuilder("## Independent workers — combined report\n");
         for (Outcome o : outcomes) {
             md.append("\n### ").append(o.spec().name)
@@ -537,31 +582,124 @@ public class FanoutExecutor {
             md.append("\n").append(failed).append(" of ").append(outcomes.size())
                     .append(" worker(s) failed — their sections above say why. The rest is real.\n");
         }
+        return md.toString();
+    }
 
-        String report = md.toString();
-        AgentSpec coord = run.compiled.coordinator();
-        if (coordExec != null) {
-            coordExec.appendOutput(report);
-            coordExec.status = failed == outcomes.size() ? "failed" : "passed";
-            coordExec.endedAt = System.currentTimeMillis();
+    // ---------------------------------------------------------------- merge step
+
+    /**
+     * The merge step: one more {@code claude} process, after every worker has finished, whose
+     * job is to reconcile the workers' reports into the run's actual answer — and to run the
+     * checks the workers deliberately could not: workers have no Bash (a fan-out of N unattended
+     * processes each running shell commands is N times the blast radius), the merge does,
+     * because verifying the combined result is exactly one process's job.
+     *
+     * <p>It reads the workers' workspaces read-only via {@code --add-dir}, so "merge" can mean
+     * "diff what they produced" and not just "paraphrase what they said".
+     */
+    private void runMerge(AgentRun run, AgentSpec merger, String cmd, String userText,
+                          List<Outcome> outcomes) {
+        NodeExec exec = run.nodeExec(merger.nodeId, "agent", merger.name);
+        Path workdir = Path.of(dataDir, "local", run.id, "merge").toAbsolutePath().normalize();
+        Path workersRoot = Path.of(dataDir, "local", run.id, "workers").toAbsolutePath().normalize();
+
+        String prompt = mergePrompt(userText, outcomes, workersRoot);
+        if (exec != null) {
+            exec.appendInput(prompt);
+            exec.status = "running";
         }
-        run.emit(RunEvent.of("agent_message", report, coord.name, coord.nodeId));
+        run.emit(RunEvent.of("system", "Merge: reconciling " + outcomes.size()
+                + " worker report(s)" + (merger.systemPrompt == null || merger.systemPrompt.isBlank()
+                        ? "" : " under this flow's merge instructions") + ".",
+                merger.name, merger.nodeId));
 
-        // A stopped run keeps saying it was stopped. Its workers were killed and every outcome
-        // reads "failed", but reporting that as ERROR would page someone about a run a human
-        // ended on purpose.
-        if ("TERMINATED".equals(run.status)) return;
+        try {
+            prepareMergeWorkspace(run, merger, workdir);
+        } catch (IOException e) {
+            markMergeFailed(run, exec, "merge workspace could not be prepared: " + e.getMessage());
+            return;
+        }
 
-        if (failed == outcomes.size()) {
-            fail(run, "Every worker failed. The combined report lists each reason.");
+        List<Path> dirs = new ArrayList<>();
+        if (Files.isDirectory(workersRoot)) dirs.add(workersRoot);
+        dirs.addAll(contextFolders.resolve(merger.contextFolders, (path, reason) ->
+                run.emit(RunEvent.of("system", "Context folder ignored — " + path + ": " + reason,
+                        merger.name, merger.nodeId))));
+
+        // Bash stays available — running the tests is the point — but delegation does not.
+        Outcome outcome = execute(run, merger, exec, cmd, prompt, workdir, dirs, "Task");
+        if (outcome.ok()) {
+            if (exec != null) {
+                exec.status = "passed";
+                exec.endedAt = System.currentTimeMillis();
+            }
         } else {
-            boolean waiting = LocalClaudeExecutor.awaitingApproval(run);
-            run.status = waiting ? "AWAITING_APPROVAL" : "IDLE";
-            if (waiting) {
-                run.emit(RunEvent.of("system",
-                        "Waiting for your approval — nothing has been changed yet."));
+            markMergeFailed(run, exec, outcome.error());
+        }
+    }
+
+    private void markMergeFailed(AgentRun run, NodeExec exec, String error) {
+        if (exec != null) {
+            exec.status = "failed";
+            exec.error = error;
+            exec.endedAt = System.currentTimeMillis();
+        }
+        if (!"TERMINATED".equals(run.status)) {
+            fail(run, "The merge step failed: " + error
+                    + " The workers' combined report above still stands.");
+        }
+    }
+
+    private void prepareMergeWorkspace(AgentRun run, AgentSpec merger, Path workdir)
+            throws IOException {
+        Files.createDirectories(workdir);
+        if (!run.workersPrepared.add("merge:" + merger.nodeId)) return;
+
+        ragInjector.inject(merger, run, m -> run.emit(RunEvent.of("system", m)));
+
+        StringBuilder md = new StringBuilder();
+        md.append("""
+                You are the merge step of a fan-out flow: several independent workers ran the
+                same overall task, each on its own slice, and their reports are in your prompt.
+                Your job is to reconcile them into one answer — verify, deduplicate, resolve
+                contradictions, and say plainly what failed and what is missing. You may run
+                commands (tests, diffs) to verify claims; the workers could not, so unverified
+                claims are yours to check, not to repeat.
+                """);
+        if (merger.systemPrompt != null && !merger.systemPrompt.isBlank()) {
+            md.append('\n').append(merger.systemPrompt).append('\n');
+        }
+        LocalClaudeExecutor.appendContextFolderNote(merger, md);
+        Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
+
+        // Empty and strict, like a worker without a facade: the merge reconciles and verifies on
+        // disk; if it ever needs MCP reach, that is a facade profile decision, not a default.
+        var root = mapper.createObjectNode();
+        root.putObject("mcpServers");
+        Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
+                mapper.writeValueAsString(root));
+    }
+
+    /** The merge's input: the goal, each worker's outcome, and where their real files sit. */
+    private static String mergePrompt(String userText, List<Outcome> outcomes, Path workersRoot) {
+        StringBuilder p = new StringBuilder();
+        p.append("# Task the workers were given\n\n").append(userText).append("\n\n");
+        p.append("# Worker outcomes\n");
+        for (Outcome o : outcomes) {
+            p.append("\n## ").append(o.spec().name)
+                    .append(o.ok() ? "" : " — FAILED").append('\n');
+            if (o.ok()) {
+                p.append(o.finalText() == null || o.finalText().isBlank()
+                        ? "(finished without a final message)" : o.finalText()).append('\n');
+            } else {
+                p.append("Failed: ").append(o.error()).append('\n');
             }
         }
+        p.append("\nTheir full workspaces (files they wrote, one folder per worker) are under: ")
+                .append(workersRoot).append("\n");
+        p.append("\nProduce the final merged result now. Account for every worker above — "
+                + "including the failed ones, whose slices are gaps to name, not to invent.\n");
+        return p.toString();
     }
 
     /**

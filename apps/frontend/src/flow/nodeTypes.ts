@@ -3,12 +3,14 @@ import type {
   AgentNodeData,
   KnowledgeNodeData,
   McpNodeData,
+  MergeNodeData,
   RepoNodeData,
   SqlNodeData,
 } from '../api/types.ts'
 import { AgentNode } from './nodes/AgentNode.tsx'
 import { InputNode } from './nodes/InputNode.tsx'
 import { McpNode } from './nodes/McpNode.tsx'
+import { MergeNode } from './nodes/MergeNode.tsx'
 import { RepoNode } from './nodes/RepoNode.tsx'
 import { ApiNode } from './nodes/ApiNode.tsx'
 import { KnowledgeNode } from './nodes/KnowledgeNode.tsx'
@@ -20,6 +22,7 @@ export type RepoRFNode = Node<RepoNodeData, 'repo'>
 export type SqlRFNode = Node<SqlNodeData, 'sql'>
 export type KnowledgeRFNode = Node<KnowledgeNodeData, 'knowledge'>
 export type ApiRFNode = Node<import('../api/types.ts').ApiNodeData, 'api'>
+export type MergeRFNode = Node<MergeNodeData, 'merge'>
 
 export const nodeTypes = {
   agent: AgentNode,
@@ -29,4 +32,5 @@ export const nodeTypes = {
   sql: SqlNode,
   knowledge: KnowledgeNode,
   api: ApiNode,
+  merge: MergeNode,
 }
