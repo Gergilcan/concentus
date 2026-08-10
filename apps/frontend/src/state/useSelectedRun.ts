@@ -43,6 +43,8 @@ export function useSelectedRun(pushError: (m: string) => void, runs: RunSummary[
   // one flow's node executions onto another's nodes — and the run's own console kept streaming
   // beside a canvas it had nothing to do with.
   const openFlowId = useFlowStore((s) => s.flowId)
+  // A string, so effects can depend on the VALUE rather than on the runs array identity.
+  const selectedStatus = runs.find((r) => r.id === selectedRun)?.status
   useEffect(() => {
     if (!selectedRun) return
     const run = runs.find((r) => r.id === selectedRun)
@@ -76,8 +78,7 @@ export function useSelectedRun(pushError: (m: string) => void, runs: RunSummary[
     tick()
     // A finished run is read once and then left alone: its node state cannot change again, so
     // an interval on it is pure waste for as long as the selection lasts.
-    const status = runs.find((r) => r.id === selectedRun)?.status
-    if (status === 'TERMINATED' || status === 'ERROR') {
+    if (selectedStatus === 'TERMINATED' || selectedStatus === 'ERROR') {
       return () => {
         alive = false
       }
@@ -87,7 +88,11 @@ export function useSelectedRun(pushError: (m: string) => void, runs: RunSummary[
       alive = false
       clearInterval(t)
     }
-  }, [selectedRun, setActiveRun, setRunExec, pushError, runs])
+    // selectedStatus, NOT runs: the runs array is a fresh identity on every dashboard poll, and
+    // depending on it restarted this effect — an immediate extra tick plus a reset interval —
+    // every few seconds. The status string only changes when the run actually transitions,
+    // which is exactly when the terminal check above needs re-evaluating.
+  }, [selectedRun, setActiveRun, setRunExec, pushError, selectedStatus])
 
   return [selectedRun, setSelectedRun] as const
 }

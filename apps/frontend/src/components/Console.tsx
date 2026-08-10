@@ -10,9 +10,15 @@ import { kindOf } from './flowFormat.ts'
 import styles from './runs.module.scss'
 
 /** Stable hue per agent name, so an agent keeps the same colour for the whole run. */
+const hueCache = new Map<string, number>()
 function hueOf(name: string): number {
-  let h = 0
-  for (let i = 0; i < name.length; i += 1) h = (h * 31 + name.charCodeAt(i)) % 360
+  let h = hueCache.get(name)
+  if (h === undefined) {
+    h = 0
+    for (let i = 0; i < name.length; i += 1) h = (h * 31 + name.charCodeAt(i)) % 360
+    // A handful of agent names per run; the map never grows meaningfully.
+    hueCache.set(name, h)
+  }
   return h
 }
 

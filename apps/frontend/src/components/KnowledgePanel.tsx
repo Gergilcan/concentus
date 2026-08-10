@@ -34,10 +34,12 @@ interface TreeNode {
   path: string
   folders: Map<string, TreeNode>
   files: KnowledgeDoc[]
+  /** Documents anywhere under this folder — filled by buildTree, so no render walks the subtree. */
+  count: number
 }
 
 function emptyNode(name: string, path: string): TreeNode {
-  return { name, path, folders: new Map(), files: [] }
+  return { name, path, folders: new Map(), files: [], count: 0 }
 }
 
 /**
@@ -57,6 +59,8 @@ export function buildTree(docs: KnowledgeDoc[]): TreeNode {
         next = emptyNode(segment, path)
         node.folders.set(segment, next)
       }
+      // Every ancestor counts this document; the render used to re-walk each visible subtree.
+      next.count += 1
       node = next
     }
     node.files.push(doc)
@@ -123,9 +127,7 @@ export function flattenTree(node: TreeNode, expanded: Set<string>, depth = 0): T
 
 /** Documents anywhere under a folder — what deleting it would actually take. */
 export function countUnder(node: TreeNode): number {
-  let total = node.files.length
-  for (const child of node.folders.values()) total += countUnder(child)
-  return total
+  return node.count
 }
 
 /** Every folder name along a file's path, minus the chosen root and the file itself. */
