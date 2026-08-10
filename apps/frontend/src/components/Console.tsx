@@ -6,6 +6,7 @@ import { useFlowStore } from '../state/store.ts'
 import { clockTime, money } from '../utils/format.ts'
 import { agentKey } from '../utils/agentKey.ts'
 import { cx } from '../utils/cx.ts'
+import { kindOf } from './flowFormat.ts'
 import styles from './runs.module.scss'
 
 /** Stable hue per agent name, so an agent keeps the same colour for the whole run. */
@@ -16,11 +17,11 @@ function hueOf(name: string): number {
 }
 
 export function Console({ runId, status }: { runId: string; status?: RunStatus }) {
-  // Stopping only means something while something is running. STARTING and RUNNING are the states
-  // with work to interrupt; IDLE is a turn-based run waiting for its next command, with no process
-  // to kill, and TERMINATED and ERROR are over. Offering the button there invites a click that
-  // does nothing and leaves the user unsure whether it worked.
-  const canStop = status === 'STARTING' || status === 'RUNNING'
+  // Stopping only means something while something is running: IDLE is a turn-based run waiting
+  // for its next command, with no process to kill, and TERMINATED/ERROR are over. kindOf is the
+  // shared definition of "in flight" — a third active status added there reaches this button too,
+  // instead of leaving Stop disabled on a run that is actually running.
+  const canStop = status != null && kindOf(status) === 'active'
   // Events live in the store so a node's inspector can render its own agent's slice
   // of the same stream — one socket, many views.
   const events = useFlowStore((s) => s.runEvents)
