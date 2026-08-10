@@ -1,11 +1,13 @@
 package com.concentus.web;
 
 import com.concentus.model.FlowGraph;
+import com.concentus.model.FlowMemoryView;
 import com.concentus.model.FlowVersionInfo;
 import com.concentus.model.RunSummary;
 import com.concentus.service.RunService;
 import com.concentus.mail.MailTriggerService;
 import com.concentus.service.ScheduleService;
+import com.concentus.store.FlowMemoryStore;
 import com.concentus.store.FlowStore;
 import com.concentus.store.FlowVersionStore;
 import org.springframework.http.HttpStatus;
@@ -26,19 +28,25 @@ import java.util.List;
 @RequestMapping("/api/flows")
 public class FlowController {
 
+    /** How many notes the memory view returns. The UI paginates; agents read far fewer. */
+    private static final int MEMORY_VIEW_LIMIT = 100;
+
     private final FlowStore store;
     private final RunService runService;
     private final ScheduleService scheduler;
     private final MailTriggerService mailTriggers;
     private final FlowVersionStore versions;
+    private final FlowMemoryStore memory;
 
     public FlowController(FlowStore store, RunService runService, ScheduleService scheduler,
-                          MailTriggerService mailTriggers, FlowVersionStore versions) {
+                          MailTriggerService mailTriggers, FlowVersionStore versions,
+                          FlowMemoryStore memory) {
         this.store = store;
         this.runService = runService;
         this.scheduler = scheduler;
         this.mailTriggers = mailTriggers;
         this.versions = versions;
+        this.memory = memory;
     }
 
     @GetMapping
@@ -84,6 +92,20 @@ public class FlowController {
         store.delete(id);
         scheduler.reschedule();
         mailTriggers.reschedule();
+    }
+
+    /** The notes this flow's agents have left for their future runs, newest first. */
+    @GetMapping("/{id}/memory")
+    public FlowMemoryView memory(@PathVariable String id) {
+        return new FlowMemoryView(memory.isAvailable(), memory.count(id),
+                memory.latest(id, MEMORY_VIEW_LIMIT));
+    }
+
+    /** Wipes the flow's memory. The user's reset button — agents have no tool that does this. */
+    @DeleteMapping("/{id}/memory")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void clearMemory(@PathVariable String id) {
+        memory.clear(id);
     }
 
     @PostMapping("/{id}/run")

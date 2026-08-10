@@ -48,6 +48,8 @@ export const NODE_COLORS: Record<string, string> = {
   mcp: '#63e6be',
   repo: '#ffd43b',
   sql: '#ff922b',
+  knowledge: '#b98cff',
+  api: '#e64980',
   input: '#51cf66',
   default: '#888',
 }

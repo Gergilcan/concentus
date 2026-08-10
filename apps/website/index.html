@@ -471,6 +471,13 @@
           <h3>Chains, not just a flat roster</h3>
           <p>An agent hands work to whatever you wire behind it. Put a reviewer behind one engineer and it reviews that engineer's output — not everything the flow does. Nest as deep as the job needs; each agent is told exactly which agents are its own to call.</p>
         </div>
+
+        <div class="card wide" data-reveal style="--cc:var(--accent)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="9" y="2" width="6" height="5" rx="1.5"/><rect x="2" y="17" width="6" height="5" rx="1.5"/><rect x="9" y="17" width="6" height="5" rx="1.5"/><rect x="16" y="17" width="6" height="5" rx="1.5"/><path d="M12 7v5M12 12H5v5M12 12v5M12 12h7v5"/></svg></div>
+          <div class="k">Isolation</div>
+          <h3>Independent workers, really independent</h3>
+          <p>Flip a flow to fan-out and every worker becomes its own process: its own workspace, its own instructions, its own model, running truly in parallel. The coordinator can even plan the workers dynamically — and each one reaches your tools only through a facade you define: an allowlist, read-only, or dry-run, where writes are simulated and reported for a human to confirm. A merge step reconciles the results and is the only process allowed to run the checks.</p>
+        </div>
         <div class="card wide" data-reveal style="--cc:var(--accent)">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 6h10M4 12h16M4 18h7"/><circle cx="19" cy="6" r="2"/></svg></div>
           <div class="k">Visibility</div>

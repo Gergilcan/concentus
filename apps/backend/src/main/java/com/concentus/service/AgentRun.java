@@ -67,6 +67,45 @@ public class AgentRun {
     public volatile boolean localStarted = false;
     public volatile Process localProcess;
 
+    // --- fanout (independent worker processes) run state ---
+    /**
+     * Live worker processes by agent node id, so Stop can kill every one of them — a fan-out that
+     * only killed the coordinator would leave N orphaned {@code claude} processes still working.
+     */
+    public final Map<String, Process> workerProcesses = new ConcurrentHashMap<>();
+    /**
+     * Worker node ids whose workspace (CLAUDE.md, RAG injection) is already prepared. Guarded per
+     * run because RAG injection appends to the spec's system prompt — running it again on the next
+     * turn would stack a second copy of the same rows onto the same prompt.
+     */
+    public final java.util.Set<String> workersPrepared = ConcurrentHashMap.newKeySet();
+    /**
+     * Each worker's facade profile, frozen when its workspace is prepared. Frozen like
+     * {@link #permissionMode}: editing a profile mid-run must not widen what an already-running
+     * worker may do — the next run picks the edit up.
+     */
+    public final Map<String, com.concentus.model.FacadeProfile> workerFacadeProfiles =
+            new ConcurrentHashMap<>();
+    /**
+     * Bearer per worker for its facade endpoint, keyed by agent node id. Per worker rather than
+     * the run's {@link #toolToken}: a worker holding the run-wide token could call the
+     * coordinator's tools endpoint and reach APIs its own facade never granted.
+     */
+    public final Map<String, String> workerToolTokens = new ConcurrentHashMap<>();
+    /**
+     * The plan the coordinator submitted this turn via {@code plan_submit}, already validated
+     * and with profile names resolved. Null until it arrives; cleared before each planning turn
+     * so a stale plan from the previous turn can never run twice.
+     */
+    public volatile com.concentus.model.WorkPlan submittedPlan;
+    /**
+     * Specs of plan-born workers, keyed by their synthetic node id ({@code worker:<itemId>}).
+     * The facade endpoint resolves workers here when they are not canvas nodes; in-memory only,
+     * like the rest of the fan-out state — a restart ends the turn either way.
+     */
+    public final Map<String, com.concentus.config.AgentSpec> syntheticWorkers =
+            new ConcurrentHashMap<>();
+
     // --- self-hosted model run state ---
     /**
      * MCP sessions, kept for the life of the run.
@@ -97,6 +136,29 @@ public class AgentRun {
      * which is the safe direction for the one setting whose whole point is asking first.
      */
     public volatile boolean approved = false;
+    /**
+     * Bearer for this run's local MCP tool endpoint (API nodes). Minted when the workspace is
+     * prepared; the CLI receives it inside its own mcp-config, so only the process this run
+     * spawned can call this run's tools.
+     */
+    public volatile String toolToken;
+    /** True when this run executed under a shadow trigger: it planned, it never acted. */
+    public volatile boolean shadow;
+    /**
+     * True when this run is its flow's golden reference — the known-good execution that edits of
+     * the flow are compared against. At most one per flow; marking another clears this one.
+     */
+    public volatile boolean golden;
+
+    // --- remote approval (Slack / Teams), copied from the flow at start like notifyWebhook so a
+    // flow edit mid-run cannot redirect an approval request already underway. Not persisted: a
+    // restart loses the watch, and the run then waits in the app exactly as it did before this
+    // feature existed.
+    public volatile String approvalSlackCredentialId;
+    public volatile String approvalSlackChannel;
+    public volatile String approvalTeamsWebhook;
+    /** Set when the remote channels were told about this run's approval wait — told once. */
+    public volatile boolean approvalRemoteNotified;
 
     private final CopyOnWriteArrayList<RunEvent> buffer = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<Consumer<RunEvent>> listeners = new CopyOnWriteArrayList<>();
@@ -220,7 +282,23 @@ public class AgentRun {
 
     public RunSummary toSummary() {
         return new RunSummary(id, flowId, flowName, mode, status, createdAt, sessionId, agentIds, error,
-                trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd());
+                trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd(), golden);
+    }
+
+    /**
+     * What this run ultimately answered: the last agent message, which for a finished run is the
+     * coordinator's closing report. Falls back to nothing rather than guessing — a run that never
+     * produced an agent message has no final output, and showing a tool call or a system line as
+     * "the result" would misrepresent what happened.
+     */
+    public String finalOutput() {
+        List<RunEvent> events = bufferedEvents();
+        for (int i = events.size() - 1; i >= 0; i--) {
+            if ("agent_message".equals(events.get(i).type())) {
+                return events.get(i).text();
+            }
+        }
+        return null;
     }
 
     /**

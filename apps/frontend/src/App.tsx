@@ -5,6 +5,7 @@ import { FlowsPage } from './components/FlowsPage.tsx'
 import { Inspector } from './components/Inspector.tsx'
 import { Palette } from './components/Palette.tsx'
 import { ResourcesPage } from './components/ResourcesPage.tsx'
+import { UsagePage } from './components/UsagePage.tsx'
 import { RunsPanel } from './components/RunsPanel.tsx'
 import { SignIn } from './components/SignIn.tsx'
 import { Toolbar } from './components/Toolbar.tsx'
@@ -85,6 +86,8 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
             onRetryRun={retryRun}
             pushError={setToast}
           />
+        ) : view === 'usage' ? (
+          <UsagePage />
         ) : view === 'studio' ? (
           <>
             <Toolbar

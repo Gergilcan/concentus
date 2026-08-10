@@ -16,11 +16,36 @@ import java.util.List;
  * @param tags          free-form labels used to organize and filter flows
  * @param favorite      pinned to the top of the flow list
  * @param notifyWebhook optional URL POSTed when a run of this flow fails (Slack-compatible)
+ * @param budgetUsd     optional monthly spend ceiling; at or past it, new runs are refused
+ * @param approvalSlackCredentialId stored credential holding a Slack bot token; with a channel,
+ *                      approval requests post to Slack and a ✅/❌ reaction decides them remotely
+ * @param approvalSlackChannel Slack channel id (or public-channel name) the requests post to
+ * @param approvalTeamsWebhook Teams incoming-webhook URL notified on approval requests
+ *                      (notification only — Teams has no local-first way to carry the answer back)
  */
 public record FlowGraph(String id, String name, String mode,
                         List<FlowNode> nodes, List<FlowEdge> edges,
                         Boolean enabled, List<String> tags, Boolean favorite,
-                        String notifyWebhook) {
+                        String notifyWebhook, Double budgetUsd,
+                        String approvalSlackCredentialId, String approvalSlackChannel,
+                        String approvalTeamsWebhook) {
+
+    /** The pre-remote-approval shape, kept so the many existing constructions stay valid. */
+    public FlowGraph(String id, String name, String mode,
+                     List<FlowNode> nodes, List<FlowEdge> edges,
+                     Boolean enabled, List<String> tags, Boolean favorite,
+                     String notifyWebhook, Double budgetUsd) {
+        this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
+                null, null, null);
+    }
+
+    /** The pre-budget shape, kept for the same reason. */
+    public FlowGraph(String id, String name, String mode,
+                     List<FlowNode> nodes, List<FlowEdge> edges,
+                     Boolean enabled, List<String> tags, Boolean favorite,
+                     String notifyWebhook) {
+        this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, null);
+    }
 
     public List<FlowNode> nodesOrEmpty() {
         return nodes == null ? List.of() : nodes;
@@ -49,8 +74,14 @@ public record FlowGraph(String id, String name, String mode,
         return (mode == null || mode.isBlank()) ? "managed" : mode;
     }
 
-    /** Returns a copy with the given id (records are immutable). */
+    /**
+     * Returns a copy with the given id (records are immutable). Copies every component — this
+     * used to call the pre-budget constructor, so restoring a flow version silently dropped its
+     * monthly budget.
+     */
     public FlowGraph withId(String newId) {
-        return new FlowGraph(newId, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook);
+        return new FlowGraph(newId, name, mode, nodes, edges, enabled, tags, favorite,
+                notifyWebhook, budgetUsd, approvalSlackCredentialId, approvalSlackChannel,
+                approvalTeamsWebhook);
     }
 }

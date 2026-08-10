@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
-import type { BackendFlow, FlowVersionInfo } from '../api/types.ts'
+import type { BackendFlow, FlowMemoryView, FlowVersionInfo } from '../api/types.ts'
+import { CredentialField } from './CredentialField.tsx'
 import { Modal } from './Modal.tsx'
 import { timeAgo } from './flowFormat.ts'
 import styles from './flows.module.scss'
@@ -20,6 +21,10 @@ export function SettingsModal({
   const [tags, setTags] = useState((flow.tags ?? []).join(', '))
   const [enabled, setEnabled] = useState(flow.enabled !== false)
   const [webhook, setWebhook] = useState(flow.notifyWebhook ?? '')
+  const [budget, setBudget] = useState(flow.budgetUsd != null ? String(flow.budgetUsd) : '')
+  const [slackCredential, setSlackCredential] = useState(flow.approvalSlackCredentialId ?? '')
+  const [slackChannel, setSlackChannel] = useState(flow.approvalSlackChannel ?? '')
+  const [teamsWebhook, setTeamsWebhook] = useState(flow.approvalTeamsWebhook ?? '')
   const [busy, setBusy] = useState(false)
 
   const save = async () => {
@@ -32,6 +37,10 @@ export function SettingsModal({
         .filter(Boolean),
       enabled,
       notifyWebhook: webhook.trim(),
+      budgetUsd: budget.trim() === '' ? null : Math.max(0, Number(budget)) || null,
+      approvalSlackCredentialId: slackCredential.trim(),
+      approvalSlackChannel: slackChannel.trim(),
+      approvalTeamsWebhook: teamsWebhook.trim(),
     })
     setBusy(false)
   }
@@ -52,6 +61,20 @@ export function SettingsModal({
           Enabled — when off, scheduled (cron) runs are paused. Manual runs still work.
         </span>
       </label>
+      <label
+        className={styles.field}
+        title="Sum of the estimated cost of this flow's runs in the current calendar month. At or past the ceiling, new runs are refused (a run already in flight finishes). On a Claude subscription this is equivalent usage, not a bill."
+      >
+        <span>Monthly budget in USD (blank = no limit) ⓘ</span>
+        <input
+          type="number"
+          min="0"
+          step="0.5"
+          value={budget}
+          onChange={(e) => setBudget(e.target.value)}
+          placeholder="e.g. 25"
+        />
+      </label>
       <label className={styles.field}>
         <span>Failure notification webhook</span>
         <input
@@ -64,6 +87,43 @@ export function SettingsModal({
         POSTed with a Slack-compatible <code>text</code> field plus run details whenever an execution
         of this flow fails.
       </p>
+
+      <h4
+        className={styles.sectionHead}
+        title="When a run of this flow stops to ask for approval, the plan is sent to these channels. Slack can answer: a ✅ reaction approves, a ❌ rejects — the app polls the message, so no public URL is needed. Teams is notification-only: its webhooks cannot carry a reply back."
+      >
+        Remote approval ⓘ
+      </h4>
+      <CredentialField
+        label="Slack bot token"
+        value={slackCredential}
+        onChange={setSlackCredential}
+        what="the Slack bot (scopes: chat:write, reactions:read)"
+      />
+      <label
+        className={styles.field}
+        title="Channel id (C0123456789, from the channel's details) or a public channel name. The bot must be invited to it (/invite @bot)."
+      >
+        <span>Slack channel ⓘ</span>
+        <input
+          value={slackChannel}
+          onChange={(e) => setSlackChannel(e.target.value)}
+          placeholder="C0123456789"
+        />
+      </label>
+      <label
+        className={styles.field}
+        title="A Teams incoming-webhook URL (Workflows). Posts the plan as a card — notification only; approve from the app or Slack."
+      >
+        <span>Teams webhook (notify only) ⓘ</span>
+        <input
+          value={teamsWebhook}
+          onChange={(e) => setTeamsWebhook(e.target.value)}
+          placeholder="https://…webhook.office.com/…"
+        />
+      </label>
+
+      {flow.id && <MemorySection flowId={flow.id} />}
       <div className={styles.modalActions}>
         <button className={styles.ghost} onClick={onClose}>
           Cancel
@@ -73,6 +133,80 @@ export function SettingsModal({
         </button>
       </div>
     </Modal>
+  )
+}
+
+/** How many notes are shown before "…and N older" — same page size as every list here. */
+const MEMORY_PAGE = 20
+
+/**
+ * The flow's persistent memory: what agents noted for future runs, and the one way to wipe it.
+ * Read-only beyond that on purpose — notes are the agents' channel to their future selves, and
+ * editing them by hand would put words in a mouth that never said them.
+ */
+function MemorySection({ flowId }: { flowId: string }) {
+  const [mem, setMem] = useState<FlowMemoryView | null>(null)
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    api
+      .getFlowMemory(flowId)
+      .then(setMem)
+      .catch(() => setMem(null))
+  }, [flowId])
+
+  if (!mem) return null
+
+  const clear = async () => {
+    if (!confirm('Forget every note? Future runs of this flow start with an empty memory.')) return
+    setBusy(true)
+    try {
+      await api.clearFlowMemory(flowId)
+      setMem({ ...mem, count: 0, notes: [] })
+      setOpen(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className={styles.memory}>
+      <div
+        className={styles.memoryHead}
+        title="Notes agents leave with the memory_append tool during runs of this flow; every future run reads them with memory_read. Stored in the app's database, per flow."
+      >
+        <span>
+          Agent memory · {mem.count} note{mem.count === 1 ? '' : 's'} ⓘ
+        </span>
+        {mem.count > 0 && (
+          <>
+            <button className={styles.ghost} onClick={() => setOpen(!open)}>
+              {open ? 'Hide' : 'View'}
+            </button>
+            <button className={styles.ghost} onClick={() => void clear()} disabled={busy}>
+              Forget all
+            </button>
+          </>
+        )}
+      </div>
+      {!mem.available && (
+        <p className={styles.modalHint}>Storage is unavailable — notes cannot be read right now.</p>
+      )}
+      {open && (
+        <ul className={styles.memoryList}>
+          {mem.notes.slice(0, MEMORY_PAGE).map((n) => (
+            <li key={n.id} className={styles.memoryNote}>
+              <span className={styles.memoryTime}>{timeAgo(n.createdAt)}</span>
+              <span className={styles.memoryText}>{n.note}</span>
+            </li>
+          ))}
+          {mem.count > MEMORY_PAGE && (
+            <li className={styles.memoryMore}>…and {mem.count - MEMORY_PAGE} older</li>
+          )}
+        </ul>
+      )}
+    </div>
   )
 }
 

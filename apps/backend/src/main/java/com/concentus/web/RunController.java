@@ -3,10 +3,12 @@ package com.concentus.web;
 import com.concentus.model.CommandRequest;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.NodeExecReport;
+import com.concentus.model.RunComparison;
 import com.concentus.model.RunDetail;
 import com.concentus.model.RunSummary;
 import com.concentus.service.AgentRun;
 import com.concentus.service.RunService;
+import com.concentus.store.FlowStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,9 +27,11 @@ import java.util.List;
 public class RunController {
 
     private final RunService runService;
+    private final FlowStore flows;
 
-    public RunController(RunService runService) {
+    public RunController(RunService runService, FlowStore flows) {
         this.runService = runService;
+        this.flows = flows;
     }
 
     @GetMapping
@@ -104,5 +108,52 @@ public class RunController {
     @PostMapping("/{id}/retry")
     public RunSummary retry(@PathVariable String id) {
         return runService.retry(id);
+    }
+
+    /** Marks (or unmarks) this run as its flow's golden reference. One per flow. */
+    @PostMapping("/{id}/golden")
+    public RunSummary setGolden(@PathVariable String id, @RequestBody GoldenRequest req) {
+        return runService.setGolden(id, req != null && req.golden());
+    }
+
+    public record GoldenRequest(boolean golden) {
+    }
+
+    /**
+     * Replays the golden run's first input against the flow as it is saved NOW, as a new run.
+     *
+     * <p>Unlike retry (same input, same flow snapshot — reproduce), this is same input, current
+     * flow — see what your edits changed before trusting them. Which is also why it refuses when
+     * the flow no longer exists: with nothing current to run against, a "golden check" could only
+     * repeat the past and claim it tested the present.
+     */
+    @PostMapping("/{id}/golden/rerun")
+    public RunSummary goldenRerun(@PathVariable String id) {
+        AgentRun golden = runService.get(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run"));
+        if (golden.flowId == null || golden.flowId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This run belongs to no saved flow, so there is no current flow to test.");
+        }
+        FlowGraph current = flows.get(golden.flowId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "The flow this run belongs to no longer exists."));
+        return runService.startGoldenCheck(current, id);
+    }
+
+    /**
+     * The golden reference and a candidate run, side by side: headline numbers, per-node steps,
+     * and each run's final answer. Cost is priced at read time like {@code /nodes}, so both sides
+     * are priced by the same current table rather than whatever rates each run saw.
+     */
+    @GetMapping("/{id}/compare/{otherId}")
+    public RunComparison compare(@PathVariable String id, @PathVariable String otherId) {
+        return new RunComparison(side(id), side(otherId));
+    }
+
+    private RunComparison.Side side(String id) {
+        AgentRun run = runService.get(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run: " + id));
+        return new RunComparison.Side(run.toSummary(), run.pricedNodeExecList(), run.finalOutput());
     }
 }

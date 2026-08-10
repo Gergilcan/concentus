@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api } from '../api/client.ts'
-import type { DatabaseDef, LibraryAgent, McpDef } from '../api/types.ts'
+import type { DatabaseDef, FacadeProfile, LibraryAgent, McpDef } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, EFFORT_OPTIONS } from '../constants.ts'
 import { CredentialsPanel } from './CredentialsPanel.tsx'
 import { CrudPanel } from './CrudPanel.tsx'
@@ -8,10 +8,11 @@ import { KnowledgePanel } from './KnowledgePanel.tsx'
 import { McpCatalog } from './McpCatalog.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import { ModelField } from './ModelField.tsx'
+import { SkillsPanel } from './SkillsPanel.tsx'
 import { StoragePanel } from './StoragePanel.tsx'
 import styles from './resources.module.scss'
 
-type Tab = 'agents' | 'mcp' | 'databases' | 'knowledge' | 'credentials' | 'storage'
+type Tab = 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'credentials' | 'storage'
 
 export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
   const [tab, setTab] = useState<Tab>('agents')
@@ -29,6 +30,13 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           MCP Servers
         </button>
         <button
+          className={tab === 'facades' ? styles.active : ''}
+          onClick={() => setTab('facades')}
+          title="What an independent worker may reach through its MCP facade: which tools, whether writes are blocked (read-only) or simulated (dry-run). Enforced by the backend on every call."
+        >
+          Facades
+        </button>
+        <button
           className={tab === 'databases' ? styles.active : ''}
           onClick={() => setTab('databases')}
         >
@@ -39,6 +47,9 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           onClick={() => setTab('knowledge')}
         >
           Knowledge
+        </button>
+        <button className={tab === 'skills' ? styles.active : ''} onClick={() => setTab('skills')}>
+          Skills
         </button>
         <button
           className={tab === 'credentials' ? styles.active : ''}
@@ -121,6 +132,79 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           </>
         )}
 
+        {tab === 'facades' && (
+          <CrudPanel<FacadeProfile>
+            title="Facade profiles"
+            fields={[
+              { key: 'name', label: 'Name', placeholder: 'reader' },
+              { key: 'description', label: 'Description', placeholder: 'Read-only lookups for support workers' },
+              {
+                key: 'tools',
+                label: 'Allowed tools',
+                render: (value, onChange) => (
+                  <label className={styles.field}>
+                    <span title="Case-insensitive substrings, one per line — 'contact' covers create_contact and list_contacts. Empty exposes every tool the worker's MCP nodes wire in (writes still gated below).">
+                      Allowed tools (one substring per line, empty = all) ⓘ
+                    </span>
+                    <textarea
+                      rows={4}
+                      placeholder={'contact\ninvoice'}
+                      value={Array.isArray(value) ? (value as string[]).join('\n') : ''}
+                      onChange={(e) =>
+                        onChange(e.target.value.split('\n').map((s) => s.trim()).filter(Boolean))
+                      }
+                    />
+                  </label>
+                ),
+              },
+              {
+                key: 'readOnly',
+                label: 'Read-only',
+                render: (value, onChange) => (
+                  <label
+                    className={styles.field}
+                    title="Write-shaped tools (create_*, send_*, anything not clearly a read) are not shown to the worker and refuse to run. The strictest setting; wins over dry-run."
+                  >
+                    <span>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(value)}
+                        onChange={(e) => onChange(e.target.checked)}
+                      />{' '}
+                      Read-only — writes are blocked outright ⓘ
+                    </span>
+                  </label>
+                ),
+              },
+              {
+                key: 'dryRun',
+                label: 'Dry run',
+                render: (value, onChange) => (
+                  <label
+                    className={styles.field}
+                    title="Writes are visible and callable, but the facade answers 'DRY RUN — nothing was executed' and the worker reports the action as proposed. On by default: writes only really execute when you deliberately untick this."
+                  >
+                    <span>
+                      <input
+                        type="checkbox"
+                        checked={value === undefined || value === null ? true : Boolean(value)}
+                        onChange={(e) => onChange(e.target.checked)}
+                      />{' '}
+                      Dry-run writes — simulate instead of executing ⓘ
+                    </span>
+                  </label>
+                ),
+              },
+            ]}
+            labelOf={(p) => p.name}
+            idOf={(p) => p.id}
+            empty={() => ({ name: '', description: '', tools: [], readOnly: false, dryRun: true })}
+            load={api.listFacadeProfiles}
+            save={api.saveFacadeProfile}
+            remove={api.deleteFacadeProfile}
+          />
+        )}
+
         {tab === 'databases' && (
           <CrudPanel<DatabaseDef>
             title="Databases"
@@ -139,6 +223,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           />
         )}
         {tab === 'knowledge' && <KnowledgePanel />}
+        {tab === 'skills' && <SkillsPanel />}
 
         {tab === 'credentials' && <CredentialsPanel pushError={pushError} />}
 

@@ -23,6 +23,21 @@ export interface RunSummary {
   totalInputTokens?: number
   totalOutputTokens?: number
   estimatedCostUsd?: number
+  /** This run is its flow's golden reference — the known-good execution edits are compared against. */
+  golden?: boolean
+}
+
+/** One side of a golden comparison: headline numbers, per-node steps (priced), final answer. */
+export interface RunComparisonSide {
+  run: RunSummary
+  nodes: NodeExec[]
+  finalOutput?: string | null
+}
+
+/** The golden reference and a candidate run, side by side. Raw facts; no computed verdicts. */
+export interface RunComparison {
+  reference: RunComparisonSide
+  candidate: RunComparisonSide
 }
 
 type RunEventType ='system' | 'status' | 'agent_message' | 'tool_use' | 'error'
@@ -125,11 +140,13 @@ export interface NodeExecReport {
 // `type` aliases (not interfaces) so they satisfy React Flow's
 // `Record<string, unknown>` node-data constraint.
 
-export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'knowledge' | 'input'
+export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'knowledge' | 'api' | 'input' | 'merge'
 
 export type InputNodeData = {
   kind: 'input'
   mode: 'manual' | 'prompt' | 'cron' | 'webhook' | 'mail'
+  /** Shadow: triggered runs plan and stop — watch what a trigger WOULD do before trusting it. */
+  shadow?: boolean
   prompt: string
   cron: string
   /** Secret issued by the provider; we verify against it, we never mint it. */
@@ -221,6 +238,8 @@ export type AgentNodeData = {
   claudeMdPath?: string
   /** Tools this sub-agent may use — the one permission Claude Code enforces per agent. Empty = all. */
   tools?: string[]
+  /** Installed skills assigned to this agent (Resources → Skills). */
+  skillIds?: string[]
   /**
    * How much the run may do without asking. **Coordinator only.**
    *
@@ -230,6 +249,28 @@ export type AgentNodeData = {
    * deliberately do not offer it rather than showing a switch that would silently do nothing.
    */
   permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | ''
+  /**
+   * How the coordinator distributes work. **Coordinator only**, like `permissionMode`.
+   *
+   * Empty/absent = Claude Code subagents inside one CLI session (the behaviour every flow had
+   * before this existed). `fanout` = one independent `claude` process per sub-agent: own
+   * workspace, own instructions, own model, true parallelism — and, for now, no MCP servers and
+   * no repository clones inside workers (the run console says so on every fan-out turn).
+   */
+  execution?: 'subagents' | 'fanout' | ''
+  /**
+   * Facade profile this agent runs behind as an independent worker (Resources → Facades).
+   * Sub-agents only. Without one, a worker with MCP nodes gets NO MCP tools — an absent profile
+   * fails closed rather than exposing the full tool set.
+   */
+  facadeProfileId?: string
+  /**
+   * What the fan-out coordinator's own process may do. **Coordinator only, fan-out only.**
+   * Empty/absent = auto: read-only exactly when it has sub-agents wired (a coordinator with
+   * workers distributes, a solo one works). 'read-only' / 'may-act' force either shape.
+   * Delegation is denied in every case.
+   */
+  coordinatorAccess?: '' | 'read-only' | 'may-act'
 }
 
 export type McpNodeData = {
@@ -294,7 +335,36 @@ export type KnowledgeNodeData = {
   topK: number
 }
 
-export type AppNodeData = AgentNodeData | McpNodeData | RepoNodeData | SqlNodeData | KnowledgeNodeData | InputNodeData
+export type ApiNodeData = {
+  kind: 'api'
+  label: string
+  /** URL of the OpenAPI 3.x document; or paste it into specInline when it is not fetchable. */
+  specUrl: string
+  specInline?: string
+  /** Overrides the spec's own servers[0].url when set. */
+  baseUrl?: string
+  credentialId?: string
+  authHeader?: string
+  /** Operation keys ("GET /pets") the agent may call. Empty = none — allowing is explicit. */
+  ops: string[]
+}
+
+/**
+ * The merge step of a fan-out flow: one more `claude` process that runs after every worker,
+ * reconciles their reports into the run's final answer, and — unlike the workers — may run
+ * commands, because verifying the combined result (tests, diffs) is exactly one process's job.
+ */
+export type MergeNodeData = {
+  kind: 'merge'
+  name: string
+  model: string
+  /** Merge instructions: how to reconcile, what to verify, what the final report must contain. */
+  systemPrompt: string
+  maxTokens: number
+  effort: string
+}
+
+export type AppNodeData = AgentNodeData | McpNodeData | RepoNodeData | SqlNodeData | KnowledgeNodeData | ApiNodeData | InputNodeData | MergeNodeData
 
 export interface SqlPreview {
   columns: string[]
@@ -330,12 +400,42 @@ export interface BackendFlow {
   favorite?: boolean
   /** URL POSTed when a run of this flow fails (Slack-compatible payload) */
   notifyWebhook?: string
+  /** Monthly spend ceiling in USD; at or past it, new runs are refused until next month. */
+  budgetUsd?: number | null
+  /**
+   * Remote approval over Slack: a stored credential holding the bot token, and the channel the
+   * request posts to. A ✅/❌ reaction on the posted message approves/rejects the waiting run —
+   * outbound polling only, so it works without a public URL.
+   */
+  approvalSlackCredentialId?: string | null
+  approvalSlackChannel?: string | null
+  /** Teams incoming-webhook URL. Notification only — Teams cannot carry the answer back. */
+  approvalTeamsWebhook?: string | null
 }
 
 export interface FlowVersionInfo {
   version: number
   name: string
   createdAt: number
+}
+
+// --- Flow memory ------------------------------------------------------------
+
+/** One note an agent left for future runs of its flow (memory_append). */
+export interface FlowMemoryNote {
+  id: number
+  /** The run that wrote it — may no longer exist; the note deliberately outlives it. */
+  runId?: string | null
+  note: string
+  createdAt: number
+}
+
+/** A flow's persistent memory as the settings dialog shows it: newest first. */
+export interface FlowMemoryView {
+  /** False when the database is unreachable — the notes may exist but cannot be read. */
+  available: boolean
+  count: number
+  notes: FlowMemoryNote[]
 }
 
 
@@ -398,6 +498,22 @@ export type McpDef = {
   url: string
   credentialId: string
   authHeader?: string
+}
+
+/**
+ * What an independent worker may reach through its MCP facade. Enforced by the backend on every
+ * call — unlike node-level tool lists on the Claude path, which only steer.
+ */
+export type FacadeProfile = {
+  id?: string
+  name: string
+  description?: string
+  /** Case-insensitive substrings selecting the exposed tools; empty = all the node wired. */
+  tools?: string[]
+  /** Write-shaped tools are not exposed and not callable at all. */
+  readOnly?: boolean
+  /** Write-shaped tools answer "DRY RUN" instead of executing. Absent means ON (fail closed). */
+  dryRun?: boolean
 }
 
 export interface McpServerInfo {
@@ -560,4 +676,39 @@ export interface EmbedderStatus {
   /** Whether search ranks by meaning right now, through EITHER the built-in model or a server. */
   semantic: boolean
   detail: string
+}
+
+/** One operation from a parsed OpenAPI spec, as the API node inspector lists it. */
+export interface ApiOperationView {
+  key: string
+  method: string
+  path: string
+  description: string
+  paramCount: number
+  hasBody: boolean
+  /** Anything that is not GET/HEAD — ticked individually, never in bulk. */
+  write: boolean
+}
+
+/** An installed Agent Skill, as listed (contents stay server-side). */
+export interface SkillInfo {
+  id: string
+  name: string
+  description: string
+  fileCount: number
+}
+
+/** Measured Claude consumption on this machine, from the CLI's transcripts. */
+export interface UsageWindow {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  estimatedUsd: number
+  messages: number
+}
+export interface UsageSummary {
+  available: boolean
+  windows: { last5h: UsageWindow; today: UsageWindow; week: UsageWindow }
+  models: Array<{ model: string } & Omit<UsageWindow, 'messages'>>
 }

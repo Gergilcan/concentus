@@ -38,7 +38,7 @@ const MAX_RUN_EVENTS = 4000
 
 /** The field each node kind uses as its human-facing identifier, if it has one. */
 function nameKey(kind: NodeKind): 'name' | 'label' | null {
-  if (kind === 'agent' || kind === 'mcp') return 'name'
+  if (kind === 'agent' || kind === 'mcp' || kind === 'merge') return 'name'
   if (kind === 'sql' || kind === 'knowledge') return 'label'
   return null
 }
@@ -144,6 +144,8 @@ function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
       return { kind: 'repo', provider: 'github', url: '', credentialId: '', mountPath: '', branch: '' }
     case 'knowledge':
       return { kind: 'knowledge', label: 'knowledge', baseId: '', topK: 5 }
+    case 'api':
+      return { kind: 'api', label: 'api', specUrl: '', ops: [] }
     case 'sql':
       return {
         kind: 'sql',
@@ -153,6 +155,15 @@ function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
         credentialId: '',
         query: 'SELECT * FROM my_table LIMIT 20',
         maxRows: 50,
+      }
+    case 'merge':
+      return {
+        kind: 'merge',
+        name: 'Merge',
+        model: DEFAULT_MODEL,
+        systemPrompt: '',
+        maxTokens: DEFAULT_MAX_TOKENS,
+        effort: 'high',
       }
     case 'input':
       return {
@@ -173,6 +184,7 @@ type FlowMeta = {
   tags?: string[]
   favorite?: boolean
   notifyWebhook?: string
+  budgetUsd?: number | null
 }
 
 interface FlowState {
@@ -401,6 +413,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         tags: flow.tags,
         favorite: flow.favorite,
         notifyWebhook: flow.notifyWebhook,
+        budgetUsd: flow.budgetUsd,
       },
       nodes,
       edges: flow.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),

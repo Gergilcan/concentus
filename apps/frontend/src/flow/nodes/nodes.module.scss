@@ -99,9 +99,21 @@
 .knowledge {
   border-left: 3px solid t.$knowledge;
 }
+.api {
+  border-left: 3px solid t.$api;
+}
 
 .input {
   border-left: 3px solid t.$ok;
+}
+
+.merge {
+  border-left: 3px solid t.$merge;
+}
+
+/* Plan-born worker: dashed — it exists in the run report, not in the drawn flow. */
+.worker {
+  border-left: 3px dashed t.$agent;
 }
 
 /* live run status + tokens shown on a node */

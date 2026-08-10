@@ -1,0 +1,30 @@
+package com.concentus.store;
+
+import com.concentus.model.FacadeProfile;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+
+/** Facade profiles for independent workers, in the shared resources table like every resource. */
+@Component
+public class FacadeProfileStore extends JsonStore<FacadeProfile> {
+
+    public FacadeProfileStore(JdbcTemplate jdbc, ObjectMapper mapper) {
+        super(jdbc, mapper, FacadeProfile.class, "facade-profile", "fprof_", null);
+    }
+
+    @Override
+    protected String idOf(FacadeProfile p) {
+        return p.id();
+    }
+
+    @Override
+    protected FacadeProfile withId(FacadeProfile p, String id) {
+        return new FacadeProfile(id, p.name(), p.description(), p.tools(), p.readOnly(), p.dryRun());
+    }
+
+    @Override
+    protected String sortKey(FacadeProfile p) {
+        return p.name();
+    }
+}

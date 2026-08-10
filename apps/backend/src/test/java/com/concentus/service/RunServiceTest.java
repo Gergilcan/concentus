@@ -43,6 +43,7 @@ class RunServiceTest {
     private final LocalClaudeExecutor localExecutor = mock(LocalClaudeExecutor.class);
     private final RunStore runStore = mock(RunStore.class);
     private final NotificationService notifier = mock(NotificationService.class);
+    private final RemoteApprovalService remoteApprovals = mock(RemoteApprovalService.class);
     private final ObjectMapper mapper = new ObjectMapper();
 
     private final List<RunService> created = new ArrayList<>();
@@ -55,7 +56,8 @@ class RunServiceTest {
         com.concentus.support.LocalClaudeSupport support = mock(com.concentus.support.LocalClaudeSupport.class);
         when(support.command()).thenReturn(java.util.Optional.of("claude"));
         return new com.concentus.execution.ExecutionBackends(List.of(
-                new com.concentus.execution.ClaudeCliExecutionBackend(localExecutor, support)));
+                new com.concentus.execution.ClaudeCliExecutionBackend(localExecutor,
+                        mock(FanoutExecutor.class), support)));
     }
 
     @AfterEach
@@ -67,7 +69,7 @@ class RunServiceTest {
         RunService s = new RunService(clientProvider, compiler, launcher, backends(),
                 new PricingTable("", 3.0, 15.0),
                 new CloudStreamEventHandler(), runStore, mapper,
-                notifier, maxConcurrent, queueCapacity, maxRetainedRuns, 3.0, 15.0);
+                notifier, remoteApprovals, maxConcurrent, queueCapacity, maxRetainedRuns, 3.0, 15.0);
         created.add(s);
         return s;
     }
@@ -477,13 +479,13 @@ class RunServiceTest {
         String validFlowJson = toJson(flow("f1"));
         RunStore.RunRow runningRow = new RunStore.RunRow(
                 "run_a", "f1", "Flow", "managed", "local", "RUNNING", "manual", "sess1", null, false,
-                null, 10L, 20L, validFlowJson, List.of(), List.of(), 111L, "hello", null);
+                null, 10L, 20L, validFlowJson, List.of(), List.of(), 111L, "hello", null, false);
         RunStore.RunRow startingRow = new RunStore.RunRow(
                 "run_b", "f1", "Flow", "managed", "local", "STARTING", "manual", null, null, false,
-                null, 0L, 0L, null, List.of(), List.of(), 222L, null, null);
+                null, 0L, 0L, null, List.of(), List.of(), 222L, null, null, false);
         RunStore.RunRow terminatedRow = new RunStore.RunRow(
                 "run_c", "f1", "Flow", "managed", "local", "TERMINATED", "manual", null, null, false,
-                null, 0L, 0L, null, List.of(), List.of(), 333L, null, null);
+                null, 0L, 0L, null, List.of(), List.of(), 333L, null, null, true);
         when(runStore.loadAll(anyInt())).thenReturn(List.of(runningRow, startingRow, terminatedRow));
         when(runStore.isAvailable()).thenReturn(true);
         RunService svc = newService(4, 8, 10);
@@ -496,16 +498,17 @@ class RunServiceTest {
         assertThat(svc.get("run_a").orElseThrow().compiled).isNotNull();
         assertThat(svc.get("run_b").orElseThrow().status).isEqualTo("IDLE"); // STARTING -> IDLE too
         assertThat(svc.get("run_c").orElseThrow().status).isEqualTo("TERMINATED"); // terminal statuses pass through
+        assertThat(svc.get("run_c").orElseThrow().golden).isTrue(); // the reference flag survives restarts
     }
 
     @Test
     void restoreSkipsRowsThatFailToReconstructButKeepsTheOthers() {
         RunStore.RunRow badRow = new RunStore.RunRow(
                 "run_bad", "f2", "Flow2", "managed", "local", "TERMINATED", "manual", null, null, false,
-                null, 0L, 0L, "{ not valid json", List.of(), List.of(), 222L, null, null);
+                null, 0L, 0L, "{ not valid json", List.of(), List.of(), 222L, null, null, false);
         RunStore.RunRow goodRow = new RunStore.RunRow(
                 "run_good", "f1", "Flow", "managed", "local", "ERROR", "manual", null, null, false,
-                "boom", 0L, 0L, null, List.of(), List.of(), 333L, null, null);
+                "boom", 0L, 0L, null, List.of(), List.of(), 333L, null, null, false);
         when(runStore.loadAll(anyInt())).thenReturn(List.of(badRow, goodRow));
         when(runStore.isAvailable()).thenReturn(false);
         RunService svc = newService(4, 8, 10);
@@ -526,12 +529,188 @@ class RunServiceTest {
         }
     }
 
+    // ---------------------------------------------------------------- golden runs
+
+    @Test
+    void markingARunGoldenClearsTheFlowsPreviousReference() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        RunService svc = newService(4, 8, 10);
+        RunSummary first = svc.start(flow("f1"));
+        RunSummary second = svc.start(flow("f1"));
+        RunSummary otherFlow = svc.start(flow("f2"));
+        svc.setGolden(otherFlow.id(), true);
+
+        svc.setGolden(first.id(), true);
+        RunSummary promoted = svc.setGolden(second.id(), true);
+
+        // One reference per flow: promoting the second demotes the first — but never a run of a
+        // DIFFERENT flow, whose reference is its own.
+        assertThat(promoted.golden()).isTrue();
+        assertThat(svc.get(first.id()).orElseThrow().golden).isFalse();
+        assertThat(svc.get(otherFlow.id()).orElseThrow().golden).isTrue();
+    }
+
+    @Test
+    void anAdHocRunCannotBeGolden() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        RunService svc = newService(4, 8, 10);
+        RunSummary adHoc = svc.start(flow(null)); // unsaved canvas: no flow id
+
+        assertThatThrownBy(() -> svc.setGolden(adHoc.id(), true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("saved flow");
+    }
+
+    @Test
+    void goldenRunsAreNeverEvictedHoweverOldTheyAre() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        RunService svc = newService(4, 8, 2); // maxRetainedRuns = 2
+
+        RunSummary golden = svc.start(flow("f1"));
+        AgentRun g = svc.get(golden.id()).orElseThrow();
+        g.status = "TERMINATED";
+        g.createdAt = 1_000L; // the oldest completed run — eviction's first pick, were it not golden
+        svc.setGolden(golden.id(), true);
+
+        RunSummary other = svc.start(flow("f1"));
+        AgentRun o = svc.get(other.id()).orElseThrow();
+        o.status = "TERMINATED";
+        o.createdAt = 2_000L;
+
+        svc.start(flow("f1")); // pushes the registry over the cap
+
+        assertThat(svc.get(golden.id())).isPresent();
+        assertThat(svc.get(other.id())).isEmpty(); // the non-golden one went instead
+    }
+
+    @Test
+    void aGoldenCheckReplaysTheReferenceInputAgainstTheFlowPassedIn() throws Exception {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        RunService svc = newService(4, 8, 10);
+        RunSummary reference = svc.start(flow("f1"));
+        AgentRun ref = svc.get(reference.id()).orElseThrow();
+        ref.initialPrompt = "the input that mattered";
+        svc.setGolden(reference.id(), true);
+
+        // Stands in for the flow as saved NOW — renamed so it is a different value from the
+        // reference's own graph and the verify below can single it out (FlowGraph is a record;
+        // two flow("f1") calls build EQUAL values).
+        FlowGraph editedFlow = new FlowGraph("f1", "Flow v2", "managed",
+                List.of(agentNode("c1", "coordinator"), inputNode("manual", null)),
+                List.of(), null, List.of(), null, null);
+        RunSummary check = svc.startGoldenCheck(editedFlow, reference.id());
+
+        assertThat(check.id()).isNotEqualTo(reference.id());
+        assertThat(check.trigger()).isEqualTo("golden");
+        verify(compiler).compile(editedFlow); // the CURRENT flow ran, not the reference's snapshot
+        verify(localExecutor, timeout(2000)).runTurn(any(), any(), eq("the input that mattered"));
+    }
+
+    @Test
+    void aGoldenCheckRefusesARunThatIsNotTheReferenceOrRecordedNoInput() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        RunService svc = newService(4, 8, 10);
+        RunSummary plain = svc.start(flow("f1"));
+
+        assertThatThrownBy(() -> svc.startGoldenCheck(flow("f1"), plain.id()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not the golden reference");
+
+        svc.setGolden(plain.id(), true); // golden, but a manual run that never got a first input
+        assertThatThrownBy(() -> svc.startGoldenCheck(flow("f1"), plain.id()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no initial input to replay");
+    }
+
+    // ---------------------------------------------------------------- remote approval wiring
+
+    @Test
+    void enteringApprovalWaitTellsTheRemoteChannelsOnce() throws Exception {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        doAnswer(inv -> {
+            AgentRun r = inv.getArgument(0);
+            r.status = "AWAITING_APPROVAL";
+            return null;
+        }).when(localExecutor).runTurn(any(), any(), any());
+        RunService svc = newService(4, 8, 10);
+
+        RunSummary s = svc.start(flowWithPrompt("f1", "prompt", "go"));
+        verify(remoteApprovals, timeout(2000)).runAwaitingApproval(any(), any(), any());
+
+        // A second command while still waiting ends the same way; the question must not be
+        // posted to the channel twice.
+        svc.sendCommand(s.id(), "extra context");
+        verify(localExecutor, timeout(2000).times(2)).runTurn(any(), any(), any());
+        verify(remoteApprovals, org.mockito.Mockito.times(1))
+                .runAwaitingApproval(any(), any(), any());
+    }
+
+    @Test
+    void theRemoteApproveCallbackApprovesExactlyLikeTheAppButton() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        doAnswer(inv -> {
+            AgentRun r = inv.getArgument(0);
+            r.status = "AWAITING_APPROVAL";
+            return null;
+        }).when(localExecutor).runTurn(any(), any(), any());
+        RunService svc = newService(4, 8, 10);
+        RunSummary s = svc.start(flowWithPrompt("f1", "prompt", "go"));
+
+        var approveCap = org.mockito.ArgumentCaptor.forClass(Runnable.class);
+        verify(remoteApprovals, timeout(2000)).runAwaitingApproval(any(), approveCap.capture(), any());
+        approveCap.getValue().run();
+
+        assertThat(svc.get(s.id()).orElseThrow().approved).isTrue();
+        verify(remoteApprovals).settled(s.id(), "approved");
+    }
+
+    @Test
+    void decidingFromTheAppSettlesTheRemoteQuestionToo() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        RunService svc = newService(4, 8, 10);
+        RunSummary s = svc.start(flow("f1"));
+        svc.get(s.id()).orElseThrow().status = "AWAITING_APPROVAL";
+
+        svc.reject(s.id());
+
+        // Whoever decides, the Slack message must flip to the outcome instead of keeping
+        // instructions nobody can follow any more.
+        verify(remoteApprovals).settled(s.id(), "rejected");
+    }
+
+    @Test
+    void approvalChannelConfigIsCopiedOntoTheRunAtStart() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+                List.of(agentNode("c1", "coordinator"), inputNode("manual", null)),
+                List.of(), null, List.of(), null, null, null,
+                "cred_slack", "C0123456789", "https://example.webhook.office.com/x");
+        RunService svc = newService(4, 8, 10);
+
+        RunSummary s = svc.start(flow);
+
+        AgentRun run = svc.get(s.id()).orElseThrow();
+        assertThat(run.approvalSlackCredentialId).isEqualTo("cred_slack");
+        assertThat(run.approvalSlackChannel).isEqualTo("C0123456789");
+        assertThat(run.approvalTeamsWebhook).isEqualTo("https://example.webhook.office.com/x");
+    }
+
     // ------------------------------------------------- backend selection (regression guards)
 
     private RunService service() {
         RunService s = new RunService(clientProvider, compiler, launcher, backends(),
                 new PricingTable("", 3.0, 15.0),
-                new CloudStreamEventHandler(), runStore, mapper, notifier, 4, 8, 10, 3.0, 15.0);
+                new CloudStreamEventHandler(), runStore, mapper, notifier, remoteApprovals,
+                4, 8, 10, 3.0, 15.0);
         created.add(s);
         return s;
     }
@@ -589,5 +768,74 @@ class RunServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Sign in to Claude Code")
                 .hasMessageContaining("ANTHROPIC_API_KEY");
+    }
+
+    @org.junit.jupiter.api.Test
+    void aFlowAtItsMonthlyBudgetIsRefusedBeforeCompiling() {
+        when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.eq("flow-b"),
+                org.mockito.ArgumentMatchers.anyLong())).thenReturn(25.10);
+        com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
+                "flow-b", "Presupuestos", "local", List.of(), List.of(),
+                null, List.of(), null, null, 25.0);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> newService(2, 4, 10).start(flow))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Budget reached")
+                .hasMessageContaining("$25.10");
+        // Refused before compile: an over-budget flow with a broken graph still reports budget,
+        // which is the actionable half.
+        org.mockito.Mockito.verifyNoInteractions(compiler);
+    }
+
+    @org.junit.jupiter.api.Test
+    void aFlowUnderItsBudgetStartsNormally() {
+        when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong())).thenReturn(3.0);
+        com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
+                "flow-ok", "Barato", "local", List.of(), List.of(),
+                null, List.of(), null, null, 25.0);
+
+        // Reaching the compiler is the assertion: the gate let it through and the (mocked)
+        // compiler's own failure is the next thing that would happen in this stripped harness.
+        org.assertj.core.api.Assertions.assertThatCode(() -> {
+            try { newService(2, 4, 10).start(flow); } catch (RuntimeException ignored) { }
+        }).doesNotThrowAnyException();
+        org.mockito.Mockito.verify(compiler).compile(flow);
+    }
+
+    @org.junit.jupiter.api.Test
+    void aShadowTriggerPlansButNeverActs() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        com.concentus.model.FlowNode input = new com.concentus.model.FlowNode("in1", "input", null,
+                java.util.Map.of("mode", "webhook", "secret", "s", "shadow", true));
+        com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
+                "flow-s", "Sombra", "local", List.of(input), List.of(), null, List.of(), null, null);
+
+        // A webhook delivery passes the payload as the prompt override — the triggered path.
+        RunSummary summary = newService(2, 4, 10).start(flow, "event payload");
+
+        AgentRun run = created.get(created.size() - 1).get(summary.id()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(run.shadow).isTrue();
+        org.assertj.core.api.Assertions.assertThat(run.permissionMode).isEqualTo("plan");
+        org.assertj.core.api.Assertions.assertThat(run.trigger).isEqualTo("webhook (shadow)");
+    }
+
+    @org.junit.jupiter.api.Test
+    void aManualRunOfAShadowedFlowStaysReal() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        com.concentus.model.FlowNode input = new com.concentus.model.FlowNode("in1", "input", null,
+                java.util.Map.of("mode", "webhook", "secret", "s", "shadow", true));
+        com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
+                "flow-s2", "Sombra", "local", List.of(input), List.of(), null, List.of(), null, null);
+
+        // No prompt override = someone pressed Run themselves. They are present; shadow is for
+        // the unattended path, and silently plan-only-ing a manual run would read as broken.
+        RunSummary summary = newService(2, 4, 10).start(flow, null);
+
+        AgentRun run = created.get(created.size() - 1).get(summary.id()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(run.shadow).isFalse();
+        org.assertj.core.api.Assertions.assertThat(run.trigger).isEqualTo("webhook");
     }
 }

@@ -54,6 +54,7 @@ public class RunService {
     private final RunStore runStore;
     private final com.fasterxml.jackson.databind.ObjectMapper mapper;
     private final NotificationService notifier;
+    private final RemoteApprovalService remoteApprovals;
     private final ExecutorService exec;
     private final int maxRetainedRuns;
     private final PricingTable pricing;
@@ -65,7 +66,7 @@ public class RunService {
                       ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
                       CloudStreamEventHandler cloudEvents,
                       RunStore runStore, com.fasterxml.jackson.databind.ObjectMapper mapper,
-                      NotificationService notifier,
+                      NotificationService notifier, RemoteApprovalService remoteApprovals,
                       @Value("${runs.max-concurrent:8}") int maxConcurrent,
                       @Value("${runs.queue-capacity:64}") int queueCapacity,
                       @Value("${runs.max-retained:200}") int maxRetainedRuns,
@@ -80,6 +81,7 @@ public class RunService {
         this.runStore = runStore;
         this.mapper = mapper;
         this.notifier = notifier;
+        this.remoteApprovals = remoteApprovals;
         this.maxRetainedRuns = maxRetainedRuns;
         this.inputUsdPerMTok = inputUsdPerMTok;
         this.outputUsdPerMTok = outputUsdPerMTok;
@@ -117,6 +119,27 @@ public class RunService {
 
     public RunSummary start(FlowGraph flow) {
         return start(flow, null);
+    }
+
+    /**
+     * Refuses a start once the flow's monthly spend has reached its ceiling.
+     *
+     * <p>Checked at start, not mid-run: a run in flight finishes — cutting an agent off mid-task
+     * leaves half-done work that costs more to untangle than the tokens saved. The month is the
+     * calendar month in the machine's own timezone, which is the month the user's invoice thinks
+     * in. Ad-hoc runs of an unsaved canvas have no flow id and no history to sum, so no ceiling.
+     */
+    private void enforceBudget(FlowGraph flow) {
+        if (flow.id() == null || flow.budgetUsd() == null || flow.budgetUsd() <= 0) return;
+        long monthStart = java.time.LocalDate.now().withDayOfMonth(1)
+                .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        double spent = runStore.spendUsdSince(flow.id(), monthStart);
+        if (spent >= flow.budgetUsd()) {
+            throw new IllegalStateException(String.format(java.util.Locale.ROOT,
+                    "Budget reached: '%s' has spent $%.2f of its $%.2f monthly ceiling. "
+                            + "Raise the budget in the flow's settings, or wait for next month.",
+                    flow.name(), spent, flow.budgetUsd()));
+        }
     }
 
     /**
@@ -185,6 +208,7 @@ public class RunService {
      * prompt is used for prompt/cron modes.
      */
     public RunSummary start(FlowGraph flow, String initialPromptOverride) {
+        enforceBudget(flow);
         // Compile synchronously so validation errors surface to the caller immediately.
         CompiledFlow compiled = compiler.compile(flow);
         TriggerSpec trigger = TriggerSpec.from(flow);
@@ -217,11 +241,25 @@ public class RunService {
         run.compiled = compiled;
         run.flowJson = toJson(flow);
         run.notifyWebhook = flow.notifyWebhook();
+        run.approvalSlackCredentialId = flow.approvalSlackCredentialId();
+        run.approvalSlackChannel = flow.approvalSlackChannel();
+        run.approvalTeamsWebhook = flow.approvalTeamsWebhook();
         run.pricing = pricing;
                 run.inputUsdPerMTok = inputUsdPerMTok;
         run.outputUsdPerMTok = outputUsdPerMTok;
         run.trigger = trigger.mode() == null ? "manual" : trigger.mode().toLowerCase();
         run.permissionMode = trigger.permissionMode();
+        // Shadow mode: a triggered run plans but never acts, so you can watch what a trigger
+        // WOULD have done for a few days before trusting it. Manual runs stay real — you are
+        // present for those, and shadowing them would just be a confusing plan mode. The override
+        // sits after the normal assignment so the run records both facts honestly.
+        boolean triggered = initialPromptOverride != null
+                || (trigger.autoStart() && !"manual".equals(run.trigger));
+        if (trigger.shadow() && triggered) {
+            run.shadow = true;
+            run.permissionMode = "plan";
+            run.trigger = run.trigger + " (shadow)";
+        }
         run.pendingPrompt = initialPromptOverride != null
                 ? initialPromptOverride
                 : (trigger.autoStart() ? trigger.prompt() : null);
@@ -282,6 +320,9 @@ public class RunService {
         if (overflow <= 0) return;
         runs.values().stream()
                 .filter(r -> isTerminal(r.status))
+                // A golden run is a reference, not history — evicting it would quietly disable
+                // "compare against golden" on precisely the flows that run most often.
+                .filter(r -> !r.golden)
                 .sorted(Comparator.comparingLong(r -> r.createdAt))
                 .limit(overflow)
                 .map(r -> r.id)
@@ -364,6 +405,14 @@ public class RunService {
             if ("ERROR".equals(run.status)) {
                 notifier.runFailed(run);
             }
+            // The turn ended with the run stopped, waiting for a human. Once per run: a second
+            // command sent while waiting would end the same way, and a second Slack message for
+            // the same question reads as two questions.
+            if ("AWAITING_APPROVAL".equals(run.status) && !run.approvalRemoteNotified) {
+                run.approvalRemoteNotified = true;
+                remoteApprovals.runAwaitingApproval(run,
+                        () -> approve(run.id), () -> reject(run.id));
+            }
         }
     }
 
@@ -379,6 +428,59 @@ public class RunService {
         if (run.compiled == null) return null;
         var c = run.compiled.coordinator();
         return run.nodeExec(c.nodeId, "agent", c.name);
+    }
+
+    /**
+     * Marks or unmarks a run as its flow's golden reference. One per flow: marking a run clears
+     * the previous holder, so "the golden run" is always a single answer.
+     */
+    public RunSummary setGolden(String runId, boolean golden) {
+        AgentRun run = require(runId);
+        if (golden && (run.flowId == null || run.flowId.isBlank())) {
+            throw new IllegalStateException(
+                    "Only runs of a saved flow can be a golden reference — save the flow first.");
+        }
+        if (golden) {
+            runs.values().stream()
+                    .filter(r -> r.golden && run.flowId.equals(r.flowId) && !r.id.equals(runId))
+                    .forEach(r -> {
+                        r.golden = false;
+                        runStore.persist(r);
+                    });
+        }
+        run.golden = golden;
+        runStore.persist(run);
+        return run.toSummary();
+    }
+
+    /**
+     * Re-runs the golden reference's first input against the flow as it stands NOW.
+     *
+     * <p>The deliberate opposite of {@link #retry}: retry replays against the run's stored flow
+     * snapshot (same flow, same input — reproduce what happened), while this replays against the
+     * current flow (same input, edited flow — show what the edit changes). The caller passes the
+     * current flow in, because this service deliberately does not read the flow store.
+     */
+    public RunSummary startGoldenCheck(FlowGraph currentFlow, String goldenRunId) {
+        AgentRun golden = require(goldenRunId);
+        if (!golden.golden) {
+            throw new IllegalStateException("This execution is not the golden reference.");
+        }
+        if (golden.initialPrompt == null || golden.initialPrompt.isBlank()) {
+            throw new IllegalStateException("The golden run recorded no initial input to replay.");
+        }
+        RunSummary started = start(currentFlow, golden.initialPrompt);
+        AgentRun run = runs.get(started.id());
+        if (run != null) {
+            // Labelled for what it is, in every list and in the history: a comparison run, not
+            // the trigger the flow normally fires on. Shadow stays visible — a flow whose trigger
+            // is shadowed plans without acting, and its golden check inherits that, so the
+            // comparison reads plan-vs-run unless the shadow is lifted first.
+            run.trigger = run.shadow ? "golden (shadow)" : "golden";
+            runStore.persist(run);
+            return run.toSummary();
+        }
+        return started;
     }
 
     /**
@@ -456,6 +558,8 @@ public class RunService {
         run.approved = true;
         run.emit(RunEvent.of("system", "Approved — carrying out the plan."));
         runStore.persist(run);
+        // Whoever decided — app button or Slack reaction — the remote message shows the outcome.
+        remoteApprovals.settled(run.id, "approved");
         exec.submit(() -> runLocalTurn(run,
                 "Approved. Carry out the plan you proposed, exactly as described."));
     }
@@ -470,6 +574,7 @@ public class RunService {
         run.emit(RunEvent.of("system", "Rejected — the plan was not carried out."));
         run.emit(RunEvent.of("status", "terminated"));
         runStore.persist(run);
+        remoteApprovals.settled(run.id, "rejected");
     }
 
     public void stop(String runId) {
@@ -483,6 +588,8 @@ public class RunService {
             backend.get().stop(run);
             run.emit(RunEvent.of("status", "terminated"));
             runStore.persist(run);
+            // A stopped run is no longer asking anyone anything.
+            remoteApprovals.settled(runId, "closed");
             return;
         }
 
@@ -496,6 +603,7 @@ public class RunService {
         }
         run.emit(RunEvent.of("status", "terminated"));
         runStore.persist(run);
+        remoteApprovals.settled(runId, "closed");
     }
 
     /** Reload persisted runs on startup so they survive restarts and can be continued. */
@@ -520,6 +628,7 @@ public class RunService {
                 run.flowJson = row.flowJson();
                 run.initialPrompt = row.initialPrompt();
                 run.notifyWebhook = row.notifyWebhook();
+                run.golden = row.golden();
                 run.pricing = pricing;
                 run.inputUsdPerMTok = inputUsdPerMTok;
                 run.outputUsdPerMTok = outputUsdPerMTok;

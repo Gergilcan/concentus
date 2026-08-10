@@ -12,6 +12,7 @@ import type {
   BackendFlow,
   DatabaseDef,
   EmbedderStatus,
+  FlowMemoryView,
   KnowledgeDef,
   KnowledgeDoc,
   KnowledgeHit,
@@ -23,6 +24,7 @@ import type {
   NodeExecReport,
   ModelCatalog,
   RemoteRepoList,
+  RunComparison,
   RunEvent,
   RunSummary,
   StorageConfig,
@@ -125,6 +127,9 @@ export const api = {
   listFlowVersions: (id: string) => req<FlowVersionInfo[]>(`/flows/${id}/versions`),
   restoreFlowVersion: (id: string, version: number) =>
     req<BackendFlow>(`/flows/${id}/versions/${version}/restore`, { method: 'POST' }),
+  /** Notes this flow's agents left for future runs (memory_append), newest first. */
+  getFlowMemory: (id: string) => req<FlowMemoryView>(`/flows/${id}/memory`),
+  clearFlowMemory: (id: string) => req<void>(`/flows/${id}/memory`, { method: 'DELETE' }),
 
   // runs
   listRuns: () => req<RunSummary[]>('/runs'),
@@ -139,6 +144,14 @@ export const api = {
   rejectRun: (runId: string) => req<void>(`/runs/${runId}/reject`, { method: 'POST' }),
   stopRun: (runId: string) => req<void>(`/runs/${runId}/stop`, { method: 'POST' }),
   retryRun: (runId: string) => req<RunSummary>(`/runs/${runId}/retry`, { method: 'POST' }),
+  /** Marks (or unmarks) a run as its flow's golden reference. One per flow. */
+  setGoldenRun: (runId: string, golden: boolean) =>
+    req<RunSummary>(`/runs/${runId}/golden`, { method: 'POST', body: JSON.stringify({ golden }) }),
+  /** Replays the golden run's first input against the flow as saved NOW, as a new run. */
+  goldenRerun: (runId: string) => req<RunSummary>(`/runs/${runId}/golden/rerun`, { method: 'POST' }),
+  /** The golden reference and a candidate, side by side (numbers, steps, final outputs). */
+  compareRuns: (referenceId: string, candidateId: string) =>
+    req<RunComparison>(`/runs/${referenceId}/compare/${candidateId}`),
 
   // agent library
   listAgents: () => req<LibraryAgent[]>('/agents'),
@@ -198,6 +211,23 @@ export const api = {
       body: JSON.stringify({ query, topK }),
     }),
 
+  /** Parses an OpenAPI spec (by URL or pasted) into the operations an API node could allow. */
+  previewApiSpec: (specUrl: string, specText?: string) =>
+    req<{ baseUrl: string; operations: import('./types.ts').ApiOperationView[] }>(
+      '/api-nodes/preview',
+      { method: 'POST', body: JSON.stringify({ specUrl, specText }) },
+      60_000,
+    ),
+  // Agent Skills: the upload is multipart (a zipped skill folder).
+  listSkills: () => req<import('./types.ts').SkillInfo[]>('/skills'),
+  uploadSkill: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return req<import('./types.ts').SkillInfo>('/skills', { method: 'POST', body: form }, 120_000)
+  },
+  deleteSkill: (id: string) => req<void>(`/skills/${id}`, { method: 'DELETE' }),
+  /** Measured Claude consumption on this machine (CLI transcripts). Cached 30s server-side. */
+  usageSummary: () => req<import('./types.ts').UsageSummary>('/usage'),
   listDatabases: () => req<DatabaseDef[]>('/databases'),
   saveDatabase: (d: DatabaseDef) =>
     req<DatabaseDef>('/databases', { method: 'POST', body: JSON.stringify(d) }),
@@ -207,6 +237,15 @@ export const api = {
   listMcpDefs: () => req<McpDef[]>('/mcp-defs'),
   saveMcpDef: (d: McpDef) => req<McpDef>('/mcp-defs', { method: 'POST', body: JSON.stringify(d) }),
   deleteMcpDef: (id: string) => req<void>(`/mcp-defs/${id}`, { method: 'DELETE' }),
+
+  // facade profiles (what an independent worker may reach through its MCP facade)
+  listFacadeProfiles: () => req<import('./types.ts').FacadeProfile[]>('/facade-profiles'),
+  saveFacadeProfile: (p: import('./types.ts').FacadeProfile) =>
+    req<import('./types.ts').FacadeProfile>('/facade-profiles', {
+      method: 'POST',
+      body: JSON.stringify(p),
+    }),
+  deleteFacadeProfile: (id: string) => req<void>(`/facade-profiles/${id}`, { method: 'DELETE' }),
 
   // mcp servers (Claude Code list)
   listMcpServers: () => req<McpServerInfo[]>('/mcp/servers'),

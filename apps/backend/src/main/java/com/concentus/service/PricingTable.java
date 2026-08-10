@@ -108,12 +108,18 @@ public class PricingTable {
      *
      * <p>An explicit {@code pricing.models} entry still wins over "self-hosted, so free" — that is
      * how someone accounts for GPU time or electricity if they want to.
+     *
+     * <p>The fallback applies only to models that name Claude. Anything else unrecognized — a
+     * LiteLLM route, an Ollama tag the catalog has not marked free yet — prices at an explicit $0
+     * rather than at Claude rates: a made-up dollar figure looks authoritative and is worse than
+     * an honest zero. Whoever wants those runs costed sets a {@code pricing.models} entry.
      */
     public Rate rateFor(String model) {
         if (model == null || model.isBlank()) return fallback;
         Rate exact = byModel.get(model);
         if (exact != null) return exact;
-        return isFree(model) ? FREE : fallback;
+        if (isFree(model)) return FREE;
+        return model.toLowerCase(java.util.Locale.ROOT).contains("claude") ? fallback : FREE;
     }
 
     /** USD estimate for one model's usage, with cached tokens weighted. */

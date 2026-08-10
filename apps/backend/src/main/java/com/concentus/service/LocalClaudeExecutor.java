@@ -54,9 +54,12 @@ public class LocalClaudeExecutor {
     private final boolean autoRegisterMcp;
     private final ObjectMapper mapper;
     private final McpOAuthStore mcpOAuthStore;
+    private final com.concentus.store.SkillStore skillStore;
+    private final SkillService skillService;
     private final OrgContext orgContext;
     /** See {@link #writeMcpConfig}: runs see only the flow's MCP servers, not the user's list. */
     private final boolean strictMcp;
+    private final int serverPort;
     /**
      * The flow's own permission mode meaning "stop and ask a human before acting".
      *
@@ -86,18 +89,21 @@ public class LocalClaudeExecutor {
      * <p>Deliberately well under the smallest limit: the rest of the command line — context
      * directories, the session id, the model — has to fit too.
      */
-    private static final int MAX_INLINE_PROMPT_CHARS = 4000;
+    static final int MAX_INLINE_PROMPT_CHARS = 4000;
 
     public LocalClaudeExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
                                McpRegistry mcpRegistry, ContextFolderResolver contextFolders,
                                GitWorkspace gitWorkspace,
                                ObjectMapper mapper,
                                McpOAuthStore mcpOAuthStore,
+                               com.concentus.store.SkillStore skillStore,
+                               SkillService skillService,
                                OrgContext orgContext,
                                @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                                @Value("${app.data-dir}") String dataDir,
                                @Value("${local.auto-register-mcp:true}") boolean autoRegisterMcp,
-                               @Value("${local.strict-mcp:true}") boolean strictMcp) {
+                               @Value("${local.strict-mcp:true}") boolean strictMcp,
+                               @Value("${server.port:8734}") int serverPort) {
         this.support = support;
         this.ragInjector = ragInjector;
         this.mcpRegistry = mcpRegistry;
@@ -106,11 +112,14 @@ public class LocalClaudeExecutor {
         this.streamHandler = new LocalStreamEventHandler(mapper);
         this.mapper = mapper;
         this.mcpOAuthStore = mcpOAuthStore;
+        this.skillStore = skillStore;
+        this.skillService = skillService;
         this.orgContext = orgContext;
         this.permissionMode = permissionMode;
         this.dataDir = dataDir;
         this.autoRegisterMcp = autoRegisterMcp;
         this.strictMcp = strictMcp;
+        this.serverPort = serverPort;
     }
 
     /** Runs one turn and streams events into the run. Blocking — call on a worker thread. */
@@ -301,6 +310,7 @@ public class LocalClaudeExecutor {
         }
         appendContextFolderNote(coord, claudeMd);
         appendRepositoryNote(run, claudeMd);
+        appendMemoryNote(run, claudeMd);
         appendDelegationRoster(coord, claudeMd);
         if (!claudeMd.isEmpty()) {
             Files.writeString(workdir.resolve("CLAUDE.md"), claudeMd.toString());
@@ -319,6 +329,7 @@ public class LocalClaudeExecutor {
                 if (sub.systemPrompt != null) body.append(sub.systemPrompt).append('\n');
                 appendContextFolderNote(sub, body);
                 appendDelegationRoster(sub, body);
+                appendSkillRoster(sub, body);
                 String md = "---\n"
                         + "name: " + name + "\n"
                         + "description: " + delegationDescription(sub) + "\n"
@@ -332,6 +343,43 @@ public class LocalClaudeExecutor {
 
         registerMcpServers(run);
         writeMcpConfig(run, workdir);
+        materialiseSkills(run, flow, workdir);
+
+        // Said rather than silently skipped: the canvas shows the node, so the run must say why
+        // nothing ever lands on it here.
+        if (flow.merger() != null) {
+            run.emit(RunEvent.of("system", "This flow has a merge node, which only runs under "
+                    + "independent-workers execution — on subagents execution it is ignored."));
+        }
+    }
+
+    /**
+     * Skills assigned to any agent, written once into the workspace's {@code .claude/skills/}.
+     *
+     * <p>Flow-level because Claude Code discovers skills per project, not per subagent; the
+     * per-agent part is the roster note appended to each agent's instructions. Steering, not
+     * enforcement — the same honest deal as context folders.
+     */
+    private void materialiseSkills(AgentRun run, CompiledFlow flow, Path workdir) {
+        java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+        for (AgentSpec agent : flow.allAgents()) {
+            for (AgentSpec.SkillSpec skill : agent.skills) {
+                if ("custom".equals(skill.type) && skill.id != null) ids.add(skill.id);
+            }
+        }
+        if (ids.isEmpty()) return;
+        java.util.List<com.concentus.model.SkillDef> defs = ids.stream()
+                .map(skillStore::get)
+                .flatMap(java.util.Optional::stream)
+                .toList();
+        try {
+            skillService.materialise(workdir, defs);
+            run.emit(RunEvent.of("system", defs.size() + " skill(s) installed for this run: "
+                    + defs.stream().map(com.concentus.model.SkillDef::name)
+                            .collect(Collectors.joining(", ")) + "."));
+        } catch (java.io.IOException e) {
+            run.emit(RunEvent.of("system", "Skills could not be installed: " + e.getMessage()));
+        }
     }
 
     /**
@@ -392,6 +440,40 @@ public class LocalClaudeExecutor {
             servers.set(m.name, server);
         }
 
+        // API nodes become tools served by this very backend, per run. The CLI reaches them like
+        // any other MCP server; the per-run token in the header is what scopes it. The same
+        // endpoint also serves the flow's memory tools, which every saved flow gets — so the
+        // server entry is written whenever either is present, not only for API nodes.
+        List<AgentSpec.ApiSourceSpec> apis = new ArrayList<>();
+        for (AgentSpec agent : run.compiled.allAgents()) apis.addAll(agent.apiSources);
+        boolean hasMemory = run.flowId != null && !run.flowId.isBlank();
+        if (!apis.isEmpty() || hasMemory) {
+            if (run.toolToken == null) run.toolToken = java.util.UUID.randomUUID().toString();
+            var server = mapper.createObjectNode();
+            server.put("type", "http");
+            server.put("url", "http://127.0.0.1:" + serverPort + "/api/runs/" + run.id + "/tools");
+            server.putObject("headers")
+                    .put(com.concentus.web.RunToolsController.TOKEN_HEADER, run.toolToken);
+            servers.set("concentus-apis", server);
+            for (AgentSpec.ApiSourceSpec api : apis) {
+                NodeExec ne = run.nodeExec(api.nodeId, "api", api.label);
+                if (ne != null) {
+                    ne.input = api.specUrl.isBlank() ? "(pasted spec)" : api.specUrl;
+                    ne.status = "passed";
+                    ne.output = api.ops.size() + " operation(s) exposed";
+                    ne.endedAt = System.currentTimeMillis();
+                }
+            }
+            if (!apis.isEmpty()) {
+                run.emit(RunEvent.of("system", "API tools: " + apis.size() + " node(s), "
+                        + apis.stream().mapToInt(a -> a.ops.size()).sum() + " operation(s) allowed."));
+            }
+            if (hasMemory) {
+                run.emit(RunEvent.of("system",
+                        "Memory: this flow keeps notes across runs (memory_read / memory_append)."));
+            }
+        }
+
         var root = mapper.createObjectNode();
         root.set("mcpServers", servers);
         Files.writeString(workdir.resolve(MCP_CONFIG_FILE), mapper.writeValueAsString(root));
@@ -418,6 +500,42 @@ public class LocalClaudeExecutor {
     }
 
     /**
+     * Tells the agent its flow has a memory, and what it is for.
+     *
+     * <p>Written into the instructions rather than left to tool discovery: a tool list says a
+     * memory <em>exists</em>, but not that reading it first is the expected opening move — without
+     * this note agents reliably redo whatever the previous run already learned.
+     */
+    private static void appendMemoryNote(AgentRun run, StringBuilder md) {
+        if (run.flowId == null || run.flowId.isBlank()) return;
+        md.append("""
+
+            ## Flow memory
+
+            This flow keeps a persistent memory: short notes that survive between runs, shared by
+            every execution of this flow. Read it with the `memory_read` tool before starting
+            work — a previous run may have left you something. When you learn something a future
+            run should know (a decision taken, state reached, an approach that failed), save it
+            with `memory_append`. Keep notes short and factual; they are shared notes for your
+            future self, not a transcript of this conversation.
+            """);
+    }
+
+    /** Names the skills assigned to this agent, so it reaches for them instead of improvising. */
+    private void appendSkillRoster(AgentSpec spec, StringBuilder out) {
+        List<String> names = spec.skills.stream()
+                .filter(sk -> "custom".equals(sk.type) && sk.id != null)
+                .map(sk -> skillStore.get(sk.id).map(com.concentus.model.SkillDef::name).orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (names.isEmpty()) return;
+        out.append("\n## Skills assigned to you\n\n");
+        for (String n : names) out.append("- ").append(n).append('\n');
+        out.append("\nUse the Skill tool with these when the task matches; they are installed in "
+                + "this workspace.\n");
+    }
+
+    /**
      * Tells an agent which agents it may hand work to.
      *
      * <p>Every agent in the flow is registered with the CLI, so technically any of them can call
@@ -441,7 +559,7 @@ public class LocalClaudeExecutor {
      * whole session, so this is what actually tells an agent which checkout is <em>its</em> one —
      * the guidance that stops a "WireJ" agent working in some other repo it can also see.
      */
-    private static void appendContextFolderNote(AgentSpec spec, StringBuilder out) {
+    static void appendContextFolderNote(AgentSpec spec, StringBuilder out) {
         if (spec.contextFolders == null || spec.contextFolders.isEmpty()) return;
         out.append("\n## Your context folders\n\n")
                 .append("Use these paths as the source of truth for your work:\n");
@@ -490,7 +608,7 @@ public class LocalClaudeExecutor {
      * <p>The stream is closed when the write finishes — that end-of-input is what tells the CLI
      * the prompt is complete.
      */
-    private static void writePromptToStdin(Process proc, String userText) {
+    static void writePromptToStdin(Process proc, String userText) {
         Thread writer = new Thread(() -> {
             try (var out = proc.getOutputStream()) {
                 out.write(userText.getBytes(StandardCharsets.UTF_8));
@@ -522,17 +640,7 @@ public class LocalClaudeExecutor {
         a.add("stream-json");
         a.add("--verbose");
         a.add("--permission-mode");
-        // The run's own mode when its flow named one, otherwise the deployment default. Read from
-        // the run rather than the flow so that editing the flow mid-run cannot change what an
-        // already-running agent is permitted to do.
-        // Approval mode is ours, not the CLI's: it maps to `plan` until a human approves — so the
-        // agent can read and propose but change nothing — and to full permission afterwards.
-        String mode = run.permissionMode == null || run.permissionMode.isBlank()
-                ? permissionMode : run.permissionMode;
-        if (APPROVAL_MODE.equalsIgnoreCase(mode)) {
-            mode = run.approved ? "bypassPermissions" : "plan";
-        }
-        a.add(mode);
+        a.add(effectivePermissionMode(run, permissionMode));
         a.add("--model");
         a.add(modelAlias(coord.model.id));
 
@@ -557,6 +665,25 @@ public class LocalClaudeExecutor {
         // only read the prompt from stdin, which is the point.
         if (promptOnStdin) a.add("-p");
         return a;
+    }
+
+    /**
+     * The CLI mode a run's turn actually gets. The run's own mode when its flow named one,
+     * otherwise the deployment default — read from the run rather than the flow so that editing
+     * the flow mid-run cannot change what an already-running agent is permitted to do.
+     *
+     * <p>Approval mode is ours, not the CLI's: it maps to {@code plan} until a human approves —
+     * so the agent can read and propose but change nothing — and to full permission afterwards.
+     * Shared with the fan-out executor so an independent worker can never be more permissive
+     * than the coordinator process would have been.
+     */
+    static String effectivePermissionMode(AgentRun run, String deploymentDefault) {
+        String mode = run.permissionMode == null || run.permissionMode.isBlank()
+                ? deploymentDefault : run.permissionMode;
+        if (APPROVAL_MODE.equalsIgnoreCase(mode)) {
+            return run.approved ? "bypassPermissions" : "plan";
+        }
+        return mode;
     }
 
     /**

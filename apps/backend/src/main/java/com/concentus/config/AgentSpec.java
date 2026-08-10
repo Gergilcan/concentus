@@ -35,6 +35,37 @@ public class AgentSpec {
     /** When (and for what) the coordinator should delegate to this agent — its routing signal. */
     public String description = "";
     public String systemPrompt = "";
+    /**
+     * How the coordinator distributes work: {@code ""} (Claude Code subagents inside one CLI
+     * session — the default and the only behaviour that existed before this field) or
+     * {@code "fanout"} (one independent {@code claude} process per sub-agent). Read from the
+     * coordinator only; meaningless on sub-agents.
+     *
+     * <p>Normalized in {@link #validate()} so an unrecognized value falls back to the default
+     * rather than enabling anything — a typo must never switch a flow onto the experimental path.
+     */
+    public String execution = "";
+    /**
+     * The facade profile this agent runs behind when it executes as an independent worker —
+     * which MCP tools it may see, whether writes are blocked (read-only) or simulated (dry-run).
+     * A worker with MCP servers wired but no profile selected gets <b>no</b> MCP tools at all:
+     * "never the full tool set" is the rule, and an absent profile must not widen anything.
+     */
+    public String facadeProfileId = "";
+    /**
+     * What the fan-out coordinator's own process may do. Coordinator only, fan-out only — the
+     * single-session path is governed by the flow's permission mode and gets no second knob.
+     *
+     * <p>{@code ""} (auto, the default): read-only exactly when the coordinator has sub-agents
+     * wired to it — a coordinator with workers exists to distribute, not to touch things, while
+     * a solo coordinator is the one doing the work and may act. {@code "read-only"} and
+     * {@code "may-act"} force either shape from the node's config. Delegation (Task) is denied
+     * in every case, or the fan-out stops being one level deep.
+     *
+     * <p>Normalized in {@link #validate()}: an unrecognized value means auto, so a typo can
+     * only ever land on the computed default, never silently force a widening.
+     */
+    public String coordinatorAccess = "";
 
     public ModelSpec model = new ModelSpec();
     public List<SkillSpec> skills = new ArrayList<>();
@@ -47,6 +78,8 @@ public class AgentSpec {
      */
     public List<String> tools = new ArrayList<>();
     public List<SqlSourceSpec> ragSources = new ArrayList<>();
+    /** REST APIs this agent may call as typed tools, from OpenAPI specs on API nodes. */
+    public List<ApiSourceSpec> apiSources = new ArrayList<>();
     public List<KnowledgeSourceSpec> knowledgeSources = new ArrayList<>();
     /**
      * Local host folders this agent should read as context, passed to the CLI as {@code --add-dir}.
@@ -86,6 +119,14 @@ public class AgentSpec {
         cache.normalize();
         context.normalize();
         environment.normalize();
+        // Only the one non-default value passes through; anything else means "subagents".
+        execution = "fanout".equalsIgnoreCase(execution == null ? "" : execution.trim())
+                ? "fanout" : "";
+        String access = coordinatorAccess == null ? "" : coordinatorAccess.trim().toLowerCase();
+        coordinatorAccess = switch (access) {
+            case "read-only", "may-act" -> access;
+            default -> "";
+        };
     }
 
     private static void require(boolean cond, String message) {
@@ -170,6 +211,26 @@ public class AgentSpec {
         public long maxTokens = 16000;
         /** low | medium | high | xhigh | max */
         public String effort = "high";
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class ApiSourceSpec {
+        public String nodeId;
+        public String label = "api";
+        public String specUrl = "";
+        /** A pasted spec, for APIs whose document is not fetchable from the app. */
+        public String specInline = "";
+        /** Overrides the spec's own servers[0].url when set. */
+        public String baseUrl = "";
+        public String credentialId = "";
+        /** Header the credential goes in; blank = Authorization: Bearer. */
+        public String authHeader = "";
+        /** Operation keys ("GET /pets") the agent may call. Empty = none — allow is explicit. */
+        public List<String> ops = new ArrayList<>();
+
+        public String resolveToken() {
+            return resolveCredential(credentialId, credentialLookup);
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

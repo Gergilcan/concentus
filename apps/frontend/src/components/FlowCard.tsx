@@ -1,6 +1,8 @@
+import { useEffect, useRef, useState } from 'react'
 import type { BackendFlow, RunSummary } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
 import { KIND_LABEL, compact, countsOf, decided, kindOf, money, timeAgo, triggerOf } from './flowFormat.ts'
+import { templateJson } from './flowTemplate.ts'
 import styles from './flows.module.scss'
 
 export function FlowCard({
@@ -28,6 +30,27 @@ export function FlowCard({
   setSettingsFor: (flow: BackendFlow) => void
   setTagFilter: (tag: string) => void
 }) {
+  // Copy-as-template feedback: a ✓ for a moment, then back. Clipboard writes are invisible,
+  // and a button that seems to do nothing gets clicked five times.
+  const [copied, setCopied] = useState(false)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current)
+  }, [])
+
+  const copyTemplate = async () => {
+    const json = templateJson(flow)
+    try {
+      await navigator.clipboard.writeText(json)
+      setCopied(true)
+      copiedTimer.current = setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Clipboard access can be denied (insecure context, permissions). The prompt is ugly but
+      // it works everywhere, and it still hands over the exact same JSON.
+      window.prompt('Copy the template JSON:', json)
+    }
+  }
+
   const last = flowRuns[0]
   const trigger = triggerOf(flow)
   const { agents, tools } = countsOf(flow)
@@ -133,6 +156,13 @@ export function FlowCard({
         </button>
         <button className={styles.icon} title="Export JSON" onClick={() => exportFlow(flow)}>
           ↓
+        </button>
+        <button
+          className={styles.icon}
+          title="Copy as template JSON — credentials, accounts and private endpoints are stripped, so it is safe to share. See docs/templates.md to propose it for the gallery."
+          onClick={() => void copyTemplate()}
+        >
+          {copied ? '✓' : '⎘'}
         </button>
         <button className={styles.icon} title="Duplicate" onClick={() => onDuplicate(flow)}>
           ⧉
