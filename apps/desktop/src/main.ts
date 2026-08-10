@@ -6,7 +6,8 @@ import { resolveClaudeCli } from './claude-cli'
 import { installClaude, installCommand } from './claude-install'
 import { failurePage } from './failure-page'
 import { OnboardingState, StorageState, onboardingPage } from './onboarding-page'
-import { backendLogFile, shellLogFile } from './paths'
+import { backendLogFile, isPackaged, shellLogFile } from './paths'
+import { Splash, noSplash, showSplash } from './splash'
 import { resetRunNotifications, startRunNotifications } from './run-notifications'
 import { loadSettings, saveSettings } from './settings'
 import { applyStartWithSystem, createTray } from './tray'
@@ -39,6 +40,8 @@ let backend: RunningBackend | null = null
 let mainWindow: BrowserWindow | null = null
 let failureWindow: BrowserWindow | null = null
 let onboardingWindow: BrowserWindow | null = null
+/** The splash for the launch in progress; noSplash outside one, so callers never null-check. */
+let splash: Splash = noSplash
 /** Set once quitting has begun, so the backend is stopped exactly once. */
 let quitting = false
 /**
@@ -112,14 +115,21 @@ async function main(): Promise<void> {
 
 /** Start the backend, then show the first-run page, the app, or the failure page. */
 async function launch(): Promise<void> {
+  // The splash goes up before any work starts — its whole job is to make the seconds before the
+  // first real window feel accounted for. A --hidden launch shows nothing on purpose: the user
+  // asked for a tray icon, not a screen announcing one.
+  if (!startHidden) {
+    splash = showSplash(isPackaged() ? `Version ${app.getVersion()}` : 'Development build')
+  }
   try {
-    backend = await startBackend()
+    backend = await startBackend((percent, label) => splash.advance(percent, label))
     backendClaudeCommand = (await claudeState()).command
     if (startHidden) {
       // An autostarted session: the tray is the whole UI until the user asks for more. The wizard,
       // if due, waits for a launch the user actually initiated.
       log.info('Started hidden into the tray.')
     } else if (await shouldOnboard()) {
+      splash.advance(92, 'Opening setup…')
       showOnboardingWindow()
     } else {
       showMainWindow(backend.port)
@@ -203,7 +213,13 @@ function showMainWindow(port: number): void {
   })
 
   // Ready-to-show rather than showing immediately, to avoid a flash of empty window.
-  mainWindow.once('ready-to-show', () => mainWindow?.show())
+  mainWindow.once('ready-to-show', () => {
+    splash.advance(100, 'Ready')
+    mainWindow?.show()
+    // After the window is up, not before, so no frame passes with nothing on screen.
+    splash.close()
+    splash = noSplash
+  })
   // Close-to-tray. Read at close time, not window-creation time, so flipping the tray checkbox
   // applies to the window that is already open.
   mainWindow.on('close', (event) => {
@@ -228,6 +244,9 @@ function showMainWindow(port: number): void {
   })
 
   openExternalLinksInBrowser(mainWindow, port)
+  // The last stretch of the splash's progress: the interface loading into this hidden window.
+  splash.advance(88, 'Loading the interface…')
+  mainWindow.webContents.once('dom-ready', () => splash.advance(95, 'Rendering…'))
   void mainWindow.loadURL(`http://127.0.0.1:${port}`)
 }
 
@@ -299,11 +318,21 @@ function showOnboardingWindow(): void {
       log.warn(`Could not read the storage settings: ${err instanceof Error ? err.message : String(err)}`)
     }
     const html = onboardingPage(claude, storage)
-    void onboardingWindow?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+    try {
+      await onboardingWindow?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+    } finally {
+      // Only now: the wizard window opens instantly but paints its content after this async block,
+      // and dropping the splash on creation would leave a blank window as the handover.
+      splash.close()
+      splash = noSplash
+    }
   })()
 }
 
 function showFailureWindow(message: string): void {
+  // A progress bar over a failure would be a lie; the failure window is the whole screen now.
+  splash.close()
+  splash = noSplash
   failureWindow = new BrowserWindow({
     width: 900,
     height: 760,
