@@ -67,22 +67,22 @@ export function buildTree(docs: KnowledgeDoc[]): TreeNode {
 const PAGE_SIZE = 20
 
 /**
- * Extensions the backend can extract text from. One list: it also builds the picker's `accept`
- * attribute and the folder-import filter, which were three hand-kept copies that already
- * disagreed on order.
+ * Until the backend answers, the safe common core. The real list comes from
+ * /knowledge/capabilities, because a hand-kept copy had already drifted twice: it offered
+ * .doc/.xls, which no extractor claims and which failed at ingest — and it silently dropped
+ * images, which the backend reads fine wherever OCR is installed.
  */
-const SUPPORTED = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.html']
-const ACCEPT = SUPPORTED.join(',')
+const FALLBACK_EXTENSIONS = ['.pdf', '.docx', '.xlsx', '.csv', '.txt', '.md', '.html']
+
+function indexable(files: File[], supported: string[]): File[] {
+  return files.filter((f) => supported.some((ext) => f.name.toLowerCase().endsWith(ext)))
+}
 
 /** Adds or removes a key, returning a new Set — the two toggles here were the same five lines. */
 function toggled<T>(prev: Set<T>, key: T): Set<T> {
   const next = new Set(prev)
   if (!next.delete(key)) next.add(key)
   return next
-}
-
-function indexable(files: File[]): File[] {
-  return files.filter((f) => SUPPORTED.some((ext) => f.name.toLowerCase().endsWith(ext)))
 }
 
 /**
@@ -148,6 +148,7 @@ function Documents({ baseId }: { baseId: string }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // A picked folder, held until its exclusions are confirmed.
   const [pending, setPending] = useState<File[] | null>(null)
+  const [supported, setSupported] = useState<string[]>(FALLBACK_EXTENSIONS)
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const fileRef = useRef<HTMLInputElement>(null)
   const folderRef = useRef<HTMLInputElement>(null)
@@ -164,6 +165,7 @@ function Documents({ baseId }: { baseId: string }) {
     setPage(0)
     setExpanded(new Set())
     setPending(null)
+    api.knowledgeCapabilities().then((c) => setSupported(c.extensions)).catch(() => {})
   }, [refresh])
 
   // Tabs show only the types actually present — five empty tabs teach nothing.
@@ -244,9 +246,6 @@ function Documents({ baseId }: { baseId: string }) {
       </div>
     )
 
-  /** Extensions the backend can extract text from; anything else in a folder is skipped, counted. */
-  const SUPPORTED = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.html']
-
   const relPath = (f: File) =>
     (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name
 
@@ -255,7 +254,7 @@ function Documents({ baseId }: { baseId: string }) {
    * spot: dropping a repository in and only then discovering node_modules went with it costs a
    * long wait and a base that has to be cleaned out document by document.
    */
-  const pendingUsable = useMemo(() => (pending ? indexable(pending) : undefined), [pending])
+  const pendingUsable = useMemo(() => (pending ? indexable(pending, supported) : undefined), [pending, supported])
 
   // Every folder name appearing anywhere in the picked tree, with how many indexable files sit
   // under it. By name rather than by full path because that is how the intent is actually held:
@@ -283,12 +282,12 @@ function Documents({ baseId }: { baseId: string }) {
   }
 
   const upload = async (files: File[]) => {
-    const usable = indexable(files)
+    const usable = indexable(files, supported)
     const skipped = files.length - usable.length
     if (usable.length === 0) {
       setNote(
         skipped > 0
-          ? `Nothing to index: ${skipped} file(s) skipped — supported types are ${SUPPORTED.join(', ')}.`
+          ? `Nothing to index: ${skipped} file(s) skipped — supported types are ${supported.join(', ')}.`
           : 'No files selected.',
       )
       return
@@ -436,7 +435,7 @@ function Documents({ baseId }: { baseId: string }) {
           type="file"
           hidden
           multiple
-          accept={ACCEPT}
+          accept={supported.join(',')}
           onChange={(e) => {
             const files = Array.from(e.target.files ?? [])
             if (files.length > 0) void upload(files)

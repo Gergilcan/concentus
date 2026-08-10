@@ -186,6 +186,8 @@ export const api = {
     req<{ deleted: number }>(`/knowledge/${id}/folders?path=${encodeURIComponent(path)}`, {
       method: 'DELETE',
     }),
+  /** Extensions the backend can actually extract — the picker's source of truth. */
+  knowledgeCapabilities: () => req<{ extensions: string[] }>('/knowledge/capabilities'),
   // The built-in embedding model: no server, no Docker — the backend runs it in-process.
   embedderStatus: () => req<EmbedderStatus>('/knowledge/embedder'),
   embedderDownload: () => req<void>('/knowledge/embedder/download', { method: 'POST' }),
