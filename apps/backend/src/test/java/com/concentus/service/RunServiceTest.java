@@ -590,4 +590,37 @@ class RunServiceTest {
                 .hasMessageContaining("Sign in to Claude Code")
                 .hasMessageContaining("ANTHROPIC_API_KEY");
     }
+
+    @org.junit.jupiter.api.Test
+    void aFlowAtItsMonthlyBudgetIsRefusedBeforeCompiling() {
+        when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.eq("flow-b"),
+                org.mockito.ArgumentMatchers.anyLong())).thenReturn(25.10);
+        com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
+                "flow-b", "Presupuestos", "local", List.of(), List.of(),
+                null, List.of(), null, null, 25.0);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> newService(2, 4, 10).start(flow))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Budget reached")
+                .hasMessageContaining("$25.10");
+        // Refused before compile: an over-budget flow with a broken graph still reports budget,
+        // which is the actionable half.
+        org.mockito.Mockito.verifyNoInteractions(compiler);
+    }
+
+    @org.junit.jupiter.api.Test
+    void aFlowUnderItsBudgetStartsNormally() {
+        when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong())).thenReturn(3.0);
+        com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
+                "flow-ok", "Barato", "local", List.of(), List.of(),
+                null, List.of(), null, null, 25.0);
+
+        // Reaching the compiler is the assertion: the gate let it through and the (mocked)
+        // compiler's own failure is the next thing that would happen in this stripped harness.
+        org.assertj.core.api.Assertions.assertThatCode(() -> {
+            try { newService(2, 4, 10).start(flow); } catch (RuntimeException ignored) { }
+        }).doesNotThrowAnyException();
+        org.mockito.Mockito.verify(compiler).compile(flow);
+    }
 }

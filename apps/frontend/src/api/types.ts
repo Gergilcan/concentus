@@ -346,6 +346,8 @@ export interface BackendFlow {
   favorite?: boolean
   /** URL POSTed when a run of this flow fails (Slack-compatible payload) */
   notifyWebhook?: string
+  /** Monthly spend ceiling in USD; at or past it, new runs are refused until next month. */
+  budgetUsd?: number | null
 }
 
 export interface FlowVersionInfo {

@@ -16,11 +16,20 @@ import java.util.List;
  * @param tags          free-form labels used to organize and filter flows
  * @param favorite      pinned to the top of the flow list
  * @param notifyWebhook optional URL POSTed when a run of this flow fails (Slack-compatible)
+ * @param budgetUsd     optional monthly spend ceiling; at or past it, new runs are refused
  */
 public record FlowGraph(String id, String name, String mode,
                         List<FlowNode> nodes, List<FlowEdge> edges,
                         Boolean enabled, List<String> tags, Boolean favorite,
-                        String notifyWebhook) {
+                        String notifyWebhook, Double budgetUsd) {
+
+    /** The pre-budget shape, kept so the many existing constructions stay valid. */
+    public FlowGraph(String id, String name, String mode,
+                     List<FlowNode> nodes, List<FlowEdge> edges,
+                     Boolean enabled, List<String> tags, Boolean favorite,
+                     String notifyWebhook) {
+        this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, null);
+    }
 
     public List<FlowNode> nodesOrEmpty() {
         return nodes == null ? List.of() : nodes;

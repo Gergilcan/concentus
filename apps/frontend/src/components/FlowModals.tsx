@@ -20,6 +20,7 @@ export function SettingsModal({
   const [tags, setTags] = useState((flow.tags ?? []).join(', '))
   const [enabled, setEnabled] = useState(flow.enabled !== false)
   const [webhook, setWebhook] = useState(flow.notifyWebhook ?? '')
+  const [budget, setBudget] = useState(flow.budgetUsd != null ? String(flow.budgetUsd) : '')
   const [busy, setBusy] = useState(false)
 
   const save = async () => {
@@ -32,6 +33,7 @@ export function SettingsModal({
         .filter(Boolean),
       enabled,
       notifyWebhook: webhook.trim(),
+      budgetUsd: budget.trim() === '' ? null : Math.max(0, Number(budget)) || null,
     })
     setBusy(false)
   }
@@ -51,6 +53,20 @@ export function SettingsModal({
         <span>
           Enabled — when off, scheduled (cron) runs are paused. Manual runs still work.
         </span>
+      </label>
+      <label
+        className={styles.field}
+        title="Sum of the estimated cost of this flow's runs in the current calendar month. At or past the ceiling, new runs are refused (a run already in flight finishes). On a Claude subscription this is equivalent usage, not a bill."
+      >
+        <span>Monthly budget in USD (blank = no limit) ⓘ</span>
+        <input
+          type="number"
+          min="0"
+          step="0.5"
+          value={budget}
+          onChange={(e) => setBudget(e.target.value)}
+          placeholder="e.g. 25"
+        />
       </label>
       <label className={styles.field}>
         <span>Failure notification webhook</span>

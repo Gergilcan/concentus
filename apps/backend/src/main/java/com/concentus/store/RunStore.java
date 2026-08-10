@@ -98,6 +98,23 @@ public class RunStore {
     }
 
     /** Queue an upsert of the run's current state. Non-blocking; best-effort. */
+    /**
+     * What this flow has spent since {@code sinceMillis} — the budget gate's one query.
+     * Zero when persistence is down: a broken database must not also stop every budgeted flow.
+     */
+    public double spendUsdSince(String flowId, long sinceMillis) {
+        if (!isAvailable()) return 0d;
+        try {
+            Double sum = jdbc.queryForObject(
+                    "select coalesce(sum(cost_usd), 0) from runs where flow_id = ? and created_at >= ?",
+                    Double.class, flowId, sinceMillis);
+            return sum == null ? 0d : sum;
+        } catch (Exception e) {
+            log.debug("spend query failed: {}", e.getMessage());
+            return 0d;
+        }
+    }
+
     public void persist(AgentRun run) {
         if (!isAvailable()) return;
         String eventsJson = toJson(run.bufferedEvents());
@@ -109,8 +126,8 @@ public class RunStore {
                     insert into runs (id, flow_id, flow_name, mode, backend, status, trigger_type,
                       session_id, local_session_id, local_started, error,
                       total_input_tokens, total_output_tokens, flow_json, events_json, node_execs_json,
-                      created_at, updated_at, initial_prompt, notify_webhook)
-                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                      created_at, updated_at, initial_prompt, notify_webhook, cost_usd)
+                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     on conflict (id) do update set
                       flow_id=excluded.flow_id, flow_name=excluded.flow_name, mode=excluded.mode,
                       backend=excluded.backend, status=excluded.status, trigger_type=excluded.trigger_type,
@@ -120,12 +137,13 @@ public class RunStore {
                       total_output_tokens=excluded.total_output_tokens, flow_json=excluded.flow_json,
                       events_json=excluded.events_json, node_execs_json=excluded.node_execs_json,
                       updated_at=excluded.updated_at, initial_prompt=excluded.initial_prompt,
-                      notify_webhook=excluded.notify_webhook
+                      notify_webhook=excluded.notify_webhook,
+                      cost_usd=excluded.cost_usd
                     """,
                     run.id, run.flowId, run.flowName, run.mode, run.backend, run.status, run.trigger,
                     run.sessionId, run.localSessionId, run.localStarted, run.error,
                     run.totalInputTokens, run.totalOutputTokens, run.flowJson, eventsJson, execsJson,
-                    run.createdAt, now, run.initialPrompt, run.notifyWebhook);
+                    run.createdAt, now, run.initialPrompt, run.notifyWebhook, run.estimatedCostUsd());
             } catch (Exception e) {
                 log.debug("persist run {} failed: {}", run.id, e.getMessage());
             }

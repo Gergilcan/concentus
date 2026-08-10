@@ -120,6 +120,27 @@ public class RunService {
     }
 
     /**
+     * Refuses a start once the flow's monthly spend has reached its ceiling.
+     *
+     * <p>Checked at start, not mid-run: a run in flight finishes — cutting an agent off mid-task
+     * leaves half-done work that costs more to untangle than the tokens saved. The month is the
+     * calendar month in the machine's own timezone, which is the month the user's invoice thinks
+     * in. Ad-hoc runs of an unsaved canvas have no flow id and no history to sum, so no ceiling.
+     */
+    private void enforceBudget(FlowGraph flow) {
+        if (flow.id() == null || flow.budgetUsd() == null || flow.budgetUsd() <= 0) return;
+        long monthStart = java.time.LocalDate.now().withDayOfMonth(1)
+                .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        double spent = runStore.spendUsdSince(flow.id(), monthStart);
+        if (spent >= flow.budgetUsd()) {
+            throw new IllegalStateException(String.format(java.util.Locale.ROOT,
+                    "Budget reached: '%s' has spent $%.2f of its $%.2f monthly ceiling. "
+                            + "Raise the budget in the flow's settings, or wait for next month.",
+                    flow.name(), spent, flow.budgetUsd()));
+        }
+    }
+
+    /**
      * Why a flow has nowhere to run, phrased around what the flow actually asks for.
      *
      * <p>"Not signed in" is the right answer for a Claude model and the wrong one for a
@@ -185,6 +206,7 @@ public class RunService {
      * prompt is used for prompt/cron modes.
      */
     public RunSummary start(FlowGraph flow, String initialPromptOverride) {
+        enforceBudget(flow);
         // Compile synchronously so validation errors surface to the caller immediately.
         CompiledFlow compiled = compiler.compile(flow);
         TriggerSpec trigger = TriggerSpec.from(flow);

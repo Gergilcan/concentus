@@ -175,6 +175,7 @@ type FlowMeta = {
   tags?: string[]
   favorite?: boolean
   notifyWebhook?: string
+  budgetUsd?: number | null
 }
 
 interface FlowState {
@@ -403,6 +404,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         tags: flow.tags,
         favorite: flow.favorite,
         notifyWebhook: flow.notifyWebhook,
+        budgetUsd: flow.budgetUsd,
       },
       nodes,
       edges: flow.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),

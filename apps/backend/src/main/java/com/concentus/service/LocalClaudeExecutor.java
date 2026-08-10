@@ -490,16 +490,10 @@ public class LocalClaudeExecutor {
                 .filter(java.util.Objects::nonNull)
                 .toList();
         if (names.isEmpty()) return;
-        out.append("
-## Skills assigned to you
-
-");
-        for (String n : names) out.append("- ").append(n).append('
-');
-        out.append("
-Use the Skill tool with these when the task matches; they are installed in "
-                + "this workspace.
-");
+        out.append("\n## Skills assigned to you\n\n");
+        for (String n : names) out.append("- ").append(n).append('\n');
+        out.append("\nUse the Skill tool with these when the task matches; they are installed in "
+                + "this workspace.\n");
     }
 
     /**
