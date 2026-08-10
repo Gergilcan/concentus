@@ -35,6 +35,11 @@ When a run stops to ask:
 1. Create an app at `api.slack.com/apps` → *From scratch*, in your workspace.
 2. Under **OAuth & Permissions**, add the bot scopes `chat:write` and `reactions:read`, then
    *Install to Workspace* and copy the **Bot User OAuth Token** (`xoxb-…`).
+
+   > Slack may also offer you an **App-Level Token** (`xapp-…`). You do not need it: that token
+   > exists for Socket Mode, which this design deliberately avoids — Concentus polls reactions
+   > instead of holding a WebSocket. If it starts with `xoxb` it is the right one; if it starts
+   > with `xapp`, ignore it. Socket Mode and Event Subscriptions can stay disabled.
 3. In Concentus, store that token under **Resources → Credentials**.
 4. Invite the bot to the channel that should receive approval requests: `/invite @yourbot`.
 5. In the flow's **Settings → Remote approval**, pick the credential and set the channel id
