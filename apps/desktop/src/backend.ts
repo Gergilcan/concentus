@@ -4,6 +4,7 @@ import * as http from 'node:http'
 import * as net from 'node:net'
 import { backendJar, backendLogFile, dataDir, javaBinary } from './paths'
 import { resolveClaudeCli } from './claude-cli'
+import { killOrphans } from './orphans'
 import { masterSecret } from './secret'
 import { loadSettings, saveSettings } from './settings'
 import { log } from './log'
@@ -115,6 +116,12 @@ export async function startBackend(): Promise<RunningBackend> {
   if (!fs.existsSync(jar)) {
     throw new Error(`Backend jar not found at ${jar}. Build it with: pnpm backend:build`)
   }
+
+  // Before choosing a port, not after: a leftover backend from a hard-killed previous run holds
+  // the preferred port, and sweeping it first is what lets this launch keep 8734 instead of
+  // drifting to an ephemeral port. It also removes the orphaned embedded postgres that would
+  // otherwise fail this start with "already running" on our own data directory.
+  await killOrphans()
 
   const java = javaBinary()
   const port = await choosePort()
