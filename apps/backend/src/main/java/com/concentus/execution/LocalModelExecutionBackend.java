@@ -46,6 +46,11 @@ public class LocalModelExecutionBackend implements ExecutionBackend {
     }
 
     @Override
+    public String startupDescription() {
+        return "Running on your own hardware — " + displayName();
+    }
+
+    @Override
     public boolean isAvailable() {
         return catalog.isAvailable();
     }

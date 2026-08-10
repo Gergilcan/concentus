@@ -240,9 +240,7 @@ public class RunService {
             // Harmless on a backend that has no notion of a CLI session; the claude one needs it.
             run.localSessionId = UUID.randomUUID().toString();
             run.status = "IDLE";
-            String where = com.concentus.llm.LocalModelClient.ID.equals(backend)
-                    ? "Running on your own hardware — " + chosen.displayName()
-                    : "Local mode — running on your Claude subscription";
+            String where = chosen.startupDescription();
             // Named on every run, because it decides what the agent may do to this machine without
             // asking, and it is otherwise invisible until something has already happened.
             if (!run.permissionMode.isBlank()) {
