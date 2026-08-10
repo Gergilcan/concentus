@@ -126,8 +126,8 @@ public class RunStore {
                     insert into runs (id, flow_id, flow_name, mode, backend, status, trigger_type,
                       session_id, local_session_id, local_started, error,
                       total_input_tokens, total_output_tokens, flow_json, events_json, node_execs_json,
-                      created_at, updated_at, initial_prompt, notify_webhook, cost_usd)
-                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                      created_at, updated_at, initial_prompt, notify_webhook, cost_usd, golden)
+                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     on conflict (id) do update set
                       flow_id=excluded.flow_id, flow_name=excluded.flow_name, mode=excluded.mode,
                       backend=excluded.backend, status=excluded.status, trigger_type=excluded.trigger_type,
@@ -138,24 +138,36 @@ public class RunStore {
                       events_json=excluded.events_json, node_execs_json=excluded.node_execs_json,
                       updated_at=excluded.updated_at, initial_prompt=excluded.initial_prompt,
                       notify_webhook=excluded.notify_webhook,
-                      cost_usd=excluded.cost_usd
+                      cost_usd=excluded.cost_usd,
+                      golden=excluded.golden
                     """,
                     run.id, run.flowId, run.flowName, run.mode, run.backend, run.status, run.trigger,
                     run.sessionId, run.localSessionId, run.localStarted, run.error,
                     run.totalInputTokens, run.totalOutputTokens, run.flowJson, eventsJson, execsJson,
-                    run.createdAt, now, run.initialPrompt, run.notifyWebhook, run.estimatedCostUsd());
+                    run.createdAt, now, run.initialPrompt, run.notifyWebhook, run.estimatedCostUsd(),
+                    run.golden);
             } catch (Exception e) {
                 log.debug("persist run {} failed: {}", run.id, e.getMessage());
             }
         });
     }
 
-    /** Loads the most recent runs (metadata + events + node execs + flow snapshot). */
+    /**
+     * Loads the most recent runs (metadata + events + node execs + flow snapshot) — plus every
+     * golden run, however old. A reference is a reference until unmarked; letting it silently age
+     * out of the restore window would make "compare against golden" fail exactly on the flows
+     * that run most often.
+     */
     public List<RunRow> loadAll(int limit) {
         if (!isAvailable()) return List.of();
         try {
             return jdbc.query(
-                "select * from runs order by created_at desc limit ?",
+                """
+                select * from (select * from runs order by created_at desc limit ?) recent
+                union
+                select * from runs where golden
+                order by created_at desc
+                """,
                 (rs, i) -> new RunRow(
                     rs.getString("id"), rs.getString("flow_id"), rs.getString("flow_name"),
                     rs.getString("mode"), rs.getString("backend"), rs.getString("status"),
@@ -165,7 +177,7 @@ public class RunStore {
                     rs.getLong("total_output_tokens"), rs.getString("flow_json"),
                     parseEvents(rs.getString("events_json")), parseExecs(rs.getString("node_execs_json")),
                     rs.getLong("created_at"), rs.getString("initial_prompt"),
-                    rs.getString("notify_webhook")),
+                    rs.getString("notify_webhook"), rs.getBoolean("golden")),
                 limit);
         } catch (Exception e) {
             log.warn("Loading persisted runs failed: {}", e.getMessage());
@@ -232,6 +244,6 @@ public class RunStore {
                          boolean localStarted, String error, long totalInputTokens,
                          long totalOutputTokens, String flowJson, List<RunEvent> events,
                          List<NodeExec> nodeExecs, long createdAt, String initialPrompt,
-                         String notifyWebhook) {
+                         String notifyWebhook, boolean golden) {
     }
 }

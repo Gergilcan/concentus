@@ -315,6 +315,9 @@ public class RunService {
         if (overflow <= 0) return;
         runs.values().stream()
                 .filter(r -> isTerminal(r.status))
+                // A golden run is a reference, not history — evicting it would quietly disable
+                // "compare against golden" on precisely the flows that run most often.
+                .filter(r -> !r.golden)
                 .sorted(Comparator.comparingLong(r -> r.createdAt))
                 .limit(overflow)
                 .map(r -> r.id)
@@ -412,6 +415,59 @@ public class RunService {
         if (run.compiled == null) return null;
         var c = run.compiled.coordinator();
         return run.nodeExec(c.nodeId, "agent", c.name);
+    }
+
+    /**
+     * Marks or unmarks a run as its flow's golden reference. One per flow: marking a run clears
+     * the previous holder, so "the golden run" is always a single answer.
+     */
+    public RunSummary setGolden(String runId, boolean golden) {
+        AgentRun run = require(runId);
+        if (golden && (run.flowId == null || run.flowId.isBlank())) {
+            throw new IllegalStateException(
+                    "Only runs of a saved flow can be a golden reference — save the flow first.");
+        }
+        if (golden) {
+            runs.values().stream()
+                    .filter(r -> r.golden && run.flowId.equals(r.flowId) && !r.id.equals(runId))
+                    .forEach(r -> {
+                        r.golden = false;
+                        runStore.persist(r);
+                    });
+        }
+        run.golden = golden;
+        runStore.persist(run);
+        return run.toSummary();
+    }
+
+    /**
+     * Re-runs the golden reference's first input against the flow as it stands NOW.
+     *
+     * <p>The deliberate opposite of {@link #retry}: retry replays against the run's stored flow
+     * snapshot (same flow, same input — reproduce what happened), while this replays against the
+     * current flow (same input, edited flow — show what the edit changes). The caller passes the
+     * current flow in, because this service deliberately does not read the flow store.
+     */
+    public RunSummary startGoldenCheck(FlowGraph currentFlow, String goldenRunId) {
+        AgentRun golden = require(goldenRunId);
+        if (!golden.golden) {
+            throw new IllegalStateException("This execution is not the golden reference.");
+        }
+        if (golden.initialPrompt == null || golden.initialPrompt.isBlank()) {
+            throw new IllegalStateException("The golden run recorded no initial input to replay.");
+        }
+        RunSummary started = start(currentFlow, golden.initialPrompt);
+        AgentRun run = runs.get(started.id());
+        if (run != null) {
+            // Labelled for what it is, in every list and in the history: a comparison run, not
+            // the trigger the flow normally fires on. Shadow stays visible — a flow whose trigger
+            // is shadowed plans without acting, and its golden check inherits that, so the
+            // comparison reads plan-vs-run unless the shadow is lifted first.
+            run.trigger = run.shadow ? "golden (shadow)" : "golden";
+            runStore.persist(run);
+            return run.toSummary();
+        }
+        return started;
     }
 
     /**
@@ -553,6 +609,7 @@ public class RunService {
                 run.flowJson = row.flowJson();
                 run.initialPrompt = row.initialPrompt();
                 run.notifyWebhook = row.notifyWebhook();
+                run.golden = row.golden();
                 run.pricing = pricing;
                 run.inputUsdPerMTok = inputUsdPerMTok;
                 run.outputUsdPerMTok = outputUsdPerMTok;

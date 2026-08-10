@@ -23,6 +23,21 @@ export interface RunSummary {
   totalInputTokens?: number
   totalOutputTokens?: number
   estimatedCostUsd?: number
+  /** This run is its flow's golden reference — the known-good execution edits are compared against. */
+  golden?: boolean
+}
+
+/** One side of a golden comparison: headline numbers, per-node steps (priced), final answer. */
+export interface RunComparisonSide {
+  run: RunSummary
+  nodes: NodeExec[]
+  finalOutput?: string | null
+}
+
+/** The golden reference and a candidate run, side by side. Raw facts; no computed verdicts. */
+export interface RunComparison {
+  reference: RunComparisonSide
+  candidate: RunComparisonSide
 }
 
 type RunEventType ='system' | 'status' | 'agent_message' | 'tool_use' | 'error'

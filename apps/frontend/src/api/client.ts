@@ -24,6 +24,7 @@ import type {
   NodeExecReport,
   ModelCatalog,
   RemoteRepoList,
+  RunComparison,
   RunEvent,
   RunSummary,
   StorageConfig,
@@ -143,6 +144,14 @@ export const api = {
   rejectRun: (runId: string) => req<void>(`/runs/${runId}/reject`, { method: 'POST' }),
   stopRun: (runId: string) => req<void>(`/runs/${runId}/stop`, { method: 'POST' }),
   retryRun: (runId: string) => req<RunSummary>(`/runs/${runId}/retry`, { method: 'POST' }),
+  /** Marks (or unmarks) a run as its flow's golden reference. One per flow. */
+  setGoldenRun: (runId: string, golden: boolean) =>
+    req<RunSummary>(`/runs/${runId}/golden`, { method: 'POST', body: JSON.stringify({ golden }) }),
+  /** Replays the golden run's first input against the flow as saved NOW, as a new run. */
+  goldenRerun: (runId: string) => req<RunSummary>(`/runs/${runId}/golden/rerun`, { method: 'POST' }),
+  /** The golden reference and a candidate, side by side (numbers, steps, final outputs). */
+  compareRuns: (referenceId: string, candidateId: string) =>
+    req<RunComparison>(`/runs/${referenceId}/compare/${candidateId}`),
 
   // agent library
   listAgents: () => req<LibraryAgent[]>('/agents'),

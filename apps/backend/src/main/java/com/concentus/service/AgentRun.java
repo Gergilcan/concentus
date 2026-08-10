@@ -105,6 +105,11 @@ public class AgentRun {
     public volatile String toolToken;
     /** True when this run executed under a shadow trigger: it planned, it never acted. */
     public volatile boolean shadow;
+    /**
+     * True when this run is its flow's golden reference — the known-good execution that edits of
+     * the flow are compared against. At most one per flow; marking another clears this one.
+     */
+    public volatile boolean golden;
 
     private final CopyOnWriteArrayList<RunEvent> buffer = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<Consumer<RunEvent>> listeners = new CopyOnWriteArrayList<>();
@@ -228,7 +233,23 @@ public class AgentRun {
 
     public RunSummary toSummary() {
         return new RunSummary(id, flowId, flowName, mode, status, createdAt, sessionId, agentIds, error,
-                trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd());
+                trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd(), golden);
+    }
+
+    /**
+     * What this run ultimately answered: the last agent message, which for a finished run is the
+     * coordinator's closing report. Falls back to nothing rather than guessing — a run that never
+     * produced an agent message has no final output, and showing a tool call or a system line as
+     * "the result" would misrepresent what happened.
+     */
+    public String finalOutput() {
+        List<RunEvent> events = bufferedEvents();
+        for (int i = events.size() - 1; i >= 0; i--) {
+            if ("agent_message".equals(events.get(i).type())) {
+                return events.get(i).text();
+            }
+        }
+        return null;
     }
 
     /**
