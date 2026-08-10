@@ -17,7 +17,13 @@ import java.util.Map;
  * </ul>
  */
 public record TriggerSpec(String mode, String prompt, String cron, String secret, String authParam,
-                          String permissionMode) {
+                          String permissionMode, boolean shadow) {
+
+    /** The pre-shadow shape, kept for existing callers. */
+    public TriggerSpec(String mode, String prompt, String cron, String secret, String authParam,
+                       String permissionMode) {
+        this(mode, prompt, cron, secret, authParam, permissionMode, false);
+    }
 
     /** Used when a flow doesn't name one, so existing Linear webhooks keep working untouched. */
     public static final String DEFAULT_AUTH_PARAM = "Linear-Signature";
@@ -53,7 +59,8 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
                         str(d, "cron", ""),
                         str(d, "secret", ""),
                         str(d, "authParam", DEFAULT_AUTH_PARAM),
-                        permissions);
+                        permissions,
+                        com.concentus.support.MapValues.bool(d, "shadow", false));
             }
         }
         return new TriggerSpec("manual", "", "", "", DEFAULT_AUTH_PARAM, permissions);

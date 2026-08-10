@@ -623,4 +623,40 @@ class RunServiceTest {
         }).doesNotThrowAnyException();
         org.mockito.Mockito.verify(compiler).compile(flow);
     }
+
+    @org.junit.jupiter.api.Test
+    void aShadowTriggerPlansButNeverActs() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        com.concentus.model.FlowNode input = new com.concentus.model.FlowNode("in1", "input", null,
+                java.util.Map.of("mode", "webhook", "secret", "s", "shadow", true));
+        com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
+                "flow-s", "Sombra", "local", List.of(input), List.of(), null, List.of(), null, null);
+
+        // A webhook delivery passes the payload as the prompt override — the triggered path.
+        RunSummary summary = newService(2, 4, 10).start(flow, "event payload");
+
+        AgentRun run = created.get(created.size() - 1).get(summary.id()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(run.shadow).isTrue();
+        org.assertj.core.api.Assertions.assertThat(run.permissionMode).isEqualTo("plan");
+        org.assertj.core.api.Assertions.assertThat(run.trigger).isEqualTo("webhook (shadow)");
+    }
+
+    @org.junit.jupiter.api.Test
+    void aManualRunOfAShadowedFlowStaysReal() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        com.concentus.model.FlowNode input = new com.concentus.model.FlowNode("in1", "input", null,
+                java.util.Map.of("mode", "webhook", "secret", "s", "shadow", true));
+        com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
+                "flow-s2", "Sombra", "local", List.of(input), List.of(), null, List.of(), null, null);
+
+        // No prompt override = someone pressed Run themselves. They are present; shadow is for
+        // the unattended path, and silently plan-only-ing a manual run would read as broken.
+        RunSummary summary = newService(2, 4, 10).start(flow, null);
+
+        AgentRun run = created.get(created.size() - 1).get(summary.id()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(run.shadow).isFalse();
+        org.assertj.core.api.Assertions.assertThat(run.trigger).isEqualTo("webhook");
+    }
 }

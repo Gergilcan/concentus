@@ -130,6 +130,8 @@ export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'knowledge' | 'api' | 
 export type InputNodeData = {
   kind: 'input'
   mode: 'manual' | 'prompt' | 'cron' | 'webhook' | 'mail'
+  /** Shadow: triggered runs plan and stop — watch what a trigger WOULD do before trusting it. */
+  shadow?: boolean
   prompt: string
   cron: string
   /** Secret issued by the provider; we verify against it, we never mint it. */

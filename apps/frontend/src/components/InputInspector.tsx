@@ -77,6 +77,20 @@ export function InputInspector({ data, set }: Props) {
           agent — setting them there replaces this.
         </p>
       )}
+      {data.mode !== 'manual' && data.mode !== 'prompt' && (
+        <label
+          className={styles.checkField}
+          title="While on, runs started by this trigger PLAN and stop — nothing is executed, nothing changes. The run log shows what each event would have done. Watch it for a few days, then untick to go live. Manual runs are unaffected."
+        >
+          <input
+            type="checkbox"
+            checked={!!data.shadow}
+            onChange={(e) => set({ shadow: e.target.checked })}
+          />
+          Shadow mode — plan only, act never ⓘ
+        </label>
+      )}
+
 
       {data.mode === 'cron' && (
         <Field label="Cron expression" value={data.cron} placeholder="0 9 * * *" onChange={(v) => set({ cron: v })} />

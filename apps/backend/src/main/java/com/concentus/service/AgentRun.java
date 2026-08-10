@@ -103,6 +103,8 @@ public class AgentRun {
      * spawned can call this run's tools.
      */
     public volatile String toolToken;
+    /** True when this run executed under a shadow trigger: it planned, it never acted. */
+    public volatile boolean shadow;
 
     private final CopyOnWriteArrayList<RunEvent> buffer = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<Consumer<RunEvent>> listeners = new CopyOnWriteArrayList<>();

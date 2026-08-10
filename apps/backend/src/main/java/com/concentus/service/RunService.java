@@ -244,6 +244,17 @@ public class RunService {
         run.outputUsdPerMTok = outputUsdPerMTok;
         run.trigger = trigger.mode() == null ? "manual" : trigger.mode().toLowerCase();
         run.permissionMode = trigger.permissionMode();
+        // Shadow mode: a triggered run plans but never acts, so you can watch what a trigger
+        // WOULD have done for a few days before trusting it. Manual runs stay real — you are
+        // present for those, and shadowing them would just be a confusing plan mode. The override
+        // sits after the normal assignment so the run records both facts honestly.
+        boolean triggered = initialPromptOverride != null
+                || (trigger.autoStart() && !"manual".equals(run.trigger));
+        if (trigger.shadow() && triggered) {
+            run.shadow = true;
+            run.permissionMode = "plan";
+            run.trigger = run.trigger + " (shadow)";
+        }
         run.pendingPrompt = initialPromptOverride != null
                 ? initialPromptOverride
                 : (trigger.autoStart() ? trigger.prompt() : null);
