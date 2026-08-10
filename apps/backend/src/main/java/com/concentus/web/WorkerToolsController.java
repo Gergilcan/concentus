@@ -100,7 +100,8 @@ public class WorkerToolsController {
         for (AgentSpec s : run.compiled.allAgents()) {
             if (nodeId.equals(s.nodeId)) return s;
         }
-        return null;
+        // Plan-born workers exist on the run, not the canvas.
+        return run.syntheticWorkers.get(nodeId);
     }
 
     private ObjectNode initializeResult() {

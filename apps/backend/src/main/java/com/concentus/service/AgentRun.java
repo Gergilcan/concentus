@@ -92,6 +92,19 @@ public class AgentRun {
      * coordinator's tools endpoint and reach APIs its own facade never granted.
      */
     public final Map<String, String> workerToolTokens = new ConcurrentHashMap<>();
+    /**
+     * The plan the coordinator submitted this turn via {@code plan_submit}, already validated
+     * and with profile names resolved. Null until it arrives; cleared before each planning turn
+     * so a stale plan from the previous turn can never run twice.
+     */
+    public volatile com.concentus.model.WorkPlan submittedPlan;
+    /**
+     * Specs of plan-born workers, keyed by their synthetic node id ({@code worker:<itemId>}).
+     * The facade endpoint resolves workers here when they are not canvas nodes; in-memory only,
+     * like the rest of the fan-out state — a restart ends the turn either way.
+     */
+    public final Map<String, com.concentus.config.AgentSpec> syntheticWorkers =
+            new ConcurrentHashMap<>();
 
     // --- self-hosted model run state ---
     /**

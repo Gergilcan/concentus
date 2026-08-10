@@ -133,7 +133,7 @@ export function AgentInspector({ data, set }: Props) {
           </SelectField>
           <SelectField
             label={
-              <span title="Subagents: one claude process runs the whole flow; sub-agents share its session, its folders and its MCP list, and run one at a time. Independent workers: one claude process per sub-agent — own workspace and instructions, own model, real parallelism; each worker is denied the Task tool so it cannot spawn more. Experimental: workers cannot reach MCP servers or repositories yet — the run console says so.">
+              <span title="Subagents: one claude process runs the whole flow; sub-agents share its session, its folders and its MCP list, and run one at a time. Independent workers: one claude process per worker — own workspace and instructions, own model, real parallelism; workers cannot delegate or run shell commands (a Merge node runs the checks). Drawn sub-agents are the plan; with none drawn, the coordinator runs read-only first and submits a plan (plan_submit), and each item becomes a worker. Workers reach MCP only through a facade profile. Repositories are not cloned into workers yet.">
                 Execution ⓘ
               </span>
             }

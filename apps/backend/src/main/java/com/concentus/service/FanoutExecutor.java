@@ -3,6 +3,7 @@ package com.concentus.service;
 import com.concentus.config.AgentSpec;
 import com.concentus.model.NodeExec;
 import com.concentus.model.RunEvent;
+import com.concentus.model.WorkPlan;
 import com.concentus.support.LocalClaudeSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,6 +27,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * Runs a flow's sub-agents as independent {@code claude} processes — one per agent — instead of
@@ -130,13 +132,6 @@ public class FanoutExecutor {
             fail(run, "The claude CLI was not found. Install Claude Code or set local.claude-command.");
             return;
         }
-        List<AgentSpec> workers = flow.subAgents();
-        if (workers.isEmpty()) {
-            fail(run, "Independent workers need at least one sub-agent wired to the coordinator — "
-                    + "this flow has none. Draw the workers, or switch execution back to subagents.");
-            return;
-        }
-
         AgentSpec coord = flow.coordinator();
         NodeExec coordExec = run.nodeExec(coord.nodeId, "agent", coord.name);
         if (coordExec != null) {
@@ -145,14 +140,32 @@ public class FanoutExecutor {
         }
         run.status = "RUNNING";
         run.emit(RunEvent.of("system", "› " + userText));
-        run.emit(RunEvent.of("system", "Fan-out: " + workers.size() + " independent worker "
+
+        // The drawn sub-agents ARE the plan when there are any: each runs the turn's text. With
+        // none, the coordinator runs first as a read-only planning process, and each plan item
+        // becomes a worker running ITS OWN prompt — the item is the whole instruction.
+        List<WorkerJob> jobs = new ArrayList<>();
+        for (AgentSpec spec : flow.subAgents()) {
+            jobs.add(new WorkerJob(spec, userText));
+        }
+        if (jobs.isEmpty()) {
+            WorkPlan plan = planPhase(run, flow, cmd, userText, coordExec);
+            if (plan == null) return; // planPhase already reported why
+            List<AgentSpec> specs = syntheticWorkers(run, flow, plan);
+            List<WorkPlan.WorkItem> items = plan.itemsOrEmpty();
+            for (int i = 0; i < specs.size(); i++) {
+                jobs.add(new WorkerJob(specs.get(i), items.get(i).prompt()));
+            }
+        }
+
+        run.emit(RunEvent.of("system", "Fan-out: " + jobs.size() + " independent worker "
                 + "process(es), up to " + timeoutSeconds + "s each. Each has its own workspace, "
                 + "instructions and model; none can delegate further."));
         sayWhatIsMissing(run, flow);
 
         List<Future<Outcome>> futures = new ArrayList<>();
-        for (AgentSpec spec : workers) {
-            futures.add(pool.submit(() -> runWorker(run, spec, cmd, userText)));
+        for (WorkerJob job : jobs) {
+            futures.add(pool.submit(() -> runWorker(run, job.spec(), cmd, job.prompt())));
         }
 
         List<Outcome> outcomes = new ArrayList<>();
@@ -161,9 +174,9 @@ public class FanoutExecutor {
                 outcomes.add(futures.get(i).get());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                outcomes.add(new Outcome(workers.get(i), false, null, "interrupted while waiting"));
+                outcomes.add(new Outcome(jobs.get(i).spec(), false, null, "interrupted while waiting"));
             } catch (Exception e) {
-                outcomes.add(new Outcome(workers.get(i), false,
+                outcomes.add(new Outcome(jobs.get(i).spec(), false,
                         null, "worker thread failed: " + e.getMessage()));
             }
         }
@@ -205,14 +218,169 @@ public class FanoutExecutor {
         }
     }
 
+    // ---------------------------------------------------------------- planning phase
+
+    /** Tools the planning process is denied: everything that changes anything, plus delegation. */
+    private static final String PLANNER_DISALLOWED = "Task,Bash,Write,Edit,NotebookEdit";
+
+    /**
+     * Runs the coordinator as a read-only planning process and returns the plan it submitted,
+     * or null after reporting why there is nothing to run.
+     *
+     * <p>The planner's only MCP server is the plan endpoint — not the run's tools endpoint,
+     * which also carries the flow's API operations. A planner that could call external APIs
+     * while "just planning" would act before anyone fanned anything out.
+     */
+    private WorkPlan planPhase(AgentRun run, CompiledFlow flow, String cmd, String userText,
+                               NodeExec coordExec) {
+        AgentSpec coord = flow.coordinator();
+        Path workdir = Path.of(dataDir, "local", run.id, "coordinator").toAbsolutePath().normalize();
+        run.submittedPlan = null; // a stale plan from the previous turn must never run twice
+        run.emit(RunEvent.of("system", "Planning: the coordinator runs read-only and must submit "
+                + "a plan of independent work items (plan_submit).", coord.name, coord.nodeId));
+
+        try {
+            preparePlanningWorkspace(run, coord, workdir);
+        } catch (IOException e) {
+            fail(run, "The planning workspace could not be prepared: " + e.getMessage());
+            return null;
+        }
+
+        List<Path> dirs = contextFolders.resolve(coord.contextFolders, (path, reason) ->
+                run.emit(RunEvent.of("system", "Context folder ignored — " + path + ": " + reason,
+                        coord.name, coord.nodeId)));
+
+        Outcome outcome = execute(run, coord, coordExec, cmd, userText, workdir, dirs,
+                PLANNER_DISALLOWED);
+        if ("TERMINATED".equals(run.status)) return null;
+        if (!outcome.ok()) {
+            if (coordExec != null) {
+                coordExec.status = "failed";
+                coordExec.error = outcome.error();
+                coordExec.endedAt = System.currentTimeMillis();
+            }
+            fail(run, "The planning step failed: " + outcome.error());
+            return null;
+        }
+        WorkPlan plan = run.submittedPlan;
+        if (plan == null) {
+            if (coordExec != null) {
+                coordExec.status = "failed";
+                coordExec.error = "finished without submitting a plan";
+                coordExec.endedAt = System.currentTimeMillis();
+            }
+            fail(run, "The coordinator finished without submitting a plan (plan_submit was never "
+                    + "accepted), so nothing ran."
+                    + (outcome.finalText() == null || outcome.finalText().isBlank()
+                            ? "" : " Its final message: " + outcome.finalText()));
+            return null;
+        }
+        return plan;
+    }
+
+    private void preparePlanningWorkspace(AgentRun run, AgentSpec coord, Path workdir)
+            throws IOException {
+        Files.createDirectories(workdir);
+        if (run.toolToken == null) run.toolToken = UUID.randomUUID().toString();
+
+        StringBuilder md = new StringBuilder();
+        md.append("""
+                You are the planner of a fan-out flow. This turn you do exactly one thing: read
+                whatever context you need, split the request into INDEPENDENT work items, and
+                submit them with the plan_submit tool. You cannot edit files or run commands
+                here, and you do not do the work yourself — workers do, in parallel, each seeing
+                only its own item.
+
+                Rules the submission enforces:
+                - Each item: a short unique id, and a self-contained prompt (the worker sees
+                  nothing else of this conversation — repeat what it needs in `context`).
+                - Declare the files each item will touch; two items sharing a file reject the plan.
+                - No dependencies between items — they run in parallel. A step that must come
+                  after everything else belongs to the merge, not to an item.
+                - After the plan is accepted, finish with a one-line summary. Do not keep working.
+                """);
+        List<com.concentus.model.FacadeProfile> available = profiles.list();
+        if (!available.isEmpty()) {
+            md.append("\nFacade profiles you may assign per item (field `profile`, by name):\n");
+            for (com.concentus.model.FacadeProfile p : available) {
+                md.append("- ").append(p.name())
+                        .append(p.readOnly() ? " (read-only)"
+                                : p.dryRunEnabled() ? " (writes are dry-run)" : " (writes execute)")
+                        .append(p.description() == null || p.description().isBlank()
+                                ? "" : " — " + p.description())
+                        .append('\n');
+            }
+            md.append("An item without a profile gets no MCP tools at all.\n");
+        }
+        if (!coord.mcpServers.isEmpty()) {
+            md.append("\nMCP servers wired on this canvas (workers reach them through their "
+                    + "facade profile): ").append(coord.mcpServers.stream()
+                            .map(m -> m.name).collect(Collectors.joining(", "))).append(".\n");
+        }
+        if (coord.systemPrompt != null && !coord.systemPrompt.isBlank()) {
+            md.append('\n').append(coord.systemPrompt).append('\n');
+        }
+        LocalClaudeExecutor.appendContextFolderNote(coord, md);
+        Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
+
+        // The planner's whole MCP world is the plan endpoint.
+        var root = mapper.createObjectNode();
+        var server = root.putObject("mcpServers").putObject("concentus-plan");
+        server.put("type", "http");
+        server.put("url", "http://127.0.0.1:" + serverPort + "/api/runs/" + run.id + "/plan");
+        server.putObject("headers")
+                .put(com.concentus.web.RunToolsController.TOKEN_HEADER, run.toolToken);
+        Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
+                mapper.writeValueAsString(root));
+    }
+
+    /**
+     * Turns accepted plan items into worker specs. Synthetic node ids ({@code worker:<id>})
+     * mark them for the UI, which draws their boxes from the run report rather than the canvas.
+     *
+     * <p>Every synthetic worker inherits the canvas's MCP wiring (the coordinator's servers) —
+     * which servers exist is drawn, which tools an item gets is its profile. Context folders
+     * from the plan pass through the same allowlist as canvas values; a planner cannot name
+     * host paths the deployment never opted into.
+     */
+    private List<AgentSpec> syntheticWorkers(AgentRun run, CompiledFlow flow, WorkPlan plan) {
+        AgentSpec coord = flow.coordinator();
+        List<AgentSpec> out = new ArrayList<>();
+        for (WorkPlan.WorkItem item : plan.itemsOrEmpty()) {
+            AgentSpec s = new AgentSpec();
+            s.nodeId = "worker:" + item.id().trim();
+            s.name = item.displayName();
+            s.cliName = LocalClaudeExecutor.sanitize("w-" + item.id());
+            s.systemPrompt = item.contextOrEmpty().isEmpty()
+                    ? "" : String.join("\n", item.contextOrEmpty());
+            s.model.id = item.model() == null || item.model().isBlank()
+                    ? coord.model.id : item.model();
+            s.model.maxTokens = coord.model.maxTokens;
+            s.contextFolders = item.contextFoldersOrEmpty();
+            s.facadeProfileId = item.profileId() == null ? "" : item.profileId();
+            s.mcpServers = coord.mcpServers;
+            run.syntheticWorkers.put(s.nodeId, s);
+            out.add(s);
+        }
+        return out;
+    }
+
     // ---------------------------------------------------------------- one worker
+
+    /** One spawn: which spec runs, and the exact prompt it gets. */
+    private record WorkerJob(AgentSpec spec, String prompt) {
+    }
 
     private record Outcome(AgentSpec spec, boolean ok, String finalText, String error) {
     }
 
     private Outcome runWorker(AgentRun run, AgentSpec spec, String cmd, String userText) {
-        NodeExec exec = run.nodeExec(spec.nodeId, "agent", spec.name);
+        boolean synthetic = spec.nodeId.startsWith("worker:");
+        NodeExec exec = run.nodeExec(spec.nodeId, synthetic ? "worker" : "agent", spec.name);
         if (exec != null) {
+            // Plan-born workers have no canvas node, so the model lookup by node id found
+            // nothing — priced at the fallback unless attributed here.
+            if (exec.model == null) exec.model = spec.model.id;
             exec.appendInput(userText);
             exec.status = "running";
         }

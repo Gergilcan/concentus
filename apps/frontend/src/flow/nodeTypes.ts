@@ -15,6 +15,7 @@ import { RepoNode } from './nodes/RepoNode.tsx'
 import { ApiNode } from './nodes/ApiNode.tsx'
 import { KnowledgeNode } from './nodes/KnowledgeNode.tsx'
 import { SqlNode } from './nodes/SqlNode.tsx'
+import { WorkerNode } from './nodes/WorkerNode.tsx'
 
 export type AgentRFNode = Node<AgentNodeData, 'agent'>
 export type McpRFNode = Node<McpNodeData, 'mcp'>
@@ -33,4 +34,6 @@ export const nodeTypes = {
   knowledge: KnowledgeNode,
   api: ApiNode,
   merge: MergeNode,
+  // Not a palette kind: worker boxes are synthesized from the run report (plan-born workers).
+  worker: WorkerNode,
 }

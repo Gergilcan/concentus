@@ -9,7 +9,7 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { NODE_COLORS } from '../constants.ts'
 import type { NodeKind } from '../api/types.ts'
 import { NODE_DRAG_TYPE } from '../components/Palette.tsx'
@@ -36,6 +36,33 @@ function isTextEntry(el: EventTarget | null): boolean {
 export function FlowCanvas() {
   const nodes = useFlowStore((s) => s.nodes)
   const edges = useFlowStore((s) => s.edges)
+  const runExecByNode = useFlowStore((s) => s.runExecByNode)
+
+  // Plan-born workers: boxes that exist in the run report but were never drawn. Synthesized
+  // here rather than inserted into the store, so they can never be saved with the flow, and
+  // they vanish the moment another run (or none) is selected. Not draggable or deletable —
+  // applyNodeChanges ignores ids the store doesn't hold, which is exactly right for them.
+  const workerNodes = useMemo(() => {
+    const synthetic = Object.values(runExecByNode).filter(
+      (e) => e.nodeId.startsWith('worker:') && !nodes.some((n) => n.id === e.nodeId),
+    )
+    if (synthetic.length === 0) return []
+    const maxY = nodes.length ? Math.max(...nodes.map((n) => n.position.y)) : 0
+    return synthetic.map((e, i) => ({
+      id: e.nodeId,
+      type: 'worker' as const,
+      position: { x: 120 + (i % 4) * 240, y: maxY + 170 + Math.floor(i / 4) * 130 },
+      draggable: false,
+      data: { kind: 'worker' as const, label: e.label || e.nodeId, model: e.model ?? undefined },
+    }))
+  }, [runExecByNode, nodes])
+
+  // The cast is the price of keeping 'worker' out of NodeKind (it must never be addable,
+  // clonable or saved); React Flow only needs the id/type/position/data shape.
+  const allNodes = useMemo(
+    () => (workerNodes.length ? ([...nodes, ...workerNodes] as AppNode[]) : nodes),
+    [nodes, workerNodes],
+  )
   const onNodesChange = useFlowStore((s) => s.onNodesChange)
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange)
   const onConnect = useFlowStore((s) => s.onConnect)
@@ -70,7 +97,7 @@ export function FlowCanvas() {
 
   return (
     <ReactFlow
-      nodes={nodes}
+      nodes={allNodes}
       edges={edges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}

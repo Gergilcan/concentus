@@ -45,6 +45,23 @@ export function Inspector() {
   const [tab, setTab] = useState<Tab>('properties')
 
   if (!node) {
+    // A box that exists only in the run report: a plan-born worker. Nothing to edit — its
+    // definition was the coordinator's plan — but its input, output and cost are real.
+    if (selectedId?.startsWith('worker:') && exec) {
+      return (
+        <aside className={styles.inspector}>
+          <div className={styles.inspectorHead}>
+            <h3 className={styles.h3} title="Created by the coordinator's plan for this run. It is not part of the drawn flow, so there is nothing to edit; the next run may plan different workers.">
+              Worker: {exec.label} ⓘ
+            </h3>
+          </div>
+          <h4 className={styles.h3}>Input</h4>
+          <InputView exec={exec} />
+          <h4 className={styles.h3}>Output</h4>
+          <OutputView exec={exec} />
+        </aside>
+      )
+    }
     return (
       <aside className={styles.inspector}>
         <div className={styles.empty}>Select a node to edit its settings.</div>

@@ -269,16 +269,68 @@ class FanoutExecutorTest {
     }
 
     @Test
-    void aFanoutWithNoSubAgentsRefusesPlainly() {
-        AgentRun run = run(); // coordinator only
+    void withNoDrawnSubAgentsTheCoordinatorPlansAndItemsBecomeWorkers() throws Exception {
+        AgentRun run = run(); // coordinator only — the plan is the coordinator's to submit
+        org.mockito.Mockito.when(profiles.get("fprof_1")).thenReturn(java.util.Optional.of(
+                new com.concentus.model.FacadeProfile("fprof_1", "reader", "", List.of(), true, null)));
+
+        List<List<String>> spawned = new CopyOnWriteArrayList<>();
         FanoutExecutor.ProcessStarter starter = (args, workdir) -> {
-            throw new AssertionError("nothing should spawn");
+            spawned.add(args);
+            if (workdir.toString().contains("coordinator")) {
+                // What the real CLI does through the plan endpoint, minus the HTTP hop.
+                run.submittedPlan = new com.concentus.model.WorkPlan("split it", List.of(
+                        new com.concentus.model.WorkPlan.WorkItem("a", "Backend half", "do the backend",
+                                List.of("only backend facts"), null, null, "claude-sonnet-5",
+                                "reader", "fprof_1", null),
+                        new com.concentus.model.WorkPlan.WorkItem("b", null, "do the frontend",
+                                null, null, null, null, null, "", null)));
+                return new FakeProcess(okStream("Plan listo", "Plan listo"), 0);
+            }
+            return new FakeProcess(okStream("hecho", "hecho"), 0);
         };
+
+        executor(starter, 900, 0).runTurn(run, run.compiled, "Haz el cambio grande");
+
+        assertThat(spawned).hasSize(3); // planner + two plan-born workers
+        // The planner is read-only and can only ever plan: no shell, no edits, no delegation.
+        assertThat(spawned.get(0)).containsSequence("--disallowedTools",
+                "Task,Bash,Write,Edit,NotebookEdit");
+        String planMcp = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "coordinator", "mcp-config.json")));
+        assertThat(planMcp).contains("/api/runs/run-1/plan").doesNotContain("/tools");
+
+        // Each worker ran ITS OWN prompt, not the turn's text.
+        assertThat(String.join(" ", spawned.get(1)) + String.join(" ", spawned.get(2)))
+                .contains("do the backend").contains("do the frontend")
+                .doesNotContain("Haz el cambio grande");
+
+        // Synthetic boxes: node ids carry the worker: prefix, kind says worker, model attributed.
+        NodeExec a = exec(run, "worker:a");
+        assertThat(a.kind).isEqualTo("worker");
+        assertThat(a.label).isEqualTo("Backend half");
+        assertThat(a.model).isEqualTo("claude-sonnet-5");
+        assertThat(a.status).isEqualTo("passed");
+        assertThat(exec(run, "worker:b").status).isEqualTo("passed");
+        // Item context became the worker's CLAUDE.md; the facade profile froze onto the run.
+        String claudeA = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "workers", "w-a", "CLAUDE.md")));
+        assertThat(claudeA).contains("only backend facts");
+        assertThat(run.workerFacadeProfiles).isEmpty(); // no MCP servers wired → no facade at all
+        assertThat(run.status).isEqualTo("IDLE");
+    }
+
+    @Test
+    void aCoordinatorThatNeverSubmitsAPlanFailsTheTurnPlainly() {
+        AgentRun run = run();
+        FanoutExecutor.ProcessStarter starter = (args, workdir) ->
+                new FakeProcess(okStream("no sé qué hacer", "no sé qué hacer"), 0);
 
         executor(starter, 900, 0).runTurn(run, run.compiled, "go");
 
         assertThat(run.status).isEqualTo("ERROR");
-        assertThat(run.error).contains("at least one sub-agent");
+        assertThat(run.error).contains("without submitting a plan").contains("no sé qué hacer");
+        assertThat(exec(run, "c1").status).isEqualTo("failed");
     }
 
     @Test

@@ -7,14 +7,17 @@ import { KnowledgeNode } from './nodes/KnowledgeNode.tsx'
 import { MergeNode } from './nodes/MergeNode.tsx'
 import { RepoNode } from './nodes/RepoNode.tsx'
 import { SqlNode } from './nodes/SqlNode.tsx'
+import { WorkerNode } from './nodes/WorkerNode.tsx'
 import { nodeTypes } from './nodeTypes.ts'
 
 // React Flow looks up a node's renderer by its `type` string in this map — a typo or a
 // missing/extra key silently breaks rendering for that node kind (falls back to the
 // default renderer instead of erroring), so pin the exact key set and each mapping.
+// 'worker' is deliberately in the registry but NOT in NodeKind: its boxes are synthesized
+// from the run report and must never be addable from the palette or saved with a flow.
 describe('nodeTypes', () => {
-  it('has exactly the eight expected node-kind keys, no more, no fewer', () => {
-    expect(Object.keys(nodeTypes).sort()).toEqual(['agent', 'api', 'input', 'knowledge', 'mcp', 'merge', 'repo', 'sql'])
+  it('has exactly the nine expected node-kind keys, no more, no fewer', () => {
+    expect(Object.keys(nodeTypes).sort()).toEqual(['agent', 'api', 'input', 'knowledge', 'mcp', 'merge', 'repo', 'sql', 'worker'])
   })
 
   it('maps each key to the matching imported component', () => {
@@ -26,5 +29,6 @@ describe('nodeTypes', () => {
     expect(nodeTypes.sql).toBe(SqlNode)
     expect(nodeTypes.api).toBe(ApiNode)
     expect(nodeTypes.merge).toBe(MergeNode)
+    expect(nodeTypes.worker).toBe(WorkerNode)
   })
 })

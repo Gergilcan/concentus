@@ -19,7 +19,7 @@ export function NodeShell({
   children,
 }: {
   id?: string
-  variant: 'agent' | 'mcp' | 'sql' | 'repo' | 'knowledge' | 'api' | 'input' | 'merge'
+  variant: 'agent' | 'mcp' | 'sql' | 'repo' | 'knowledge' | 'api' | 'input' | 'merge' | 'worker'
   selected?: boolean
   coordinator?: boolean
   icon: ReactNode
