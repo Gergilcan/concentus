@@ -111,6 +111,16 @@ public class AgentRun {
      */
     public volatile boolean golden;
 
+    // --- remote approval (Slack / Teams), copied from the flow at start like notifyWebhook so a
+    // flow edit mid-run cannot redirect an approval request already underway. Not persisted: a
+    // restart loses the watch, and the run then waits in the app exactly as it did before this
+    // feature existed.
+    public volatile String approvalSlackCredentialId;
+    public volatile String approvalSlackChannel;
+    public volatile String approvalTeamsWebhook;
+    /** Set when the remote channels were told about this run's approval wait — told once. */
+    public volatile boolean approvalRemoteNotified;
+
     private final CopyOnWriteArrayList<RunEvent> buffer = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<Consumer<RunEvent>> listeners = new CopyOnWriteArrayList<>();
 

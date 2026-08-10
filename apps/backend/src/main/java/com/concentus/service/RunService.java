@@ -54,6 +54,7 @@ public class RunService {
     private final RunStore runStore;
     private final com.fasterxml.jackson.databind.ObjectMapper mapper;
     private final NotificationService notifier;
+    private final RemoteApprovalService remoteApprovals;
     private final ExecutorService exec;
     private final int maxRetainedRuns;
     private final PricingTable pricing;
@@ -65,7 +66,7 @@ public class RunService {
                       ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
                       CloudStreamEventHandler cloudEvents,
                       RunStore runStore, com.fasterxml.jackson.databind.ObjectMapper mapper,
-                      NotificationService notifier,
+                      NotificationService notifier, RemoteApprovalService remoteApprovals,
                       @Value("${runs.max-concurrent:8}") int maxConcurrent,
                       @Value("${runs.queue-capacity:64}") int queueCapacity,
                       @Value("${runs.max-retained:200}") int maxRetainedRuns,
@@ -80,6 +81,7 @@ public class RunService {
         this.runStore = runStore;
         this.mapper = mapper;
         this.notifier = notifier;
+        this.remoteApprovals = remoteApprovals;
         this.maxRetainedRuns = maxRetainedRuns;
         this.inputUsdPerMTok = inputUsdPerMTok;
         this.outputUsdPerMTok = outputUsdPerMTok;
@@ -239,6 +241,9 @@ public class RunService {
         run.compiled = compiled;
         run.flowJson = toJson(flow);
         run.notifyWebhook = flow.notifyWebhook();
+        run.approvalSlackCredentialId = flow.approvalSlackCredentialId();
+        run.approvalSlackChannel = flow.approvalSlackChannel();
+        run.approvalTeamsWebhook = flow.approvalTeamsWebhook();
         run.pricing = pricing;
                 run.inputUsdPerMTok = inputUsdPerMTok;
         run.outputUsdPerMTok = outputUsdPerMTok;
@@ -400,6 +405,14 @@ public class RunService {
             if ("ERROR".equals(run.status)) {
                 notifier.runFailed(run);
             }
+            // The turn ended with the run stopped, waiting for a human. Once per run: a second
+            // command sent while waiting would end the same way, and a second Slack message for
+            // the same question reads as two questions.
+            if ("AWAITING_APPROVAL".equals(run.status) && !run.approvalRemoteNotified) {
+                run.approvalRemoteNotified = true;
+                remoteApprovals.runAwaitingApproval(run,
+                        () -> approve(run.id), () -> reject(run.id));
+            }
         }
     }
 
@@ -545,6 +558,8 @@ public class RunService {
         run.approved = true;
         run.emit(RunEvent.of("system", "Approved — carrying out the plan."));
         runStore.persist(run);
+        // Whoever decided — app button or Slack reaction — the remote message shows the outcome.
+        remoteApprovals.settled(run.id, "approved");
         exec.submit(() -> runLocalTurn(run,
                 "Approved. Carry out the plan you proposed, exactly as described."));
     }
@@ -559,6 +574,7 @@ public class RunService {
         run.emit(RunEvent.of("system", "Rejected — the plan was not carried out."));
         run.emit(RunEvent.of("status", "terminated"));
         runStore.persist(run);
+        remoteApprovals.settled(run.id, "rejected");
     }
 
     public void stop(String runId) {
@@ -572,6 +588,8 @@ public class RunService {
             backend.get().stop(run);
             run.emit(RunEvent.of("status", "terminated"));
             runStore.persist(run);
+            // A stopped run is no longer asking anyone anything.
+            remoteApprovals.settled(runId, "closed");
             return;
         }
 
@@ -585,6 +603,7 @@ public class RunService {
         }
         run.emit(RunEvent.of("status", "terminated"));
         runStore.persist(run);
+        remoteApprovals.settled(runId, "closed");
     }
 
     /** Reload persisted runs on startup so they survive restarts and can be continued. */

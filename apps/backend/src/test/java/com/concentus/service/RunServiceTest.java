@@ -43,6 +43,7 @@ class RunServiceTest {
     private final LocalClaudeExecutor localExecutor = mock(LocalClaudeExecutor.class);
     private final RunStore runStore = mock(RunStore.class);
     private final NotificationService notifier = mock(NotificationService.class);
+    private final RemoteApprovalService remoteApprovals = mock(RemoteApprovalService.class);
     private final ObjectMapper mapper = new ObjectMapper();
 
     private final List<RunService> created = new ArrayList<>();
@@ -67,7 +68,7 @@ class RunServiceTest {
         RunService s = new RunService(clientProvider, compiler, launcher, backends(),
                 new PricingTable("", 3.0, 15.0),
                 new CloudStreamEventHandler(), runStore, mapper,
-                notifier, maxConcurrent, queueCapacity, maxRetainedRuns, 3.0, 15.0);
+                notifier, remoteApprovals, maxConcurrent, queueCapacity, maxRetainedRuns, 3.0, 15.0);
         created.add(s);
         return s;
     }
@@ -625,12 +626,90 @@ class RunServiceTest {
                 .hasMessageContaining("no initial input to replay");
     }
 
+    // ---------------------------------------------------------------- remote approval wiring
+
+    @Test
+    void enteringApprovalWaitTellsTheRemoteChannelsOnce() throws Exception {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        doAnswer(inv -> {
+            AgentRun r = inv.getArgument(0);
+            r.status = "AWAITING_APPROVAL";
+            return null;
+        }).when(localExecutor).runTurn(any(), any(), any());
+        RunService svc = newService(4, 8, 10);
+
+        RunSummary s = svc.start(flowWithPrompt("f1", "prompt", "go"));
+        verify(remoteApprovals, timeout(2000)).runAwaitingApproval(any(), any(), any());
+
+        // A second command while still waiting ends the same way; the question must not be
+        // posted to the channel twice.
+        svc.sendCommand(s.id(), "extra context");
+        verify(localExecutor, timeout(2000).times(2)).runTurn(any(), any(), any());
+        verify(remoteApprovals, org.mockito.Mockito.times(1))
+                .runAwaitingApproval(any(), any(), any());
+    }
+
+    @Test
+    void theRemoteApproveCallbackApprovesExactlyLikeTheAppButton() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        doAnswer(inv -> {
+            AgentRun r = inv.getArgument(0);
+            r.status = "AWAITING_APPROVAL";
+            return null;
+        }).when(localExecutor).runTurn(any(), any(), any());
+        RunService svc = newService(4, 8, 10);
+        RunSummary s = svc.start(flowWithPrompt("f1", "prompt", "go"));
+
+        var approveCap = org.mockito.ArgumentCaptor.forClass(Runnable.class);
+        verify(remoteApprovals, timeout(2000)).runAwaitingApproval(any(), approveCap.capture(), any());
+        approveCap.getValue().run();
+
+        assertThat(svc.get(s.id()).orElseThrow().approved).isTrue();
+        verify(remoteApprovals).settled(s.id(), "approved");
+    }
+
+    @Test
+    void decidingFromTheAppSettlesTheRemoteQuestionToo() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        RunService svc = newService(4, 8, 10);
+        RunSummary s = svc.start(flow("f1"));
+        svc.get(s.id()).orElseThrow().status = "AWAITING_APPROVAL";
+
+        svc.reject(s.id());
+
+        // Whoever decides, the Slack message must flip to the outcome instead of keeping
+        // instructions nobody can follow any more.
+        verify(remoteApprovals).settled(s.id(), "rejected");
+    }
+
+    @Test
+    void approvalChannelConfigIsCopiedOntoTheRunAtStart() {
+        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+                List.of(agentNode("c1", "coordinator"), inputNode("manual", null)),
+                List.of(), null, List.of(), null, null, null,
+                "cred_slack", "C0123456789", "https://example.webhook.office.com/x");
+        RunService svc = newService(4, 8, 10);
+
+        RunSummary s = svc.start(flow);
+
+        AgentRun run = svc.get(s.id()).orElseThrow();
+        assertThat(run.approvalSlackCredentialId).isEqualTo("cred_slack");
+        assertThat(run.approvalSlackChannel).isEqualTo("C0123456789");
+        assertThat(run.approvalTeamsWebhook).isEqualTo("https://example.webhook.office.com/x");
+    }
+
     // ------------------------------------------------- backend selection (regression guards)
 
     private RunService service() {
         RunService s = new RunService(clientProvider, compiler, launcher, backends(),
                 new PricingTable("", 3.0, 15.0),
-                new CloudStreamEventHandler(), runStore, mapper, notifier, 4, 8, 10, 3.0, 15.0);
+                new CloudStreamEventHandler(), runStore, mapper, notifier, remoteApprovals,
+                4, 8, 10, 3.0, 15.0);
         created.add(s);
         return s;
     }

@@ -1,15 +1,17 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BackendFlow, FlowMemoryView } from '../api/types.ts'
 import { SettingsModal } from './FlowModals.tsx'
 
 const getFlowMemoryMock = vi.fn()
 const clearFlowMemoryMock = vi.fn()
+const listCredentialsMock = vi.fn()
 
 vi.mock('../api/client.ts', () => ({
   api: {
     getFlowMemory: (id: string) => getFlowMemoryMock(id),
     clearFlowMemory: (id: string) => clearFlowMemoryMock(id),
+    listCredentials: () => listCredentialsMock(),
   },
 }))
 
@@ -24,7 +26,54 @@ const memory: FlowMemoryView = {
   ],
 }
 
+describe('SettingsModal remote approval', () => {
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('saves the Slack channel and Teams webhook with the other settings', async () => {
+    getFlowMemoryMock.mockResolvedValue({ available: true, count: 0, notes: [] })
+    listCredentialsMock.mockResolvedValue([])
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<SettingsModal flow={flow} onClose={vi.fn()} onSave={onSave} />)
+
+    fireEvent.change(screen.getByLabelText(/Slack channel/), {
+      target: { value: ' C0123456789 ' },
+    })
+    fireEvent.change(screen.getByLabelText(/Teams webhook/), {
+      target: { value: 'https://x.webhook.office.com/y' },
+    })
+    fireEvent.click(screen.getByText('Save'))
+
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          approvalSlackChannel: 'C0123456789', // trimmed
+          approvalTeamsWebhook: 'https://x.webhook.office.com/y',
+        }),
+      ),
+    )
+  })
+
+  it('offers stored credentials for the bot token, never a raw token box', async () => {
+    getFlowMemoryMock.mockResolvedValue({ available: true, count: 0, notes: [] })
+    listCredentialsMock.mockResolvedValue([
+      { id: 'cred_1', label: 'Slack bot', kind: 'token', hint: 'xoxb…', createdAt: 0, updatedAt: 0, lastUsedAt: null },
+    ])
+    render(<SettingsModal flow={flow} onClose={vi.fn()} onSave={vi.fn()} />)
+
+    // A dropdown of stored credentials: the flow keeps an id, the secret stays in the vault.
+    expect(await screen.findByText(/Slack bot \(xoxb…\)/)).toBeInTheDocument()
+  })
+})
+
 describe('SettingsModal agent memory', () => {
+  beforeEach(() => {
+    // The settings dialog always renders the credential picker now; these tests are not about
+    // it, but its load must not explode under them.
+    listCredentialsMock.mockResolvedValue([])
+  })
+
   afterEach(() => {
     vi.clearAllMocks()
   })

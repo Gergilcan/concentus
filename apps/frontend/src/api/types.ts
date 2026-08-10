@@ -365,6 +365,15 @@ export interface BackendFlow {
   notifyWebhook?: string
   /** Monthly spend ceiling in USD; at or past it, new runs are refused until next month. */
   budgetUsd?: number | null
+  /**
+   * Remote approval over Slack: a stored credential holding the bot token, and the channel the
+   * request posts to. A ✅/❌ reaction on the posted message approves/rejects the waiting run —
+   * outbound polling only, so it works without a public URL.
+   */
+  approvalSlackCredentialId?: string | null
+  approvalSlackChannel?: string | null
+  /** Teams incoming-webhook URL. Notification only — Teams cannot carry the answer back. */
+  approvalTeamsWebhook?: string | null
 }
 
 export interface FlowVersionInfo {

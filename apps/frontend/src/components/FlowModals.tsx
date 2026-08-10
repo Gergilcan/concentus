@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { BackendFlow, FlowMemoryView, FlowVersionInfo } from '../api/types.ts'
+import { CredentialField } from './CredentialField.tsx'
 import { Modal } from './Modal.tsx'
 import { timeAgo } from './flowFormat.ts'
 import styles from './flows.module.scss'
@@ -21,6 +22,9 @@ export function SettingsModal({
   const [enabled, setEnabled] = useState(flow.enabled !== false)
   const [webhook, setWebhook] = useState(flow.notifyWebhook ?? '')
   const [budget, setBudget] = useState(flow.budgetUsd != null ? String(flow.budgetUsd) : '')
+  const [slackCredential, setSlackCredential] = useState(flow.approvalSlackCredentialId ?? '')
+  const [slackChannel, setSlackChannel] = useState(flow.approvalSlackChannel ?? '')
+  const [teamsWebhook, setTeamsWebhook] = useState(flow.approvalTeamsWebhook ?? '')
   const [busy, setBusy] = useState(false)
 
   const save = async () => {
@@ -34,6 +38,9 @@ export function SettingsModal({
       enabled,
       notifyWebhook: webhook.trim(),
       budgetUsd: budget.trim() === '' ? null : Math.max(0, Number(budget)) || null,
+      approvalSlackCredentialId: slackCredential.trim(),
+      approvalSlackChannel: slackChannel.trim(),
+      approvalTeamsWebhook: teamsWebhook.trim(),
     })
     setBusy(false)
   }
@@ -80,6 +87,42 @@ export function SettingsModal({
         POSTed with a Slack-compatible <code>text</code> field plus run details whenever an execution
         of this flow fails.
       </p>
+
+      <h4
+        className={styles.sectionHead}
+        title="When a run of this flow stops to ask for approval, the plan is sent to these channels. Slack can answer: a ✅ reaction approves, a ❌ rejects — the app polls the message, so no public URL is needed. Teams is notification-only: its webhooks cannot carry a reply back."
+      >
+        Remote approval ⓘ
+      </h4>
+      <CredentialField
+        label="Slack bot token"
+        value={slackCredential}
+        onChange={setSlackCredential}
+        what="the Slack bot (scopes: chat:write, reactions:read)"
+      />
+      <label
+        className={styles.field}
+        title="Channel id (C0123456789, from the channel's details) or a public channel name. The bot must be invited to it (/invite @bot)."
+      >
+        <span>Slack channel ⓘ</span>
+        <input
+          value={slackChannel}
+          onChange={(e) => setSlackChannel(e.target.value)}
+          placeholder="C0123456789"
+        />
+      </label>
+      <label
+        className={styles.field}
+        title="A Teams incoming-webhook URL (Workflows). Posts the plan as a card — notification only; approve from the app or Slack."
+      >
+        <span>Teams webhook (notify only) ⓘ</span>
+        <input
+          value={teamsWebhook}
+          onChange={(e) => setTeamsWebhook(e.target.value)}
+          placeholder="https://…webhook.office.com/…"
+        />
+      </label>
+
       {flow.id && <MemorySection flowId={flow.id} />}
       <div className={styles.modalActions}>
         <button className={styles.ghost} onClick={onClose}>
