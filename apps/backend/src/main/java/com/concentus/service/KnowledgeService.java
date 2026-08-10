@@ -195,27 +195,21 @@ public class KnowledgeService {
      */
     public List<Hit> search(String baseId, String query, int topK) {
         int k = Math.max(1, Math.min(topK, 20));
-        record Row(String doc, int seq, String content, String embedding) {}
-        List<Row> rows = jdbc.query(
-                "select doc_name, seq, content, embedding from knowledge_chunks where base_id = ?",
-                (rs, i) -> new Row(rs.getString("doc_name"), rs.getInt("seq"),
-                        rs.getString("content"), rs.getString("embedding")),
-                baseId);
+        List<CachedChunk> rows = loadBase(baseId);
         if (rows.isEmpty()) return List.of();
 
         float[] queryVector = null;
-        if (rows.stream().anyMatch(r -> r.embedding() != null)) {
+        if (rows.stream().anyMatch(r -> r.vector() != null)) {
             Embeddings embedded = tryEmbed(List.of(query), true);
             if (embedded != null && !embedded.vectors().isEmpty()) queryVector = embedded.vectors().get(0);
         }
 
         Set<String> queryWords = words(query);
         List<Hit> hits = new ArrayList<>(rows.size());
-        for (Row row : rows) {
+        for (CachedChunk row : rows) {
             double score;
-            float[] vector = row.embedding() == null ? null : fromJson(row.embedding());
-            if (queryVector != null && vector != null && vector.length == queryVector.length) {
-                score = cosine(queryVector, vector);
+            if (queryVector != null && row.vector() != null && row.vector().length == queryVector.length) {
+                score = cosine(queryVector, row.vector());
             } else {
                 score = overlap(queryWords, row.content());
             }
@@ -223,6 +217,46 @@ public class KnowledgeService {
         }
         hits.sort((a, b) -> Double.compare(b.score(), a.score()));
         return hits.subList(0, Math.min(k, hits.size()));
+    }
+
+    private record CachedChunk(String doc, int seq, String content, float[] vector) {
+    }
+
+    private record CachedBase(String stamp, List<CachedChunk> chunks) {
+    }
+
+    private final java.util.concurrent.ConcurrentHashMap<String, CachedBase> baseCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * The base's chunks with their vectors already parsed.
+     *
+     * <p>Every query used to read the whole base — content and all — and Jackson-parse every
+     * embedding again: for a 10k-chunk base that is ~15 MB of text and four million float parses
+     * per search, repeated per knowledge node per run. The parsed form is cached per base.
+     *
+     * <p>Freshness is a stamp, not explicit invalidation: one cheap {@code count + max(created_at)}
+     * query per search. Chosen over invalidating from ingest/delete because an external database
+     * can be written by another instance entirely — a stamp notices that; local invalidation hooks
+     * never would.
+     */
+    private List<CachedChunk> loadBase(String baseId) {
+        String stamp = jdbc.queryForObject(
+                "select count(*) || ':' || coalesce(max(created_at), 0) from knowledge_chunks where base_id = ?",
+                String.class, baseId);
+        CachedBase cached = baseCache.get(baseId);
+        if (cached != null && cached.stamp().equals(stamp)) return cached.chunks();
+
+        List<CachedChunk> rows = jdbc.query(
+                "select doc_name, seq, content, embedding from knowledge_chunks where base_id = ?",
+                (rs, i) -> {
+                    String embedding = rs.getString("embedding");
+                    return new CachedChunk(rs.getString("doc_name"), rs.getInt("seq"),
+                            rs.getString("content"), embedding == null ? null : fromJson(embedding));
+                },
+                baseId);
+        baseCache.put(baseId, new CachedBase(stamp, rows));
+        return rows;
     }
 
     /**
