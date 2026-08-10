@@ -51,6 +51,13 @@ public class LocalModelExecutionBackend implements ExecutionBackend {
     }
 
     @Override
+    public String unavailableHint(String model) {
+        return "This flow runs on '" + model + "'. No self-hosted model server is answering — "
+                + "start it (e.g. `ollama serve`) and check LOCAL_MODEL_BASE_URL. If '" + model
+                + "' should run on Claude instead, clear the model override on the agent.";
+    }
+
+    @Override
     public boolean isAvailable() {
         return catalog.isAvailable();
     }

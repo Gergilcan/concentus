@@ -38,6 +38,15 @@ public interface ExecutionBackend {
     }
 
     /**
+     * How to bring this backend back when a flow needs it and it is not answering, or null when
+     * there is nothing actionable. Asked through the registry so the advice names the right
+     * runtime — the previous hardcoded message sent everyone to `ollama serve`.
+     */
+    default String unavailableHint(String model) {
+        return null;
+    }
+
+    /**
      * Whether this backend can execute right now — CLI installed, service reachable, credential
      * present. Checked so a missing dependency surfaces at launch rather than mid-turn, and so the
      * designer can avoid offering models it cannot actually run.

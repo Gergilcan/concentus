@@ -92,7 +92,7 @@ public class RagContextInjector {
             NodeExec ne = run == null ? null : run.nodeExec(source.nodeId, "knowledge", source.label());
             if (ne != null) {
                 ne.status = "running";
-                ne.input = query.length() > 400 ? query.substring(0, 400) + "…" : query;
+                ne.input = com.concentus.support.Texts.brief(query, 400);
             }
             try {
                 var hits = knowledge.search(source.baseId, query, queryVector, source.topK);
