@@ -98,15 +98,25 @@ public class BuiltInEmbedder {
     }
 
     /**
-     * Loads an already-downloaded model, off the startup path.
+     * Loads an already-downloaded model, off the startup path — and off the startup thread.
      *
-     * <p>Opening the ONNX session reads ~130 MB and builds a tokenizer; doing that in the
-     * constructor put it on Spring's context-startup thread for every launch, including the many
-     * that never embed anything. A failure degrades to NOT_DOWNLOADED rather than stopping the
-     * app — the download button then offers a redo.
+     * <p>Opening the ONNX session reads ~130 MB and builds a tokenizer, about half a second. The
+     * constructor was the first wrong place for that; the event thread was the second, because
+     * ApplicationReadyEvent listeners run before the readiness probe flips, so a downloaded model
+     * taxed every launch by that much. Publication is safe because load() sets the READY state
+     * last, through the AtomicReference. A failure degrades to NOT_DOWNLOADED rather than
+     * stopping the app — the download button then offers a redo.
      */
     @org.springframework.context.event.EventListener(
             org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    void loadIfPresentAsync() {
+        if (!Files.isRegularFile(modelFile()) || !Files.isRegularFile(tokenizerFile())) return;
+        Thread loader = new Thread(this::loadIfPresent, "embedding-model-load");
+        loader.setDaemon(true);
+        loader.start();
+    }
+
+    /** Loads an already-downloaded model synchronously; also the seam the embedding tests use. */
     void loadIfPresent() {
         if (!Files.isRegularFile(modelFile()) || !Files.isRegularFile(tokenizerFile())) return;
         try {

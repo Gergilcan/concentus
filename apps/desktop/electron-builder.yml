@@ -24,9 +24,13 @@ files:
   - build/icon.png
 
 extraResources:
-  # Read by paths.ts as resources/backend/concentus-backend.jar
-  - from: ../backend/target/concentus-backend.jar
-    to: backend/concentus-backend.jar
+  # Read by paths.ts as resources/backend/concentus-backend.jar. The whole staged directory, not
+  # Maven's artifact: prepare-payload.mjs prunes foreign natives, extracts the jar into the
+  # CDS-friendly thin-jar + lib/ layout and dumps the class archive there. Shipping from target/
+  # would quietly undo all three — which for the pruning is exactly what used to happen: the
+  # installers carried the unpruned jar, ~300 MB of Windows debug symbols included.
+  - from: resources/backend
+    to: backend
   # The Java runtime, so the user never installs a JDK. Built by scripts/prepare-payload.mjs,
   # which `pnpm package` runs first. If it is missing the build fails here rather than quietly
   # shipping an app that cannot start — paths.ts refuses to borrow the user's Java in a packaged
