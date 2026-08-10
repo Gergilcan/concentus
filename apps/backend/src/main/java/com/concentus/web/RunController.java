@@ -63,15 +63,8 @@ public class RunController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run"));
         // Cost is filled in at read time rather than stored, so a pricing change applies to
         // existing runs instead of freezing whatever the rates happened to be when they ran.
-        var nodes = run.nodeExecList();
-        if (run.pricing != null) {
-            for (var n : nodes) {
-                n.estimatedCostUsd = run.pricing.costUsd(
-                        n.model, n.inputTokens, n.cacheReadTokens, n.cacheWriteTokens, n.outputTokens);
-            }
-        }
-        return new NodeExecReport(nodes, run.totalInputTokens, run.totalOutputTokens,
-                run.estimatedCostUsd());
+        return new NodeExecReport(run.pricedNodeExecList(), run.totalInputTokens,
+                run.totalOutputTokens, run.estimatedCostUsd());
     }
 
     /** Launch an ad-hoc (unsaved) flow. */
