@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../api/client.ts'
 import type { ApiNodeData, ApiOperationView } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
-import { Field, TextArea } from './fields.tsx'
+import { Field, FineTuning, TextArea } from './fields.tsx'
 import styles from './panels.module.scss'
 
 interface Props {
@@ -54,7 +54,7 @@ export function ApiInspector({ data, set }: Props) {
       <Field label="Label" value={data.label} onChange={(v) => set({ label: v })} />
       <Field
         label={
-          <span title="URL of the API's OpenAPI 3.x document (JSON or YAML). If it is not fetchable, paste the document below instead.">
+          <span title="URL of the API's OpenAPI 3.x document (JSON or YAML). If it is not fetchable, paste the document under Fine-tuning instead.">
             OpenAPI spec URL ⓘ
           </span>
         }
@@ -62,26 +62,9 @@ export function ApiInspector({ data, set }: Props) {
         value={data.specUrl}
         onChange={(v) => set({ specUrl: v })}
       />
-      <TextArea
-        label="…or paste the spec"
-        rows={3}
-        placeholder='{"openapi": "3.0.0", …}'
-        value={data.specInline ?? ''}
-        onChange={(v) => set({ specInline: v })}
-      />
       <Field
         label={
-          <span title="Overrides the spec's own servers[0].url — for sandboxes or self-hosted instances.">
-            Base URL (optional) ⓘ
-          </span>
-        }
-        placeholder="filled from the spec after loading"
-        value={data.baseUrl ?? ''}
-        onChange={(v) => set({ baseUrl: v })}
-      />
-      <Field
-        label={
-          <span title="Credential id from Resources → Credentials. Sent as Authorization: Bearer unless a different header is named below. The agent never sees the token.">
+          <span title="Credential id from Resources → Credentials. Sent as Authorization: Bearer unless a different header is named under Fine-tuning. The agent never sees the token.">
             Credential id ⓘ
           </span>
         }
@@ -89,12 +72,31 @@ export function ApiInspector({ data, set }: Props) {
         value={data.credentialId ?? ''}
         onChange={(v) => set({ credentialId: v })}
       />
-      <Field
-        label="Send token in (blank = Authorization: Bearer)"
-        placeholder="X-Api-Key"
-        value={data.authHeader ?? ''}
-        onChange={(v) => set({ authHeader: v })}
-      />
+      <FineTuning>
+        <TextArea
+          label="Paste the spec (when the URL is not fetchable)"
+          rows={3}
+          placeholder='{"openapi": "3.0.0", …}'
+          value={data.specInline ?? ''}
+          onChange={(v) => set({ specInline: v })}
+        />
+        <Field
+          label={
+            <span title="Overrides the spec's own servers[0].url — for sandboxes or self-hosted instances.">
+              Base URL (optional) ⓘ
+            </span>
+          }
+          placeholder="filled from the spec after loading"
+          value={data.baseUrl ?? ''}
+          onChange={(v) => set({ baseUrl: v })}
+        />
+        <Field
+          label="Send token in (blank = Authorization: Bearer)"
+          placeholder="X-Api-Key"
+          value={data.authHeader ?? ''}
+          onChange={(v) => set({ authHeader: v })}
+        />
+      </FineTuning>
 
       <div className={styles.mcpBtns}>
         <button className={styles.previewBtn} onClick={() => void load()} disabled={loading}>

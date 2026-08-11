@@ -3,7 +3,7 @@ import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { DatabaseDef, SqlNodeData, SqlPreview } from '../api/types.ts'
 import { CredentialField } from './CredentialField.tsx'
-import { Field, SelectField, TextArea } from './fields.tsx'
+import { Field, FineTuning, SelectField, TextArea } from './fields.tsx'
 import styles from './panels.module.scss'
 
 interface Props {
@@ -84,12 +84,14 @@ export function SqlInspector({ data, set }: Props) {
         what="this database"
       />
       <TextArea label="SQL query" rows={5} value={data.query} onChange={(v) => set({ query: v })} />
-      <Field
-        label="Max rows"
-        type="number"
-        value={data.maxRows}
-        onChange={(v) => set({ maxRows: Number(v) })}
-      />
+      <FineTuning>
+        <Field
+          label="Max rows"
+          type="number"
+          value={data.maxRows}
+          onChange={(v) => set({ maxRows: Number(v) })}
+        />
+      </FineTuning>
 
       <button className={styles.previewBtn} onClick={() => void runPreview()} disabled={loading}>
         {loading ? 'Running…' : '▷ Preview query'}

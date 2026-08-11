@@ -3,7 +3,7 @@ import { api } from '../api/client.ts'
 import type { RemoteRepo, RepoNodeData } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { CredentialField } from './CredentialField.tsx'
-import { CheckboxField, Field, SelectField } from './fields.tsx'
+import { CheckboxField, Field, FineTuning, SelectField } from './fields.tsx'
 import styles from './panels.module.scss'
 
 interface Props {
@@ -82,13 +82,6 @@ export function RepoInspector({ data, set }: Props) {
         what="this repository"
       />
 
-      <Field
-        label="Server URL (self-hosted only)"
-        value={data.baseUrl ?? ''}
-        placeholder={isGitlab ? 'https://gitlab.empresa.com' : 'https://github.empresa.com/api/v3'}
-        onChange={(v) => set({ baseUrl: v })}
-      />
-
       {groupMode ? (
         <>
           <Field
@@ -102,12 +95,6 @@ export function RepoInspector({ data, set }: Props) {
             the run starts — so a repository added next week is picked up without editing this flow.
             {isGitlab && ' Subgroups are included.'}
           </p>
-
-          <CheckboxField
-            label="Include archived repositories"
-            checked={data.includeArchived ?? false}
-            onChange={(v) => set({ includeArchived: v })}
-          />
 
           <div className={styles.mcpBtns}>
             <button
@@ -200,12 +187,28 @@ export function RepoInspector({ data, set }: Props) {
         placeholder={groupMode ? 'leave blank' : 'main'}
         onChange={(v) => set({ branch: v })}
       />
-      <Field
-        label="Mount path"
-        value={data.mountPath}
-        placeholder={groupMode ? '/workspace' : '/workspace/repo'}
-        onChange={(v) => set({ mountPath: v })}
-      />
+
+      <FineTuning>
+        <Field
+          label="Server URL (self-hosted only)"
+          value={data.baseUrl ?? ''}
+          placeholder={isGitlab ? 'https://gitlab.empresa.com' : 'https://github.empresa.com/api/v3'}
+          onChange={(v) => set({ baseUrl: v })}
+        />
+        {groupMode && (
+          <CheckboxField
+            label="Include archived repositories"
+            checked={data.includeArchived ?? false}
+            onChange={(v) => set({ includeArchived: v })}
+          />
+        )}
+        <Field
+          label="Mount path"
+          value={data.mountPath}
+          placeholder={groupMode ? '/workspace' : '/workspace/repo'}
+          onChange={(v) => set({ mountPath: v })}
+        />
+      </FineTuning>
 
       <p className={styles.hint}>
         In local mode {groupMode ? 'each repository is' : 'the repository is'} cloned into the run's
