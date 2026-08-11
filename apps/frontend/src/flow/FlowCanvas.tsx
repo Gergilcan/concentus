@@ -9,6 +9,7 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import './canvas-overrides.css'
 import { useEffect, useMemo, useRef } from 'react'
 import { NODE_COLORS } from '../constants.ts'
 import type { NodeKind } from '../api/types.ts'

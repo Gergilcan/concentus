@@ -1,0 +1,25 @@
+/*
+ * Loaded AFTER @xyflow/react's stylesheet, and global on purpose.
+ *
+ * 'input' is one of React Flow's BUILT-IN node type names (input/default/output/group), so even
+ * though the app registers its own component for it, the wrapper still gets the library's
+ * .react-flow__node-input styling: a 150px-wide box with its own background, border and padding.
+ * Our node card is 190px, so it overflowed a narrower painted box behind it — the Input node was
+ * the only one on the canvas wearing two backgrounds. None of the other node type names collide,
+ * which is why only this one needed the reset.
+ */
+.react-flow__node-input {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  width: auto;
+  text-align: initial;
+  color: inherit;
+  box-shadow: none;
+}
+
+.react-flow__node-input.selectable:hover,
+.react-flow__node-input.selectable.selected {
+  box-shadow: none;
+}
