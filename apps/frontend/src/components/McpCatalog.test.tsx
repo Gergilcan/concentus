@@ -41,7 +41,7 @@ describe('McpCatalog', () => {
     render(<McpCatalog onAdded={vi.fn()} />)
     expandCatalog()
 
-    for (const category of ['Development', 'Planning & docs', 'Business', 'Data & content']) {
+    for (const category of ['Development', 'Planning & docs', 'Business', 'Data & content', 'Google', 'Microsoft']) {
       expect(screen.getByRole('tab', { name: category })).toBeInTheDocument()
     }
     // The first category is the open one; the others' entries stay off screen until picked.
@@ -101,6 +101,44 @@ describe('McpCatalog', () => {
       ),
     )
     expect(screen.getByText(/Resources → Credentials/)).toBeInTheDocument()
+  })
+
+  it('adds a stdio entry with its command, args and empty env — and says what to fill', async () => {
+    listMcpDefsMock.mockResolvedValue([])
+    saveMcpDefMock.mockResolvedValue({})
+    render(<McpCatalog onAdded={vi.fn()} />)
+    expandCatalog()
+    openCategory('Google')
+
+    fireEvent.click(screen.getByText('Google Search Console').closest('button')!)
+
+    await waitFor(() =>
+      expect(saveMcpDefMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Google Search Console',
+          url: '',
+          command: 'npx',
+          args: ['-y', 'mcp-server-gsc'],
+          // Pre-created empty so the definition itself shows what must be filled.
+          env: { GOOGLE_APPLICATION_CREDENTIALS: '' },
+        }),
+      ),
+    )
+    // A local server's next step is env + having the command installed, and the note says so.
+    expect(screen.getByText(/runs on this machine/)).toBeInTheDocument()
+    expect(screen.getByText(/"npx" is installed/)).toBeInTheDocument()
+  })
+
+  it('offers Microsoft Graph locally and the hosted Learn docs without sign-in', () => {
+    listMcpDefsMock.mockResolvedValue([])
+    render(<McpCatalog onAdded={vi.fn()} />)
+    expandCatalog()
+    openCategory('Microsoft')
+
+    expect(screen.getByText('Microsoft Graph')).toBeInTheDocument()
+    expect(screen.getByText('runs locally')).toBeInTheDocument()
+    expect(screen.getByText('Microsoft Learn Docs')).toBeInTheDocument()
+    expect(screen.getByText('no auth')).toBeInTheDocument()
   })
 
   it('surfaces the failure when adding does not work', async () => {
