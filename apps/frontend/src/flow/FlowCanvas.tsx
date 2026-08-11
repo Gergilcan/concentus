@@ -80,6 +80,11 @@ export function FlowCanvas() {
       if (isTextEntry(e.target)) return
       switch (e.key.toLowerCase()) {
         case 'c':
+          // Text selected anywhere — console output, an inspector hint — means the user is
+          // copying TEXT. Selected canvas nodes must not steal that Ctrl+C: isTextEntry only
+          // covers focus in a field, not a selection in plain markup, and this handler used to
+          // overwrite the clipboard with node JSON whenever any node happened to be selected.
+          if (!window.getSelection()?.isCollapsed) return
           if (copySelection()) e.preventDefault()
           break
         case 'v':
