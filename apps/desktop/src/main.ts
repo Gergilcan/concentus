@@ -132,7 +132,7 @@ async function launch(): Promise<void> {
       splash.advance(92, 'Opening setup…')
       showOnboardingWindow()
     } else {
-      showMainWindow(backend.port)
+      await showMainWindow(backend.port)
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -184,10 +184,38 @@ function openMainWindow(): void {
     win.focus()
     return
   }
-  if (backend) showMainWindow(backend.port)
+  if (backend) void showMainWindow(backend.port)
 }
 
-function showMainWindow(port: number): void {
+/**
+ * Where the main window's UI comes from.
+ *
+ * Packaged, there is one answer: the backend, which serves the UI baked into its jar. In the repo
+ * there are two, and which one you get should match what you are doing: if the Vite dev server is
+ * running, the window loads IT — frontend edits then hot-reload inside the real desktop app,
+ * because Vite proxies /api and /ws to the very backend this shell started. Without a dev server
+ * the window falls back to the jar's baked UI, exactly as before — which is also the honest state:
+ * that UI is as old as the last build.
+ *
+ * The probe is a live check rather than a flag so `electron .` needs no ceremony: start Vite and
+ * relaunch to get hot reload; don't, and the app still opens.
+ */
+async function uiSource(port: number): Promise<string> {
+  const baked = `http://127.0.0.1:${port}`
+  if (isPackaged()) return baked
+  const dev = process.env.CONCENTUS_DEV_UI ?? 'http://localhost:5173'
+  try {
+    const probe = await fetch(dev, { signal: AbortSignal.timeout(500) })
+    if (probe.ok) {
+      log.info(`Loading the UI from the Vite dev server at ${dev} — frontend edits hot-reload. ` +
+        `Its proxy must point at this backend (port ${port}; vite.config.ts targets 8734).`)
+      return dev
+    }
+  } catch { /* no dev server — the jar's baked UI it is */ }
+  return baked
+}
+
+async function showMainWindow(port: number): Promise<void> {
   failureWindow?.close()
   failureWindow = null
 
@@ -243,23 +271,23 @@ function showMainWindow(port: number): void {
     mainWindow = null
   })
 
-  openExternalLinksInBrowser(mainWindow, port)
+  const url = await uiSource(port)
+  openExternalLinksInBrowser(mainWindow, new URL(url).origin)
   // The last stretch of the splash's progress: the interface loading into this hidden window.
   splash.advance(88, 'Loading the interface…')
   mainWindow.webContents.once('dom-ready', () => splash.advance(95, 'Rendering…'))
-  void mainWindow.loadURL(`http://127.0.0.1:${port}`)
+  void mainWindow.loadURL(url)
 }
 
 /**
- * Anything not served by our own backend opens in the real browser.
+ * Anything not served by our own UI origin opens in the real browser.
  *
  * This matters most for MCP OAuth: the authorization page belongs in a browser the user recognises
  * and where their existing session already is, not in an app window with no address bar. The
  * provider then redirects to http://127.0.0.1:<port>/api/mcp/oauth/callback, which the backend
  * handles directly — so the flow completes even though it happened outside this window.
  */
-function openExternalLinksInBrowser(win: BrowserWindow, port: number): void {
-  const origin = `http://127.0.0.1:${port}`
+function openExternalLinksInBrowser(win: BrowserWindow, origin: string): void {
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (!url.startsWith(origin)) {
@@ -301,7 +329,7 @@ function showOnboardingWindow(): void {
   // and quitting instead would make a prompt behave like a gate.
   onboardingWindow.on('closed', () => {
     onboardingWindow = null
-    if (!mainWindow && !quitting && backend) showMainWindow(backend.port)
+    if (!mainWindow && !quitting && backend) void showMainWindow(backend.port)
   })
 
   void (async () => {
@@ -477,7 +505,10 @@ async function restartBackend(): Promise<void> {
     // A fresh backend has a fresh run registry; announcing its list as news would be wrong.
     resetRunNotifications()
     // The port is stable by design, but re-point the window rather than assume it.
-    if (mainWindow) void mainWindow.loadURL(`http://127.0.0.1:${backend.port}`)
+    if (mainWindow) {
+      const url = await uiSource(backend.port)
+      void mainWindow.loadURL(url)
+    }
   } catch (err) {
     log.error('The backend failed to restart', err)
     showFailureWindow(err instanceof Error ? err.message : String(err))
