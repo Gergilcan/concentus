@@ -151,6 +151,35 @@ test('drag and drop: a card into a folder, a folder into a folder, a card back o
   await page.getByLabel('Search flows').fill('')
 })
 
+test('a folder can be born empty, filled by drag, and removed when empty again', async ({ page }) => {
+  await openApp(page)
+  // One handler for both dialogs this test meets: the creation prompt and the delete confirm.
+  page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? 'E2E Nueva' : undefined))
+
+  await page.getByRole('button', { name: '+ New folder' }).click()
+  const tile = page.getByRole('button', { name: 'Folder E2E Nueva', exact: true })
+  await expect(tile).toBeVisible()
+
+  // The empty folder is a real drop target: a dragged card makes it a real folder.
+  await page.getByRole('button', { name: '+ New flow' }).first().click()
+  await page.getByLabel('Flow name').fill('E2E draft flow')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByRole('button', { name: '← Flows' }).click()
+  await flowCard(page, 'E2E draft flow').dragTo(tile)
+  await expect(flowCard(page, 'E2E draft flow')).toHaveCount(0)
+  await tile.click()
+  await expect(flowCard(page, 'E2E draft flow')).toHaveCount(1)
+
+  // Deleting its only flow empties it; back at the root the tile is still there (a folder must
+  // not vanish under the user), and the ✕ takes it away for good.
+  await flowCard(page, 'E2E draft flow').getByTitle('Delete').click()
+  await expect(flowCard(page, 'E2E draft flow')).toHaveCount(0)
+  await page.getByRole('button', { name: 'All flows' }).click()
+  await expect(tile).toBeVisible()
+  await page.getByLabel('Remove empty folder E2E Nueva').click()
+  await expect(tile).toHaveCount(0)
+})
+
 test('sorting does not lose any card', async ({ page }) => {
   await openApp(page)
   const cards = page.getByRole('article')

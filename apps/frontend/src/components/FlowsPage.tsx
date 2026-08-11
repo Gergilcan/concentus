@@ -3,7 +3,7 @@ import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import type { BackendFlow, RunSummary } from '../api/types.ts'
 import { FlowCard } from './FlowCard.tsx'
-import { breadcrumbOf, childFolders, flowsAt, folderOf, moveFolder } from './folderTree.ts'
+import { breadcrumbOf, childFolders, flowsAt, folderOf, moveFolder, normalizePath } from './folderTree.ts'
 import { SettingsModal, VersionsModal } from './FlowModals.tsx'
 import { FlowsKpis } from './FlowsKpis.tsx'
 import { type Sort } from './flowFormat.ts'
@@ -77,9 +77,45 @@ export function FlowsPage({
   const tiles = useMemo(() => childFolders(visible, path), [visible, path])
   const here = useMemo(() => flowsAt(visible, path), [visible, path])
   const crumbs = useMemo(() => breadcrumbOf(path), [path])
+
+  // Folders normally exist because a flow lives under them, which left no way to CREATE one
+  // before having something to put in it. Drafts fill that gap: "New folder" records a path in
+  // localStorage and the tile appears empty, ready to receive a drag. The moment a flow lands
+  // there the folder is derivable and the draft is just shadowed; if its flows ever leave, it
+  // reappears as an empty tile rather than vanishing under the user. The ✕ removes an empty one.
+  const [drafts, setDrafts] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('flows.folderDrafts') ?? '[]') as string[]
+    } catch {
+      return []
+    }
+  })
+  const saveDrafts = (next: string[]) => {
+    setDrafts(next)
+    localStorage.setItem('flows.folderDrafts', JSON.stringify(next))
+  }
+  const draftTiles = useMemo(() => {
+    const prefix = path === '' ? '' : path + '/'
+    const realNames = new Set(tiles.map((t) => t.name))
+    return drafts
+      .filter((d) => (prefix === '' || d.startsWith(prefix)) && d !== path)
+      .map((d) => d.slice(prefix.length))
+      .filter((rest) => rest !== '' && !rest.includes('/'))
+      .filter((name) => !realNames.has(name))
+      .sort()
+  }, [drafts, tiles, path])
+  const createFolder = () => {
+    const name = normalizePath(window.prompt('Folder name (use / to nest):') ?? '')
+    if (!name) return
+    const full = path === '' ? name : path + '/' + name
+    if (!drafts.includes(full)) saveDrafts([...drafts, full])
+  }
+  const removeDraft = (full: string) =>
+    saveDrafts(drafts.filter((d) => d !== full && !d.startsWith(full + '/')))
+
   const allFolders = useMemo(
-    () => [...new Set(flows.map(folderOf).filter(Boolean))].sort(),
-    [flows],
+    () => [...new Set([...flows.map(folderOf).filter(Boolean), ...drafts])].sort(),
+    [flows, drafts],
   )
 
   const patch = async (flow: BackendFlow, changes: Partial<BackendFlow>) => {
@@ -176,7 +212,7 @@ export function FlowsPage({
 
         <div className={styles.body}>
           <section className={styles.gridCol}>
-            {visible.length === 0 ? (
+            {visible.length === 0 && draftTiles.length === 0 ? (
               <div className={styles.emptyCard}>
                 <div className={styles.emptyIcon}>⬡</div>
                 <h3>{flows.length === 0 ? 'No flows yet' : 'Nothing matches those filters'}</h3>
@@ -218,38 +254,71 @@ export function FlowsPage({
                     ))}
                   </nav>
                 )}
-                {tiles.length > 0 && (
-                  <div className={styles.folderGrid}>
-                    {tiles.map(({ name, count }) => {
-                      const full = path === '' ? name : path + '/' + name
-                      return (
-                        <button
-                          key={full}
-                          className={cx(styles.folderTile, dropTarget === full && styles.dropOver)}
-                          aria-label={`Folder ${name}`}
-                          onClick={() => setPath(full)}
-                          draggable
-                          onDragStart={(e) => e.dataTransfer.setData(FOLDER_DND, full)}
-                          onDragOver={dragOver(full)}
-                          onDragLeave={() => setDropTarget(null)}
-                          onDrop={drop(full)}
+                <div className={styles.folderGrid}>
+                  {tiles.map(({ name, count }) => {
+                    const full = path === '' ? name : path + '/' + name
+                    return (
+                      <button
+                        key={full}
+                        className={cx(styles.folderTile, dropTarget === full && styles.dropOver)}
+                        aria-label={`Folder ${name}`}
+                        onClick={() => setPath(full)}
+                        draggable
+                        onDragStart={(e) => e.dataTransfer.setData(FOLDER_DND, full)}
+                        onDragOver={dragOver(full)}
+                        onDragLeave={() => setDropTarget(null)}
+                        onDrop={drop(full)}
+                      >
+                        <span className={styles.folderGlyph} aria-hidden>
+                          <span className={styles.folderTab} />
+                        </span>
+                        <span className={styles.folderName}>{name}</span>
+                        <span className={styles.folderCount}>{count}</span>
+                      </button>
+                    )
+                  })}
+                  {draftTiles.map((name) => {
+                    const full = path === '' ? name : path + '/' + name
+                    return (
+                      <button
+                        key={'draft:' + full}
+                        className={cx(styles.folderTile, dropTarget === full && styles.dropOver)}
+                        aria-label={`Folder ${name}`}
+                        onClick={() => setPath(full)}
+                        onDragOver={dragOver(full)}
+                        onDragLeave={() => setDropTarget(null)}
+                        onDrop={drop(full)}
+                      >
+                        <span className={cx(styles.folderGlyph, styles.folderGlyphEmpty)} aria-hidden>
+                          <span className={styles.folderTab} />
+                        </span>
+                        <span className={styles.folderName}>{name}</span>
+                        <span
+                          role="button"
+                          aria-label={`Remove empty folder ${name}`}
+                          title="Remove this empty folder"
+                          className={styles.folderRemove}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            removeDraft(full)
+                          }}
                         >
-                          <span className={styles.folderGlyph} aria-hidden>
-                            <span className={styles.folderTab} />
-                          </span>
-                          <span className={styles.folderName}>{name}</span>
-                          <span className={styles.folderCount}>{count}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
+                          ✕
+                        </span>
+                      </button>
+                    )
+                  })}
+                  <button className={styles.folderNew} onClick={createFolder}>
+                    + New folder
+                  </button>
+                </div>
                 {here.length > 0 ? (
                   <div className={styles.grid}>{here.map(renderCard)}</div>
                 ) : (
-                  tiles.length === 0 && (
+                  tiles.length === 0 &&
+                  draftTiles.length === 0 && (
                     <p className={styles.folderEmpty}>
-                      This folder is empty — its flows moved elsewhere.
+                      This folder is empty — drag a flow onto it, or set it in a flow's Settings.
                     </p>
                   )
                 )}

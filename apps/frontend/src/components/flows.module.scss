@@ -954,6 +954,43 @@
   font-style: italic;
   padding: 8px 2px;
 }
+/* A draft (still-empty) folder: hollow glyph, and an ✕ to take it back. */
+.folderGlyphEmpty {
+  background: none;
+  border: 1.5px solid #d19a2f;
+
+  .folderTab {
+    background: #d19a2f;
+  }
+}
+.folderRemove {
+  color: t.$muted;
+  font-size: 11px;
+  padding: 2px 5px;
+  border-radius: 5px;
+
+  &:hover {
+    color: t.$danger;
+    background: t.$panel-2;
+  }
+}
+.folderNew {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 11px;
+  background: none;
+  border: 1px dashed t.$border;
+  border-radius: t.$radius;
+  color: t.$muted;
+  font-size: 12.5px;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$text;
+    border-color: t.$accent;
+  }
+}
 /* The current drop target — tile or breadcrumb segment — while a drag hovers it. */
 .dropOver {
   border-color: t.$accent;
