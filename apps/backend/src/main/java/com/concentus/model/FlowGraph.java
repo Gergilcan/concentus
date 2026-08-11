@@ -3,6 +3,7 @@ package com.concentus.model;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * A saved flow: a multi-agent orchestration graph.
@@ -22,13 +23,27 @@ import java.util.List;
  * @param approvalSlackChannel Slack channel id (or public-channel name) the requests post to
  * @param approvalTeamsWebhook Teams incoming-webhook URL notified on approval requests
  *                      (notification only — Teams has no local-first way to carry the answer back)
+ * @param variables     this flow's {@code {{NAME}}} values — overrides of the organization's
+ *                      variables plus any of its own. Saved with the flow, so a flow remembers
+ *                      the values it runs with.
  */
 public record FlowGraph(String id, String name, String mode,
                         List<FlowNode> nodes, List<FlowEdge> edges,
                         Boolean enabled, List<String> tags, Boolean favorite,
                         String notifyWebhook, Double budgetUsd,
                         String approvalSlackCredentialId, String approvalSlackChannel,
-                        String approvalTeamsWebhook) {
+                        String approvalTeamsWebhook, Map<String, String> variables) {
+
+    /** The pre-variables shape, kept so the many existing constructions stay valid. */
+    public FlowGraph(String id, String name, String mode,
+                     List<FlowNode> nodes, List<FlowEdge> edges,
+                     Boolean enabled, List<String> tags, Boolean favorite,
+                     String notifyWebhook, Double budgetUsd,
+                     String approvalSlackCredentialId, String approvalSlackChannel,
+                     String approvalTeamsWebhook) {
+        this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
+                approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, null);
+    }
 
     /** The pre-remote-approval shape, kept so the many existing constructions stay valid. */
     public FlowGraph(String id, String name, String mode,
@@ -36,7 +51,7 @@ public record FlowGraph(String id, String name, String mode,
                      Boolean enabled, List<String> tags, Boolean favorite,
                      String notifyWebhook, Double budgetUsd) {
         this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
-                null, null, null);
+                null, null, null, null);
     }
 
     /** The pre-budget shape, kept for the same reason. */

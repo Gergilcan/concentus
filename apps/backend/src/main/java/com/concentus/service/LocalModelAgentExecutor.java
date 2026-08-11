@@ -302,6 +302,13 @@ public class LocalModelAgentExecutor {
         // to re-do a sign-in they already completed.
         Map<String, Boolean> authenticated = new LinkedHashMap<>();
         for (AgentSpec.McpServerSpec server : spec.mcpServers) {
+            if (server.isStdio()) {
+                // A stdio server is a process the claude CLI launches; this executor talks MCP
+                // over HTTP only. Said explicitly — a tool that silently isn't there reads as the
+                // model ignoring instructions.
+                unavailable.add(server.name + " (stdio servers need the Claude backend)");
+                continue;
+            }
             if (server.url == null || server.url.isBlank()) continue;
             try {
                 // The node's own token first — a server that takes a static token needs nothing

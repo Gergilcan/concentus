@@ -12,6 +12,8 @@ vi.mock('../api/client.ts', () => ({
     getFlowMemory: (id: string) => getFlowMemoryMock(id),
     clearFlowMemory: (id: string) => clearFlowMemoryMock(id),
     listCredentials: () => listCredentialsMock(),
+    // The settings modal loads the organization variables to show as override defaults.
+    listVariables: () => Promise.resolve([]),
   },
 }))
 

@@ -13,6 +13,7 @@ import com.concentus.model.TriggerSpec;
 import com.concentus.store.RunStore;
 import com.concentus.support.AnthropicClientProvider;
 import com.concentus.support.Ids;
+import com.concentus.support.Variables;
 import jakarta.annotation.PreDestroy;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -23,8 +24,11 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -55,6 +59,7 @@ public class RunService {
     private final com.fasterxml.jackson.databind.ObjectMapper mapper;
     private final NotificationService notifier;
     private final RemoteApprovalService remoteApprovals;
+    private final com.concentus.store.VariableStore variableStore;
     private final ExecutorService exec;
     private final int maxRetainedRuns;
     private final PricingTable pricing;
@@ -67,6 +72,7 @@ public class RunService {
                       CloudStreamEventHandler cloudEvents,
                       RunStore runStore, com.fasterxml.jackson.databind.ObjectMapper mapper,
                       NotificationService notifier, RemoteApprovalService remoteApprovals,
+                      com.concentus.store.VariableStore variableStore,
                       @Value("${runs.max-concurrent:8}") int maxConcurrent,
                       @Value("${runs.queue-capacity:64}") int queueCapacity,
                       @Value("${runs.max-retained:200}") int maxRetainedRuns,
@@ -82,6 +88,7 @@ public class RunService {
         this.mapper = mapper;
         this.notifier = notifier;
         this.remoteApprovals = remoteApprovals;
+        this.variableStore = variableStore;
         this.maxRetainedRuns = maxRetainedRuns;
         this.inputUsdPerMTok = inputUsdPerMTok;
         this.outputUsdPerMTok = outputUsdPerMTok;
@@ -202,6 +209,12 @@ public class RunService {
         exec.endedAt = System.currentTimeMillis();
     }
 
+    /** A value as one log-line token: whitespace collapsed, cut at 60 — a signal, not a dump. */
+    private static String oneLine(String value) {
+        String flat = value == null ? "" : value.replaceAll("\\s+", " ").trim();
+        return flat.length() > 60 ? flat.substring(0, 57) + "…" : flat;
+    }
+
     /**
      * Starts a run. When {@code initialPromptOverride} is non-null it becomes the first turn
      * (used by webhook triggers to inject the event payload); otherwise the Input node's own
@@ -209,8 +222,13 @@ public class RunService {
      */
     public RunSummary start(FlowGraph flow, String initialPromptOverride) {
         enforceBudget(flow);
+        // Variables resolve at start time, not at save time: the flow's prompts keep their
+        // {{NAME}} placeholders on disk, and each run stamps in whatever the organization and the
+        // flow say TODAY — which is also what makes the values editable without touching prompts.
+        Map<String, String> variableValues = variableStore.merged(flow.variables());
+        Set<String> unresolvedVariables = new LinkedHashSet<>();
         // Compile synchronously so validation errors surface to the caller immediately.
-        CompiledFlow compiled = compiler.compile(flow);
+        CompiledFlow compiled = compiler.compile(flow, variableValues, unresolvedVariables);
         TriggerSpec trigger = TriggerSpec.from(flow);
 
         // The model decides where the flow runs, and only then does the credential.
@@ -260,11 +278,25 @@ public class RunService {
             run.permissionMode = "plan";
             run.trigger = run.trigger + " (shadow)";
         }
-        run.pendingPrompt = initialPromptOverride != null
-                ? initialPromptOverride
-                : (trigger.autoStart() ? trigger.prompt() : null);
+        run.pendingPrompt = Variables.substitute(
+                initialPromptOverride != null
+                        ? initialPromptOverride
+                        : (trigger.autoStart() ? trigger.prompt() : null),
+                variableValues, unresolvedVariables);
         run.initialPrompt = run.pendingPrompt;
         recordTriggerInput(run, flow, trigger);
+        // Said in the run itself, so every run remembers which values it executed with — the
+        // flow's settings only say what the NEXT run would use.
+        if (!variableValues.isEmpty()) {
+            run.emit(RunEvent.of("system", "Variables: " + variableValues.entrySet().stream()
+                    .map(e -> e.getKey() + "=" + oneLine(e.getValue()))
+                    .collect(java.util.stream.Collectors.joining(" · "))));
+        }
+        if (!unresolvedVariables.isEmpty()) {
+            run.emit(RunEvent.of("system", "Variables without a value (left as written): "
+                    + unresolvedVariables.stream().map(n -> "{{" + n + "}}")
+                            .collect(java.util.stream.Collectors.joining(", "))));
+        }
         runs.put(runId, run);
         evictOldestCompleted();
         trackForPersistence(run);
@@ -635,7 +667,12 @@ public class RunService {
                 run.restoreEvents(row.events());
                 run.restoreNodeExecs(row.nodeExecs());
                 if (row.flowJson() != null) {
-                    run.compiled = compiler.compile(mapper.readValue(row.flowJson(), FlowGraph.class));
+                    // With variables substituted, same as when the run first compiled: a continued
+                    // turn built from this spec must not send {{NAME}} placeholders the original
+                    // run had already resolved.
+                    FlowGraph snapshot = mapper.readValue(row.flowJson(), FlowGraph.class);
+                    run.compiled = compiler.compile(snapshot,
+                            variableStore.merged(snapshot.variables()), null);
                 }
                 trackForPersistence(run); // continued runs keep streaming to the database too
                 runs.put(run.id, run);

@@ -279,6 +279,15 @@ export type McpNodeData = {
   url: string
   credentialId: string
   /**
+   * The stdio transport: a local process speaking MCP over stdin/stdout — the npx/python
+   * invocation the server's README says to put in mcp.json. A node with a command ignores url.
+   * An env VALUE of the form `credential:<id>` is resolved from the credential store when the
+   * run's config is written, so tokens need not live in the flow.
+   */
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  /**
    * Header the credential is sent in.
    *
    * Blank means `Authorization` with a `Bearer ` prefix, which most MCP servers expect. GitLab
@@ -403,6 +412,11 @@ export interface BackendFlow {
   /** Monthly spend ceiling in USD; at or past it, new runs are refused until next month. */
   budgetUsd?: number | null
   /**
+   * This flow's {{NAME}} values — overrides of the organization's variables plus its own.
+   * Saved with the flow: a flow remembers the values it runs with.
+   */
+  variables?: Record<string, string>
+  /**
    * Remote approval over Slack: a stored credential holding the bot token, and the channel the
    * request posts to. A ✅/❌ reaction on the posted message approves/rejects the waiting run —
    * outbound polling only, so it works without a public URL.
@@ -500,6 +514,10 @@ export type McpDef = {
   url: string
   credentialId: string
   authHeader?: string
+  /** stdio transport — see McpNodeData: command/args/env instead of a url. */
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
 }
 
 /**
@@ -698,6 +716,16 @@ export interface SkillInfo {
   name: string
   description: string
   fileCount: number
+}
+
+/** An organization-level prompt variable: {{NAME}} in any flow's prompts becomes its value. */
+// A type, not an interface: CrudPanel's generic wants Record<string, unknown>, which only
+// structural type aliases satisfy implicitly.
+export type Variable = {
+  id?: string
+  name: string
+  value: string
+  description?: string
 }
 
 /** A skill repository in the GitHub catalog. stars is -1 when GitHub could not be asked. */

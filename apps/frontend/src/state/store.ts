@@ -185,6 +185,8 @@ type FlowMeta = {
   favorite?: boolean
   notifyWebhook?: string
   budgetUsd?: number | null
+  /** {{NAME}} values for this flow — must survive a canvas save or the flow forgets them. */
+  variables?: Record<string, string>
 }
 
 interface FlowState {
@@ -414,6 +416,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         favorite: flow.favorite,
         notifyWebhook: flow.notifyWebhook,
         budgetUsd: flow.budgetUsd,
+        variables: flow.variables,
       },
       nodes,
       edges: flow.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),

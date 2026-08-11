@@ -69,9 +69,18 @@ class RunServiceTest {
         RunService s = new RunService(clientProvider, compiler, launcher, backends(),
                 new PricingTable("", 3.0, 15.0),
                 new CloudStreamEventHandler(), runStore, mapper,
-                notifier, remoteApprovals, maxConcurrent, queueCapacity, maxRetainedRuns, 3.0, 15.0);
+                notifier, remoteApprovals, variableStore(),
+                maxConcurrent, queueCapacity, maxRetainedRuns, 3.0, 15.0);
         created.add(s);
         return s;
+    }
+
+    /** No variables defined, which is what every pre-existing scenario assumes. */
+    private static com.concentus.store.VariableStore variableStore() {
+        var store = org.mockito.Mockito.mock(com.concentus.store.VariableStore.class);
+        org.mockito.Mockito.when(store.merged(org.mockito.Mockito.any()))
+                .thenReturn(new java.util.LinkedHashMap<>());
+        return store;
     }
 
     private static AgentSpec coordinatorSpec() {
@@ -121,7 +130,7 @@ class RunServiceTest {
 
     @Test
     void startThrowsWhenNoBackendIsAvailable() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("none");
         RunService svc = newService(4, 8, 10);
 
@@ -134,7 +143,7 @@ class RunServiceTest {
 
     @Test
     void startLocalWithoutAutoStartLeavesRunIdleAndNeverTouchesTheExecutor() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
 
@@ -148,7 +157,7 @@ class RunServiceTest {
 
     @Test
     void startLocalWithPromptTriggerAutoStartsATurn() throws Exception {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
 
@@ -162,7 +171,7 @@ class RunServiceTest {
 
     @Test
     void cloudBackendFailureToObtainAClientMarksTheRunErrorAndNotifies() throws Exception {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("cloud");
         when(clientProvider.client()).thenThrow(new RuntimeException("no creds"));
         RunService svc = newService(4, 8, 10);
@@ -179,7 +188,7 @@ class RunServiceTest {
 
     @Test
     void oldestCompletedRunIsEvictedFirstWhenOverCapacity() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 2); // maxRetainedRuns = 2
 
@@ -205,7 +214,7 @@ class RunServiceTest {
 
     @Test
     void activeRunsAreNeverEvictedEvenWhenOverCapacity() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 1); // maxRetainedRuns = 1
 
@@ -220,7 +229,7 @@ class RunServiceTest {
 
     @Test
     void startRejectsSubmissionsPastTheExecutorBoundsAndFailsTheRunInstead() throws Exception {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -248,7 +257,7 @@ class RunServiceTest {
 
     @Test
     void sendCommandRejectsWhenThePoolIsSaturated() throws Exception {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -278,7 +287,7 @@ class RunServiceTest {
 
     @Test
     void retryStartsANewRunFromTheStoredFlowSnapshotWithoutTouchingTheOriginal() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary original = svc.start(flow("f1"));
@@ -292,7 +301,7 @@ class RunServiceTest {
 
     @Test
     void retryThrowsWhenTheRunHasNoStoredFlowSnapshot() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary s = svc.start(flow("f1"));
@@ -305,7 +314,7 @@ class RunServiceTest {
 
     @Test
     void retryThrowsWhenTheStoredFlowJsonIsCorrupt() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary s = svc.start(flow("f1"));
@@ -338,7 +347,7 @@ class RunServiceTest {
 
     @Test
     void sendCommandThrowsWhenTheLocalRunIsNotYetCompiled() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary s = svc.start(flow("f1"));
@@ -354,7 +363,7 @@ class RunServiceTest {
         // Regression: this branched on the literal id "local", so a run on any other turn-based
         // backend fell through to the cloud path and was refused for having no session id — an
         // execution that was working perfectly reported "Run is not ready yet".
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary s = svc.start(flow("f1"));
@@ -368,7 +377,7 @@ class RunServiceTest {
 
     @Test
     void sendCommandSetsInitialPromptOnlyOnTheFirstCommand() throws Exception {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary s = svc.start(flow("f1")); // manual: no initial prompt yet
@@ -386,7 +395,7 @@ class RunServiceTest {
 
     @Test
     void stopOnALocalRunDelegatesToTheLocalExecutorAndPersists() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary s = svc.start(flow("f1"));
@@ -401,7 +410,7 @@ class RunServiceTest {
 
     @Test
     void stopOnANonLocalRunClosesTheOpenStreamAndMarksItTerminated() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local"); // avoid touching the Anthropic client at start
         RunService svc = newService(4, 8, 10);
         RunSummary s = svc.start(flow("f1"));
@@ -419,7 +428,7 @@ class RunServiceTest {
 
     @Test
     void hasActiveRunReflectsOnlyNonTerminalRunsForThatFlow() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary s = svc.start(flow("f1"));
@@ -434,7 +443,7 @@ class RunServiceTest {
 
     @Test
     void flowOfReturnsTheStoredSnapshotAndEmptyWhenMissingOrCorrupt() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         FlowGraph original = flow("f1");
@@ -458,7 +467,7 @@ class RunServiceTest {
 
     @Test
     void listOrdersRunsByCreatedAtDescending() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary s1 = svc.start(flow("f1"));
@@ -475,7 +484,7 @@ class RunServiceTest {
 
     @Test
     void restoreNormalizesInFlightStatusesToIdleAndRehydratesRunState() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         String validFlowJson = toJson(flow("f1"));
         RunStore.RunRow runningRow = new RunStore.RunRow(
                 "run_a", "f1", "Flow", "managed", "local", "RUNNING", "manual", "sess1", null, false,
@@ -533,7 +542,7 @@ class RunServiceTest {
 
     @Test
     void markingARunGoldenClearsTheFlowsPreviousReference() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary first = svc.start(flow("f1"));
@@ -553,7 +562,7 @@ class RunServiceTest {
 
     @Test
     void anAdHocRunCannotBeGolden() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary adHoc = svc.start(flow(null)); // unsaved canvas: no flow id
@@ -565,7 +574,7 @@ class RunServiceTest {
 
     @Test
     void goldenRunsAreNeverEvictedHoweverOldTheyAre() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 2); // maxRetainedRuns = 2
 
@@ -588,7 +597,7 @@ class RunServiceTest {
 
     @Test
     void aGoldenCheckReplaysTheReferenceInputAgainstTheFlowPassedIn() throws Exception {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary reference = svc.start(flow("f1"));
@@ -606,13 +615,13 @@ class RunServiceTest {
 
         assertThat(check.id()).isNotEqualTo(reference.id());
         assertThat(check.trigger()).isEqualTo("golden");
-        verify(compiler).compile(editedFlow); // the CURRENT flow ran, not the reference's snapshot
+        verify(compiler).compile(eq(editedFlow), any(), any()); // the CURRENT flow ran, not the reference's snapshot
         verify(localExecutor, timeout(2000)).runTurn(any(), any(), eq("the input that mattered"));
     }
 
     @Test
     void aGoldenCheckRefusesARunThatIsNotTheReferenceOrRecordedNoInput() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary plain = svc.start(flow("f1"));
@@ -631,7 +640,7 @@ class RunServiceTest {
 
     @Test
     void enteringApprovalWaitTellsTheRemoteChannelsOnce() throws Exception {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         doAnswer(inv -> {
             AgentRun r = inv.getArgument(0);
@@ -653,7 +662,7 @@ class RunServiceTest {
 
     @Test
     void theRemoteApproveCallbackApprovesExactlyLikeTheAppButton() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         doAnswer(inv -> {
             AgentRun r = inv.getArgument(0);
@@ -673,7 +682,7 @@ class RunServiceTest {
 
     @Test
     void decidingFromTheAppSettlesTheRemoteQuestionToo() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary s = svc.start(flow("f1"));
@@ -688,7 +697,7 @@ class RunServiceTest {
 
     @Test
     void approvalChannelConfigIsCopiedOntoTheRunAtStart() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
                 List.of(agentNode("c1", "coordinator"), inputNode("manual", null)),
@@ -710,7 +719,7 @@ class RunServiceTest {
         RunService s = new RunService(clientProvider, compiler, launcher, backends(),
                 new PricingTable("", 3.0, 15.0),
                 new CloudStreamEventHandler(), runStore, mapper, notifier, remoteApprovals,
-                4, 8, 10, 3.0, 15.0);
+                variableStore(), 4, 8, 10, 3.0, 15.0);
         created.add(s);
         return s;
     }
@@ -724,7 +733,7 @@ class RunServiceTest {
 
     @Test
     void aFlowRunsOnTheSubscriptionWhenTheCliIsSignedIn() {
-        when(compiler.compile(any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(compiler.compile(any(), any(), any())).thenReturn(flowOnModel("claude-opus-4-8"));
         when(clientProvider.backend()).thenReturn("local");
 
         RunSummary summary = service().start(flow("f1"));
@@ -736,7 +745,7 @@ class RunServiceTest {
 
     @Test
     void aFlowRunsOnTheApiWhenAKeyIsPresent() {
-        when(compiler.compile(any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(compiler.compile(any(), any(), any())).thenReturn(flowOnModel("claude-opus-4-8"));
         when(clientProvider.backend()).thenReturn("cloud");
         when(clientProvider.client()).thenThrow(new IllegalStateException("no client in this test"));
 
@@ -750,7 +759,7 @@ class RunServiceTest {
     void theModelIdDoesNotChangeWhichBackendIsUsed() {
         // Backend selection follows the credential, not the model: with only Claude left there is
         // no routing table for a model id to steer.
-        when(compiler.compile(any())).thenReturn(flowOnModel("claude-sonnet-5"));
+        when(compiler.compile(any(), any(), any())).thenReturn(flowOnModel("claude-sonnet-5"));
         when(clientProvider.backend()).thenReturn("local");
 
         RunService svc = service();
@@ -761,7 +770,7 @@ class RunServiceTest {
 
     @Test
     void withNoCredentialAtAllStartingSaysSoInsteadOfFailingObscurely() {
-        when(compiler.compile(any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(compiler.compile(any(), any(), any())).thenReturn(flowOnModel("claude-opus-4-8"));
         when(clientProvider.backend()).thenReturn("none");
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().start(flow("f1")))
@@ -800,12 +809,12 @@ class RunServiceTest {
         org.assertj.core.api.Assertions.assertThatCode(() -> {
             try { newService(2, 4, 10).start(flow); } catch (RuntimeException ignored) { }
         }).doesNotThrowAnyException();
-        org.mockito.Mockito.verify(compiler).compile(flow);
+        org.mockito.Mockito.verify(compiler).compile(eq(flow), any(), any());
     }
 
     @org.junit.jupiter.api.Test
     void aShadowTriggerPlansButNeverActs() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         com.concentus.model.FlowNode input = new com.concentus.model.FlowNode("in1", "input", null,
                 java.util.Map.of("mode", "webhook", "secret", "s", "shadow", true));
@@ -823,7 +832,7 @@ class RunServiceTest {
 
     @org.junit.jupiter.api.Test
     void aManualRunOfAShadowedFlowStaysReal() {
-        when(compiler.compile(any())).thenReturn(compiledFlow());
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         com.concentus.model.FlowNode input = new com.concentus.model.FlowNode("in1", "input", null,
                 java.util.Map.of("mode", "webhook", "secret", "s", "shadow", true));
