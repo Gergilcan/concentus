@@ -177,6 +177,10 @@ export function onboardingPage(claude: OnboardingState, storage: StorageState): 
     </div>
 
     <div id="how">
+      <div class="actions" id="loginActions">
+        <button class="primary" id="doLogin">Sign in now</button>
+      </div>
+      <p class="msg" id="loginMsg"></p>
       <p class="lede" id="howLede">Or do it yourself in a terminal. Once installed, run
         <code>claude</code> and sign in — it opens a browser once, and Concentus picks it up from
         there. You never paste a key.</p>
@@ -319,6 +323,8 @@ claude
       ? 'Concentus found your Claude Code sign-in. Flows will run on your subscription — no API key, no per-token bill.'
       : 'Concentus runs your flows through the Claude Code CLI, on the Claude subscription you already pay for. It needs to be installed and signed in once.';
     $('how').className = ready ? 'hidden' : '';
+    // The one-click sign-in only makes sense with a CLI to sign in to.
+    $('loginActions').className = hasCli && !claude.loggedIn ? 'actions' : 'hidden';
     // The install offer is only for the case it solves. With the CLI already there, the remaining
     // step is signing in, and offering to install it again would be noise.
     $('install').className = hasCli ? 'hidden' : '';
@@ -356,6 +362,46 @@ claude
     $('installCmd').textContent = cmd;
   });
 
+  // While a sign-in terminal is open, the wizard checks by itself every few seconds — asking a
+  // person to complete an OAuth hop AND come back to press "Check again" loses half of them at
+  // the second step. Bounded, so an abandoned sign-in does not poll forever.
+  var loginPoll = null;
+  function pollForLogin() {
+    if (loginPoll) return;
+    var until = Date.now() + 5 * 60 * 1000;
+    loginPoll = setInterval(function () {
+      if (claude.loggedIn || Date.now() > until) {
+        clearInterval(loginPoll); loginPoll = null;
+        return;
+      }
+      window.concentus.recheckClaude().then(function (next) {
+        claude = next;
+        renderStep2();
+        if (claude.loggedIn) {
+          $('loginMsg').textContent = '✓ Signed in. You are ready to go.';
+          $('loginMsg').className = 'msg ok';
+          clearInterval(loginPoll); loginPoll = null;
+        }
+      });
+    }, 4000);
+  }
+
+  $('doLogin').addEventListener('click', function () {
+    var btn = this; btn.disabled = true;
+    window.concentus.openClaudeLogin().then(function (r) {
+      btn.disabled = false;
+      if (r.state) { claude = r.state; renderStep2(); }
+      if (r.ok) {
+        $('loginMsg').textContent = 'A terminal opened running claude — complete the sign-in there (it opens your browser once). Concentus will notice by itself.';
+        $('loginMsg').className = 'msg ok';
+        pollForLogin();
+      } else {
+        $('loginMsg').textContent = '✗ ' + r.detail;
+        $('loginMsg').className = 'msg bad';
+      }
+    });
+  });
+
   $('doInstall').addEventListener('click', function () {
     var btn = this;
     btn.disabled = true; btn.textContent = 'Installing…';
@@ -363,8 +409,12 @@ claude
     $('installLog').textContent = '';
     window.concentus.installClaude().then(function (r) {
       if (r.state) { claude = r.state; renderStep2(); }
-      if (r.ok && claude.command) {
-        $('installMsg').textContent = '✓ Installed. Now sign in: run claude in a terminal, then /login.';
+      if (r.ok && claude.command && r.loginOpened) {
+        $('installMsg').textContent = '✓ Installed. A terminal opened running claude — complete the sign-in there (it opens your browser once). Concentus will notice by itself.';
+        $('installMsg').className = 'msg ok';
+        pollForLogin();
+      } else if (r.ok && claude.command) {
+        $('installMsg').textContent = '✓ Installed. Now sign in: press "Sign in now" below.';
         $('installMsg').className = 'msg ok';
       } else if (r.ok) {
         // Exit code 0 but nothing where we look — worth saying plainly rather than claiming success.
