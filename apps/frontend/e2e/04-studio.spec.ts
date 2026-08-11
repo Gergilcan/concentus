@@ -48,6 +48,30 @@ test('selecting a node opens its inspector; the canvas state survives a reload',
   await expect(page.getByText(/No executions/)).toBeVisible()
 })
 
+test('every studio panel folds away and comes back', async ({ page }) => {
+  await openApp(page)
+  await flowCard(page, NAME).getByRole('button', { name: 'Open' }).click()
+  await expect(page.getByRole('heading', { name: 'Add node' })).toBeVisible()
+
+  // Palette → a slim rail naming what it will bring back.
+  await page.getByRole('button', { name: 'Hide the node palette' }).click()
+  await expect(page.getByRole('heading', { name: 'Add node' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Show the node palette' }).click()
+  await expect(page.getByRole('heading', { name: 'Add node' })).toBeVisible()
+
+  // Inspector (node properties).
+  await page.getByRole('button', { name: 'Hide the node properties' }).click()
+  await expect(page.getByText('Select a node to edit its settings.')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Show the node properties' }).click()
+  await expect(page.getByText('Select a node to edit its settings.')).toBeVisible()
+
+  // Executions (console) → a bottom bar.
+  await page.getByRole('button', { name: 'Hide the executions panel' }).click()
+  await expect(page.getByText(/No executions/)).toHaveCount(0)
+  await page.getByRole('button', { name: 'Show the executions panel' }).click()
+  await expect(page.getByText(/No executions/)).toBeVisible()
+})
+
 test('cleans up its flow', async ({ page }) => {
   await openApp(page)
   page.on('dialog', (dialog) => void dialog.accept())

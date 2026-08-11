@@ -36,6 +36,23 @@ export default function App() {
   return <Workspace signedInAs={session?.email ?? null} onSignOut={signOut} />
 }
 
+/**
+ * Whether a Studio panel is open, remembered across sessions.
+ *
+ * localStorage rather than the flow: which panels someone keeps open is a fact about their
+ * screen and habits, not about any flow — a laptop wants the palette folded, a big monitor
+ * doesn't, and neither preference belongs in a shared flow definition.
+ */
+function usePanelOpen(key: string): [boolean, () => void] {
+  const [open, setOpen] = useState(() => localStorage.getItem(key) !== 'closed')
+  const toggle = () =>
+    setOpen((o) => {
+      localStorage.setItem(key, o ? 'closed' : 'open')
+      return !o
+    })
+  return [open, toggle]
+}
+
 interface WorkspaceProps {
   signedInAs: string | null
   onSignOut: () => void
@@ -46,6 +63,10 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
   // The executions panel sits under the flow being edited, so it shows that flow's runs only.
   const openFlowId = useFlowStore((s) => s.flowId)
   const [toast, setToast] = useState<string | null>(null)
+  // Every Studio panel folds away: on a laptop the canvas is the work and the chrome is the tax.
+  const [paletteOpen, togglePalette] = usePanelOpen('studio.palette')
+  const [inspectorOpen, toggleInspector] = usePanelOpen('studio.inspector')
+  const [runsOpen, toggleRuns] = usePanelOpen('studio.runs')
 
   useEffect(() => {
     if (!toast) return
@@ -96,20 +117,88 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
               onBackToFlows={() => setView('flows')}
               pushError={setToast}
             />
-            <div className={styles.main}>
-              <Palette />
+            <div
+              className={styles.main}
+              style={{
+                gridTemplateColumns: `${paletteOpen ? '230px' : '26px'} 1fr ${inspectorOpen ? '300px' : '26px'}`,
+              }}
+            >
+              {paletteOpen ? (
+                <div className={styles.sideWrap}>
+                  <Palette />
+                  <button
+                    className={`${styles.collapseSide} ${styles.collapseAtRight}`}
+                    onClick={togglePalette}
+                    title="Hide the node palette"
+                    aria-label="Hide the node palette"
+                  >
+                    ◂
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className={styles.rail}
+                  onClick={togglePalette}
+                  title="Show the node palette"
+                  aria-label="Show the node palette"
+                >
+                  ▸<span className={styles.railLabel}>Add node</span>
+                </button>
+              )}
               <div className={styles.canvas}>
                 <FlowCanvas />
               </div>
-              <Inspector />
+              {inspectorOpen ? (
+                <div className={styles.sideWrap}>
+                  <Inspector />
+                  <button
+                    className={`${styles.collapseSide} ${styles.collapseAtLeft}`}
+                    onClick={toggleInspector}
+                    title="Hide the node properties"
+                    aria-label="Hide the node properties"
+                  >
+                    ▸
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className={styles.rail}
+                  onClick={toggleInspector}
+                  title="Show the node properties"
+                  aria-label="Show the node properties"
+                >
+                  ◂<span className={styles.railLabel}>Properties</span>
+                </button>
+              )}
             </div>
-            <RunsPanel
-              runs={runs}
-              loading={runsLoading}
-              selected={selectedRun}
-              onSelect={(id) => void openRun(id)}
-              flowId={openFlowId}
-            />
+            {runsOpen ? (
+              <div className={styles.bottomWrap}>
+                <RunsPanel
+                  runs={runs}
+                  loading={runsLoading}
+                  selected={selectedRun}
+                  onSelect={(id) => void openRun(id)}
+                  flowId={openFlowId}
+                />
+                <button
+                  className={styles.collapseBottom}
+                  onClick={toggleRuns}
+                  title="Hide the executions panel"
+                  aria-label="Hide the executions panel"
+                >
+                  ▾
+                </button>
+              </div>
+            ) : (
+              <button
+                className={styles.bottomRail}
+                onClick={toggleRuns}
+                title="Show the executions panel"
+                aria-label="Show the executions panel"
+              >
+                ▴ Executions
+              </button>
+            )}
           </>
         ) : (
           <ResourcesPage pushError={setToast} />
