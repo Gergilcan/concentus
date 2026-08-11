@@ -20,8 +20,18 @@ import styles from './resources.module.scss'
  */
 interface CatalogEntry {
   name: string
-  url: string
-  auth: 'oauth' | 'token' | 'none'
+  /** Remote entries carry a url; local (stdio) entries carry command/args instead. */
+  url?: string
+  /**
+   * A stdio server the user's machine runs on demand — every Google/Microsoft-API entry ships
+   * this way, there is no hosted endpoint to point at. The command must exist on PATH (npx
+   * comes with Node; the Python ones need pipx or uv), which each note says out loud.
+   */
+  command?: string
+  args?: string[]
+  /** Env the server expects, pre-created EMPTY so the definition shows what must be filled. */
+  env?: Record<string, string>
+  auth: 'oauth' | 'token' | 'none' | 'stdio'
   /** What the server gives an agent — the card's visible line. */
   blurb: string
   /** The longer story (auth details, caveats), kept to the tooltip. */
@@ -84,6 +94,60 @@ const CATALOG: CatalogEntry[] = [
   { name: 'Figma', url: 'http://127.0.0.1:3845/mcp', auth: 'none', category: 'Data & content',
     blurb: 'Designs from Figma desktop',
     note: 'Local only: needs Figma desktop running with its MCP server enabled in preferences.' },
+
+  // Google's API surface has no hosted MCP endpoints — its own servers and the community's all
+  // run as local stdio processes. Package names and registries verified 11 Aug 2026.
+  { name: 'Google Analytics', command: 'pipx', args: ['run', 'analytics-mcp'], auth: 'stdio', category: 'Google',
+    env: { GOOGLE_APPLICATION_CREDENTIALS: '' },
+    blurb: 'Reports and metrics (official)',
+    note: "Google's own server (PyPI analytics-mcp) — needs pipx installed. Point GOOGLE_APPLICATION_CREDENTIALS at a service-account key with Analytics access, or leave it empty to use gcloud's application-default login." },
+  { name: 'Google Ads', command: 'pipx', args: ['run', 'google-ads-mcp'], auth: 'stdio', category: 'Google',
+    blurb: 'Campaigns and reporting (official)',
+    note: "Google's own server (PyPI google-ads-mcp) — needs pipx installed, plus Google Ads API credentials configured as its README describes (github.com/googleads/google-ads-mcp)." },
+  { name: 'Google Search Console', command: 'npx', args: ['-y', 'mcp-server-gsc'], auth: 'stdio', category: 'Google',
+    env: { GOOGLE_APPLICATION_CREDENTIALS: '' },
+    blurb: 'Search performance and sitemaps',
+    note: 'Community server (npm mcp-server-gsc) — runs via npx. Point GOOGLE_APPLICATION_CREDENTIALS at a service-account key added to your Search Console property.' },
+  { name: 'Google Tag Manager', command: 'npx', args: ['-y', 'google-tag-manager-mcp-server'], auth: 'stdio', category: 'Google',
+    blurb: 'Containers, tags, triggers',
+    note: 'Community server (npm google-tag-manager-mcp-server, by stape-io) — runs via npx; needs Google OAuth credentials as its README describes.' },
+  { name: 'Google Workspace', command: 'uvx', args: ['workspace-mcp'], auth: 'stdio', category: 'Google',
+    env: { GOOGLE_OAUTH_CLIENT_ID: '', GOOGLE_OAUTH_CLIENT_SECRET: '' },
+    blurb: 'Gmail, Calendar, Drive, Docs, Sheets',
+    note: 'Community server (PyPI workspace-mcp) — needs uv installed. Fill the OAuth client id/secret from a Google Cloud project with the Workspace APIs enabled.' },
+  { name: 'Google Maps', command: 'npx', args: ['-y', '@modelcontextprotocol/server-google-maps'], auth: 'stdio', category: 'Google',
+    env: { GOOGLE_MAPS_API_KEY: '' },
+    blurb: 'Places, directions, geocoding',
+    note: 'Reference server (npm @modelcontextprotocol/server-google-maps) — runs via npx; fill GOOGLE_MAPS_API_KEY.' },
+
+  { name: 'Microsoft Graph', command: 'npx', args: ['-y', '@merill/lokka'], auth: 'stdio', category: 'Microsoft',
+    env: { TENANT_ID: '', CLIENT_ID: '', CLIENT_SECRET: '' },
+    blurb: 'Users, mail, Teams, Entra, Intune',
+    note: 'Lokka (npm @merill/lokka) — runs via npx. Fill the env from an Entra app registration with the Graph permissions you want; env values can reference credential:<id> to keep secrets in Credentials.' },
+  { name: 'Microsoft Learn Docs', url: 'https://learn.microsoft.com/api/mcp', auth: 'none', category: 'Microsoft',
+    blurb: 'Official Microsoft/Azure docs search',
+    note: 'Hosted by Microsoft, no sign-in needed.' },
+
+  // Transactional and marketing email providers. Sending from a Gmail or Outlook MAILBOX already
+  // lives under the Google and Microsoft tabs — this shelf is the dedicated sending platforms.
+  // Endpoint and registries verified 11 Aug 2026. Mailgun and Postmark are absent on purpose:
+  // their official servers are clone-and-run repositories with no npm/PyPI package to point a
+  // command at, and the one unofficial Mailgun package documents nothing about its env.
+  { name: 'Resend', url: 'https://mcp.resend.com/mcp', auth: 'oauth', category: 'Email',
+    blurb: 'Send email, contacts, broadcasts (official)',
+    note: 'Hosted by Resend. Sign in from the node after adding — or, for headless runs, store a Resend API key as a credential on the definition instead (it is accepted as a Bearer token).' },
+  { name: 'Mailtrap', command: 'npx', args: ['-y', 'mcp-mailtrap'], auth: 'stdio', category: 'Email',
+    env: { MAILTRAP_API_TOKEN: '', DEFAULT_FROM_EMAIL: '' },
+    blurb: 'Send email, sandbox testing (official)',
+    note: "Mailtrap's own server (npm mcp-mailtrap) — runs via npx. Fill MAILTRAP_API_TOKEN and DEFAULT_FROM_EMAIL; env values can reference credential:<id> to keep the token in Credentials." },
+  { name: 'SendGrid', command: 'npx', args: ['-y', 'sendgrid-mcp'], auth: 'stdio', category: 'Email',
+    env: { SENDGRID_API_KEY: '' },
+    blurb: 'Send email, lists, templates, stats',
+    note: 'Community server (npm sendgrid-mcp) against the SendGrid v3 API — runs via npx. Fill SENDGRID_API_KEY (can reference credential:<id>).' },
+  { name: 'Mailchimp', command: 'uvx', args: ['mailchimp-mcp'], auth: 'stdio', category: 'Email',
+    env: { MAILCHIMP_API_KEY: '', MAILCHIMP_READ_ONLY: 'true' },
+    blurb: 'Campaigns, audiences, reports',
+    note: 'Community server (PyPI mailchimp-mcp) — needs uv installed. Ships read-only on purpose (MAILCHIMP_READ_ONLY=true): explore safely first, and clear the flag only when the flow should write.' },
 ]
 
 const CATEGORIES = [...new Set(CATALOG.map((e) => e.category))]
@@ -91,7 +155,8 @@ const CATEGORIES = [...new Set(CATALOG.map((e) => e.category))]
 const AUTH_LABEL: Record<CatalogEntry['auth'], string> = {
   oauth: 'OAuth',
   token: 'token',
-  none: 'local',
+  none: 'no auth',
+  stdio: 'runs locally',
 }
 
 export function McpCatalog({ onAdded }: { onAdded: () => void }) {
@@ -122,9 +187,12 @@ export function McpCatalog({ onAdded }: { onAdded: () => void }) {
     try {
       await api.saveMcpDef({
         name: entry.name,
-        url: entry.url,
+        url: entry.url ?? '',
         credentialId: '',
         authHeader: entry.header ?? '',
+        command: entry.command,
+        args: entry.args,
+        env: entry.env,
       } as McpDef)
       setAdded((prev) => new Set(prev ?? []).add(entry.name.toLowerCase()))
       setNote(
@@ -132,7 +200,9 @@ export function McpCatalog({ onAdded }: { onAdded: () => void }) {
           ? `${entry.name} added. Drop an MCP node on the canvas, pick it, and press "Sign in to this server".`
           : entry.auth === 'token'
             ? `${entry.name} added. Create the token under Resources → Credentials and set its id on the definition.`
-            : `${entry.name} added.`,
+            : entry.auth === 'stdio'
+              ? `${entry.name} added. It runs on this machine: open "Edit as JSON" above to fill its env values (they can reference credential:<id>), and make sure "${entry.command}" is installed.`
+              : `${entry.name} added.`,
       )
       onAdded()
     } catch (e) {
