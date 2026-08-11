@@ -31,6 +31,9 @@ export default defineConfig(() => {
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
       globals: true,
+      // Playwright owns e2e/ — vitest picking those specs up would run them without a browser or
+      // a backend and fail on the import of @playwright/test's runner.
+      exclude: ['**/node_modules/**', 'e2e/**'],
     },
   }
 })

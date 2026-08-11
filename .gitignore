@@ -11,6 +11,10 @@ node_modules/
 apps/frontend/dist/
 .pnpm-store/
 
+# Playwright UI tests — reports and traces are build output
+apps/frontend/playwright-report/
+apps/frontend/test-results/
+
 # Desktop shell — compiled output, installers, and the bundled payload the build stages
 apps/desktop/dist/
 apps/desktop/release/
