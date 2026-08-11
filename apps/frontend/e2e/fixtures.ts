@@ -1,12 +1,30 @@
 import { expect, test as base, type Page } from '@playwright/test'
+import { startBackend, type Backend } from './backend'
 
 /**
- * The shared test: every page it hands out records uncaught exceptions, and the test fails if any
- * were thrown — a blank panel after a TypeError otherwise passes any assertion that never looks at
- * it. Deliberately `pageerror` only, not console.error: the backend legitimately answers 4xx on
- * some probes (an unconfigured Ollama, say) and the UI logging that is not a bug.
+ * The shared test, carrying two things.
+ *
+ * A backend PER WORKER: each worker starts its own jar with its own embedded PostgreSQL on its
+ * own port (8800 + slot), which is what lets the suite run parallel without racing — a worker
+ * counting cards can never see another worker's creations, because they are different databases.
+ * The fixture stops its backend politely when the worker retires.
+ *
+ * And error tracking: every page records uncaught exceptions, and the test fails if any were
+ * thrown — a blank panel after a TypeError otherwise passes any assertion that never looks at it.
+ * Deliberately `pageerror` only, not console.error: the backend legitimately answers 4xx on some
+ * probes (an unconfigured Ollama, say) and the UI logging that is not a bug.
  */
-export const test = base.extend<{ page: Page }>({
+export const test = base.extend<{ page: Page }, { backend: Backend }>({
+  backend: [
+    async ({}, use, workerInfo) => {
+      const backend = await startBackend(8800 + workerInfo.parallelIndex)
+      await use(backend)
+      await backend.stop()
+    },
+    // The timeout covers a cold JVM plus initdb on a busy CI runner.
+    { scope: 'worker', timeout: 180_000 },
+  ],
+  baseURL: async ({ backend }, use) => use(backend.baseURL),
   page: async ({ page }, use) => {
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(String(error)))

@@ -319,10 +319,11 @@ pnpm --filter frontend test             # frontend units (vitest)
 pnpm --filter frontend test:e2e         # UI end-to-end (Playwright, once: pnpm exec playwright install chromium)
 ```
 
-The UI suite drives the real thing: Playwright boots the packaged jar (`e2e/server.mjs`) with an
-embedded PostgreSQL on a scratch data directory and walks the four views — dashboard, Studio
-canvas, every Resources tab, Usage — creating, renaming and deleting flows through the actual API.
-It needs the jar built first, frontend included: `pnpm --filter frontend build`, then
+The UI suite drives the real thing, in parallel: each Playwright worker boots its own copy of the
+packaged jar (`e2e/backend.ts`) with its own embedded PostgreSQL on a scratch data directory —
+isolation by construction, so workers can create and delete flows without racing each other. The
+specs walk the four views — dashboard, Studio canvas, every Resources tab, Usage — through the
+actual API. It needs the jar built first, frontend included: `pnpm --filter frontend build`, then
 `mvn -B clean package -DskipTests` in `apps/backend`. CI runs it on every push.
 
 ## Building the installers
