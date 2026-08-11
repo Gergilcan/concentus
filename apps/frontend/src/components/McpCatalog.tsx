@@ -127,6 +127,27 @@ const CATALOG: CatalogEntry[] = [
   { name: 'Microsoft Learn Docs', url: 'https://learn.microsoft.com/api/mcp', auth: 'none', category: 'Microsoft',
     blurb: 'Official Microsoft/Azure docs search',
     note: 'Hosted by Microsoft, no sign-in needed.' },
+
+  // Transactional and marketing email providers. Sending from a Gmail or Outlook MAILBOX already
+  // lives under the Google and Microsoft tabs — this shelf is the dedicated sending platforms.
+  // Endpoint and registries verified 11 Aug 2026. Mailgun and Postmark are absent on purpose:
+  // their official servers are clone-and-run repositories with no npm/PyPI package to point a
+  // command at, and the one unofficial Mailgun package documents nothing about its env.
+  { name: 'Resend', url: 'https://mcp.resend.com/mcp', auth: 'oauth', category: 'Email',
+    blurb: 'Send email, contacts, broadcasts (official)',
+    note: 'Hosted by Resend. Sign in from the node after adding — or, for headless runs, store a Resend API key as a credential on the definition instead (it is accepted as a Bearer token).' },
+  { name: 'Mailtrap', command: 'npx', args: ['-y', 'mcp-mailtrap'], auth: 'stdio', category: 'Email',
+    env: { MAILTRAP_API_TOKEN: '', DEFAULT_FROM_EMAIL: '' },
+    blurb: 'Send email, sandbox testing (official)',
+    note: "Mailtrap's own server (npm mcp-mailtrap) — runs via npx. Fill MAILTRAP_API_TOKEN and DEFAULT_FROM_EMAIL; env values can reference credential:<id> to keep the token in Credentials." },
+  { name: 'SendGrid', command: 'npx', args: ['-y', 'sendgrid-mcp'], auth: 'stdio', category: 'Email',
+    env: { SENDGRID_API_KEY: '' },
+    blurb: 'Send email, lists, templates, stats',
+    note: 'Community server (npm sendgrid-mcp) against the SendGrid v3 API — runs via npx. Fill SENDGRID_API_KEY (can reference credential:<id>).' },
+  { name: 'Mailchimp', command: 'uvx', args: ['mailchimp-mcp'], auth: 'stdio', category: 'Email',
+    env: { MAILCHIMP_API_KEY: '', MAILCHIMP_READ_ONLY: 'true' },
+    blurb: 'Campaigns, audiences, reports',
+    note: 'Community server (PyPI mailchimp-mcp) — needs uv installed. Ships read-only on purpose (MAILCHIMP_READ_ONLY=true): explore safely first, and clear the flag only when the flow should write.' },
 ]
 
 const CATEGORIES = [...new Set(CATALOG.map((e) => e.category))]

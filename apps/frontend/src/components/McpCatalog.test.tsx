@@ -41,7 +41,7 @@ describe('McpCatalog', () => {
     render(<McpCatalog onAdded={vi.fn()} />)
     expandCatalog()
 
-    for (const category of ['Development', 'Planning & docs', 'Business', 'Data & content', 'Google', 'Microsoft']) {
+    for (const category of ['Development', 'Planning & docs', 'Business', 'Data & content', 'Google', 'Microsoft', 'Email']) {
       expect(screen.getByRole('tab', { name: category })).toBeInTheDocument()
     }
     // The first category is the open one; the others' entries stay off screen until picked.
@@ -139,6 +139,48 @@ describe('McpCatalog', () => {
     expect(screen.getByText('runs locally')).toBeInTheDocument()
     expect(screen.getByText('Microsoft Learn Docs')).toBeInTheDocument()
     expect(screen.getByText('no auth')).toBeInTheDocument()
+  })
+
+  it('offers hosted Resend with OAuth and local senders on the Email shelf', async () => {
+    listMcpDefsMock.mockResolvedValue([])
+    saveMcpDefMock.mockResolvedValue({})
+    render(<McpCatalog onAdded={vi.fn()} />)
+    expandCatalog()
+    openCategory('Email')
+
+    // Resend is the one hosted entry; the senders that run locally wear the stdio pill.
+    expect(screen.getByText('Resend')).toBeInTheDocument()
+    expect(screen.getByText('OAuth')).toBeInTheDocument()
+    expect(screen.getAllByText('runs locally')).toHaveLength(3)
+
+    fireEvent.click(screen.getByText('Resend').closest('button')!)
+    await waitFor(() =>
+      expect(saveMcpDefMock).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Resend', url: 'https://mcp.resend.com/mcp' }),
+      ),
+    )
+  })
+
+  it('adds Mailchimp read-only by default — the safe direction ships pre-filled', async () => {
+    listMcpDefsMock.mockResolvedValue([])
+    saveMcpDefMock.mockResolvedValue({})
+    render(<McpCatalog onAdded={vi.fn()} />)
+    expandCatalog()
+    openCategory('Email')
+
+    fireEvent.click(screen.getByText('Mailchimp').closest('button')!)
+
+    await waitFor(() =>
+      expect(saveMcpDefMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Mailchimp',
+          command: 'uvx',
+          args: ['mailchimp-mcp'],
+          // The key is empty (the user's to fill); the read-only flag arrives already ON.
+          env: { MAILCHIMP_API_KEY: '', MAILCHIMP_READ_ONLY: 'true' },
+        }),
+      ),
+    )
   })
 
   it('surfaces the failure when adding does not work', async () => {
