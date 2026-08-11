@@ -3,7 +3,9 @@ package com.concentus.config;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -106,7 +108,8 @@ public class AgentSpec {
 
         for (McpServerSpec s : mcpServers) {
             require(s.name != null && !s.name.isBlank(), "each mcpServer needs a `name`");
-            require(s.url != null && !s.url.isBlank(), "mcpServer '" + s.name + "' needs a `url`");
+            require((s.url != null && !s.url.isBlank()) || s.isStdio(),
+                    "mcpServer '" + s.name + "' needs a `url` or a `command`");
         }
         for (RepoSpec r : repositories) {
             require(r.url != null && !r.url.isBlank(), "each repository needs a `url`");
@@ -270,6 +273,25 @@ public class AgentSpec {
          */
         public List<String> tools = new ArrayList<>();
 
+        /**
+         * The stdio transport: a local process speaking MCP over its stdin/stdout — the
+         * npx/python invocation a server's README says to put in {@code mcp.json}. A spec with a
+         * command has no URL; the CLI launches the process itself, per run.
+         */
+        public String command;
+        public List<String> args = new ArrayList<>();
+        /**
+         * Environment for the launched process. A VALUE of the form {@code credential:<id>} is
+         * resolved from the credential store when the run config is written — that is how a
+         * developer token reaches a stdio server without ever being stored in a flow.
+         */
+        public Map<String, String> env = new LinkedHashMap<>();
+
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        public boolean isStdio() {
+            return command != null && !command.isBlank();
+        }
+
         /** The decrypted bearer token, or null when none is configured or the id is unknown. */
         public String resolveToken() {
             return resolveToken(credentialLookup);
@@ -278,6 +300,26 @@ public class AgentSpec {
         /** Same as {@link #resolveToken()}, resolving through {@code lookup} (for tests). */
         public String resolveToken(Function<String, String> lookup) {
             return resolveCredential(credentialId, lookup);
+        }
+
+        /** {@link #env} with {@code credential:<id>} values decrypted; typed values pass through. */
+        public Map<String, String> resolveEnv() {
+            return resolveEnv(credentialLookup);
+        }
+
+        /** Same as {@link #resolveEnv()}, resolving through {@code lookup} (for tests). */
+        public Map<String, String> resolveEnv(Function<String, String> lookup) {
+            Map<String, String> resolved = new LinkedHashMap<>();
+            for (Map.Entry<String, String> e : env.entrySet()) {
+                String value = e.getValue() == null ? "" : e.getValue();
+                if (value.startsWith("credential:")) {
+                    String secret = resolveCredential(value.substring("credential:".length()), lookup);
+                    resolved.put(e.getKey(), secret == null ? "" : secret);
+                } else {
+                    resolved.put(e.getKey(), value);
+                }
+            }
+            return resolved;
         }
     }
 

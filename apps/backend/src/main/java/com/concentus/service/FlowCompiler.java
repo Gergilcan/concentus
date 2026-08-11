@@ -9,12 +9,14 @@ import com.concentus.config.AgentSpec.SqlSourceSpec;
 import com.concentus.model.FlowEdge;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.FlowNode;
+import com.concentus.support.Variables;
 import org.springframework.stereotype.Component;
 
 import static com.concentus.support.MapValues.bool;
 import static com.concentus.support.MapValues.lng;
 import static com.concentus.support.MapValues.str;
 import static com.concentus.support.MapValues.strList;
+import static com.concentus.support.MapValues.strMap;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -31,6 +33,30 @@ import java.util.function.Function;
 public class FlowCompiler {
 
     public CompiledFlow compile(FlowGraph flow) {
+        return compile(flow, Map.of(), null);
+    }
+
+    /**
+     * Compiles with {@code {{NAME}}} substitution over every prompt-shaped field: system prompts,
+     * routing descriptions, and the merge instructions. Values come merged already (organization
+     * under the flow's own — see VariableStore.merged); names nothing defines stay verbatim in
+     * the prompt and land in {@code unresolved}, so the run can say so instead of an agent
+     * quietly receiving a hole.
+     */
+    public CompiledFlow compile(FlowGraph flow, Map<String, String> variables, Set<String> unresolved) {
+        CompiledFlow compiled = compileRaw(flow);
+        if (!variables.isEmpty() || unresolved != null) {
+            List<AgentSpec> all = new ArrayList<>(compiled.allAgents());
+            if (compiled.merger() != null) all.add(compiled.merger());
+            for (AgentSpec spec : all) {
+                spec.systemPrompt = Variables.substitute(spec.systemPrompt, variables, unresolved);
+                spec.description = Variables.substitute(spec.description, variables, unresolved);
+            }
+        }
+        return compiled;
+    }
+
+    private CompiledFlow compileRaw(FlowGraph flow) {
         List<FlowNode> agents = byType(flow, "agent");
         List<FlowNode> mcps = byType(flow, "mcp");
         List<FlowNode> repos = byType(flow, "repo");
@@ -216,6 +242,11 @@ public class FlowCompiler {
             // Which of the server's tools this agent gets. A large server would otherwise put
             // hundreds of JSON schemas in the prompt.
             spec.tools = strList(md, "tools");
+            // The stdio transport: the node carries the command its README told the user to put
+            // in mcp.json, and the run's config launches it.
+            spec.command = str(md, "command", null);
+            spec.args = strList(md, "args");
+            spec.env = strMap(md, "env");
             return spec;
         });
         collectConnected(flow, node, repos, s.repositories, repo -> {

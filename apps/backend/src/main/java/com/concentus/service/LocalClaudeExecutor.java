@@ -413,6 +413,23 @@ public class LocalClaudeExecutor {
         var servers = mapper.createObjectNode();
         for (McpServerSpec m : byName.values()) {
             var server = mapper.createObjectNode();
+            // The stdio transport: the CLI launches the process itself, per run — the same
+            // command/args/env shape the server's README says to put in mcp.json. Env values of
+            // the form credential:<id> were resolved just now, so tokens live encrypted in the
+            // credential store rather than in the flow.
+            if (m.isStdio()) {
+                server.put("type", "stdio");
+                server.put("command", m.command);
+                var args = server.putArray("args");
+                for (String arg : m.args) args.add(arg);
+                Map<String, String> env = m.resolveEnv();
+                if (!env.isEmpty()) {
+                    var envNode = server.putObject("env");
+                    env.forEach(envNode::put);
+                }
+                servers.set(m.name, server);
+                continue;
+            }
             server.put("type", "http");
             server.put("url", m.url);
             String token = m.resolveToken();
@@ -711,9 +728,15 @@ public class LocalClaudeExecutor {
         for (McpServerSpec m : mcps) {
             if (m.name == null || m.name.isBlank()) continue;
             NodeExec ne = run.nodeExec(m.nodeId, "mcp", m.name);
-            if (ne != null) ne.input = m.url;
+            if (ne != null) ne.input = m.isStdio() ? m.command : m.url;
             String key = m.name.toLowerCase();
             if (!handled.add(key)) continue;
+            if (m.isStdio()) {
+                // Nothing to register: registration exists for OAuth sign-ins and the designer's
+                // tool picker, and a stdio server has neither — the run's own config launches it.
+                markMcpResult(ne, "stdio — launched per run");
+                continue;
+            }
             if (existing.contains(key)) {
                 markMcpResult(ne, "already configured");
                 continue; // already configured — stay quiet

@@ -6,7 +6,7 @@ import { expect, goTo, openApp, test } from './fixtures'
  * copy are what prove the switch actually happened.
  */
 
-test('all eight tabs render their panels', async ({ page }) => {
+test('all nine tabs render their panels', async ({ page }) => {
   await openApp(page)
   await goTo(page, 'Resources')
 
@@ -30,6 +30,9 @@ test('all eight tabs render their panels', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Skills' }).click()
   await expect(page.getByRole('heading', { name: 'Agent Skills' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Variables' }).click()
+  await expect(page.getByRole('heading', { name: 'Variables' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Credentials' }).click()
   await expect(

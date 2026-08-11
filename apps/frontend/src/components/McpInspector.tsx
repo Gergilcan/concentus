@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api/client.ts'
 import type { McpDef, McpNodeData, McpServerInfo } from '../api/types.ts'
 import { CredentialField } from './CredentialField.tsx'
-import { Field, FineTuning, SelectField } from './fields.tsx'
+import { Field, FineTuning, SelectField, TextArea } from './fields.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import { McpOAuthConnect } from './McpOAuthConnect.tsx'
 import { McpToolPicker } from './McpToolPicker.tsx'
@@ -30,8 +30,23 @@ export function McpInspector({ data, set }: Props) {
 
   const useSaved = (id: string) => {
     const d = defs.find((x) => x.id === id)
-    if (d) set({ name: d.name, url: d.url, credentialId: d.credentialId })
+    if (d) {
+      set({
+        name: d.name,
+        url: d.url ?? '',
+        credentialId: d.credentialId ?? '',
+        authHeader: d.authHeader ?? '',
+        command: d.command ?? '',
+        args: d.args ?? [],
+        env: d.env ?? {},
+      })
+    }
   }
+
+  // Derived, not stored: a node with a command IS a stdio node, so the two can never disagree.
+  // Only the moment between picking "Command" and typing one is local state.
+  const [stdioMode, setStdioMode] = useState((data.command ?? '').trim() !== '')
+  const isStdio = stdioMode || (data.command ?? '').trim() !== ''
 
   const selectExisting = (name: string) => {
     const s = servers.find((x) => x.name === name)
@@ -68,14 +83,78 @@ export function McpInspector({ data, set }: Props) {
       )}
 
       <Field label="Name" value={data.name} onChange={(v) => set({ name: v })} />
-      <Field label="URL" value={data.url} onChange={(v) => set({ url: v })} />
-      <CredentialField
-        label="Access token (optional)"
-        value={data.credentialId}
-        onChange={(v) => set({ credentialId: v })}
-        what="this MCP server"
-      />
 
+      <SelectField
+        label={
+          <span title="Remote: an HTTP/SSE server reached by URL — most hosted MCPs. Command: a local process the run launches itself (npx, python…), speaking MCP over stdio — the kind whose README says 'add this to your mcp.json', like Google Ads. You can also paste that snippet under Resources → MCP Servers → Edit as JSON.">
+            Transport ⓘ
+          </span>
+        }
+        value={isStdio ? 'stdio' : 'http'}
+        onChange={(v) => {
+          setStdioMode(v === 'stdio')
+          // Clearing the other side keeps a node from being half one thing and half the other.
+          if (v === 'stdio') set({ url: '', credentialId: '' })
+          else set({ command: '', args: [], env: {} })
+        }}
+      >
+        <option value="http">Remote server (URL)</option>
+        <option value="stdio">Command (stdio) — launched per run</option>
+      </SelectField>
+
+      {isStdio ? (
+        <>
+          <Field
+            label="Command"
+            placeholder="npx"
+            value={data.command ?? ''}
+            onChange={(v) => set({ command: v })}
+          />
+          <TextArea
+            label="Arguments (one per line)"
+            rows={3}
+            placeholder={'-y\n@googleads/google-ads-mcp'}
+            value={(data.args ?? []).join('\n')}
+            onChange={(v) => set({ args: v.split('\n').map((s) => s.trim()).filter(Boolean) })}
+          />
+          <TextArea
+            label={
+              <span title="One KEY=value per line, passed to the launched process. A value of credential:<id> is resolved from Resources → Credentials when the run starts — that is how a developer token reaches the server without ever being stored in the flow.">
+                Environment (KEY=value per line) ⓘ
+              </span>
+            }
+            rows={3}
+            placeholder={'GOOGLE_ADS_DEVELOPER_TOKEN=credential:cred_123\nGOOGLE_ADS_LOGIN_CUSTOMER_ID=1234567890'}
+            value={Object.entries(data.env ?? {}).map(([k, v]) => `${k}=${v}`).join('\n')}
+            onChange={(v) => {
+              const env: Record<string, string> = {}
+              for (const line of v.split('\n')) {
+                const eq = line.indexOf('=')
+                if (eq <= 0) continue
+                env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim()
+              }
+              set({ env })
+            }}
+          />
+          <p className={styles.hint}>
+            The run launches this command itself and talks to it over stdio — nothing to sign in
+            to. The tool picker and OAuth below don't apply; the agent sees every tool the server
+            exposes.
+          </p>
+        </>
+      ) : (
+        <>
+          <Field label="URL" value={data.url} onChange={(v) => set({ url: v })} />
+          <CredentialField
+            label="Access token (optional)"
+            value={data.credentialId}
+            onChange={(v) => set({ credentialId: v })}
+            what="this MCP server"
+          />
+        </>
+      )}
+
+      {!isStdio && (
       <FineTuning>
         <SelectField
           label="Send token in"
@@ -112,15 +191,18 @@ export function McpInspector({ data, set }: Props) {
           for.
         </p>
       </FineTuning>
+      )}
 
-      <McpOAuthConnect url={data.url} />
+      {!isStdio && <McpOAuthConnect url={data.url} />}
 
-      <McpClaudeActions
-        name={data.name}
-        url={data.url}
-        credentialId={data.credentialId}
-        authHeader={data.authHeader}
-      />
+      {!isStdio && (
+        <McpClaudeActions
+          name={data.name}
+          url={data.url}
+          credentialId={data.credentialId}
+          authHeader={data.authHeader}
+        />
+      )}
     </>
   )
 }

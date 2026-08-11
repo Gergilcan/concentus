@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
-import type { BackendFlow, FlowMemoryView, FlowVersionInfo } from '../api/types.ts'
+import type { BackendFlow, FlowMemoryView, FlowVersionInfo, Variable } from '../api/types.ts'
 import { CredentialField } from './CredentialField.tsx'
 import { Modal } from './Modal.tsx'
 import { timeAgo } from './flowFormat.ts'
@@ -26,6 +26,15 @@ export function SettingsModal({
   const [slackChannel, setSlackChannel] = useState(flow.approvalSlackChannel ?? '')
   const [teamsWebhook, setTeamsWebhook] = useState(flow.approvalTeamsWebhook ?? '')
   const [busy, setBusy] = useState(false)
+  // The flow's own {{NAME}} values. Organization variables are shown alongside as the defaults
+  // being overridden; they are loaded here because this is the one place overriding happens.
+  const [variables, setVariables] = useState<Record<string, string>>(flow.variables ?? {})
+  const [orgVariables, setOrgVariables] = useState<Variable[]>([])
+  const [newVarName, setNewVarName] = useState('')
+
+  useEffect(() => {
+    api.listVariables().then(setOrgVariables).catch(() => setOrgVariables([]))
+  }, [])
 
   const save = async () => {
     setBusy(true)
@@ -41,8 +50,24 @@ export function SettingsModal({
       approvalSlackCredentialId: slackCredential.trim(),
       approvalSlackChannel: slackChannel.trim(),
       approvalTeamsWebhook: teamsWebhook.trim(),
+      variables,
     })
     setBusy(false)
+  }
+
+  // One row per name the flow could speak about: every organization variable, plus every name
+  // this flow defines itself. A blank flow value means "inherit the organization's".
+  const variableNames = [
+    ...new Set([...orgVariables.map((v) => v.name), ...Object.keys(variables)]),
+  ].sort()
+
+  const setVariable = (name: string, value: string) => {
+    setVariables((prev) => {
+      const next = { ...prev }
+      if (value === '') delete next[name]
+      else next[name] = value
+      return next
+    })
   }
 
   return (
@@ -120,6 +145,52 @@ export function SettingsModal({
           value={teamsWebhook}
           onChange={(e) => setTeamsWebhook(e.target.value)}
           placeholder="https://…webhook.office.com/…"
+        />
+      </label>
+
+      <h4
+        className={styles.sectionHead}
+        title="Values substituted into this flow's prompts as {{NAME}} when a run starts. Rows come from Resources → Variables; typing here overrides that value for THIS flow only, and blank inherits it. Add flow-only variables below. Saved with the flow, so it remembers what its runs use."
+      >
+        Variables ⓘ
+      </h4>
+      {variableNames.length === 0 && (
+        <p className={styles.modalHint}>
+          None yet — define shared ones under <b>Resources → Variables</b>, or add one below.
+        </p>
+      )}
+      {variableNames.map((varName) => {
+        const org = orgVariables.find((v) => v.name === varName)
+        return (
+          <label key={varName} className={styles.field} title={org?.description || undefined}>
+            <span>
+              {'{{'}{varName}{'}}'}
+              {org && variables[varName] !== undefined ? ' — overridden' : ''}
+            </span>
+            <input
+              value={variables[varName] ?? ''}
+              placeholder={org ? `${org.value} (organization)` : ''}
+              onChange={(e) => setVariable(varName, e.target.value)}
+            />
+          </label>
+        )
+      })}
+      <label className={styles.field}>
+        <span>Add a variable for this flow</span>
+        <input
+          value={newVarName}
+          placeholder="NAME — then fill its value above"
+          onChange={(e) => setNewVarName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return
+            e.preventDefault()
+            const name = newVarName.trim().replace(/[^A-Za-z0-9_.-]/g, '_')
+            if (!name) return
+            // Created with an empty value so its row appears above ready to fill. Clearing a
+            // flow-only variable's row later removes it again — blank has nothing to say.
+            setVariables((prev) => (name in prev ? prev : { ...prev, [name]: '' }))
+            setNewVarName('')
+          }}
         />
       </label>
 

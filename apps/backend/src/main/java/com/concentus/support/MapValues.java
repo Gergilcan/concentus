@@ -1,6 +1,7 @@
 package com.concentus.support;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -56,6 +57,25 @@ public final class MapValues {
             if (t.equalsIgnoreCase("false")) return false;
         }
         return fallback;
+    }
+
+    /**
+     * A string→string map (an MCP server's env, say). Entry order is kept — env blocks read
+     * better in the order they were written — and null values become empty strings rather than
+     * the literal "null" a bare String.valueOf would mint.
+     */
+    public static Map<String, String> strMap(Map<String, Object> d, String key) {
+        Object v = d.get(key);
+        Map<String, String> out = new LinkedHashMap<>();
+        if (v instanceof Map<?, ?> m) {
+            for (Map.Entry<?, ?> e : m.entrySet()) {
+                if (e.getKey() == null) continue;
+                String name = String.valueOf(e.getKey()).trim();
+                if (name.isBlank()) continue;
+                out.put(name, e.getValue() == null ? "" : String.valueOf(e.getValue()));
+            }
+        }
+        return out;
     }
 
     public static long lng(Map<String, Object> d, String key, long fallback) {

@@ -423,6 +423,20 @@
   gap: 4px;
 }
 
+/* The MCP registry's raw-JSON editor. */
+.jsonEditor {
+  width: 100%;
+  background: t.$panel-2;
+  border: 1px solid t.$border;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: t.$text;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
 /* ---- knowledge documents: type tabs, folder tree, pager ---- */
 .kbTabs {
   display: flex;

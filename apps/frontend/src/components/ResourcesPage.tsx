@@ -7,12 +7,13 @@ import { CrudPanel } from './CrudPanel.tsx'
 import { KnowledgePanel } from './KnowledgePanel.tsx'
 import { McpCatalog } from './McpCatalog.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
+import { McpJsonEditor } from './McpJsonEditor.tsx'
 import { ModelField } from './ModelField.tsx'
 import { SkillsPanel } from './SkillsPanel.tsx'
 import { StoragePanel } from './StoragePanel.tsx'
 import styles from './resources.module.scss'
 
-type Tab = 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'credentials' | 'storage'
+type Tab = 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'variables' | 'credentials' | 'storage'
 
 export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
   const [tab, setTab] = useState<Tab>('agents')
@@ -50,6 +51,13 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
         </button>
         <button className={tab === 'skills' ? styles.active : ''} onClick={() => setTab('skills')}>
           Skills
+        </button>
+        <button
+          className={tab === 'variables' ? styles.active : ''}
+          onClick={() => setTab('variables')}
+          title="Values substituted into every flow's prompts as {{NAME}} when a run starts. A flow can override any of them — or add its own — in its settings."
+        >
+          Variables
         </button>
         <button
           className={tab === 'credentials' ? styles.active : ''}
@@ -100,6 +108,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
         {tab === 'mcp' && (
           <>
           <McpCatalog onAdded={() => setMcpListVersion((v) => v + 1)} />
+          <McpJsonEditor onSaved={() => setMcpListVersion((v) => v + 1)} />
           <CrudPanel<McpDef>
             key={mcpListVersion}
             title="MCP Servers"
@@ -130,6 +139,23 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
             )}
           />
           </>
+        )}
+
+        {tab === 'variables' && (
+          <CrudPanel<import('../api/types.ts').Variable>
+            title="Variables"
+            fields={[
+              { key: 'name', label: 'Name (used as {{NAME}} in prompts)', placeholder: 'COMPANY' },
+              { key: 'value', label: 'Value', placeholder: 'ACME S.L.' },
+              { key: 'description', label: 'Description (optional)', placeholder: 'Legal company name' },
+            ]}
+            labelOf={(v) => v.name}
+            idOf={(v) => v.id}
+            empty={() => ({ name: '', value: '', description: '' })}
+            load={api.listVariables}
+            save={api.saveVariable}
+            remove={api.deleteVariable}
+          />
         )}
 
         {tab === 'facades' && (
