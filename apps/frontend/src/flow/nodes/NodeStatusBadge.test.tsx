@@ -89,4 +89,59 @@ describe('NodeStatusBadge', () => {
 
     expect(screen.getByText(/failed/)).toHaveClass(styles.eb_failed)
   })
+
+  it('shows the verifier verdict as a SECOND badge, keeping the run status truthful', () => {
+    // A rejected worker DID finish its work — status stays 'passed', and the verdict badge
+    // carries the kill and its reason on hover.
+    useFlowStore.getState().setActiveRun('run-1')
+    useFlowStore.getState().setRunExec({
+      nodes: [
+        {
+          nodeId: 'n1',
+          kind: 'worker',
+          label: 'Worker A',
+          status: 'passed',
+          inputTokens: 1,
+          outputTokens: 2,
+          startedAt: 0,
+          endedAt: 1,
+          verdict: 'rejected',
+          verdictReason: 'invented numbers',
+        },
+      ],
+      totalInputTokens: 1,
+      totalOutputTokens: 2,
+    })
+
+    render(<NodeStatusBadge id="n1" />)
+
+    expect(screen.getByText(/passed/)).toBeInTheDocument()
+    const verdict = screen.getByText(/rejected/)
+    expect(verdict).toHaveClass(styles.vd_rejected)
+    expect(verdict).toHaveAttribute('title', expect.stringContaining('invented numbers'))
+  })
+
+  it('shows no verdict badge when no verifier judged this node', () => {
+    useFlowStore.getState().setActiveRun('run-1')
+    useFlowStore.getState().setRunExec({
+      nodes: [
+        {
+          nodeId: 'n1',
+          kind: 'agent',
+          label: 'Coordinator',
+          status: 'passed',
+          inputTokens: 1,
+          outputTokens: 0,
+          startedAt: 0,
+          endedAt: 1,
+        },
+      ],
+      totalInputTokens: 1,
+      totalOutputTokens: 0,
+    })
+
+    render(<NodeStatusBadge id="n1" />)
+
+    expect(screen.queryByText(/⚖/)).not.toBeInTheDocument()
+  })
 })

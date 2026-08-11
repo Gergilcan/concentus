@@ -122,6 +122,40 @@ class FlowCompilerTest {
                 .hasMessageContaining("merge");
     }
 
+    // ------------------------------------------------------------- verifier node
+
+    @Test
+    void aVerifierNodeCompilesIntoTheVerifierSpec() {
+        FlowNode a = agent("a1", "coordinator", "Coord");
+        FlowNode v = new FlowNode("v1", "verifier", null,
+                Map.of("name", "Verifier", "model", "claude-sonnet-5", "systemPrompt", "be harsh"));
+        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(a, v), List.<FlowEdge>of(),
+                null, List.<String>of(), null, null);
+
+        CompiledFlow compiled = compiler.compile(flow);
+
+        assertThat(compiled.verifier()).isNotNull();
+        assertThat(compiled.verifier().name).isEqualTo("Verifier");
+        assertThat(compiled.verifier().model.id).isEqualTo("claude-sonnet-5");
+        assertThat(compiled.verifier().systemPrompt).isEqualTo("be harsh");
+        // A verifier is not a sub-agent: it must never join the delegation roster.
+        assertThat(compiled.subAgents()).isEmpty();
+        assertThat(compiled.merger()).isNull();
+    }
+
+    @Test
+    void twoVerifierNodesAreRejected() {
+        FlowNode a = agent("a1", "coordinator", "Coord");
+        FlowNode v1 = new FlowNode("v1", "verifier", null, Map.of("name", "V1"));
+        FlowNode v2 = new FlowNode("v2", "verifier", null, Map.of("name", "V2"));
+        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(a, v1, v2),
+                List.<FlowEdge>of(), null, List.<String>of(), null, null);
+
+        assertThatThrownBy(() -> compiler.compile(flow))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("verifier");
+    }
+
     // ------------------------------------------------------ delegation wiring
 
     @Test

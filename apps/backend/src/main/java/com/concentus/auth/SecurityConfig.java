@@ -84,13 +84,15 @@ public class SecurityConfig {
                     // The run tools endpoints are called by local claude CLI processes, which have
                     // no session and no cookie; each authenticates every request with its own
                     // bearer token instead — per run for /tools, per WORKER for the fan-out's
-                    // facade, and the run's token again for the planner's /plan.
+                    // facade, the run's token again for the planner's /plan, and the verifier's
+                    // own token for /verdict.
                     .ignoringRequestMatchers("/api/webhooks/**", "/api/internal/**",
-                            "/api/runs/*/tools", "/api/runs/*/workers/*/tools", "/api/runs/*/plan"))
+                            "/api/runs/*/tools", "/api/runs/*/workers/*/tools", "/api/runs/*/plan",
+                            "/api/runs/*/verdict"))
             .authorizeHttpRequests(auth -> auth
                     .requestMatchers("/api/webhooks/**", "/api/internal/**").permitAll()
                     .requestMatchers("/api/runs/*/tools", "/api/runs/*/workers/*/tools",
-                            "/api/runs/*/plan").permitAll()
+                            "/api/runs/*/plan", "/api/runs/*/verdict").permitAll()
                     // Signing in, and asking whether you are signed in, cannot themselves require
                     // a session.
                     .requestMatchers("/api/account/login", "/api/account/session").permitAll()

@@ -48,6 +48,7 @@ public class FlowCompiler {
         if (!variables.isEmpty() || unresolved != null) {
             List<AgentSpec> all = new ArrayList<>(compiled.allAgents());
             if (compiled.merger() != null) all.add(compiled.merger());
+            if (compiled.verifier() != null) all.add(compiled.verifier());
             for (AgentSpec spec : all) {
                 spec.systemPrompt = Variables.substitute(spec.systemPrompt, variables, unresolved);
                 spec.description = Variables.substitute(spec.description, variables, unresolved);
@@ -108,7 +109,18 @@ public class FlowCompiler {
                 ? null
                 : buildAgentSpec(merges.get(0), flow, mcps, repos, sqls, knowledges, apis);
 
-        return new CompiledFlow(coordinator, subAgents, merger);
+        // The adversarial verifier of a fan-out flow, cut from the same cloth as the merge: at
+        // most one, because a worker's output must get ONE verdict, not a committee's.
+        List<FlowNode> verifiers = byType(flow, "verifier");
+        if (verifiers.size() > 1) {
+            throw new IllegalArgumentException(
+                    "Flow has more than one verifier node — keep exactly one.");
+        }
+        AgentSpec verifier = verifiers.isEmpty()
+                ? null
+                : buildAgentSpec(verifiers.get(0), flow, mcps, repos, sqls, knowledges, apis);
+
+        return new CompiledFlow(coordinator, subAgents, merger, verifier);
     }
 
     /** Agents reachable from the coordinator, plus who delegates to whom. */

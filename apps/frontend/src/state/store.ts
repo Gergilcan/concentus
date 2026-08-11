@@ -13,6 +13,7 @@ import type {
   AppNodeData,
   BackendFlow,
   BackendFlowNode,
+  GraphMetrics,
   NodeExec,
   NodeExecReport,
   NodeKind,
@@ -38,7 +39,7 @@ const MAX_RUN_EVENTS = 4000
 
 /** The field each node kind uses as its human-facing identifier, if it has one. */
 function nameKey(kind: NodeKind): 'name' | 'label' | null {
-  if (kind === 'agent' || kind === 'mcp' || kind === 'merge') return 'name'
+  if (kind === 'agent' || kind === 'mcp' || kind === 'merge' || kind === 'verifier') return 'name'
   if (kind === 'sql' || kind === 'knowledge') return 'label'
   return null
 }
@@ -165,6 +166,15 @@ function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
         maxTokens: DEFAULT_MAX_TOKENS,
         effort: 'high',
       }
+    case 'verifier':
+      return {
+        kind: 'verifier',
+        name: 'Verifier',
+        model: DEFAULT_MODEL,
+        systemPrompt: '',
+        maxTokens: DEFAULT_MAX_TOKENS,
+        effort: 'high',
+      }
     case 'input':
       return {
         kind: 'input',
@@ -202,6 +212,8 @@ interface FlowState {
   activeRunId: string | null
   runExecByNode: Record<string, NodeExec>
   runTotals: { input: number; output: number; costUsd: number }
+  /** Fan-out health for the inspected run; null for runs that never fanned out. */
+  runGraph: GraphMetrics | null
   setActiveRun: (id: string | null) => void
   setRunExec: (report: NodeExecReport | null) => void
   /**
@@ -252,6 +264,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   activeRunId: null,
   runExecByNode: {},
   runTotals: { input: 0, output: 0, costUsd: 0 },
+  runGraph: null,
   runEvents: [],
   // Bounded so a long-running flow can't grow this array without limit; the backend keeps the
   // authoritative buffer and replays it on reconnect.
@@ -268,21 +281,25 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       s.activeRunId === id
         ? {}
         : (lastRunExecSignature = null,
-           { activeRunId: id, runExecByNode: {}, runTotals: { input: 0, output: 0, costUsd: 0 }, runEvents: [] }),
+           { activeRunId: id, runExecByNode: {}, runTotals: { input: 0, output: 0, costUsd: 0 }, runGraph: null, runEvents: [] }),
     ),
   setRunExec: (report) => {
     if (!report) {
       lastRunExecSignature = null
-      set({ runExecByNode: {}, runTotals: { input: 0, output: 0, costUsd: 0 } })
+      set({ runExecByNode: {}, runTotals: { input: 0, output: 0, costUsd: 0 }, runGraph: null })
       return
     }
     // Bail out when the poll brought back the same state. Every node badge on the canvas and the
     // console's token bar select these objects by reference, so unconditionally minting fresh ones
     // re-rendered all of them at each poll — including on finished runs, whose payload is
-    // byte-identical every time. The signature is cheap and JSON-stable per node.
+    // byte-identical every time. The signature is cheap and JSON-stable per node. The verdict is
+    // part of it because it lands AFTER a worker's endedAt — without it, the poll that carries
+    // the verifier's judgment would be dismissed as "no change".
+    const g = report.graph
     const signature = report.nodes
-      .map((n) => `${n.nodeId}|${n.status}|${n.inputTokens}|${n.outputTokens}|${n.endedAt ?? ''}`)
+      .map((n) => `${n.nodeId}|${n.status}|${n.inputTokens}|${n.outputTokens}|${n.endedAt ?? ''}|${n.verdict ?? ''}`)
       .join(';') + `#${report.totalInputTokens}|${report.totalOutputTokens}|${report.totalCostUsd ?? 0}`
+      + `#${g ? `${g.workers}|${g.workersFailed}|${g.workersRejected}|${g.retries}|${g.verdicts}|${g.wallMs}` : ''}`
     if (signature === lastRunExecSignature) return
     lastRunExecSignature = signature
 
@@ -295,6 +312,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         output: report.totalOutputTokens,
         costUsd: report.totalCostUsd ?? 0,
       },
+      runGraph: report.graph ?? null,
     })
   },
 

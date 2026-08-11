@@ -12,6 +12,7 @@ import { MergeInspector } from './MergeInspector.tsx'
 import { RepoInspector } from './RepoInspector.tsx'
 import { KnowledgeInspector } from './KnowledgeInspector.tsx'
 import { SqlInspector } from './SqlInspector.tsx'
+import { VerifierInspector } from './VerifierInspector.tsx'
 import styles from './panels.module.scss'
 
 function title(data: AppNodeData): string {
@@ -22,6 +23,7 @@ function title(data: AppNodeData): string {
   if (data.kind === 'knowledge') return 'Knowledge base'
   if (data.kind === 'api') return 'API (OpenAPI)'
   if (data.kind === 'merge') return 'Merge'
+  if (data.kind === 'verifier') return 'Verifier'
   return 'Repository'
 }
 
@@ -75,11 +77,11 @@ export function Inspector() {
   // Input/Output tabs only make sense for boxes that execute; only agents produce console
   // output, so Logs is theirs alone.
   const hasExecTabs =
-    data.kind === 'agent' || data.kind === 'sql' || data.kind === 'knowledge' || data.kind === 'api' || data.kind === 'mcp' || data.kind === 'input' || data.kind === 'merge'
+    data.kind === 'agent' || data.kind === 'sql' || data.kind === 'knowledge' || data.kind === 'api' || data.kind === 'mcp' || data.kind === 'input' || data.kind === 'merge' || data.kind === 'verifier'
   // The Input node has an Output but no Input of its own: it is where the run's text comes *from*.
   // For a mail trigger that output is the email, which is the first thing anyone wants to read.
   const tabs: Tab[] =
-    data.kind === 'agent' || data.kind === 'merge'
+    data.kind === 'agent' || data.kind === 'merge' || data.kind === 'verifier'
       ? ['properties', 'input', 'output', 'logs']
       : data.kind === 'input'
         ? ['properties', 'output']
@@ -118,7 +120,7 @@ export function Inspector() {
           <InputView exec={exec} />
         </>
       )}
-      {shownTab === 'logs' && (data.kind === 'agent' || data.kind === 'merge') && (
+      {shownTab === 'logs' && (data.kind === 'agent' || data.kind === 'merge' || data.kind === 'verifier') && (
         <NodeLogView nodeId={id} label={data.name} />
       )}
       {shownTab === 'output' && (
@@ -139,6 +141,8 @@ export function Inspector() {
       {shownTab === 'properties' && data.kind === 'api' && <ApiInspector data={data} set={set} />}
 
       {shownTab === 'properties' && data.kind === 'merge' && <MergeInspector data={data} set={set} />}
+
+      {shownTab === 'properties' && data.kind === 'verifier' && <VerifierInspector data={data} set={set} />}
 
       {shownTab === 'properties' && data.kind === 'repo' && <RepoInspector data={data} set={set} />}
     </aside>
