@@ -3,8 +3,12 @@ import { api } from '../api/client.ts'
 import type { SkillCatalogSkill, SkillInfo, SkillRepo } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { cx } from '../utils/cx.ts'
+import { Pager } from './fields.tsx'
 import panels from './panels.module.scss'
 import styles from './resources.module.scss'
+
+/** The app's list convention: twenty per page. */
+const PAGE_SIZE = 20
 
 /**
  * Agent Skills: zip a folder with a SKILL.md, upload it here, assign it on any agent node.
@@ -17,12 +21,18 @@ export function SkillsPanel() {
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [note, setNote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [page, setPage] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const refresh = () => {
     api.listSkills().then(setSkills).catch((e) => setNote(errMessage(e)))
   }
   useEffect(refresh, [])
+
+  // Clamped rather than reset on change: deleting the last item of the last page must land on
+  // the page that still exists, not on an empty one.
+  const pages = Math.max(1, Math.ceil(skills.length / PAGE_SIZE))
+  const safePage = Math.min(page, pages - 1)
 
   const upload = async (file: File) => {
     setBusy(true)
@@ -49,18 +59,21 @@ export function SkillsPanel() {
       </p>
 
       {skills.length === 0 && <div className={styles.muted}>No skills installed yet.</div>}
-      {skills.map((s) => (
-        <div key={s.id} className={styles.kbDoc}>
-          <span className={styles.kbDocName} title={s.description}>{s.name}</span>
-          <span className={styles.muted}>{s.fileCount} file(s)</span>
-          <button
-            className={styles.delBtn}
-            onClick={() => void api.deleteSkill(s.id).then(refresh)}
-          >
-            Delete
-          </button>
-        </div>
-      ))}
+      {skills
+        .slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
+        .map((s) => (
+          <div key={s.id} className={styles.kbDoc}>
+            <span className={styles.kbDocName} title={s.description}>{s.name}</span>
+            <span className={styles.muted}>{s.fileCount} file(s)</span>
+            <button
+              className={styles.delBtn}
+              onClick={() => void api.deleteSkill(s.id).then(refresh)}
+            >
+              Delete
+            </button>
+          </div>
+        ))}
+      <Pager page={safePage} pages={pages} total={skills.length} unit="skill" onPage={setPage} />
 
       <div className={styles.crudActions}>
         <button className={styles.newBtn} disabled={busy} onClick={() => fileRef.current?.click()}>
@@ -104,6 +117,12 @@ function SkillCatalog({ installedNames, onInstalled, setNote }: {
   const [openRepo, setOpenRepo] = useState<string | null>(null)
   const [repoSkills, setRepoSkills] = useState<Record<string, SkillCatalogSkill[] | 'loading' | string>>({})
   const [installing, setInstalling] = useState<string | null>(null)
+  // One search over both levels: it narrows the repository rows by name/description, and inside
+  // an open repository it narrows the skills. Client-side on purpose — a cross-repo server-side
+  // search would mean downloading every repository's archive up front. A repo whose skills are
+  // not loaded yet cannot be searched inside; opening it is what loads them, and its row says so.
+  const [query, setQuery] = useState('')
+  const [skillPage, setSkillPage] = useState(0)
 
   useEffect(() => {
     if (!open || repos !== null) return
@@ -113,6 +132,7 @@ function SkillCatalog({ installedNames, onInstalled, setNote }: {
   const toggleRepo = (fullName: string) => {
     const next = openRepo === fullName ? null : fullName
     setOpenRepo(next)
+    setSkillPage(0)
     if (!next || repoSkills[fullName] !== undefined) return
     setRepoSkills((prev) => ({ ...prev, [fullName]: 'loading' }))
     const [owner, repo] = fullName.split('/')
@@ -158,8 +178,21 @@ function SkillCatalog({ installedNames, onInstalled, setNote }: {
       {open && repos === null && !reposError && <div className={styles.muted}>Asking GitHub…</div>}
       {open && reposError && <div className={styles.muted}>{reposError}</div>}
       {open && repos !== null && (
+        <input
+          className={panels.pickerSearch}
+          value={query}
+          placeholder="Search repositories and their skills…"
+          aria-label="Search skill catalog"
+          title="Narrows the repositories by name and description, and the skills inside any repository that is open. A repository must be opened once for its skills to be searchable."
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setSkillPage(0)
+          }}
+        />
+      )}
+      {open && repos !== null && (
         <div className={styles.repoList}>
-          {repos.map((repo) => (
+          {visibleRepos(repos, repoSkills, query).map((repo) => (
             <div key={repo.fullName}>
               <button
                 className={styles.repoRow}
@@ -182,33 +215,54 @@ function SkillCatalog({ installedNames, onInstalled, setNote }: {
                     repoSkills[repo.fullName] !== 'loading' && (
                       <div className={styles.muted}>{repoSkills[repo.fullName] as string}</div>
                     )}
-                  {Array.isArray(repoSkills[repo.fullName]) &&
-                    (repoSkills[repo.fullName] as SkillCatalogSkill[]).length === 0 && (
-                      <div className={styles.muted}>No SKILL.md found in this repository.</div>
-                    )}
-                  {Array.isArray(repoSkills[repo.fullName]) &&
-                    (repoSkills[repo.fullName] as SkillCatalogSkill[]).map((skill) => {
-                      const done = installed.has(sanitized(skill.name))
-                      const busyKey = repo.fullName + '/' + skill.path
+                  {Array.isArray(repoSkills[repo.fullName]) && (() => {
+                    const matching = filterSkills(
+                      repoSkills[repo.fullName] as SkillCatalogSkill[], query)
+                    const pages = Math.max(1, Math.ceil(matching.length / PAGE_SIZE))
+                    const safePage = Math.min(skillPage, pages - 1)
+                    if (matching.length === 0) {
                       return (
-                        <div key={skill.path} className={styles.kbDoc}>
-                          <span className={styles.kbDocName} title={skill.description}>
-                            {skill.name}
-                          </span>
-                          {done ? (
-                            <span className={cx(styles.authPill, styles.authAdded)}>✓ installed</span>
-                          ) : (
-                            <button
-                              className={styles.newBtn}
-                              disabled={installing !== null}
-                              onClick={() => void install(repo.fullName, skill)}
-                            >
-                              {installing === busyKey ? 'Installing…' : 'Install'}
-                            </button>
-                          )}
+                        <div className={styles.muted}>
+                          {query.trim() ? 'No skill here matches that search.' : 'No SKILL.md found in this repository.'}
                         </div>
                       )
-                    })}
+                    }
+                    return (
+                      <>
+                        {matching
+                          .slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
+                          .map((skill) => {
+                            const done = installed.has(sanitized(skill.name))
+                            const busyKey = repo.fullName + '/' + skill.path
+                            return (
+                              <div key={skill.path} className={styles.kbDoc}>
+                                <span className={styles.kbDocName} title={skill.description}>
+                                  {skill.name}
+                                </span>
+                                {done ? (
+                                  <span className={cx(styles.authPill, styles.authAdded)}>✓ installed</span>
+                                ) : (
+                                  <button
+                                    className={styles.newBtn}
+                                    disabled={installing !== null}
+                                    onClick={() => void install(repo.fullName, skill)}
+                                  >
+                                    {installing === busyKey ? 'Installing…' : 'Install'}
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          })}
+                        <Pager
+                          page={safePage}
+                          pages={pages}
+                          total={matching.length}
+                          unit="skill"
+                          onPage={setSkillPage}
+                        />
+                      </>
+                    )
+                  })()}
                 </div>
               )}
             </div>
@@ -222,4 +276,35 @@ function SkillCatalog({ installedNames, onInstalled, setNote }: {
 /** 12345 → "12.3k": the number is a signal of adoption, not a figure anyone reads exactly. */
 function formatStars(stars: number): string {
   return stars >= 1000 ? (stars / 1000).toFixed(1) + 'k' : String(stars)
+}
+
+/**
+ * The repositories the search leaves visible: matched by their own name/description, OR by any
+ * already-loaded skill inside them — so searching "pdf" keeps the repo whose pdf skill you saw a
+ * moment ago, even though "pdf" is nowhere in the repo's description.
+ */
+function visibleRepos(
+  repos: SkillRepo[],
+  repoSkills: Record<string, SkillCatalogSkill[] | 'loading' | string>,
+  query: string,
+): SkillRepo[] {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return repos
+  return repos.filter((repo) => {
+    if (repo.fullName.toLowerCase().includes(needle)) return true
+    if ((repo.description ?? '').toLowerCase().includes(needle)) return true
+    const loaded = repoSkills[repo.fullName]
+    return Array.isArray(loaded) && filterSkills(loaded, query).length > 0
+  })
+}
+
+function filterSkills(skills: SkillCatalogSkill[], query: string): SkillCatalogSkill[] {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return skills
+  return skills.filter(
+    (s) =>
+      s.name.toLowerCase().includes(needle) ||
+      (s.description ?? '').toLowerCase().includes(needle) ||
+      s.path.toLowerCase().includes(needle),
+  )
 }
