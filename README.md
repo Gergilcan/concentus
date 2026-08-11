@@ -311,6 +311,20 @@ A backend started by hand does not activate the `desktop` profile, so it has no 
 point `PERSIST_DB_*` at a PostgreSQL of your own, or accept that stored credentials and mail
 triggers report themselves unavailable. See [.env.example](.env.example).
 
+### Tests
+
+```bash
+cd apps/backend && mvn -B clean test    # backend (JUnit; store tests start a real embedded PostgreSQL)
+pnpm --filter frontend test             # frontend units (vitest)
+pnpm --filter frontend test:e2e         # UI end-to-end (Playwright, once: pnpm exec playwright install chromium)
+```
+
+The UI suite drives the real thing: Playwright boots the packaged jar (`e2e/server.mjs`) with an
+embedded PostgreSQL on a scratch data directory and walks the four views — dashboard, Studio
+canvas, every Resources tab, Usage — creating, renaming and deleting flows through the actual API.
+It needs the jar built first, frontend included: `pnpm --filter frontend build`, then
+`mvn -B clean package -DskipTests` in `apps/backend`. CI runs it on every push.
+
 ## Building the installers
 
 ```bash
