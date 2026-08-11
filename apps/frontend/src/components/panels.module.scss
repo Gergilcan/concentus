@@ -515,3 +515,29 @@
   color: t.$text;
   font-size: 12.5px;
 }
+
+/* ---- cron builder: the weekly day picker ---- */
+.dayRow {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.dayChip {
+  background: t.$panel;
+  border: 1px solid t.$border;
+  color: t.$muted;
+  border-radius: 6px;
+  padding: 4px 0;
+  flex: 1;
+  font-size: 11px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$accent;
+  }
+}
+.dayChipOn {
+  background: color-mix(in srgb, t.$accent 20%, transparent);
+  border-color: t.$accent;
+  color: t.$text;
+}
