@@ -148,6 +148,6 @@ class FlowLibrarySeederTest {
     void theFlowIsEnabledSoItIsLiveOnceItsSecretIsSet(@TempDir Path dataDir) {
         Optional<FlowGraph> flow = seedInto(dataDir).get(FLOW_ID);
 
-        assertThat(flow).get().extracting(FlowGraph::isEnabled).isEqualTo(true);
+        assertThat(flow).get().extracting(FlowGraph::enabledOrDefault).isEqualTo(true);
     }
 }

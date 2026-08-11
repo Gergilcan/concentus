@@ -10,14 +10,18 @@ import styles from './flows.module.scss'
 /** Flow-level settings: name, tags, schedule pause, failure webhook. */
 export function SettingsModal({
   flow,
+  folders = [],
   onClose,
   onSave,
 }: {
   flow: BackendFlow
+  /** Folder names already in use, offered as suggestions; typing a new one creates it. */
+  folders?: string[]
   onClose: () => void
   onSave: (changes: Partial<BackendFlow>) => Promise<void>
 }) {
   const [name, setName] = useState(flow.name)
+  const [folder, setFolder] = useState(flow.folder ?? '')
   const [tags, setTags] = useState((flow.tags ?? []).join(', '))
   const [enabled, setEnabled] = useState(flow.enabled !== false)
   const [webhook, setWebhook] = useState(flow.notifyWebhook ?? '')
@@ -40,6 +44,7 @@ export function SettingsModal({
     setBusy(true)
     await onSave({
       name: name.trim() || flow.name,
+      folder: folder.trim(),
       tags: tags
         .split(',')
         .map((t) => t.trim())
@@ -75,6 +80,23 @@ export function SettingsModal({
       <label className={styles.field}>
         <span>Name</span>
         <input value={name} onChange={(e) => setName(e.target.value)} />
+      </label>
+      <label
+        className={styles.field}
+        title="Groups this flow under a collapsible section on the dashboard. Blank = top level. Type a new name to create a folder; the bundled samples live in 'Samples'."
+      >
+        <span>Folder (blank = top level) ⓘ</span>
+        <input
+          value={folder}
+          onChange={(e) => setFolder(e.target.value)}
+          placeholder="e.g. Facturación"
+          list="flow-folder-options"
+        />
+        <datalist id="flow-folder-options">
+          {folders.map((f) => (
+            <option key={f} value={f} />
+          ))}
+        </datalist>
       </label>
       <label className={styles.field}>
         <span>Tags (comma separated)</span>

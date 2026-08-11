@@ -855,3 +855,38 @@
   min-height: 0;
   overflow-y: auto;
 }
+
+/* ---- dashboard folders: collapsible sections, closed by default ---- */
+.folder {
+  margin-top: 14px;
+}
+.folderHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-top: 1px solid t.$border;
+  padding: 10px 2px 8px;
+  color: t.$muted;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$text;
+  }
+}
+.folderArrow {
+  width: 12px;
+}
+.folderCount {
+  border: 1px solid t.$border;
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 10px;
+}

@@ -1,4 +1,4 @@
-import { expect, openApp, test } from './fixtures'
+import { expect, flowCard, openApp, test } from './fixtures'
 
 /**
  * The Flows dashboard: KPIs, the toolbar, search and the empty states. Tolerant of whether the
@@ -30,10 +30,10 @@ test('shows the dashboard: title, KPIs and toolbar', async ({ page }) => {
 test('search filters the cards and clearing brings them back', async ({ page }) => {
   await openApp(page)
   const cards = page.getByRole('article')
-  const initial = await cards.count()
+  const folderHeads = page.getByRole('button', { name: /^Folder / })
 
-  if (initial === 0) {
-    // A fresh install with no seeded flows: the empty state IS the content here.
+  if ((await cards.count()) === 0 && (await folderHeads.count()) === 0) {
+    // A genuinely empty install: the empty state IS the content here.
     await expect(page.getByText('No flows yet')).toBeVisible()
     return
   }
@@ -43,7 +43,57 @@ test('search filters the cards and clearing brings them back', async ({ page }) 
   await expect(cards).toHaveCount(0)
 
   await page.getByLabel('Search flows').fill('')
-  await expect(cards).toHaveCount(initial)
+  // The settled state returns: root cards, or the closed folder sections.
+  await expect(cards.first().or(folderHeads.first())).toBeVisible()
+})
+
+test('the samples live in a closed folder that opens on demand — and search reaches inside', async ({ page }) => {
+  await openApp(page)
+
+  // A fresh database seeds the bundled flows into "Samples", closed: the first launch shows an
+  // invitation, not a wall.
+  const samples = page.getByRole('button', { name: 'Folder Samples' })
+  await expect(samples).toBeVisible()
+  await expect(page.getByRole('article')).toHaveCount(0)
+
+  await samples.click()
+  const opened = await page.getByRole('article').count()
+  expect(opened).toBeGreaterThan(0)
+  await samples.click()
+  await expect(page.getByRole('article')).toHaveCount(0)
+
+  // Searching opens folders by itself — a filter that hid its matches would be broken search.
+  await page.getByLabel('Search flows').fill('a')
+  expect(await page.getByRole('article').count()).toBeGreaterThan(0)
+  await page.getByLabel('Search flows').fill('')
+})
+
+test('a flow moves into a folder from its settings', async ({ page }) => {
+  await openApp(page)
+  await page.getByRole('button', { name: '+ New flow' }).first().click()
+  await page.getByLabel('Flow name').fill('E2E foldered flow')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByRole('button', { name: '← Flows' }).click()
+
+  await flowCard(page, 'E2E foldered flow').getByTitle('Settings').click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel(/Folder/).fill('E2E Carpeta')
+  await dialog.getByRole('button', { name: 'Save' }).click()
+
+  // The card left the root for its new — open-on-creation-not-needed — section.
+  const folder = page.getByRole('button', { name: 'Folder E2E Carpeta' })
+  await expect(folder).toBeVisible()
+  await expect(flowCard(page, 'E2E foldered flow')).toHaveCount(0)
+  await folder.click()
+  await expect(flowCard(page, 'E2E foldered flow')).toHaveCount(1)
+
+  // Clean up: back to the root, then delete.
+  await flowCard(page, 'E2E foldered flow').getByTitle('Settings').click()
+  await page.getByRole('dialog').getByLabel(/Folder/).fill('')
+  await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
+  page.on('dialog', (d) => void d.accept())
+  await flowCard(page, 'E2E foldered flow').getByTitle('Delete').click()
+  await expect(flowCard(page, 'E2E foldered flow')).toHaveCount(0)
 })
 
 test('sorting does not lose any card', async ({ page }) => {

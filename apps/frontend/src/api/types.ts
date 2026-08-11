@@ -416,6 +416,8 @@ export interface BackendFlow {
    * Saved with the flow: a flow remembers the values it runs with.
    */
   variables?: Record<string, string>
+  /** Dashboard folder; blank/absent = root. The bundled starters live in "Samples". */
+  folder?: string
   /**
    * Remote approval over Slack: a stored credential holding the bot token, and the channel the
    * request posts to. A ✅/❌ reaction on the posted message approves/rejects the waiting run —

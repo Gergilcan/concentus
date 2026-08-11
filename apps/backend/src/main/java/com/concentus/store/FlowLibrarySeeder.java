@@ -78,9 +78,12 @@ public class FlowLibrarySeeder {
                         seeded.add(flow.id());
                         continue;
                     }
-                    flows.save(flow);
+                    // Into "Samples", not the root: half a dozen starter flows greeting a first
+                    // launch at the top level reads as clutter someone else left, not as help.
+                    // One folded folder reads as an invitation.
+                    flows.save(flow.withFolder("Samples"));
                     seeded.add(flow.id());
-                    log.info("Installed the bundled flow '{}' ({}).", flow.name(), flow.id());
+                    log.info("Installed the bundled flow '{}' ({}) into Samples.", flow.name(), flow.id());
                 } catch (Exception e) {
                     log.warn("Could not install bundled flow {}: {}", filename, e.getMessage());
                 }

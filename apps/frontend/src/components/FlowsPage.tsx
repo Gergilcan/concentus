@@ -61,6 +61,43 @@ export function FlowsPage({
   )
   const recent = useMemo(() => recentRuns(runs), [runs])
 
+  // Folders: root flows first, then one collapsible section per folder. Sections start CLOSED —
+  // that is the whole point for a first launch, where every flow on screen is a bundled sample
+  // and a wall of them reads as clutter, not help. Open state is a screen habit, so it lives in
+  // localStorage; searching or filtering opens everything, because a filter that hides its own
+  // matches inside closed folders would just be broken search.
+  const grouped = useMemo(() => {
+    const root: BackendFlow[] = []
+    const byFolder = new Map<string, BackendFlow[]>()
+    for (const flow of visible) {
+      const folder = (flow.folder ?? '').trim()
+      if (!folder) root.push(flow)
+      else byFolder.set(folder, [...(byFolder.get(folder) ?? []), flow])
+    }
+    return { root, folders: [...byFolder.entries()].sort((a, b) => a[0].localeCompare(b[0])) }
+  }, [visible])
+  const allFolders = useMemo(
+    () => [...new Set(flows.map((f) => (f.folder ?? '').trim()).filter(Boolean))].sort(),
+    [flows],
+  )
+  const filtering = query.trim() !== '' || tagFilter !== null
+  const [openFolders, setOpenFolders] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('flows.openFolders') ?? '[]') as string[])
+    } catch {
+      return new Set()
+    }
+  })
+  const toggleFolder = (name: string) => {
+    setOpenFolders((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      localStorage.setItem('flows.openFolders', JSON.stringify([...next]))
+      return next
+    })
+  }
+
   const patch = async (flow: BackendFlow, changes: Partial<BackendFlow>) => {
     try {
       await onSaveFlow({ ...flow, ...changes })
@@ -68,6 +105,24 @@ export function FlowsPage({
       pushError(errMessage(e))
     }
   }
+
+  // One card, whatever grid it sits in — the root and every folder render the same thing.
+  const renderCard = (flow: BackendFlow) => (
+    <FlowCard
+      key={flow.id}
+      flow={flow}
+      flowRuns={flow.id ? (runsByFlow.get(flow.id) ?? []) : []}
+      onOpen={onOpen}
+      onRun={onRun}
+      onDuplicate={onDuplicate}
+      onDelete={onDelete}
+      patch={patch}
+      exportFlow={downloadFlowJson}
+      setVersionsFor={setVersionsFor}
+      setSettingsFor={setSettingsFor}
+      setTagFilter={setTagFilter}
+    />
+  )
 
   const importFlow = async (file: File) => {
     try {
@@ -119,24 +174,29 @@ export function FlowsPage({
                 )}
               </div>
             ) : (
-              <div className={styles.grid}>
-                {visible.map((flow) => (
-                  <FlowCard
-                    key={flow.id}
-                    flow={flow}
-                    flowRuns={flow.id ? (runsByFlow.get(flow.id) ?? []) : []}
-                    onOpen={onOpen}
-                    onRun={onRun}
-                    onDuplicate={onDuplicate}
-                    onDelete={onDelete}
-                    patch={patch}
-                    exportFlow={downloadFlowJson}
-                    setVersionsFor={setVersionsFor}
-                    setSettingsFor={setSettingsFor}
-                    setTagFilter={setTagFilter}
-                  />
-                ))}
-              </div>
+              <>
+                {grouped.root.length > 0 && (
+                  <div className={styles.grid}>{grouped.root.map(renderCard)}</div>
+                )}
+                {grouped.folders.map(([name, items]) => {
+                  const open = filtering || openFolders.has(name)
+                  return (
+                    <div key={name} className={styles.folder}>
+                      <button
+                        className={styles.folderHead}
+                        aria-label={`Folder ${name}`}
+                        aria-expanded={open}
+                        onClick={() => toggleFolder(name)}
+                      >
+                        <span className={styles.folderArrow}>{open ? '▾' : '▸'}</span>
+                        {name}
+                        <span className={styles.folderCount}>{items.length}</span>
+                      </button>
+                      {open && <div className={styles.grid}>{items.map(renderCard)}</div>}
+                    </div>
+                  )
+                })}
+              </>
             )}
           </section>
 
@@ -150,6 +210,7 @@ export function FlowsPage({
       {settingsFor && (
         <SettingsModal
           flow={settingsFor}
+          folders={allFolders}
           onClose={() => setSettingsFor(null)}
           onSave={async (changes) => {
             await patch(settingsFor, changes)

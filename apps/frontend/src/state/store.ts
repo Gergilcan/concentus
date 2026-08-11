@@ -187,6 +187,8 @@ type FlowMeta = {
   budgetUsd?: number | null
   /** {{NAME}} values for this flow — must survive a canvas save or the flow forgets them. */
   variables?: Record<string, string>
+  /** Dashboard folder — same deal: a canvas save must not silently move the flow to the root. */
+  folder?: string
 }
 
 interface FlowState {
@@ -417,6 +419,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         notifyWebhook: flow.notifyWebhook,
         budgetUsd: flow.budgetUsd,
         variables: flow.variables,
+        folder: flow.folder,
       },
       nodes,
       edges: flow.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
