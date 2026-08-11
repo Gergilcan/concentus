@@ -86,7 +86,7 @@ public class MailTriggerService {
 
         for (FlowGraph flow : flows.list()) {
             if (flow.id() == null || !TriggerSpec.from(flow).mail()) continue;
-            if (!flow.isEnabled()) {
+            if (!flow.enabledOrDefault()) {
                 log.info("Flow '{}' is paused — not polling its mailbox.", flow.name());
                 continue;
             }
@@ -136,7 +136,7 @@ public class MailTriggerService {
     /** One poll of one flow's folder. Package-private so tests can drive it deterministically. */
     void poll(String flowId) {
         FlowGraph flow = flows.get(flowId).orElse(null);
-        if (flow == null || !flow.isEnabled()) return;
+        if (flow == null || !flow.enabledOrDefault()) return;
         if (!processed.isAvailable()) {
             // Polling with no memory would start a run per tick for the same message.
             log.warn("Skipping the mail poll for '{}': the processed-mail store is unavailable.",

@@ -51,6 +51,8 @@ export const NODE_COLORS: Record<string, string> = {
   knowledge: '#b98cff',
   api: '#e64980',
   input: '#51cf66',
+  merge: '#ffa94d',
+  verifier: '#94d82d',
   default: '#888',
 }
 

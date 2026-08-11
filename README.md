@@ -208,10 +208,22 @@ construction.
   clearly a read is treated as one. A worker with MCP nodes but no profile gets **no** MCP tools
   at all. The real MCP URLs and credentials never enter a worker's process: everything goes
   through a per-worker endpoint with its own token.
+- **The Verifier node** runs after every worker and *before* the merge, with the workers'
+  objective inverted: not "find the strongest answer" but "find the reason this one should be
+  rejected". Worker and judge sharing an objective is how plausible-but-wrong output sails
+  through — the opposition is the point. It reads the workers' real workspaces (judge what they
+  produced, not what they claimed) but cannot edit or run commands; its only tool is
+  `verdict_submit`, which must cover **every** output — accept, or reject with the reason — and
+  the verdict has teeth: a rejected output never reaches the merge. The kill and its reason land
+  on the worker's box, and a verifier that errors or never submits stops the run as UNVERIFIED
+  rather than passing outputs along as judged. At most one per flow.
 - **The Merge node** runs after every worker: one more process that receives all their reports
   (failures included), reads their workspaces, and reconciles them into the run's answer. It is
   the only fan-out process with shell access — running the tests belongs to the one step whose
   job is verifying the combined result, not to N unattended workers.
+- **The run console reports the graph, not just the transcript**: a fan-out run shows how many
+  workers ran and failed, how much retrying propped the run up, the verifier's kill rate, and
+  the wall-clock versus sequential time — the parallelism the fan-out actually bought.
 
 Two current limits, said where you can plan around them: repository nodes are **not cloned into
 workers** yet (a flow that pushes code stays on subagents execution), and workers run against

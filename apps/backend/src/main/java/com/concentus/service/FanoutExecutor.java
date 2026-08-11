@@ -4,6 +4,7 @@ import com.concentus.config.AgentSpec;
 import com.concentus.model.NodeExec;
 import com.concentus.model.RunEvent;
 import com.concentus.model.WorkPlan;
+import com.concentus.model.WorkVerdict;
 import com.concentus.support.LocalClaudeSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -193,9 +194,26 @@ public class FanoutExecutor {
             return;
         }
 
+        // Adversarial verification, between the workers and the merge: a separate process whose
+        // objective is to REJECT each output, with the power to make that stick — a rejected
+        // output is withheld from the merge. A verifier that could only comment would be
+        // decoration.
+        List<Outcome> surviving = outcomes;
+        AgentSpec verifier = flow.verifier();
+        if (verifier != null) {
+            WorkVerdict verdict = runVerifier(run, verifier, cmd, userText, outcomes);
+            if ("ERROR".equals(run.status) || "TERMINATED".equals(run.status)) return;
+            surviving = applyVerdict(run, verdict, outcomes);
+            if (surviving.stream().noneMatch(Outcome::ok)) {
+                fail(run, "The verifier rejected every worker's output — nothing survived to "
+                        + "merge. Each rejection's reason is on its worker's box.");
+                return;
+            }
+        }
+
         AgentSpec merger = flow.merger();
         if (merger != null) {
-            runMerge(run, merger, cmd, userText, outcomes);
+            runMerge(run, merger, cmd, userText, surviving);
             if ("ERROR".equals(run.status) || "TERMINATED".equals(run.status)) return;
         }
         settleIdle(run);
@@ -447,6 +465,9 @@ public class FanoutExecutor {
                 return new Outcome(spec, false, null, "run was stopped");
             }
             if (attempt > 1) {
+                // Counted on the node so the graph metrics can say how much retrying propped
+                // this run up — a run that only passes on second launches is not healthy.
+                if (exec != null) exec.retries++;
                 run.emit(RunEvent.of("system", "Retrying (" + attempt + "/" + attempts + ") after: "
                         + lastError, spec.name, spec.nodeId));
             }
@@ -794,6 +815,179 @@ public class FanoutExecutor {
                     .append(" worker(s) failed — their sections above say why. The rest is real.\n");
         }
         return md.toString();
+    }
+
+    // ---------------------------------------------------------------- verifier step
+
+    /**
+     * The adversarial verification step: one more {@code claude} process, after every worker has
+     * finished and before the merge, whose objective is the workers' inverse — not "find the
+     * strongest answer" but "find the reason this one should be rejected". Worker and verifier
+     * sharing an objective is how plausible-but-wrong output sails through; the opposition is
+     * the point.
+     *
+     * <p>It runs read-only (the planner's denylist) and its only MCP server is the verdict
+     * endpoint, so judging is all it can do — but it reads the workers' real workspaces via
+     * {@code --add-dir}, so "judge" can mean "check what they actually produced" and not just
+     * "grade what they claimed". Its verdict has teeth: a rejected output never reaches the
+     * merge. Only outputs that finished are judged — a worker that already failed has nothing
+     * left to kill.
+     *
+     * <p>Returns the accepted verdict, or null after failing the run: a verifier that errors or
+     * never submits leaves the outputs UNVERIFIED, and passing unverified output along as if it
+     * had been judged is the one thing this step must never do.
+     */
+    private WorkVerdict runVerifier(AgentRun run, AgentSpec verifier, String cmd, String userText,
+                                    List<Outcome> outcomes) {
+        NodeExec exec = run.nodeExec(verifier.nodeId, "agent", verifier.name);
+        Path workdir = Path.of(dataDir, "local", run.id, "verifier").toAbsolutePath().normalize();
+        Path workersRoot = Path.of(dataDir, "local", run.id, "workers").toAbsolutePath().normalize();
+
+        run.submittedVerdict = null; // last turn's judgment must never cover this turn's outputs
+        run.verdictExpected.clear();
+        List<Outcome> judged = outcomes.stream().filter(Outcome::ok).toList();
+        for (Outcome o : judged) run.verdictExpected.add(o.spec().nodeId);
+
+        String prompt = verifierPrompt(userText, judged, workersRoot);
+        if (exec != null) {
+            exec.appendInput(prompt);
+            exec.status = "running";
+        }
+        run.emit(RunEvent.of("system", "Verification: an adversarial verifier now tries to "
+                + "reject each of the " + judged.size() + " surviving output(s). A rejected "
+                + "output is withheld from the merge.", verifier.name, verifier.nodeId));
+
+        try {
+            prepareVerifierWorkspace(run, verifier, workdir);
+        } catch (IOException e) {
+            markVerifierFailed(run, exec, "verifier workspace could not be prepared: " + e.getMessage());
+            return null;
+        }
+
+        List<Path> dirs = new ArrayList<>();
+        if (Files.isDirectory(workersRoot)) dirs.add(workersRoot);
+        dirs.addAll(contextFolders.resolve(verifier.contextFolders, (path, reason) ->
+                run.emit(RunEvent.of("system", "Context folder ignored — " + path + ": " + reason,
+                        verifier.name, verifier.nodeId))));
+
+        Outcome outcome = execute(run, verifier, exec, cmd, prompt, workdir, dirs, PLANNER_READ_ONLY);
+        if ("TERMINATED".equals(run.status)) return null;
+        if (!outcome.ok()) {
+            markVerifierFailed(run, exec, outcome.error());
+            return null;
+        }
+        WorkVerdict verdict = run.submittedVerdict;
+        if (verdict == null) {
+            markVerifierFailed(run, exec, "finished without submitting a verdict (verdict_submit "
+                    + "was never accepted)"
+                    + (outcome.finalText() == null || outcome.finalText().isBlank()
+                            ? "" : ". Its final message: " + outcome.finalText()));
+            return null;
+        }
+        if (exec != null) {
+            exec.status = "passed";
+            exec.endedAt = System.currentTimeMillis();
+        }
+        return verdict;
+    }
+
+    /**
+     * Applies the verdict: marks every judged worker's box, and replaces a rejected worker's
+     * outcome with an explicit kill — the merge is told the slice is a gap and why, and never
+     * sees the rejected content. Withholding rather than annotating, deliberately: content
+     * handed to a reasoning step gets reasoned about, however sternly it is labelled.
+     */
+    private static List<Outcome> applyVerdict(AgentRun run, WorkVerdict verdict,
+                                              List<Outcome> outcomes) {
+        List<Outcome> out = new ArrayList<>(outcomes.size());
+        for (Outcome o : outcomes) {
+            WorkVerdict.Item item = o.ok() ? verdict.of(o.spec().nodeId) : null;
+            NodeExec exec = item == null ? null : run.nodeExec(o.spec().nodeId, "agent", o.spec().name);
+            if (item != null && exec != null) {
+                exec.verdict = item.rejected() ? "rejected" : "accepted";
+                exec.verdictReason = item.rejected() ? item.reason() : null;
+            }
+            if (item != null && item.rejected()) {
+                run.emit(RunEvent.of("system", "Output of '" + o.spec().name
+                        + "' REJECTED by the verifier: " + item.reason(),
+                        o.spec().name, o.spec().nodeId));
+                out.add(new Outcome(o.spec(), false, null,
+                        "output rejected by the verifier: " + item.reason()));
+            } else {
+                out.add(o);
+            }
+        }
+        return out;
+    }
+
+    private void markVerifierFailed(AgentRun run, NodeExec exec, String error) {
+        if (exec != null) {
+            exec.status = "failed";
+            exec.error = error;
+            exec.endedAt = System.currentTimeMillis();
+        }
+        if (!"TERMINATED".equals(run.status)) {
+            fail(run, "The verification step failed: " + error + " The workers' combined report "
+                    + "above still stands, but it is UNVERIFIED — the run stops rather than "
+                    + "passing it along as judged.");
+        }
+    }
+
+    private void prepareVerifierWorkspace(AgentRun run, AgentSpec verifier, Path workdir)
+            throws IOException {
+        Files.createDirectories(workdir);
+        if (run.verdictToken == null) run.verdictToken = UUID.randomUUID().toString();
+        if (!run.workersPrepared.add("verifier:" + verifier.nodeId)) return;
+
+        ragInjector.inject(verifier, run, m -> run.emit(RunEvent.of("system", m)));
+
+        StringBuilder md = new StringBuilder();
+        md.append("""
+                You are the adversarial verifier of a fan-out flow: several independent workers
+                each produced an output, and your one job is to try to REJECT each one — find
+                the reason it is wrong, incomplete, unverified, or off-task. You are not here to
+                improve or summarize anything; the workers argued FOR their answers, you argue
+                against. An output you genuinely cannot fault is accepted; everything else is
+                rejected with the concrete reason. Reject on substance, never on style.
+
+                You cannot edit files or run commands. You CAN read the workers' real
+                workspaces — judge what they produced, not just what they claimed. When every
+                worker is judged, submit ALL verdicts in one verdict_submit call (a rejected
+                output is withheld from the merge step), then finish with a one-line summary.
+                """);
+        if (verifier.systemPrompt != null && !verifier.systemPrompt.isBlank()) {
+            md.append('\n').append(verifier.systemPrompt).append('\n');
+        }
+        LocalClaudeExecutor.appendContextFolderNote(verifier, md);
+        Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
+
+        // The verifier's whole MCP world is the verdict endpoint — judging is all it can do.
+        var root = mapper.createObjectNode();
+        var server = root.putObject("mcpServers").putObject("concentus-verdict");
+        server.put("type", "http");
+        server.put("url", "http://127.0.0.1:" + serverPort + "/api/runs/" + run.id + "/verdict");
+        server.putObject("headers")
+                .put(com.concentus.web.RunToolsController.TOKEN_HEADER, run.verdictToken);
+        Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
+                mapper.writeValueAsString(root));
+    }
+
+    /** The verifier's input: the goal, each surviving output, and where the real files sit. */
+    private static String verifierPrompt(String userText, List<Outcome> judged, Path workersRoot) {
+        StringBuilder p = new StringBuilder();
+        p.append("# Task the workers were given\n\n").append(userText).append("\n\n");
+        p.append("# Outputs to judge\n");
+        for (Outcome o : judged) {
+            p.append("\n## ").append(o.spec().name)
+                    .append(" (id: ").append(o.spec().nodeId).append(")\n");
+            p.append(o.finalText() == null || o.finalText().isBlank()
+                    ? "(finished without a final message)" : o.finalText()).append('\n');
+        }
+        p.append("\nTheir full workspaces (files they wrote, one folder per worker) are under: ")
+                .append(workersRoot).append("\n");
+        p.append("\nJudge every output above and submit one verdict per listed id via "
+                + "verdict_submit — accept or reject, with the reason for each rejection.\n");
+        return p.toString();
     }
 
     // ---------------------------------------------------------------- merge step

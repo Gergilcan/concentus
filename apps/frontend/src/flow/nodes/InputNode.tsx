@@ -1,5 +1,6 @@
 import type { NodeProps, Node } from '@xyflow/react'
 import type { InputNodeData } from '../../api/types.ts'
+import { describeCron } from '../../components/cron.ts'
 import { NodeShell } from './NodeShell.tsx'
 import styles from './nodes.module.scss'
 
@@ -23,7 +24,13 @@ export function InputNode({ data, selected }: NodeProps<InputRFNode>) {
       title="Input"
       badge={LABEL[data.mode]}
     >
-      {data.mode === 'cron' && <div className={styles.meta}>{data.cron || 'no schedule'}</div>}
+      {/* The schedule in words when it can be said in words ("Working days at 07:00"), the raw
+          expression otherwise — with the expression on hover either way. */}
+      {data.mode === 'cron' && (
+        <div className={styles.meta} title={data.cron || undefined}>
+          {data.cron ? (describeCron(data.cron) ?? data.cron) : 'no schedule'}
+        </div>
+      )}
       {/* The folder is what someone scanning the canvas needs to see — it is the thing that
           decides which mail this flow acts on. */}
       {data.mode === 'mail' && (

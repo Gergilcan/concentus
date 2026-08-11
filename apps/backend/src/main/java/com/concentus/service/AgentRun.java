@@ -105,6 +105,23 @@ public class AgentRun {
      */
     public final Map<String, com.concentus.config.AgentSpec> syntheticWorkers =
             new ConcurrentHashMap<>();
+    /**
+     * Bearer for the verifier's verdict endpoint. Its own token rather than {@link #toolToken}:
+     * the verifier holding the planner's token could resubmit the plan, and the planner holding
+     * this one could pre-approve its own workers' outputs.
+     */
+    public volatile String verdictToken;
+    /**
+     * The verdict the verifier submitted this turn via {@code verdict_submit}, already validated
+     * against {@link #verdictExpected}. Null until it arrives; cleared before each verification
+     * so a stale verdict can never pass judgment on outputs it did not see.
+     */
+    public volatile com.concentus.model.WorkVerdict submittedVerdict;
+    /**
+     * Node ids of the worker outputs currently awaiting judgment — the exact set a submitted
+     * verdict must cover, no more and no less.
+     */
+    public final java.util.Set<String> verdictExpected = ConcurrentHashMap.newKeySet();
 
     // --- self-hosted model run state ---
     /**
@@ -348,5 +365,53 @@ public class AgentRun {
                     n.outputTokens);
         }
         return PricingTable.round(total);
+    }
+
+    /**
+     * This run's fan-out health, derived from the per-node records rather than accrued
+     * separately — the node timings and statuses already are the truth, and a second set of
+     * counters would only get the chance to disagree with them. Null when the run never fanned
+     * out: a single-session flow has no graph to measure, and a strip of zeros would imply it
+     * does.
+     */
+    public com.concentus.model.GraphMetrics graphMetrics() {
+        CompiledFlow flow = compiled;
+        List<NodeExec> nodes = nodeExecList();
+        List<NodeExec> workers = nodes.stream().filter(n -> isWorker(n, flow)).toList();
+        boolean fanout = flow != null && flow.fanout();
+        if (workers.isEmpty() || (!fanout && workers.stream().noneMatch(n -> "worker".equals(n.kind)))) {
+            return null;
+        }
+
+        long now = System.currentTimeMillis();
+        int failed = 0, rejected = 0, verdicts = 0, retries = 0;
+        long sum = 0, firstStart = Long.MAX_VALUE, lastEnd = 0;
+        for (NodeExec n : workers) {
+            if ("failed".equals(n.status)) failed++;
+            if (n.verdict != null) verdicts++;
+            if ("rejected".equals(n.verdict)) rejected++;
+            if (n.startedAt > 0) {
+                long end = n.endedAt > 0 ? n.endedAt : now;
+                sum += end - n.startedAt;
+                firstStart = Math.min(firstStart, n.startedAt);
+                lastEnd = Math.max(lastEnd, end);
+            }
+        }
+        // Retries across the whole graph, not just workers: a planner or merge that only passed
+        // on its second launch is the same health signal.
+        for (NodeExec n : nodes) retries += n.retries;
+        long wall = firstStart == Long.MAX_VALUE ? 0 : lastEnd - firstStart;
+        return new com.concentus.model.GraphMetrics(workers.size(), failed, rejected, retries,
+                verdicts, wall, sum);
+    }
+
+    /** Whether this node record is a fan-out worker: plan-born, or a drawn sub-agent's. */
+    private static boolean isWorker(NodeExec n, CompiledFlow flow) {
+        if ("worker".equals(n.kind)) return true;
+        if (!"agent".equals(n.kind) || flow == null) return false;
+        for (AgentSpec s : flow.subAgents()) {
+            if (s.nodeId.equals(n.nodeId)) return true;
+        }
+        return false;
     }
 }

@@ -855,3 +855,144 @@
   min-height: 0;
   overflow-y: auto;
 }
+
+/* ---- dashboard folders: an explorer you enter, with drag & drop ---- */
+.crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+}
+.crumbSeg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.crumbSep {
+  color: t.$muted;
+  opacity: 0.6;
+}
+.crumb {
+  background: none;
+  border: 1px solid transparent; /* keeps size stable when a drop highlight adds one */
+  border-radius: 6px;
+  padding: 2px 7px;
+  color: t.$muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$text;
+    background: t.$panel-2;
+  }
+}
+.crumbHere {
+  color: t.$text;
+  font-weight: 600;
+}
+
+.folderGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.folderTile {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  background: t.$panel;
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
+  color: t.$text;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    border-color: t.$accent;
+  }
+}
+/* A folder drawn in CSS: body + tab, tinted like the OS would tint one. */
+.folderGlyph {
+  position: relative;
+  flex: none;
+  width: 26px;
+  height: 19px;
+  margin-top: 3px;
+  background: linear-gradient(180deg, #e8b64c, #d19a2f);
+  border-radius: 2px 4px 4px 4px;
+}
+.folderTab {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  width: 12px;
+  height: 5px;
+  background: #e8b64c;
+  border-radius: 3px 3px 0 0;
+}
+.folderName {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.folderCount {
+  border: 1px solid t.$border;
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 10px;
+  color: t.$muted;
+}
+.folderEmpty {
+  color: t.$muted;
+  font-size: 12.5px;
+  font-style: italic;
+  padding: 8px 2px;
+}
+/* A draft (still-empty) folder: hollow glyph, and an ✕ to take it back. */
+.folderGlyphEmpty {
+  background: none;
+  border: 1.5px solid #d19a2f;
+
+  .folderTab {
+    background: #d19a2f;
+  }
+}
+.folderRemove {
+  color: t.$muted;
+  font-size: 11px;
+  padding: 2px 5px;
+  border-radius: 5px;
+
+  &:hover {
+    color: t.$danger;
+    background: t.$panel-2;
+  }
+}
+.folderNew {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 11px;
+  background: none;
+  border: 1px dashed t.$border;
+  border-radius: t.$radius;
+  color: t.$muted;
+  font-size: 12.5px;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$text;
+    border-color: t.$accent;
+  }
+}
+/* The current drop target — tile or breadcrumb segment — while a drag hovers it. */
+.dropOver {
+  border-color: t.$accent;
+  background: rgba(110, 168, 254, 0.12); /* $accent at 12% */
+}

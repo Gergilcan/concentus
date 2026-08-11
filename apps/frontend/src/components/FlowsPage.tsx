@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type DragEvent } from 'react'
+import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import type { BackendFlow, RunSummary } from '../api/types.ts'
 import { FlowCard } from './FlowCard.tsx'
+import { breadcrumbOf, childFolders, flowsAt, folderOf, moveFolder, normalizePath } from './folderTree.ts'
 import { SettingsModal, VersionsModal } from './FlowModals.tsx'
 import { FlowsKpis } from './FlowsKpis.tsx'
 import { type Sort } from './flowFormat.ts'
@@ -18,6 +20,10 @@ import { FlowsToolbar } from './FlowsToolbar.tsx'
 import { RecentRunsList } from './RecentRunsList.tsx'
 import { TagFilterBar } from './TagFilterBar.tsx'
 import styles from './flows.module.scss'
+
+/** dataTransfer types for the dashboard's drag & drop — custom so foreign drags are ignored. */
+const FLOW_DND = 'application/x-concentus-flow'
+const FOLDER_DND = 'application/x-concentus-folder'
 
 interface Props {
   flows: BackendFlow[]
@@ -61,6 +67,57 @@ export function FlowsPage({
   )
   const recent = useMemo(() => recentRuns(runs), [runs])
 
+  // Folders are a real place you enter, not sections you unfold: the dashboard shows the current
+  // folder's subfolders as tiles plus its own flows, with a breadcrumb back up. A first launch
+  // shows one "Samples" tile instead of six sample cards. Searching or tag-filtering suspends the
+  // tree and shows every match flat — a filter that hid its matches inside folders would just be
+  // broken search.
+  const [path, setPath] = useState('')
+  const filtering = query.trim() !== '' || tagFilter !== null
+  const tiles = useMemo(() => childFolders(visible, path), [visible, path])
+  const here = useMemo(() => flowsAt(visible, path), [visible, path])
+  const crumbs = useMemo(() => breadcrumbOf(path), [path])
+
+  // Folders normally exist because a flow lives under them, which left no way to CREATE one
+  // before having something to put in it. Drafts fill that gap: "New folder" records a path in
+  // localStorage and the tile appears empty, ready to receive a drag. The moment a flow lands
+  // there the folder is derivable and the draft is just shadowed; if its flows ever leave, it
+  // reappears as an empty tile rather than vanishing under the user. The ✕ removes an empty one.
+  const [drafts, setDrafts] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('flows.folderDrafts') ?? '[]') as string[]
+    } catch {
+      return []
+    }
+  })
+  const saveDrafts = (next: string[]) => {
+    setDrafts(next)
+    localStorage.setItem('flows.folderDrafts', JSON.stringify(next))
+  }
+  const draftTiles = useMemo(() => {
+    const prefix = path === '' ? '' : path + '/'
+    const realNames = new Set(tiles.map((t) => t.name))
+    return drafts
+      .filter((d) => (prefix === '' || d.startsWith(prefix)) && d !== path)
+      .map((d) => d.slice(prefix.length))
+      .filter((rest) => rest !== '' && !rest.includes('/'))
+      .filter((name) => !realNames.has(name))
+      .sort()
+  }, [drafts, tiles, path])
+  const createFolder = () => {
+    const name = normalizePath(window.prompt('Folder name (use / to nest):') ?? '')
+    if (!name) return
+    const full = path === '' ? name : path + '/' + name
+    if (!drafts.includes(full)) saveDrafts([...drafts, full])
+  }
+  const removeDraft = (full: string) =>
+    saveDrafts(drafts.filter((d) => d !== full && !d.startsWith(full + '/')))
+
+  const allFolders = useMemo(
+    () => [...new Set([...flows.map(folderOf).filter(Boolean), ...drafts])].sort(),
+    [flows, drafts],
+  )
+
   const patch = async (flow: BackendFlow, changes: Partial<BackendFlow>) => {
     try {
       await onSaveFlow({ ...flow, ...changes })
@@ -68,6 +125,58 @@ export function FlowsPage({
       pushError(errMessage(e))
     }
   }
+
+  // Drag & drop: flow cards and folder tiles both drag; folder tiles and breadcrumb segments both
+  // receive. Payloads travel as custom dataTransfer types so a stray file dropped on a tile is
+  // ignored rather than misread. `dropTarget` drives the visual highlight only.
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+
+  const acceptsDrop = (e: DragEvent) =>
+    e.dataTransfer.types.includes(FLOW_DND) || e.dataTransfer.types.includes(FOLDER_DND)
+
+  const dragOver = (target: string) => (e: DragEvent) => {
+    if (!acceptsDrop(e)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDropTarget(target)
+  }
+
+  const drop = (target: string) => (e: DragEvent) => {
+    e.preventDefault()
+    setDropTarget(null)
+    const flowId = e.dataTransfer.getData(FLOW_DND)
+    if (flowId) {
+      const flow = flows.find((f) => f.id === flowId)
+      if (flow && folderOf(flow) !== target) void patch(flow, { folder: target })
+      return
+    }
+    const from = e.dataTransfer.getData(FOLDER_DND)
+    if (!from) return
+    const changes = moveFolder(flows, from, target)
+    if (changes.length === 0) return
+    void Promise.all(changes.map(({ flow, folder }) => patch(flow, { folder })))
+    // If the folder being viewed just moved, follow it — staying on a dead path shows a void.
+    if (path === from || path.startsWith(from + '/')) setPath('')
+  }
+
+  // One card, whatever grid it sits in — the flat search view and every folder render the same.
+  const renderCard = (flow: BackendFlow) => (
+    <FlowCard
+      key={flow.id}
+      flow={flow}
+      flowRuns={flow.id ? (runsByFlow.get(flow.id) ?? []) : []}
+      onOpen={onOpen}
+      onRun={onRun}
+      onDuplicate={onDuplicate}
+      onDelete={onDelete}
+      patch={patch}
+      exportFlow={downloadFlowJson}
+      setVersionsFor={setVersionsFor}
+      setSettingsFor={setSettingsFor}
+      setTagFilter={setTagFilter}
+      onDragStart={(e) => flow.id && e.dataTransfer.setData(FLOW_DND, flow.id)}
+    />
+  )
 
   const importFlow = async (file: File) => {
     try {
@@ -103,7 +212,7 @@ export function FlowsPage({
 
         <div className={styles.body}>
           <section className={styles.gridCol}>
-            {visible.length === 0 ? (
+            {visible.length === 0 && draftTiles.length === 0 ? (
               <div className={styles.emptyCard}>
                 <div className={styles.emptyIcon}>⬡</div>
                 <h3>{flows.length === 0 ? 'No flows yet' : 'Nothing matches those filters'}</h3>
@@ -118,25 +227,102 @@ export function FlowsPage({
                   </button>
                 )}
               </div>
+            ) : filtering ? (
+              // Filtering: the tree steps aside and every match shows flat, wherever it lives.
+              <div className={styles.grid}>{visible.map(renderCard)}</div>
             ) : (
-              <div className={styles.grid}>
-                {visible.map((flow) => (
-                  <FlowCard
-                    key={flow.id}
-                    flow={flow}
-                    flowRuns={flow.id ? (runsByFlow.get(flow.id) ?? []) : []}
-                    onOpen={onOpen}
-                    onRun={onRun}
-                    onDuplicate={onDuplicate}
-                    onDelete={onDelete}
-                    patch={patch}
-                    exportFlow={downloadFlowJson}
-                    setVersionsFor={setVersionsFor}
-                    setSettingsFor={setSettingsFor}
-                    setTagFilter={setTagFilter}
-                  />
-                ))}
-              </div>
+              <>
+                {path !== '' && (
+                  <nav className={styles.crumbs} aria-label="Folder path">
+                    {crumbs.map((crumb, i) => (
+                      <span key={crumb.path} className={styles.crumbSeg}>
+                        {i > 0 && <span className={styles.crumbSep}>/</span>}
+                        <button
+                          className={cx(
+                            styles.crumb,
+                            i === crumbs.length - 1 && styles.crumbHere,
+                            dropTarget === 'crumb:' + crumb.path && styles.dropOver,
+                          )}
+                          onClick={() => setPath(crumb.path)}
+                          onDragOver={dragOver('crumb:' + crumb.path)}
+                          onDragLeave={() => setDropTarget(null)}
+                          onDrop={drop(crumb.path)}
+                        >
+                          {crumb.label}
+                        </button>
+                      </span>
+                    ))}
+                  </nav>
+                )}
+                <div className={styles.folderGrid}>
+                  {tiles.map(({ name, count }) => {
+                    const full = path === '' ? name : path + '/' + name
+                    return (
+                      <button
+                        key={full}
+                        className={cx(styles.folderTile, dropTarget === full && styles.dropOver)}
+                        aria-label={`Folder ${name}`}
+                        onClick={() => setPath(full)}
+                        draggable
+                        onDragStart={(e) => e.dataTransfer.setData(FOLDER_DND, full)}
+                        onDragOver={dragOver(full)}
+                        onDragLeave={() => setDropTarget(null)}
+                        onDrop={drop(full)}
+                      >
+                        <span className={styles.folderGlyph} aria-hidden>
+                          <span className={styles.folderTab} />
+                        </span>
+                        <span className={styles.folderName}>{name}</span>
+                        <span className={styles.folderCount}>{count}</span>
+                      </button>
+                    )
+                  })}
+                  {draftTiles.map((name) => {
+                    const full = path === '' ? name : path + '/' + name
+                    return (
+                      <button
+                        key={'draft:' + full}
+                        className={cx(styles.folderTile, dropTarget === full && styles.dropOver)}
+                        aria-label={`Folder ${name}`}
+                        onClick={() => setPath(full)}
+                        onDragOver={dragOver(full)}
+                        onDragLeave={() => setDropTarget(null)}
+                        onDrop={drop(full)}
+                      >
+                        <span className={cx(styles.folderGlyph, styles.folderGlyphEmpty)} aria-hidden>
+                          <span className={styles.folderTab} />
+                        </span>
+                        <span className={styles.folderName}>{name}</span>
+                        <span
+                          role="button"
+                          aria-label={`Remove empty folder ${name}`}
+                          title="Remove this empty folder"
+                          className={styles.folderRemove}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            removeDraft(full)
+                          }}
+                        >
+                          ✕
+                        </span>
+                      </button>
+                    )
+                  })}
+                  <button className={styles.folderNew} onClick={createFolder}>
+                    + New folder
+                  </button>
+                </div>
+                {here.length > 0 ? (
+                  <div className={styles.grid}>{here.map(renderCard)}</div>
+                ) : (
+                  tiles.length === 0 &&
+                  draftTiles.length === 0 && (
+                    <p className={styles.folderEmpty}>
+                      This folder is empty — drag a flow onto it, or set it in a flow's Settings.
+                    </p>
+                  )
+                )}
+              </>
             )}
           </section>
 
@@ -150,6 +336,7 @@ export function FlowsPage({
       {settingsFor && (
         <SettingsModal
           flow={settingsFor}
+          folders={allFolders}
           onClose={() => setSettingsFor(null)}
           onSave={async (changes) => {
             await patch(settingsFor, changes)

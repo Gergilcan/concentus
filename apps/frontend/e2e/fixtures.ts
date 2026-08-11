@@ -49,11 +49,15 @@ export async function openApp(page: Page): Promise<void> {
     (r) => r.url().includes('/api/flows') && r.request().method() === 'GET',
   )
   await page.goto('/')
-  const flows = (await (await flowsAnswer).json()) as unknown[]
+  const flows = (await (await flowsAnswer).json()) as { folder?: string }[]
   if (flows.length === 0) {
     await expect(page.getByText('No flows yet')).toBeVisible()
-  } else {
+  } else if (flows.some((f) => !(f.folder ?? '').trim())) {
     await expect(page.getByRole('article').first()).toBeVisible()
+  } else {
+    // Every flow lives in a folder (a fresh install: the samples), so the root of the explorer
+    // shows folder tiles — the tiles ARE the settled state.
+    await expect(page.getByRole('button', { name: /^Folder / }).first()).toBeVisible()
   }
 }
 

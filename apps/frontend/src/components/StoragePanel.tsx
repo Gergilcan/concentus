@@ -72,7 +72,7 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
   const pendingRestart = config.activeMode !== mode || config.activeMode !== config.mode
 
   return (
-    <div className={styles.crudForm} style={{ maxWidth: '46rem' }}>
+    <div className={`${styles.crudForm} ${styles.lone}`} style={{ maxWidth: '46rem' }}>
       <SelectField
         label="Where Concentus stores its data"
         value={mode}

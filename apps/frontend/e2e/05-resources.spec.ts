@@ -59,6 +59,13 @@ test('the MCP catalog expands into category tabs with one-click entries', async 
   await page.getByRole('tab', { name: 'Business' }).click()
   await expect(page.getByText('Customers, invoices, payments')).toBeVisible()
   await expect(page.getByText('Issues, PRs, repositories')).toHaveCount(0)
+
+  // The Google and Microsoft shelves: local stdio servers, labelled as such.
+  await page.getByRole('tab', { name: 'Google' }).click()
+  await expect(page.getByText('Google Search Console')).toBeVisible()
+  await page.getByRole('tab', { name: 'Microsoft' }).click()
+  await expect(page.getByText('Microsoft Graph')).toBeVisible()
+  await expect(page.getByText('Official Microsoft/Azure docs search')).toBeVisible()
 })
 
 test('export downloads the whole configuration and import accepts it back', async ({ page }) => {

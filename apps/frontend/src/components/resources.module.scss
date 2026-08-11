@@ -245,6 +245,19 @@
 }
 
 /* ---- mcp catalog ---- */
+/* The MCP tab's above-the-grid extras (catalog + JSON editor): without this their collapse
+   headers hug the window's left edge — nothing else gives them an inset. */
+.tabExtras {
+  padding: 10px 20px 0;
+}
+
+/* A panel that fills the tab alone (Storage, Skills): more horizontal air than the CRUD form
+   gets, because there is no list column beside it to lean on. */
+.lone {
+  padding-left: 26px;
+  padding-right: 26px;
+}
+
 .catalog {
   margin-bottom: 18px;
 }
