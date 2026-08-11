@@ -1,7 +1,7 @@
 @use '../styles/theme' as t;
 
 .runs {
-  height: 300px;
+  height: 260px;
   display: grid;
   grid-template-columns: 260px 1fr;
   border-top: 1px solid t.$border;

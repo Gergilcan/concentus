@@ -35,7 +35,10 @@
 }
 .collapseSide {
   position: absolute;
-  top: 8px;
+  // Mid-edge, not the top corner: the corner is where both panels keep their own headers, and
+  // the chevron was sitting on the inspector's title.
+  top: 50%;
+  transform: translateY(-50%);
   width: 18px;
   height: 26px;
   padding: 0;

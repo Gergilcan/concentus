@@ -18,9 +18,9 @@
     border: 1px solid t.$border;
     border-bottom: none;
     color: t.$muted;
-    padding: 8px 16px;
+    padding: 5px 12px;
     border-radius: 8px 8px 0 0;
-    font-size: 13px;
+    font-size: 12.5px;
 
     &:hover {
       color: t.$text;
@@ -164,7 +164,7 @@
   color: #08111f;
   font-weight: 600;
   border-radius: 6px;
-  padding: 8px 16px;
+  padding: 5px 12px;
 }
 
 .delBtn {
@@ -198,7 +198,7 @@
 /* ---- knowledge bases ---- */
 .h4 {
   margin: 18px 0 8px;
-  font-size: 13px;
+  font-size: 12.5px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: t.$muted;
@@ -213,7 +213,7 @@
   gap: 10px;
   padding: 6px 0;
   border-bottom: 1px dashed t.$border;
-  font-size: 13px;
+  font-size: 12.5px;
 }
 .kbDocName {
   font-weight: 600;
@@ -269,7 +269,7 @@
   background: t.$panel-2;
   border: 1px solid t.$border;
   border-radius: 8px;
-  padding: 9px 11px;
+  padding: 7px 9px;
   cursor: pointer;
   color: t.$text;
 
@@ -290,7 +290,7 @@
 }
 .catalogName {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12.5px;
 }
 .authPill {
   font-size: 9.5px;
@@ -394,7 +394,7 @@
   border-radius: 6px;
   padding: 6px 8px;
   color: t.$text;
-  font-size: 13px;
+  font-size: 12.5px;
   cursor: pointer;
 
   &:hover {
@@ -468,7 +468,7 @@
   border: none;
   color: t.$text;
   padding: 6px 0 2px;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
 
@@ -553,7 +553,7 @@
   background: t.$panel-2;
 }
 .excludeHead {
-  font-size: 13px;
+  font-size: 12.5px;
   margin-bottom: 6px;
 }
 .excludeList {

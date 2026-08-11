@@ -3,7 +3,7 @@
 .palette,
 .inspector {
   background: t.$panel;
-  padding: 14px;
+  padding: 10px;
   overflow: auto;
 }
 
@@ -31,7 +31,7 @@
   background: t.$panel-2;
   border: 1px solid t.$border;
   color: t.$text;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: t.$radius;
   margin-bottom: 8px;
 
@@ -165,7 +165,7 @@
 
 .empty {
   color: t.$muted;
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 .libraryField {
@@ -351,7 +351,7 @@
   border: 1px solid t.$danger;
   color: t.$danger;
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   font-size: 12px;
   margin-bottom: 10px;
   word-break: break-word;
