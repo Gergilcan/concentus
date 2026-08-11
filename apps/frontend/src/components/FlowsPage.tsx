@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type DragEvent } from 'react'
+import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import type { BackendFlow, RunSummary } from '../api/types.ts'
 import { FlowCard } from './FlowCard.tsx'
+import { breadcrumbOf, childFolders, flowsAt, folderOf, moveFolder } from './folderTree.ts'
 import { SettingsModal, VersionsModal } from './FlowModals.tsx'
 import { FlowsKpis } from './FlowsKpis.tsx'
 import { type Sort } from './flowFormat.ts'
@@ -18,6 +20,10 @@ import { FlowsToolbar } from './FlowsToolbar.tsx'
 import { RecentRunsList } from './RecentRunsList.tsx'
 import { TagFilterBar } from './TagFilterBar.tsx'
 import styles from './flows.module.scss'
+
+/** dataTransfer types for the dashboard's drag & drop — custom so foreign drags are ignored. */
+const FLOW_DND = 'application/x-concentus-flow'
+const FOLDER_DND = 'application/x-concentus-folder'
 
 interface Props {
   flows: BackendFlow[]
@@ -61,42 +67,20 @@ export function FlowsPage({
   )
   const recent = useMemo(() => recentRuns(runs), [runs])
 
-  // Folders: root flows first, then one collapsible section per folder. Sections start CLOSED —
-  // that is the whole point for a first launch, where every flow on screen is a bundled sample
-  // and a wall of them reads as clutter, not help. Open state is a screen habit, so it lives in
-  // localStorage; searching or filtering opens everything, because a filter that hides its own
-  // matches inside closed folders would just be broken search.
-  const grouped = useMemo(() => {
-    const root: BackendFlow[] = []
-    const byFolder = new Map<string, BackendFlow[]>()
-    for (const flow of visible) {
-      const folder = (flow.folder ?? '').trim()
-      if (!folder) root.push(flow)
-      else byFolder.set(folder, [...(byFolder.get(folder) ?? []), flow])
-    }
-    return { root, folders: [...byFolder.entries()].sort((a, b) => a[0].localeCompare(b[0])) }
-  }, [visible])
+  // Folders are a real place you enter, not sections you unfold: the dashboard shows the current
+  // folder's subfolders as tiles plus its own flows, with a breadcrumb back up. A first launch
+  // shows one "Samples" tile instead of six sample cards. Searching or tag-filtering suspends the
+  // tree and shows every match flat — a filter that hid its matches inside folders would just be
+  // broken search.
+  const [path, setPath] = useState('')
+  const filtering = query.trim() !== '' || tagFilter !== null
+  const tiles = useMemo(() => childFolders(visible, path), [visible, path])
+  const here = useMemo(() => flowsAt(visible, path), [visible, path])
+  const crumbs = useMemo(() => breadcrumbOf(path), [path])
   const allFolders = useMemo(
-    () => [...new Set(flows.map((f) => (f.folder ?? '').trim()).filter(Boolean))].sort(),
+    () => [...new Set(flows.map(folderOf).filter(Boolean))].sort(),
     [flows],
   )
-  const filtering = query.trim() !== '' || tagFilter !== null
-  const [openFolders, setOpenFolders] = useState<Set<string>>(() => {
-    try {
-      return new Set(JSON.parse(localStorage.getItem('flows.openFolders') ?? '[]') as string[])
-    } catch {
-      return new Set()
-    }
-  })
-  const toggleFolder = (name: string) => {
-    setOpenFolders((prev) => {
-      const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
-      localStorage.setItem('flows.openFolders', JSON.stringify([...next]))
-      return next
-    })
-  }
 
   const patch = async (flow: BackendFlow, changes: Partial<BackendFlow>) => {
     try {
@@ -106,7 +90,40 @@ export function FlowsPage({
     }
   }
 
-  // One card, whatever grid it sits in — the root and every folder render the same thing.
+  // Drag & drop: flow cards and folder tiles both drag; folder tiles and breadcrumb segments both
+  // receive. Payloads travel as custom dataTransfer types so a stray file dropped on a tile is
+  // ignored rather than misread. `dropTarget` drives the visual highlight only.
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+
+  const acceptsDrop = (e: DragEvent) =>
+    e.dataTransfer.types.includes(FLOW_DND) || e.dataTransfer.types.includes(FOLDER_DND)
+
+  const dragOver = (target: string) => (e: DragEvent) => {
+    if (!acceptsDrop(e)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDropTarget(target)
+  }
+
+  const drop = (target: string) => (e: DragEvent) => {
+    e.preventDefault()
+    setDropTarget(null)
+    const flowId = e.dataTransfer.getData(FLOW_DND)
+    if (flowId) {
+      const flow = flows.find((f) => f.id === flowId)
+      if (flow && folderOf(flow) !== target) void patch(flow, { folder: target })
+      return
+    }
+    const from = e.dataTransfer.getData(FOLDER_DND)
+    if (!from) return
+    const changes = moveFolder(flows, from, target)
+    if (changes.length === 0) return
+    void Promise.all(changes.map(({ flow, folder }) => patch(flow, { folder })))
+    // If the folder being viewed just moved, follow it — staying on a dead path shows a void.
+    if (path === from || path.startsWith(from + '/')) setPath('')
+  }
+
+  // One card, whatever grid it sits in — the flat search view and every folder render the same.
   const renderCard = (flow: BackendFlow) => (
     <FlowCard
       key={flow.id}
@@ -121,6 +138,7 @@ export function FlowsPage({
       setVersionsFor={setVersionsFor}
       setSettingsFor={setSettingsFor}
       setTagFilter={setTagFilter}
+      onDragStart={(e) => flow.id && e.dataTransfer.setData(FLOW_DND, flow.id)}
     />
   )
 
@@ -173,29 +191,68 @@ export function FlowsPage({
                   </button>
                 )}
               </div>
+            ) : filtering ? (
+              // Filtering: the tree steps aside and every match shows flat, wherever it lives.
+              <div className={styles.grid}>{visible.map(renderCard)}</div>
             ) : (
               <>
-                {grouped.root.length > 0 && (
-                  <div className={styles.grid}>{grouped.root.map(renderCard)}</div>
+                {path !== '' && (
+                  <nav className={styles.crumbs} aria-label="Folder path">
+                    {crumbs.map((crumb, i) => (
+                      <span key={crumb.path} className={styles.crumbSeg}>
+                        {i > 0 && <span className={styles.crumbSep}>/</span>}
+                        <button
+                          className={cx(
+                            styles.crumb,
+                            i === crumbs.length - 1 && styles.crumbHere,
+                            dropTarget === 'crumb:' + crumb.path && styles.dropOver,
+                          )}
+                          onClick={() => setPath(crumb.path)}
+                          onDragOver={dragOver('crumb:' + crumb.path)}
+                          onDragLeave={() => setDropTarget(null)}
+                          onDrop={drop(crumb.path)}
+                        >
+                          {crumb.label}
+                        </button>
+                      </span>
+                    ))}
+                  </nav>
                 )}
-                {grouped.folders.map(([name, items]) => {
-                  const open = filtering || openFolders.has(name)
-                  return (
-                    <div key={name} className={styles.folder}>
-                      <button
-                        className={styles.folderHead}
-                        aria-label={`Folder ${name}`}
-                        aria-expanded={open}
-                        onClick={() => toggleFolder(name)}
-                      >
-                        <span className={styles.folderArrow}>{open ? '▾' : '▸'}</span>
-                        {name}
-                        <span className={styles.folderCount}>{items.length}</span>
-                      </button>
-                      {open && <div className={styles.grid}>{items.map(renderCard)}</div>}
-                    </div>
+                {tiles.length > 0 && (
+                  <div className={styles.folderGrid}>
+                    {tiles.map(({ name, count }) => {
+                      const full = path === '' ? name : path + '/' + name
+                      return (
+                        <button
+                          key={full}
+                          className={cx(styles.folderTile, dropTarget === full && styles.dropOver)}
+                          aria-label={`Folder ${name}`}
+                          onClick={() => setPath(full)}
+                          draggable
+                          onDragStart={(e) => e.dataTransfer.setData(FOLDER_DND, full)}
+                          onDragOver={dragOver(full)}
+                          onDragLeave={() => setDropTarget(null)}
+                          onDrop={drop(full)}
+                        >
+                          <span className={styles.folderGlyph} aria-hidden>
+                            <span className={styles.folderTab} />
+                          </span>
+                          <span className={styles.folderName}>{name}</span>
+                          <span className={styles.folderCount}>{count}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+                {here.length > 0 ? (
+                  <div className={styles.grid}>{here.map(renderCard)}</div>
+                ) : (
+                  tiles.length === 0 && (
+                    <p className={styles.folderEmpty}>
+                      This folder is empty — its flows moved elsewhere.
+                    </p>
                   )
-                })}
+                )}
               </>
             )}
           </section>

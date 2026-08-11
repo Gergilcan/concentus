@@ -83,13 +83,13 @@ export function SettingsModal({
       </label>
       <label
         className={styles.field}
-        title="Groups this flow under a collapsible section on the dashboard. Blank = top level. Type a new name to create a folder; the bundled samples live in 'Samples'."
+        title="Files this flow in a dashboard folder. Blank = top level. Use / to nest ('Clients/ACME'). Typing a new path creates the folder; you can also drag cards onto folders on the dashboard. The bundled samples live in 'Samples'."
       >
         <span>Folder (blank = top level) ⓘ</span>
         <input
           value={folder}
           onChange={(e) => setFolder(e.target.value)}
-          placeholder="e.g. Facturación"
+          placeholder="e.g. Facturación or Clients/ACME"
           list="flow-folder-options"
         />
         <datalist id="flow-folder-options">

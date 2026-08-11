@@ -55,8 +55,8 @@ export async function openApp(page: Page): Promise<void> {
   } else if (flows.some((f) => !(f.folder ?? '').trim())) {
     await expect(page.getByRole('article').first()).toBeVisible()
   } else {
-    // Every flow lives in a folder (a fresh install: the samples), and folders start closed —
-    // the section headers ARE the settled state.
+    // Every flow lives in a folder (a fresh install: the samples), so the root of the explorer
+    // shows folder tiles — the tiles ARE the settled state.
     await expect(page.getByRole('button', { name: /^Folder / }).first()).toBeVisible()
   }
 }

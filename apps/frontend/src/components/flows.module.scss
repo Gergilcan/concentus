@@ -856,37 +856,106 @@
   overflow-y: auto;
 }
 
-/* ---- dashboard folders: collapsible sections, closed by default ---- */
-.folder {
-  margin-top: 14px;
-}
-.folderHead {
+/* ---- dashboard folders: an explorer you enter, with drag & drop ---- */
+.crumbs {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: none;
-  border-top: 1px solid t.$border;
-  padding: 10px 2px 8px;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+}
+.crumbSeg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.crumbSep {
   color: t.$muted;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+.crumb {
+  background: none;
+  border: 1px solid transparent; /* keeps size stable when a drop highlight adds one */
+  border-radius: 6px;
+  padding: 2px 7px;
+  color: t.$muted;
   cursor: pointer;
 
   &:hover {
     color: t.$text;
+    background: t.$panel-2;
   }
 }
-.folderArrow {
+.crumbHere {
+  color: t.$text;
+  font-weight: 600;
+}
+
+.folderGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.folderTile {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  background: t.$panel;
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
+  color: t.$text;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    border-color: t.$accent;
+  }
+}
+/* A folder drawn in CSS: body + tab, tinted like the OS would tint one. */
+.folderGlyph {
+  position: relative;
+  flex: none;
+  width: 26px;
+  height: 19px;
+  margin-top: 3px;
+  background: linear-gradient(180deg, #e8b64c, #d19a2f);
+  border-radius: 2px 4px 4px 4px;
+}
+.folderTab {
+  position: absolute;
+  top: -4px;
+  left: 0;
   width: 12px;
+  height: 5px;
+  background: #e8b64c;
+  border-radius: 3px 3px 0 0;
+}
+.folderName {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .folderCount {
   border: 1px solid t.$border;
   border-radius: 999px;
   padding: 0 8px;
   font-size: 10px;
+  color: t.$muted;
+}
+.folderEmpty {
+  color: t.$muted;
+  font-size: 12.5px;
+  font-style: italic;
+  padding: 8px 2px;
+}
+/* The current drop target — tile or breadcrumb segment — while a drag hovers it. */
+.dropOver {
+  border-color: t.$accent;
+  background: rgba(110, 168, 254, 0.12); /* $accent at 12% */
 }

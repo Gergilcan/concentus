@@ -47,22 +47,24 @@ test('search filters the cards and clearing brings them back', async ({ page }) 
   await expect(cards.first().or(folderHeads.first())).toBeVisible()
 })
 
-test('the samples live in a closed folder that opens on demand — and search reaches inside', async ({ page }) => {
+test('the samples live in a folder you enter and leave — and search reaches inside', async ({ page }) => {
   await openApp(page)
 
-  // A fresh database seeds the bundled flows into "Samples", closed: the first launch shows an
-  // invitation, not a wall.
+  // A fresh database seeds the bundled flows into "Samples": the first launch shows one folder
+  // tile, an invitation instead of a wall of cards.
   const samples = page.getByRole('button', { name: 'Folder Samples' })
   await expect(samples).toBeVisible()
   await expect(page.getByRole('article')).toHaveCount(0)
 
+  // Entering shows the flows and the way back; the breadcrumb returns to the root.
   await samples.click()
-  const opened = await page.getByRole('article').count()
-  expect(opened).toBeGreaterThan(0)
-  await samples.click()
+  expect(await page.getByRole('article').count()).toBeGreaterThan(0)
+  await page.getByRole('button', { name: 'All flows' }).click()
   await expect(page.getByRole('article')).toHaveCount(0)
+  await expect(samples).toBeVisible()
 
-  // Searching opens folders by itself — a filter that hid its matches would be broken search.
+  // Searching suspends the tree and shows matches flat, wherever they live — a filter that hid
+  // its matches inside folders would be broken search.
   await page.getByLabel('Search flows').fill('a')
   expect(await page.getByRole('article').count()).toBeGreaterThan(0)
   await page.getByLabel('Search flows').fill('')
@@ -80,7 +82,7 @@ test('a flow moves into a folder from its settings', async ({ page }) => {
   await dialog.getByLabel(/Folder/).fill('E2E Carpeta')
   await dialog.getByRole('button', { name: 'Save' }).click()
 
-  // The card left the root for its new — open-on-creation-not-needed — section.
+  // The card left the root for its new folder's tile.
   const folder = page.getByRole('button', { name: 'Folder E2E Carpeta' })
   await expect(folder).toBeVisible()
   await expect(flowCard(page, 'E2E foldered flow')).toHaveCount(0)
@@ -91,9 +93,62 @@ test('a flow moves into a folder from its settings', async ({ page }) => {
   await flowCard(page, 'E2E foldered flow').getByTitle('Settings').click()
   await page.getByRole('dialog').getByLabel(/Folder/).fill('')
   await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'All flows' }).click()
   page.on('dialog', (d) => void d.accept())
   await flowCard(page, 'E2E foldered flow').getByTitle('Delete').click()
   await expect(flowCard(page, 'E2E foldered flow')).toHaveCount(0)
+})
+
+test('drag and drop: a card into a folder, a folder into a folder, a card back out', async ({ page }) => {
+  await openApp(page)
+  const newFlow = async (name: string, folder?: string) => {
+    await page.getByRole('button', { name: '+ New flow' }).first().click()
+    await page.getByLabel('Flow name').fill(name)
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await page.getByRole('button', { name: '← Flows' }).click()
+    if (folder) {
+      await flowCard(page, name).getByTitle('Settings').click()
+      const dialog = page.getByRole('dialog')
+      await dialog.getByLabel(/Folder/).fill(folder)
+      await dialog.getByRole('button', { name: 'Save' }).click()
+    }
+  }
+  await newFlow('E2E dnd anchor', 'DnD Uno')
+  await newFlow('E2E dnd mover')
+
+  // Card onto a folder tile: the card leaves the root and appears inside.
+  const uno = page.getByRole('button', { name: 'Folder DnD Uno' })
+  await flowCard(page, 'E2E dnd mover').dragTo(uno)
+  await expect(flowCard(page, 'E2E dnd mover')).toHaveCount(0)
+  await uno.click()
+  await expect(flowCard(page, 'E2E dnd mover')).toHaveCount(1)
+
+  // Card onto a breadcrumb segment: back out to the root.
+  await flowCard(page, 'E2E dnd mover').dragTo(page.getByRole('button', { name: 'All flows' }))
+  await expect(flowCard(page, 'E2E dnd mover')).toHaveCount(0)
+  await page.getByRole('button', { name: 'All flows' }).click()
+  await expect(flowCard(page, 'E2E dnd mover')).toHaveCount(1)
+
+  // Folder onto a folder: nest it, then walk down the two levels.
+  await flowCard(page, 'E2E dnd mover').getByTitle('Settings').click()
+  await page.getByRole('dialog').getByLabel(/Folder/).fill('DnD Dos')
+  await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
+  const dos = page.getByRole('button', { name: 'Folder DnD Dos' })
+  await dos.dragTo(uno)
+  await expect(dos).toHaveCount(0)
+  await uno.click()
+  await expect(page.getByRole('button', { name: 'Folder DnD Dos' })).toBeVisible()
+  await page.getByRole('button', { name: 'Folder DnD Dos' }).click()
+  await expect(flowCard(page, 'E2E dnd mover')).toHaveCount(1)
+
+  // Clean up: pull both flows to the root and delete them.
+  page.on('dialog', (d) => void d.accept())
+  for (const name of ['E2E dnd mover', 'E2E dnd anchor']) {
+    await page.getByLabel('Search flows').fill(name)
+    await flowCard(page, name).getByTitle('Delete').click()
+    await expect(flowCard(page, name)).toHaveCount(0)
+  }
+  await page.getByLabel('Search flows').fill('')
 })
 
 test('sorting does not lose any card', async ({ page }) => {
