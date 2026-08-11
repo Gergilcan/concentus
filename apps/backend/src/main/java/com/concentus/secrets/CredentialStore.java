@@ -104,6 +104,47 @@ public class CredentialStore {
     }
 
     /**
+     * Re-creates an exported credential as a placeholder, under its ORIGINAL id.
+     *
+     * <p>The export carries credential metadata only — a secret written to a file is a secret
+     * leaked eventually — so an import has ids and labels but no values. Inserting placeholders
+     * under the same ids is what keeps every flow's {@code credentialId} pointing at a credential
+     * with a recognisable name; the person then re-enters each value once, through the same panel
+     * as always. The placeholder secret is a random value no service will accept, never empty:
+     * empty would break the "a credential always decrypts to something" invariant everywhere.
+     *
+     * <p>{@code ON CONFLICT DO NOTHING} on the id: if this machine already has that credential,
+     * its REAL secret must win over a placeholder, silently.
+     *
+     * @return true when a placeholder was created; false when the id already existed
+     */
+    public boolean importPlaceholder(String organizationId, String id, String label, String kind) {
+        requireUsable();
+        if (id == null || id.isBlank() || label == null || label.isBlank()) {
+            throw new IllegalArgumentException("A credential needs an id and a label.");
+        }
+        long now = System.currentTimeMillis();
+        try {
+            int inserted = jdbc.update("""
+                    insert into credentials (id, organization_id, label, kind, secret, hint,
+                      created_at, updated_at)
+                    values (?,?,?,?,?,?,?,?)
+                    on conflict (id) do nothing
+                    """,
+                    id, organizationId, label.trim(), kind,
+                    cipher.seal("re-enter-after-import-" + java.util.UUID.randomUUID()),
+                    "re-enter", now, now);
+            if (inserted > 0) log.info("Imported credential '{}' as a placeholder — value must be re-entered.", label.trim());
+            return inserted > 0;
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            // Same label, different id: this machine already has its own credential by that name.
+            throw new IllegalStateException("a credential named '" + label.trim()
+                    + "' already exists here with a different id; flows from the import that "
+                    + "reference the old id need re-pointing.");
+        }
+    }
+
+    /**
      * Replaces a credential's value.
      *
      * <p>Only ever called with a real new value. "Save the form without touching the password

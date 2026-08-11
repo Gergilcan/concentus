@@ -1,7 +1,5 @@
 package com.concentus.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-
 import java.util.List;
 import java.util.Map;
 
@@ -26,15 +24,40 @@ import java.util.Map;
  * @param variables     this flow's {@code {{NAME}}} values — overrides of the organization's
  *                      variables plus any of its own. Saved with the flow, so a flow remembers
  *                      the values it runs with.
+ * @param folder        dashboard folder this flow lives in; null/blank means the root. One level
+ *                      deep on purpose — the bundled starters land in "Samples" so a first launch
+ *                      is an invitation, not a wall.
  */
 public record FlowGraph(String id, String name, String mode,
                         List<FlowNode> nodes, List<FlowEdge> edges,
                         Boolean enabled, List<String> tags, Boolean favorite,
                         String notifyWebhook, Double budgetUsd,
                         String approvalSlackCredentialId, String approvalSlackChannel,
-                        String approvalTeamsWebhook, Map<String, String> variables) {
+                        String approvalTeamsWebhook, Map<String, String> variables,
+                        String folder) {
+
+    // Every convenience constructor below carries @JsonIgnore, and it is load-bearing: Jackson's
+    // creator detection, faced with several record constructors, can pick a SECONDARY one to
+    // deserialise with — which silently drops every component that constructor predates. That is
+    // not hypothetical: reading flows back from the store lost `folder` on arrival, and had been
+    // losing `variables` the same way. @JsonIgnore takes the shortcuts out of the running; only
+    // the canonical constructor deserialises.
+
+    /** The pre-folders shape, kept so the many existing constructions stay valid. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public FlowGraph(String id, String name, String mode,
+                     List<FlowNode> nodes, List<FlowEdge> edges,
+                     Boolean enabled, List<String> tags, Boolean favorite,
+                     String notifyWebhook, Double budgetUsd,
+                     String approvalSlackCredentialId, String approvalSlackChannel,
+                     String approvalTeamsWebhook, Map<String, String> variables) {
+        this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
+                approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, variables,
+                null);
+    }
 
     /** The pre-variables shape, kept so the many existing constructions stay valid. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
     public FlowGraph(String id, String name, String mode,
                      List<FlowNode> nodes, List<FlowEdge> edges,
                      Boolean enabled, List<String> tags, Boolean favorite,
@@ -42,10 +65,18 @@ public record FlowGraph(String id, String name, String mode,
                      String approvalSlackCredentialId, String approvalSlackChannel,
                      String approvalTeamsWebhook) {
         this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
-                approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, null);
+                approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, null, null);
+    }
+
+    /** This flow, filed under {@code folder} — how the seeder sends starters to "Samples". */
+    public FlowGraph withFolder(String newFolder) {
+        return new FlowGraph(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook,
+                budgetUsd, approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook,
+                variables, newFolder);
     }
 
     /** The pre-remote-approval shape, kept so the many existing constructions stay valid. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
     public FlowGraph(String id, String name, String mode,
                      List<FlowNode> nodes, List<FlowEdge> edges,
                      Boolean enabled, List<String> tags, Boolean favorite,
@@ -55,6 +86,7 @@ public record FlowGraph(String id, String name, String mode,
     }
 
     /** The pre-budget shape, kept for the same reason. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
     public FlowGraph(String id, String name, String mode,
                      List<FlowNode> nodes, List<FlowEdge> edges,
                      Boolean enabled, List<String> tags, Boolean favorite,
@@ -75,13 +107,15 @@ public record FlowGraph(String id, String name, String mode,
     }
 
     /** Flows are enabled unless explicitly disabled (flows saved before this existed have none). */
-    @JsonIgnore
-    public boolean isEnabled() {
+    // NOT bean-getter names (isEnabled/isFavorite), and that is load-bearing: a bean-style getter
+    // merges with the record component of the same property name, and its @JsonIgnore took the
+    // component down with it — a paused flow came back unpaused, a pinned one unpinned. A name
+    // Jackson does not recognise as a getter cannot collide with anything.
+    public boolean enabledOrDefault() {
         return enabled == null || enabled;
     }
 
-    @JsonIgnore
-    public boolean isFavorite() {
+    public boolean favoriteOrDefault() {
         return favorite != null && favorite;
     }
 
@@ -90,13 +124,15 @@ public record FlowGraph(String id, String name, String mode,
     }
 
     /**
-     * Returns a copy with the given id (records are immutable). Copies every component — this
-     * used to call the pre-budget constructor, so restoring a flow version silently dropped its
-     * monthly budget.
+     * Returns a copy with the given id (records are immutable). MUST call the canonical
+     * constructor: every save goes through here (JsonStore stamps the id on write), so a stale
+     * shortcut silently strips whatever it predates from EVERY stored flow. It has now done so
+     * twice — the pre-budget shape dropped budgets on version restore, and the pre-variables
+     * shape dropped {@code variables} and {@code folder} on save.
      */
     public FlowGraph withId(String newId) {
         return new FlowGraph(newId, name, mode, nodes, edges, enabled, tags, favorite,
                 notifyWebhook, budgetUsd, approvalSlackCredentialId, approvalSlackChannel,
-                approvalTeamsWebhook);
+                approvalTeamsWebhook, variables, folder);
     }
 }

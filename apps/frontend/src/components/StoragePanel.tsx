@@ -72,7 +72,7 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
   const pendingRestart = config.activeMode !== mode || config.activeMode !== config.mode
 
   return (
-    <div className={styles.crudForm} style={{ maxWidth: '46rem' }}>
+    <div className={`${styles.crudForm} ${styles.lone}`} style={{ maxWidth: '46rem' }}>
       <SelectField
         label="Where Concentus stores its data"
         value={mode}
@@ -139,6 +139,98 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
           title="The setting is read at startup: every store opens its tables against one connection, so it cannot be swapped under a running app."
         >
           <b>Restart required</b> — currently running on the <b>{config.activeMode}</b> database. ⓘ
+        </p>
+      )}
+
+      <BackupSection />
+    </div>
+  )
+}
+
+/**
+ * The whole configuration as one file, and back.
+ *
+ * What travels: flows (with variables), agents, MCP servers, facade profiles, database
+ * connections, knowledge base definitions, skills, org variables. What doesn't: knowledge
+ * DOCUMENTS (huge, re-upload cleanly), run history, and above all SECRETS — credentials export
+ * as metadata only and import as placeholders under the SAME ids, so every reference keeps
+ * working and each value is re-entered once.
+ */
+function BackupSection() {
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+  const [reenter, setReenter] = useState<string[]>([])
+
+  const exportAll = async () => {
+    setBusy(true)
+    setNote(null)
+    try {
+      const blob = await api.exportBackup()
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `concentus-export-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(a.href)
+      setNote('Exported. Credentials travel as names only — their values never leave this machine.')
+    } catch (e) {
+      setNote(errMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const importAll = async (file: File) => {
+    setBusy(true)
+    setNote(null)
+    setReenter([])
+    try {
+      const report = await api.importBackup(JSON.parse(await file.text()))
+      const parts = Object.entries(report.imported)
+        .filter(([, n]) => n > 0)
+        .map(([k, n]) => `${n} ${k}`)
+      setNote(
+        (parts.length ? `Imported ${parts.join(', ')}.` : 'Nothing new to import.') +
+          (report.warnings.length ? ` ${report.warnings.join(' ')}` : ''),
+      )
+      setReenter(report.credentialsToReenter)
+    } catch (e) {
+      setNote(errMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className={styles.crudForm}>
+      <h3
+        className={styles.h3}
+        title="Everything as one .json: flows, agents, MCP servers, facades, databases, knowledge bases, skills and variables — importable on another machine with every cross-reference intact. Secrets never travel: credentials arrive as placeholders under their original ids, and you re-enter each value once. Knowledge documents and run history stay out."
+      >
+        Backup — export / import everything ⓘ
+      </h3>
+      <div className={styles.crudActions}>
+        <button className={styles.newBtn} disabled={busy} onClick={() => void exportAll()}>
+          Export everything (.json)
+        </button>
+        <label className={styles.newBtn} aria-disabled={busy}>
+          Import from file…
+          <input
+            type="file"
+            hidden
+            accept="application/json,.json"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) void importAll(f)
+              e.target.value = ''
+            }}
+          />
+        </label>
+      </div>
+      {note && <p className={panels.hint}>{note}</p>}
+      {reenter.length > 0 && (
+        <p className={panels.hint}>
+          <b>Re-enter these credential values</b> under Resources → Credentials:{' '}
+          {reenter.join(', ')}.
         </p>
       )}
     </div>

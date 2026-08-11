@@ -82,6 +82,33 @@ export interface NodeExec {
   model?: string | null
   startedAt: number
   endedAt: number
+  /** Extra process launches after a failed attempt (fan-out only). */
+  retries?: number
+  /**
+   * The adversarial verifier's judgment on this worker's output. Separate from `status` on
+   * purpose: a rejected worker DID finish — the verifier killing its output is a second fact.
+   */
+  verdict?: 'accepted' | 'rejected' | null
+  /** The verifier's stated reason, when rejected. */
+  verdictReason?: string | null
+}
+
+/**
+ * Health of a fan-out run as a graph: how parallel it really was, how much retrying propped it
+ * up, and how hard the verifier worked. Absent for runs that never fanned out.
+ */
+export interface GraphMetrics {
+  workers: number
+  workersFailed: number
+  /** Outputs the verifier killed — they finished, and did not survive. */
+  workersRejected: number
+  retries: number
+  /** Worker outputs judged by the verifier (0 = no verifier ran). */
+  verdicts: number
+  /** First worker start to last worker end — what the fan-out actually took. */
+  wallMs: number
+  /** The same work end to end — what it WOULD have taken sequentially. */
+  sumWorkerMs: number
 }
 
 /** USD per million tokens. */
@@ -134,13 +161,15 @@ export interface NodeExecReport {
   totalOutputTokens: number
   /** Sum of the per-block estimates. */
   totalCostUsd?: number
+  /** Fan-out health; absent for runs that never fanned out. */
+  graph?: GraphMetrics | null
 }
 
 // ---- Flow / node data (canvas) ----
 // `type` aliases (not interfaces) so they satisfy React Flow's
 // `Record<string, unknown>` node-data constraint.
 
-export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'knowledge' | 'api' | 'input' | 'merge'
+export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'knowledge' | 'api' | 'input' | 'merge' | 'verifier'
 
 export type InputNodeData = {
   kind: 'input'
@@ -373,7 +402,23 @@ export type MergeNodeData = {
   effort: string
 }
 
-export type AppNodeData = AgentNodeData | McpNodeData | RepoNodeData | SqlNodeData | KnowledgeNodeData | ApiNodeData | InputNodeData | MergeNodeData
+/**
+ * The adversarial verifier of a fan-out flow: one more `claude` process that runs after every
+ * worker and BEFORE the merge, whose objective is the workers' inverse — find the reason each
+ * output should be rejected. Its verdict has teeth: a rejected output is withheld from the
+ * merge. Read-only; its only tool is submitting the verdict.
+ */
+export type VerifierNodeData = {
+  kind: 'verifier'
+  name: string
+  model: string
+  /** Rejection criteria: what disqualifies an output in THIS flow, beyond the built-in rules. */
+  systemPrompt: string
+  maxTokens: number
+  effort: string
+}
+
+export type AppNodeData = AgentNodeData | McpNodeData | RepoNodeData | SqlNodeData | KnowledgeNodeData | ApiNodeData | InputNodeData | MergeNodeData | VerifierNodeData
 
 export interface SqlPreview {
   columns: string[]
@@ -416,6 +461,8 @@ export interface BackendFlow {
    * Saved with the flow: a flow remembers the values it runs with.
    */
   variables?: Record<string, string>
+  /** Dashboard folder; blank/absent = root. The bundled starters live in "Samples". */
+  folder?: string
   /**
    * Remote approval over Slack: a stored credential holding the bot token, and the channel the
    * request posts to. A ✅/❌ reaction on the posted message approves/rejects the waiting run —

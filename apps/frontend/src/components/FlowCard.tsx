@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import type { BackendFlow, RunSummary } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
 import { KIND_LABEL, compact, countsOf, decided, kindOf, money, timeAgo, triggerOf } from './flowFormat.ts'
@@ -17,6 +17,7 @@ export function FlowCard({
   setVersionsFor,
   setSettingsFor,
   setTagFilter,
+  onDragStart,
 }: {
   flow: BackendFlow
   flowRuns: RunSummary[]
@@ -29,6 +30,8 @@ export function FlowCard({
   setVersionsFor: (flow: BackendFlow) => void
   setSettingsFor: (flow: BackendFlow) => void
   setTagFilter: (tag: string) => void
+  /** When set, the card can be dragged (onto a dashboard folder). The handler fills the payload. */
+  onDragStart?: (e: DragEvent) => void
 }) {
   // Copy-as-template feedback: a ✓ for a moment, then back. Clipboard writes are invisible,
   // and a button that seems to do nothing gets clicked five times.
@@ -64,6 +67,8 @@ export function FlowCard({
     <article
       key={flow.id}
       className={cx(styles.card, styles['t_' + trigger.tone], paused && styles.paused)}
+      draggable={!!onDragStart}
+      onDragStart={onDragStart}
     >
       <div className={styles.cardHead}>
         <button

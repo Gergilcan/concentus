@@ -245,6 +245,17 @@ export const api = {
   listMcpDefs: () => req<McpDef[]>('/mcp-defs'),
   saveMcpDef: (d: McpDef) => req<McpDef>('/mcp-defs', { method: 'POST', body: JSON.stringify(d) }),
   deleteMcpDef: (id: string) => req<void>(`/mcp-defs/${id}`, { method: 'DELETE' }),
+  // The whole configuration as one file, and back. Export returns the raw blob so the caller
+  // can hand it to a download link; import takes the parsed document.
+  exportBackup: async (): Promise<Blob> => {
+    const res = await fetch('/api/backup', { credentials: 'same-origin' })
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+    return res.blob()
+  },
+  importBackup: (bundle: unknown) =>
+    req<{ imported: Record<string, number>; credentialsToReenter: string[]; warnings: string[] }>(
+      '/backup', { method: 'POST', body: JSON.stringify(bundle) }, 120_000),
+
   // Organization-level prompt variables ({{NAME}} in prompts). Flow overrides live on the flow.
   listVariables: () => req<import('./types.ts').Variable[]>('/variables'),
   saveVariable: (v: import('./types.ts').Variable) =>

@@ -42,6 +42,18 @@ public class NodeExec {
     /** USD estimate for this block, filled in when the report is built. */
     public volatile Double estimatedCostUsd;
 
+    /** Extra process launches after a failed attempt (fan-out only; 0 elsewhere). */
+    public volatile int retries;
+    /**
+     * The adversarial verifier's judgment on this worker's output: {@code accepted} or
+     * {@code rejected}. Null when no verifier ran. Deliberately separate from {@link #status}:
+     * a rejected worker DID finish its work — the verifier killing its output is a second fact,
+     * and folding it into "failed" would misreport what happened.
+     */
+    public volatile String verdict;
+    /** The verifier's stated reason, when rejected. */
+    public volatile String verdictReason;
+
     public volatile long startedAt;
     public volatile long endedAt;
 

@@ -111,6 +111,10 @@
   border-left: 3px solid t.$merge;
 }
 
+.verifier {
+  border-left: 3px solid t.$verifier;
+}
+
 /* Plan-born worker: dashed — it exists in the run report, not in the drawn flow. */
 .worker {
   border-left: 3px dashed t.$agent;
@@ -146,4 +150,15 @@
 .eb_failed {
   color: t.$danger;
   border-color: t.$danger;
+}
+
+/* The verifier's judgment on a worker's output — a second fact next to the run status. */
+.vd_accepted {
+  color: t.$verifier;
+  border-color: t.$verifier;
+}
+.vd_rejected {
+  color: t.$danger;
+  border-color: t.$danger;
+  text-decoration: line-through;
 }

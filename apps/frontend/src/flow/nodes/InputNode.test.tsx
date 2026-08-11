@@ -51,9 +51,15 @@ describe('InputNode', () => {
     expect(screen.getByText(label)).toBeInTheDocument()
   })
 
-  it('shows the cron schedule, or a "no schedule" placeholder when empty, only in cron mode', () => {
+  it('shows the schedule in words with the expression on hover, or a placeholder when empty', () => {
     renderInputNode({ data: inputData({ mode: 'cron', cron: '0 * * * *' }) })
-    expect(screen.getByText('0 * * * *')).toBeInTheDocument()
+    const meta = screen.getByText('Every hour')
+    expect(meta).toBeInTheDocument()
+    expect(meta).toHaveAttribute('title', '0 * * * *')
+
+    // An expression beyond the builder's vocabulary stays visible as itself.
+    renderInputNode({ data: inputData({ mode: 'cron', cron: '0 0 29 2 *' }) })
+    expect(screen.getByText('0 0 29 2 *')).toBeInTheDocument()
 
     renderInputNode({ data: inputData({ mode: 'cron', cron: '' }) })
     expect(screen.getByText('no schedule')).toBeInTheDocument()

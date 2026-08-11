@@ -9,7 +9,7 @@ interface FieldProps {
   value: string | number
   onChange?: (value: string) => void
   /** `password` masks the value — for a secret being typed, never for one read back from the API. */
-  type?: 'text' | 'number' | 'password'
+  type?: 'text' | 'number' | 'password' | 'time'
   placeholder?: string
   readOnly?: boolean
   className?: string

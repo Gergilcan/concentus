@@ -49,7 +49,7 @@ export function SkillsPanel() {
   }
 
   return (
-    <div className={styles.crudForm}>
+    <div className={`${styles.crudForm} ${styles.lone}`}>
       <h3 className={styles.h3}>Agent Skills</h3>
       <p
         className={panels.hint}

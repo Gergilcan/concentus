@@ -10,13 +10,19 @@ import java.util.Map;
 
 /**
  * A flow reduced to executable specs: one coordinator plus its sub-agent roster, and — for
- * fan-out flows — an optional merge step.
+ * fan-out flows — an optional adversarial verifier and an optional merge step.
  */
-public record CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger) {
+public record CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger,
+                           AgentSpec verifier) {
 
-    /** The shape every caller had before the merge node existed: no merger. */
+    /** The shape every caller had before the merge node existed: no merger, no verifier. */
     public CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents) {
-        this(coordinator, subAgents, null);
+        this(coordinator, subAgents, null, null);
+    }
+
+    /** The shape every caller had before the verifier node existed: no verifier. */
+    public CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger) {
+        this(coordinator, subAgents, merger, null);
     }
 
     /**
