@@ -297,14 +297,25 @@ pnpm desktop          # build frontend + jar, then launch the app
 starts Electron against `apps/backend/target/concentus-backend.jar`. Rebuild after changing backend
 or frontend code.
 
-For a faster loop on the UI alone, run the two halves separately with hot reload:
+For a faster loop on the UI, with the changes appearing **inside the real desktop app**:
 
 ```bash
-pnpm dev              # backend :8734 + Vite dev server :5173, together
+pnpm desktop:dev      # Vite (hot reload) + the Electron shell, together
 ```
 
-The dev server proxies `/api` and `/ws` to the backend, so the browser still sees one origin and
-the session and XSRF cookies behave exactly as they do in the packaged app.
+The shell starts its backend as always, detects the Vite dev server, and loads the window from it
+instead of the jar's baked UI — frontend edits appear on save, in the actual app. Vite proxies
+`/api` and `/ws` to the shell's backend (8734), so cookies and websockets behave exactly as
+packaged. Backend (Java) changes still need `pnpm desktop:build` — and so does the first run, so
+there is a jar for the shell to start. Without Vite running, the same shell falls back to the
+baked UI, which is as old as the last build — that fallback is why "why don't my changes show?"
+used to be the whole experience.
+
+There is also a browser-only loop, no Electron involved:
+
+```bash
+pnpm dev              # backend (spring-boot:run) + Vite dev server :5173, in a browser
+```
 
 Requirements for development (not for using the app): **JDK 25** and Maven, **Node 24+** and pnpm.
 A backend started by hand does not activate the `desktop` profile, so it has no embedded database —
