@@ -3,7 +3,7 @@ import { clockTime } from '../utils/format.ts'
 import type { Credential, InputNodeData, MailDeviceCode, MailOAuthDefaults, MailStatus } from '../api/types.ts'
 import { api, webhookUrl } from '../api/client.ts'
 import { useFlowStore } from '../state/store.ts'
-import { CheckboxField, Field, SelectField, TextArea } from './fields.tsx'
+import { CheckboxField, Field, FineTuning, SelectField, TextArea } from './fields.tsx'
 import { errMessage } from '../utils/errMessage.ts'
 import styles from './panels.module.scss'
 
@@ -231,6 +231,7 @@ export function InputInspector({ data, set }: Props) {
             onChange={(v) => set({ mailFolder: v })}
           />
 
+          <FineTuning>
           <p className={styles.hint}>
             <b>Conditions</b> — leave blank to match everything in the folder.
           </p>
@@ -307,6 +308,7 @@ export function InputInspector({ data, set }: Props) {
             A message is never processed twice even if none of these are set: each one is recorded
             by its <code>Message-ID</code> before its run starts.
           </p>
+          </FineTuning>
           <p className={styles.hint}>
             The agent receives the sender, subject and date as <i>verified</i> metadata, plus the
             body and attachment text fenced as untrusted — so text in the email can't impersonate

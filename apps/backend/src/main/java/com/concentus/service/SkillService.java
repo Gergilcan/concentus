@@ -25,14 +25,15 @@ import java.util.zip.ZipInputStream;
 public class SkillService {
 
     /** Generous for documents-plus-scripts; a bigger upload is almost certainly the wrong file. */
-    private static final int MAX_FILES = 200;
-    private static final long MAX_TOTAL_BYTES = 10 * 1024 * 1024;
-    private static final long MAX_FILE_BYTES = 2 * 1024 * 1024;
+    // Package-visible: the GitHub catalog installer streams from a repo archive rather than an
+    // uploaded zip, and it must enforce exactly these bounds — two limits drift, one does not.
+    static final int MAX_FILES = 200;
+    static final long MAX_TOTAL_BYTES = 10 * 1024 * 1024;
+    static final long MAX_FILE_BYTES = 2 * 1024 * 1024;
 
     /** Parses an uploaded zip into a SkillDef; throws IllegalArgumentException with the reason. */
     public SkillDef fromZip(byte[] zip) {
         List<SkillDef.SkillFile> files = new ArrayList<>();
-        String skillMd = null;
         long total = 0;
         try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(zip))) {
             ZipEntry entry;
@@ -51,16 +52,30 @@ public class SkillService {
                             + MAX_FILES + " files / " + (MAX_TOTAL_BYTES / 1024 / 1024) + " MB).");
                 }
                 files.add(new SkillDef.SkillFile(path, Base64.getEncoder().encodeToString(content)));
-                if (path.equals("SKILL.md") || path.endsWith("/SKILL.md")) {
-                    skillMd = new String(content, StandardCharsets.UTF_8);
-                }
             }
         } catch (IOException e) {
             throw new IllegalArgumentException("Not a readable zip: " + e.getMessage());
         }
+        return fromFiles(files);
+    }
+
+    /**
+     * The half of skill-building that does not care where the bytes came from: find the SKILL.md,
+     * read its frontmatter, strip a wrapping folder, name the skill. Shared by the zip upload and
+     * the GitHub catalog installer — the paths in {@code files} must already be normalised and the
+     * size caps already enforced by whoever streamed them.
+     */
+    public SkillDef fromFiles(List<SkillDef.SkillFile> files) {
+        String skillMd = null;
+        for (SkillDef.SkillFile f : files) {
+            if (f.path().equals("SKILL.md") || f.path().endsWith("/SKILL.md")) {
+                skillMd = new String(Base64.getDecoder().decode(f.contentBase64()),
+                        StandardCharsets.UTF_8);
+            }
+        }
         if (skillMd == null) {
             throw new IllegalArgumentException(
-                    "No SKILL.md found in the zip — that file is what makes it a skill.");
+                    "No SKILL.md found — that file is what makes it a skill.");
         }
 
         String name = frontmatter(skillMd, "name");
@@ -125,8 +140,9 @@ public class SkillService {
         return prefix == null ? "" : prefix;
     }
 
-    /** Frontmatter is two `---` fences with `key: value` lines between them. */
-    private static String frontmatter(String skillMd, String key) {
+    /** Frontmatter is two `---` fences with `key: value` lines between them. Package-visible:
+     *  the GitHub catalog reads names out of SKILL.md files it has not installed yet. */
+    static String frontmatter(String skillMd, String key) {
         String[] lines = skillMd.split("\n");
         boolean inside = false;
         for (String line : lines) {

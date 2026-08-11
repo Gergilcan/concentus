@@ -226,6 +226,14 @@ export const api = {
     return req<import('./types.ts').SkillInfo>('/skills', { method: 'POST', body: form }, 120_000)
   },
   deleteSkill: (id: string) => req<void>(`/skills/${id}`, { method: 'DELETE' }),
+  // The GitHub skill catalog. Long timeouts: listing a repo's skills downloads its archive.
+  skillCatalog: () => req<import('./types.ts').SkillRepo[]>('/skills/catalog', {}, 30_000),
+  skillCatalogRepo: (owner: string, repo: string) =>
+    req<import('./types.ts').SkillCatalogSkill[]>(
+      `/skills/catalog/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {}, 60_000),
+  installCatalogSkill: (owner: string, repo: string, path: string) =>
+    req<import('./types.ts').SkillInfo>('/skills/catalog/install',
+      { method: 'POST', body: JSON.stringify({ owner, repo, path }) }, 120_000),
   /** Measured Claude consumption on this machine (CLI transcripts). Cached 30s server-side. */
   usageSummary: () => req<import('./types.ts').UsageSummary>('/usage'),
   listDatabases: () => req<DatabaseDef[]>('/databases'),

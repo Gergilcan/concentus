@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.ts'
 import type { KnowledgeDef, KnowledgeNodeData } from '../api/types.ts'
-import { Field, SelectField } from './fields.tsx'
+import { Field, FineTuning, SelectField } from './fields.tsx'
 import styles from './panels.module.scss'
 
 interface Props {
@@ -38,12 +38,14 @@ export function KnowledgeInspector({ data, set }: Props) {
           </option>
         ))}
       </SelectField>
-      <Field
-        label="Passages to inject (top-K)"
-        type="number"
-        value={data.topK}
-        onChange={(v) => set({ topK: Math.max(1, Math.min(20, Number(v) || 5)) })}
-      />
+      <FineTuning>
+        <Field
+          label="Passages to inject (top-K)"
+          type="number"
+          value={data.topK}
+          onChange={(v) => set({ topK: Math.max(1, Math.min(20, Number(v) || 5)) })}
+        />
+      </FineTuning>
       {bases.length === 0 && (
         <p className={styles.hint}>
           No bases yet — create one under <b>Resources → Knowledge</b>.
