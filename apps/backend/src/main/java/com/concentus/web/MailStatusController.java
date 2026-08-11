@@ -66,7 +66,7 @@ public class MailStatusController {
             out.put("detail", "Not polling — still missing: " + spec.missingFields() + ".");
             return out;
         }
-        if (!flow.isEnabled()) {
+        if (!flow.enabledOrDefault()) {
             out.put("state", "paused");
             out.put("detail", "This flow is paused, so its mailbox is not being polled.");
             return out;
