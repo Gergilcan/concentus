@@ -15,6 +15,8 @@ test('all eight tabs render their panels', async ({ page }) => {
 
   await page.getByRole('button', { name: 'MCP Servers' }).click()
   await expect(page.getByText('Catalog — one click to add')).toBeVisible()
+  // Collapsed by default: the toggle row is there, the wall of cards is not.
+  await expect(page.getByRole('tab')).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Facades' }).click()
   await expect(page.getByRole('heading', { name: 'Facade profiles' })).toBeVisible()
@@ -40,12 +42,33 @@ test('all eight tabs render their panels', async ({ page }) => {
   await expect(page.locator('option', { hasText: 'Embedded — ships with the app' })).toHaveCount(1)
 })
 
-test('the MCP catalog has one-click entries', async ({ page }) => {
+test('the MCP catalog expands into category tabs with one-click entries', async ({ page }) => {
   await openApp(page)
   await goTo(page, 'Resources')
   await page.getByRole('button', { name: 'MCP Servers' }).click()
 
-  // The gallery ships in the frontend itself, so entries must exist even on a fresh install.
-  const catalog = page.getByText('Catalog — one click to add').locator('..')
-  await expect(catalog.getByRole('button').first()).toBeVisible()
+  await page.getByText('Catalog — one click to add').click()
+
+  // The gallery ships in the frontend itself, so entries must exist even on a fresh install —
+  // one category at a time, switched with the tabs.
+  await expect(page.getByRole('tab', { name: 'Development' })).toBeVisible()
+  await expect(page.getByText('Issues, PRs, repositories')).toBeVisible()
+  await page.getByRole('tab', { name: 'Business' }).click()
+  await expect(page.getByText('Customers, invoices, payments')).toBeVisible()
+  await expect(page.getByText('Issues, PRs, repositories')).toHaveCount(0)
+})
+
+test('the skill catalog lists the pinned GitHub collections', async ({ page }) => {
+  await openApp(page)
+  await goTo(page, 'Resources')
+  await page.getByRole('button', { name: 'Skills' }).click()
+
+  // Collapsed by default, like the MCP catalog.
+  const toggle = page.getByText('Browse catalog — popular on GitHub')
+  await expect(toggle).toBeVisible()
+  await toggle.click()
+
+  // Deterministic even offline or rate-limited: the backend always serves the pinned
+  // repositories; GitHub search only ever adds to them.
+  await expect(page.getByText('anthropics/skills')).toBeVisible({ timeout: 20_000 })
 })

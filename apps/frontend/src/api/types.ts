@@ -700,6 +700,21 @@ export interface SkillInfo {
   fileCount: number
 }
 
+/** A skill repository in the GitHub catalog. stars is -1 when GitHub could not be asked. */
+export interface SkillRepo {
+  fullName: string
+  description: string
+  stars: number
+  pinned: boolean
+}
+
+/** An installable skill inside a catalog repository; path "" means the repo IS the skill. */
+export interface SkillCatalogSkill {
+  path: string
+  name: string
+  description: string
+}
+
 /** Measured Claude consumption on this machine, from the CLI's transcripts. */
 export interface UsageWindow {
   inputTokens: number
