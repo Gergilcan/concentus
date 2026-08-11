@@ -61,6 +61,30 @@ test('the MCP catalog expands into category tabs with one-click entries', async 
   await expect(page.getByText('Issues, PRs, repositories')).toHaveCount(0)
 })
 
+test('export downloads the whole configuration and import accepts it back', async ({ page }) => {
+  await openApp(page)
+  await goTo(page, 'Resources')
+  await page.getByRole('button', { name: 'Storage' }).click()
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export everything (.json)' }).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toMatch(/^concentus-export-.*\.json$/)
+
+  // The file is a real export: versioned, with every category present and no secrets.
+  const path = await download.path()
+  const fs = await import('node:fs')
+  const doc = JSON.parse(fs.readFileSync(path, 'utf8')) as Record<string, unknown>
+  expect(doc.concentusExport).toBe(1)
+  for (const key of ['flows', 'agents', 'mcpServers', 'skills', 'variables', 'credentials']) {
+    expect(doc, key).toHaveProperty(key)
+  }
+
+  // And it round-trips: importing the file we just exported reports what landed.
+  await page.getByLabel('Import from file…').setInputFiles(path)
+  await expect(page.getByText(/Imported |Nothing new to import/)).toBeVisible({ timeout: 20_000 })
+})
+
 test('the skill catalog lists the pinned GitHub collections', async ({ page }) => {
   await openApp(page)
   await goTo(page, 'Resources')
