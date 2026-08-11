@@ -3,6 +3,7 @@ import { clockTime } from '../utils/format.ts'
 import type { Credential, InputNodeData, MailDeviceCode, MailOAuthDefaults, MailStatus } from '../api/types.ts'
 import { api, webhookUrl } from '../api/client.ts'
 import { useFlowStore } from '../state/store.ts'
+import { CronBuilder } from './CronBuilder.tsx'
 import { CheckboxField, Field, FineTuning, SelectField, TextArea } from './fields.tsx'
 import { errMessage } from '../utils/errMessage.ts'
 import styles from './panels.module.scss'
@@ -93,7 +94,7 @@ export function InputInspector({ data, set }: Props) {
 
 
       {data.mode === 'cron' && (
-        <Field label="Cron expression" value={data.cron} placeholder="0 9 * * *" onChange={(v) => set({ cron: v })} />
+        <CronBuilder value={data.cron ?? ''} onChange={(v) => set({ cron: v })} />
       )}
 
       {data.mode === 'webhook' && (
@@ -324,11 +325,7 @@ export function InputInspector({ data, set }: Props) {
           {data.mode === 'manual' && 'The run starts idle — type the first instruction in the console.'}
           {data.mode === 'prompt' && 'Pressing Run auto-sends this prompt as the first turn.'}
           {data.mode === 'cron' && (
-            <>
-              Runs automatically on this schedule with the prompt above (saved flows only). 5-field
-              (<code>min hour day month weekday</code>) or 6-field cron. E.g. <code>0 9 * * *</code>{' '}
-              daily 09:00.
-            </>
+            <>Runs automatically on this schedule with the prompt above (saved flows only).</>
           )}
         </p>
       )}

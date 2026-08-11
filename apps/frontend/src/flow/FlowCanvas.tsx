@@ -9,6 +9,7 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import './canvas-overrides.css'
 import { useEffect, useMemo, useRef } from 'react'
 import { NODE_COLORS } from '../constants.ts'
 import type { NodeKind } from '../api/types.ts'
@@ -79,6 +80,11 @@ export function FlowCanvas() {
       if (isTextEntry(e.target)) return
       switch (e.key.toLowerCase()) {
         case 'c':
+          // Text selected anywhere — console output, an inspector hint — means the user is
+          // copying TEXT. Selected canvas nodes must not steal that Ctrl+C: isTextEntry only
+          // covers focus in a field, not a selection in plain markup, and this handler used to
+          // overwrite the clipboard with node JSON whenever any node happened to be selected.
+          if (!window.getSelection()?.isCollapsed) return
           if (copySelection()) e.preventDefault()
           break
         case 'v':
@@ -105,6 +111,16 @@ export function FlowCanvas() {
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       onNodeClick={(_, node) => selectNode(node.id)}
+      // Grabbing a node makes it the active one even when the gesture turns into a real drag —
+      // otherwise moving a node never opened its inspector, because only click selected.
+      onNodeDragStart={(_, node) => selectNode(node.id)}
+      // Two distinct knobs, both needed for "clicking with a slightly unsteady hand selects":
+      // the drag THRESHOLD keeps the node from micro-moving under a jittery press, and the click
+      // DISTANCE keeps d3's click suppression (default 0px — any movement kills the click) from
+      // eating the selection. With only the first, a 3px wobble was neither a move nor a click.
+      nodeDragThreshold={5}
+      nodeClickDistance={5}
+      paneClickDistance={5}
       onPaneClick={() => selectNode(null)}
       // The instance is captured here rather than through useReactFlow(), which would need this
       // component split around a ReactFlowProvider to be inside its own context.

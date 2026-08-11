@@ -107,8 +107,12 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
 
         {tab === 'mcp' && (
           <>
-          <McpCatalog onAdded={() => setMcpListVersion((v) => v + 1)} />
-          <McpJsonEditor onSaved={() => setMcpListVersion((v) => v + 1)} />
+          {/* Padded wrapper: these render above the CRUD grid, and without it their collapse
+              headers sat glued to the window's left edge. */}
+          <div className={styles.tabExtras}>
+            <McpCatalog onAdded={() => setMcpListVersion((v) => v + 1)} />
+            <McpJsonEditor onSaved={() => setMcpListVersion((v) => v + 1)} />
+          </div>
           <CrudPanel<McpDef>
             key={mcpListVersion}
             title="MCP Servers"
