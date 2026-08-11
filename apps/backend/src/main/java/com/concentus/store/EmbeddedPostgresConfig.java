@@ -15,6 +15,8 @@ import org.springframework.context.event.ContextClosedEvent;
 
 import javax.sql.DataSource;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -125,6 +127,26 @@ public class EmbeddedPostgresConfig {
         return external;
     }
 
+    /**
+     * An ephemeral port obtained through a socket bound to loopback only.
+     *
+     * <p>The binding address is the whole point of this method's existence: asking the OS for a
+     * port with an unbound {@code ServerSocket(0)} listens on 0.0.0.0 while doing it, and Windows
+     * Firewall answers any non-loopback listen from an unknown executable with a first-run dialog.
+     * The backend's actual servers all bind loopback; this keeps the port probe from being the one
+     * exception that gets the app greeted by a firewall prompt.
+     *
+     * <p>The same small race zonky's own detection has: the port could be taken between closing
+     * this socket and PostgreSQL binding it. In practice the window is milliseconds on a machine
+     * where nothing is scanning for ports, and a collision fails the start loudly rather than
+     * corrupting anything.
+     */
+    private static int freeLoopbackPort() throws IOException {
+        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            return socket.getLocalPort();
+        }
+    }
+
     private static void closeQuietly(EmbeddedPostgres postgres) {
         try {
             postgres.close();
@@ -170,10 +192,15 @@ public class EmbeddedPostgresConfig {
                 // zonky's reader with the wrong charset — the log fills with mojibake ("� listo")
                 // exactly where a startup failure would need to be read.
                 .setServerConfig("lc_messages", "C")
-                // 0 asks the OS for a free port. Nothing external connects, so the port need not
-                // be stable — unlike the application's own port, which is kept fixed for the sake
-                // of registered OAuth redirect URIs.
-                .setPort(0)
+                // A free port we picked ourselves, NOT zonky's setPort(0). Zonky's own detection
+                // does `new ServerSocket(0)`, which binds the wildcard address for a moment — and
+                // one millisecond of listening on 0.0.0.0 is exactly what makes Windows Firewall
+                // interrupt the very first launch with an allow/deny dialog for the bundled Java.
+                // Picking the port with a loopback-bound socket keeps every listen of this
+                // process's startup on loopback, so the dialog never appears. The port need not be
+                // stable across launches — nothing external connects — unlike the application's
+                // own port, which is kept fixed for the sake of registered OAuth redirect URIs.
+                .setPort(freeLoopbackPort())
                 .start();
 
         log.info("Embedded PostgreSQL ready on port {} in {} ms (data: {})",
