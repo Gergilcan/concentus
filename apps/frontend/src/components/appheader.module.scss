@@ -3,8 +3,8 @@
 .header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 8px 14px;
+  gap: 12px;
+  padding: 6px 12px;
   background: t.$bg;
   border-bottom: 1px solid t.$border;
 }
@@ -18,7 +18,7 @@
 
 .logo {
   color: t.$accent;
-  font-size: 18px;
+  font-size: 15.5px;
 }
 
 .nav {
@@ -29,9 +29,9 @@
     background: transparent;
     border: 1px solid transparent;
     color: t.$muted;
-    padding: 5px 12px;
+    padding: 4px 10px;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 12.5px;
 
     &:hover {
       color: t.$text;

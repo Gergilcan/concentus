@@ -144,6 +144,10 @@ export function FlowCanvas() {
         addNode(kind as NodeKind, at && { x: at.x - 90, y: at.y - 30 })
       }}
       fitView
+      // Capped at 1:1. With one or two nodes, an uncapped fit-view zooms IN until they fill the
+      // screen — which is why a fresh flow's nodes looked billboard-sized. Fitting only ever
+      // zooms out now; the user can still zoom in by hand.
+      fitViewOptions={{ maxZoom: 1 }}
       colorMode="dark"
       nodesDraggable
       elementsSelectable
