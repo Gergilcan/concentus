@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('concentus', {
   // approve that without naming it would not be a real choice.
   claudeInstallCommand: () => ipcRenderer.invoke('onboarding:install-command'),
   installClaude: () => ipcRenderer.invoke('onboarding:install'),
+  // Opens a terminal already running the claude binary, where its own sign-in flow takes over.
+  openClaudeLogin: () => ipcRenderer.invoke('onboarding:open-login'),
   onInstallOutput: (handler: (line: string) => void) =>
     ipcRenderer.on('onboarding:install-output', (_event, line: string) => handler(line)),
   finishOnboarding: (dontAskAgain: boolean) => ipcRenderer.send('onboarding:finish', dontAskAgain),

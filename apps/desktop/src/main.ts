@@ -3,7 +3,7 @@ import * as path from 'node:path'
 import { RunningBackend, backendLogTail, startBackend, stopBackend } from './backend'
 import { StorageDraft, backendApi } from './backend-api'
 import { resolveClaudeCli } from './claude-cli'
-import { installClaude, installCommand } from './claude-install'
+import { installClaude, installCommand, openLoginTerminal } from './claude-install'
 import { failurePage } from './failure-page'
 import { OnboardingState, StorageState, onboardingPage } from './onboarding-page'
 import { backendLogFile, isPackaged, shellLogFile } from './paths'
@@ -414,7 +414,20 @@ function registerIpc(): void {
     // CLI path once at startup.
     const state = await claudeState()
     await adoptClaudeCommand(state.command)
-    return { ...result, state }
+    // Fresh install, no login yet: open the sign-in right away, in a terminal already running
+    // the just-installed binary. The wizard polls until the login lands.
+    let loginOpened = false
+    if (state.command && !state.loggedIn) {
+      loginOpened = (await openLoginTerminal(state.command)).ok
+    }
+    return { ...result, state, loginOpened }
+  })
+
+  ipcMain.handle('onboarding:open-login', async () => {
+    const state = await claudeState()
+    if (!state.command) return { ok: false, detail: 'The claude CLI was not found.', state }
+    const opened = await openLoginTerminal(state.command)
+    return { ...opened, state }
   })
 
   ipcMain.handle('onboarding:locate', async () => {

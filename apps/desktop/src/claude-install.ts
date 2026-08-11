@@ -94,3 +94,52 @@ export function installClaude(onOutput: (line: string) => void): Promise<Install
     })
   })
 }
+
+/**
+ * Opens a real terminal running the claude CLI, so the person signs in where the sign-in lives.
+ *
+ * The CLI's login is interactive by design — it walks you through an OAuth hop in the browser —
+ * and no amount of piping can do it on someone's behalf. What the app CAN do is remove the step
+ * where a person who has never opened a terminal is told to open one, find the freshly-installed
+ * binary that is not on their PATH yet, and run it. So: after an install (and from the wizard's
+ * sign-in button), a terminal opens already running the right binary by its full path; the CLI
+ * takes it from there, and the wizard polls until the login appears.
+ */
+export async function openLoginTerminal(command: string): Promise<InstallResult> {
+  log.info(`Opening a terminal for the claude sign-in: ${command}`)
+  try {
+    if (process.platform === 'win32') {
+      if (command.toLowerCase().endsWith('.exe')) {
+        // A console-subsystem exe spawned detached and unhidden gets its own console window —
+        // no cmd/start quoting gymnastics, which matter because the path has the user's name in it.
+        spawn(command, [], { detached: true, stdio: 'ignore', windowsHide: false }).unref()
+      } else {
+        // A .cmd/.bat shim needs a console host to run in.
+        spawn('cmd.exe', ['/c', 'start', 'Claude sign-in', 'cmd', '/k', command],
+          { detached: true, stdio: 'ignore', windowsHide: false }).unref()
+      }
+      return { ok: true, detail: '' }
+    }
+    if (process.platform === 'darwin') {
+      spawn('open', ['-a', 'Terminal', command], { detached: true, stdio: 'ignore' }).unref()
+      return { ok: true, detail: '' }
+    }
+    // Linux has no single terminal; try the conventional ones in order and keep the first that
+    // starts. `-e` is the one flag they all understand.
+    for (const terminal of ['x-terminal-emulator', 'gnome-terminal', 'konsole', 'xfce4-terminal', 'xterm']) {
+      const started = await new Promise<boolean>((resolve) => {
+        const child = spawn(terminal, ['-e', command], { detached: true, stdio: 'ignore' })
+        child.on('error', () => resolve(false))
+        // No error within a beat means the terminal is launching.
+        setTimeout(() => resolve(child.exitCode === null || child.exitCode === 0), 400)
+        child.unref()
+      })
+      if (started) return { ok: true, detail: '' }
+    }
+    return { ok: false, detail: 'No terminal emulator found — run the command by hand.' }
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    log.warn(`Could not open a sign-in terminal: ${detail}`)
+    return { ok: false, detail }
+  }
+}
