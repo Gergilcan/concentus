@@ -12,27 +12,54 @@ vi.mock('../api/client.ts', () => ({
   },
 }))
 
+/** The catalog opens collapsed; almost every test starts by expanding it like a user would. */
+function expandCatalog() {
+  fireEvent.click(screen.getByText(/Catalog — one click to add/))
+}
+
+/** Entries live one category at a time now; reaching one means picking its tab first. */
+function openCategory(category: string) {
+  fireEvent.click(screen.getByRole('tab', { name: category }))
+}
+
 describe('McpCatalog', () => {
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  it('groups the entries under their category headers', async () => {
+  it('starts collapsed: one row, no wall of cards', () => {
     listMcpDefsMock.mockResolvedValue([])
     render(<McpCatalog onAdded={vi.fn()} />)
 
+    expect(screen.getByText(/Catalog — one click to add/)).toBeInTheDocument()
+    expect(screen.queryByText('GitHub')).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+  })
+
+  it('expanding shows the categories as tabs, one category at a time', () => {
+    listMcpDefsMock.mockResolvedValue([])
+    render(<McpCatalog onAdded={vi.fn()} />)
+    expandCatalog()
+
     for (const category of ['Development', 'Planning & docs', 'Business', 'Data & content']) {
-      expect(screen.getByText(category)).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: category })).toBeInTheDocument()
     }
+    // The first category is the open one; the others' entries stay off screen until picked.
     expect(screen.getByText('GitHub')).toBeInTheDocument()
-    // What the server does is visible on the card, not buried in a tooltip.
     expect(screen.getByText('Issues, PRs, repositories')).toBeInTheDocument()
+    expect(screen.queryByText('Linear')).not.toBeInTheDocument()
+
+    openCategory('Planning & docs')
+    expect(screen.getByText('Linear')).toBeInTheDocument()
+    expect(screen.queryByText('GitHub')).not.toBeInTheDocument()
   })
 
   it('marks servers that are already in the user’s list and disables re-adding them', async () => {
     // Case-insensitive: the list stores whatever the user typed.
     listMcpDefsMock.mockResolvedValue([{ id: '1', name: 'linear', url: 'x', credentialId: '' }])
     render(<McpCatalog onAdded={vi.fn()} />)
+    expandCatalog()
+    openCategory('Planning & docs')
 
     expect(await screen.findByText('✓ added')).toBeInTheDocument()
     const card = screen.getByText('Linear').closest('button')!
@@ -45,6 +72,8 @@ describe('McpCatalog', () => {
     saveMcpDefMock.mockResolvedValue({})
     const onAdded = vi.fn()
     render(<McpCatalog onAdded={onAdded} />)
+    expandCatalog()
+    openCategory('Planning & docs')
 
     fireEvent.click(screen.getByText('Linear').closest('button')!)
 
@@ -62,6 +91,7 @@ describe('McpCatalog', () => {
     listMcpDefsMock.mockResolvedValue([])
     saveMcpDefMock.mockResolvedValue({})
     render(<McpCatalog onAdded={vi.fn()} />)
+    expandCatalog()
 
     fireEvent.click(screen.getByText('GitLab').closest('button')!)
 
@@ -77,6 +107,8 @@ describe('McpCatalog', () => {
     listMcpDefsMock.mockResolvedValue([])
     saveMcpDefMock.mockRejectedValue(new Error('storage is unavailable'))
     render(<McpCatalog onAdded={vi.fn()} />)
+    expandCatalog()
+    openCategory('Business')
 
     fireEvent.click(screen.getByText('Stripe').closest('button')!)
 

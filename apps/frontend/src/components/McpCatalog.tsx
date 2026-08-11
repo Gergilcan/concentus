@@ -101,6 +101,12 @@ export function McpCatalog({ onAdded }: { onAdded: () => void }) {
   // steps aside instead of silently doing it again.
   const [added, setAdded] = useState<Set<string> | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  // Collapsed by default: the catalog is for setup moments, and open it pushed the user's OWN
+  // servers — the things this tab manages — below the fold on every visit.
+  const [open, setOpen] = useState(false)
+  // One category at a time, as tabs. All fourteen entries at once was the wall of cards that made
+  // the collapse necessary in the first place.
+  const [category, setCategory] = useState(CATEGORIES[0])
 
   useEffect(() => {
     api
@@ -138,10 +144,32 @@ export function McpCatalog({ onAdded }: { onAdded: () => void }) {
 
   return (
     <div className={styles.catalog}>
-      <h4 className={styles.h4}>Catalog — one click to add</h4>
-      {CATEGORIES.map((category) => (
-        <section key={category}>
-          <h5 className={styles.catalogCat}>{category}</h5>
+      <button
+        className={styles.collapseHead}
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        title="Curated servers, added with one click — each entry says how it authenticates."
+      >
+        <span className={styles.collapseArrow}>{open ? '▾' : '▸'}</span>
+        Catalog — one click to add
+        <span className={styles.collapseCount}>{CATALOG.length}</span>
+      </button>
+
+      {open && (
+        <>
+          <div className={styles.chipRow} role="tablist">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                role="tab"
+                aria-selected={category === cat}
+                className={cx(styles.chip, category === cat && styles.chipActive)}
+                onClick={() => setCategory(cat)}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
           <div className={styles.catalogGrid}>
             {CATALOG.filter((e) => e.category === category).map((entry) => {
               const isAdded = added?.has(entry.name.toLowerCase()) ?? false
@@ -168,8 +196,8 @@ export function McpCatalog({ onAdded }: { onAdded: () => void }) {
               )
             })}
           </div>
-        </section>
-      ))}
+        </>
+      )}
       {note && <p className={panels.hint}>{note}</p>}
     </div>
   )
