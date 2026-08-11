@@ -25,6 +25,9 @@ export function Palette() {
       <button className={cx(styles.addBtn, styles.addAgent)} title="Mark exactly one agent as coordinator and link it to the sub-agents it may delegate to." {...drag('agent')} onClick={() => addNode('agent')}>
         <span>◆</span> Agent
       </button>
+      <button className={cx(styles.addBtn, styles.addVerifier)} title="For flows running as independent workers: an adversarial judge that runs after every worker and BEFORE the merge. Its objective is inverted — find the reason each output should be REJECTED — and its verdict has teeth: a rejected output never reaches the merge. Reads the workers' files, cannot edit or run commands. At most one per flow; ignored on subagents execution." {...drag('verifier')} onClick={() => addNode('verifier')}>
+        <span>⚖</span> Verifier
+      </button>
       <button className={cx(styles.addBtn, styles.addMerge)} title="For flows running as independent workers: one more claude process that runs AFTER every worker, reconciles their reports into the final answer, and runs the verification commands (tests, diffs) the workers cannot. At most one per flow; ignored on subagents execution." {...drag('merge')} onClick={() => addNode('merge')}>
         <span>⛙</span> Merge
       </button>

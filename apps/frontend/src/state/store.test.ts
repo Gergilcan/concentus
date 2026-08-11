@@ -441,6 +441,41 @@ describe('useFlowStore live run overlay', () => {
     expect(state.runExecByNode).toEqual({})
     expect(state.runTotals).toEqual({ input: 0, output: 0, costUsd: 0 })
   })
+
+  it('carries fan-out graph metrics through and clears them with the overlay', () => {
+    useFlowStore.getState().setActiveRun('run-1')
+    useFlowStore.getState().setRunExec({
+      nodes: [
+        { nodeId: 'w1', kind: 'worker', label: 'W', status: 'passed', inputTokens: 1, outputTokens: 1, startedAt: 0, endedAt: 5 },
+      ],
+      totalInputTokens: 1,
+      totalOutputTokens: 1,
+      graph: { workers: 2, workersFailed: 0, workersRejected: 1, retries: 1, verdicts: 2, wallMs: 5, sumWorkerMs: 9 },
+    })
+
+    expect(useFlowStore.getState().runGraph).toMatchObject({ workers: 2, workersRejected: 1 })
+
+    useFlowStore.getState().setRunExec(null)
+    expect(useFlowStore.getState().runGraph).toBeNull()
+  })
+
+  it('a verdict landing AFTER a worker finished still updates the overlay', () => {
+    // The bail-out signature must include the verdict: it arrives after the worker's endedAt,
+    // so a signature of status+tokens+endedAt alone would dismiss that poll as "no change".
+    const finished = {
+      nodeId: 'w1', kind: 'worker', label: 'W', status: 'passed' as const,
+      inputTokens: 1, outputTokens: 1, startedAt: 0, endedAt: 5,
+    }
+    useFlowStore.getState().setActiveRun('run-1')
+    useFlowStore.getState().setRunExec({ nodes: [finished], totalInputTokens: 1, totalOutputTokens: 1 })
+    useFlowStore.getState().setRunExec({
+      nodes: [{ ...finished, verdict: 'rejected', verdictReason: 'off-task' }],
+      totalInputTokens: 1,
+      totalOutputTokens: 1,
+    })
+
+    expect(useFlowStore.getState().runExecByNode.w1.verdict).toBe('rejected')
+  })
 })
 
 // Flow-level metadata (enabled/tags/favorite/notifyWebhook) is edited from the Flows dashboard,

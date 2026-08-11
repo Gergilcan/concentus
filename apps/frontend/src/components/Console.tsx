@@ -128,6 +128,8 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
 
   const totals = useFlowStore((s) => s.runTotals)
   const hasTotals = totals.input > 0 || totals.output > 0
+  const graph = useFlowStore((s) => s.runGraph)
+  const secs = (ms: number) => `${(ms / 1000).toFixed(ms >= 10_000 ? 0 : 1)}s`
 
   return (
     <div className={styles.console}>
@@ -137,6 +139,30 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
           {totals.costUsd > 0 && (
             <span title="Sum of each block priced at its own model's rate, with cached tokens weighted. Runs on a Claude subscription have no per-token bill — treat this as equivalent usage.">
               {' '}· ≈{money(totals.costUsd)}
+            </span>
+          )}
+        </div>
+      )}
+      {graph && graph.workers > 0 && (
+        // The run as a graph, not a transcript: only shown for fan-out runs, which are the
+        // ones with parallelism, retries and a verifier to be honest about.
+        <div className={styles.tokenBar}>
+          <span title="Independent worker processes this run executed (drawn or plan-born), and how many of them failed.">
+            ⑃ {graph.workers} worker{graph.workers === 1 ? '' : 's'}
+            {graph.workersFailed > 0 && ` (${graph.workersFailed} failed)`}
+          </span>
+          <span title="Extra process launches after a failed attempt, across all of the run's nodes. A run that only passes after retrying everything is not healthy — it is lucky.">
+            {' '}· ⟳ {graph.retries} retr{graph.retries === 1 ? 'y' : 'ies'}
+          </span>
+          {graph.verdicts > 0 && (
+            <span title="Outputs the adversarial verifier killed, out of the outputs it judged. Rejected outputs never reached the merge. 0 rejections may mean solid workers — or a verifier with no teeth; its box carries the reasons either way.">
+              {' '}· ⚖ killed {graph.workersRejected}/{graph.verdicts}
+            </span>
+          )}
+          {graph.wallMs > 0 && (
+            <span title="Wall clock from the first worker's start to the last worker's end, versus the same work end to end. The ×factor is the parallelism the fan-out really bought.">
+              {' '}· ⧗ {secs(graph.wallMs)} vs {secs(graph.sumWorkerMs)} sequential
+              {graph.sumWorkerMs > graph.wallMs && ` (${(graph.sumWorkerMs / graph.wallMs).toFixed(1)}×)`}
             </span>
           )}
         </div>

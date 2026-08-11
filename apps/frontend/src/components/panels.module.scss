@@ -66,6 +66,9 @@
 .addMerge span {
   color: t.$merge;
 }
+.addVerifier span {
+  color: t.$verifier;
+}
 
 .previewBtn {
   background: t.$panel-2;

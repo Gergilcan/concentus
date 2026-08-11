@@ -72,12 +72,16 @@ class FanoutExecutorTest {
     }
 
     private static AgentRun runWithMerger(AgentSpec merger, AgentSpec... workers) {
+        return runWith(merger, null, workers);
+    }
+
+    private static AgentRun runWith(AgentSpec merger, AgentSpec verifier, AgentSpec... workers) {
         AgentRun run = new AgentRun("run-1", "flow-1", "Flow", "local");
         AgentSpec coord = new AgentSpec();
         coord.nodeId = "c1";
         coord.name = "Coordinator";
         coord.execution = "fanout";
-        run.compiled = new CompiledFlow(coord, List.of(workers), merger);
+        run.compiled = new CompiledFlow(coord, List.of(workers), merger, verifier);
         return run;
     }
 
@@ -209,6 +213,9 @@ class FanoutExecutorTest {
         assertThat(aAttempts.get()).isEqualTo(2); // first try + the one configured retry
         assertThat(exec(run, "n1").status).isEqualTo("failed");
         assertThat(exec(run, "n1").error).contains("boom");
+        // The retry is counted on the node — it is what the graph metrics report as unhealth.
+        assertThat(exec(run, "n1").retries).isEqualTo(1);
+        assertThat(exec(run, "n2").retries).isZero();
         // One worker's death does not sink the turn: the report names it and the rest is real.
         assertThat(run.status).isEqualTo("IDLE");
         assertThat(exec(run, "c1").output).contains("Worker A — FAILED").contains("Informe B");
@@ -510,5 +517,143 @@ class FanoutExecutorTest {
         typo.validate();
         assertThat(typo.execution).isEmpty();
         assertThat(new CompiledFlow(typo, List.of()).fanout()).isFalse();
+    }
+
+    // ------------------------------------------------------------------ verifier step
+
+    @Test
+    void theVerifierJudgesBetweenWorkersAndMergeAndARejectionNeverReachesTheMerge() throws Exception {
+        AgentSpec a = spec("n1", "Worker A", "worker-a", "");
+        AgentSpec b = spec("n2", "Worker B", "worker-b", "");
+        AgentSpec verifier = spec("v1", "Verifier", "verifier", "Reject unverified numbers.");
+        AgentSpec merger = spec("m1", "Merge", "merge", "");
+        AgentRun run = runWith(merger, verifier, a, b);
+
+        List<List<String>> spawned = new CopyOnWriteArrayList<>();
+        FanoutExecutor.ProcessStarter starter = (args, workdir) -> {
+            spawned.add(args);
+            String dir = workdir.toString();
+            if (dir.endsWith("verifier")) {
+                // What the real CLI does through the verdict endpoint, minus the HTTP hop.
+                run.submittedVerdict = new com.concentus.model.WorkVerdict("B invents", List.of(
+                        new com.concentus.model.WorkVerdict.Item("n1", "accept", null),
+                        new com.concentus.model.WorkVerdict.Item("n2", "reject", "invented numbers")));
+                return new FakeProcess(okStream("Veredicto emitido", "Veredicto emitido"), 0);
+            }
+            if (dir.endsWith("merge")) {
+                return new FakeProcess(okStream("Resultado final", "Resultado final"), 0);
+            }
+            return new FakeProcess(okStream(
+                    "Informe " + workdir.getFileName(), "Informe " + workdir.getFileName()), 0);
+        };
+
+        executor(starter, 900, 0).runTurn(run, run.compiled, "Revisa el cambio");
+
+        // Order: two workers, then the verifier, then the merge.
+        assertThat(spawned).hasSize(4);
+        // The verifier runs read-only — judging is its whole job.
+        assertThat(spawned.get(2)).containsSequence("--disallowedTools",
+                "Task,Bash,Write,Edit,NotebookEdit");
+        // Its only MCP server is the verdict endpoint, under the verifier's OWN token.
+        String verifierMcp = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "verifier", "mcp-config.json")));
+        assertThat(verifierMcp).contains("/api/runs/run-1/verdict")
+                .contains(run.verdictToken).doesNotContain("/plan");
+        String verifierMd = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "verifier", "CLAUDE.md")));
+        assertThat(verifierMd).contains("REJECT").contains("Reject unverified numbers.");
+
+        // The kill has teeth: the merge sees A's report, and of B only the rejection.
+        String mergePrompt = String.join(" ", spawned.get(3));
+        assertThat(mergePrompt).contains("Informe worker-a")
+                .doesNotContain("Informe worker-b");
+        assertThat(mergePrompt).contains("rejected by the verifier: invented numbers");
+
+        // Both verdicts marked on the boxes; status stays truthful (B DID finish its work).
+        assertThat(exec(run, "n1").verdict).isEqualTo("accepted");
+        assertThat(exec(run, "n2").verdict).isEqualTo("rejected");
+        assertThat(exec(run, "n2").verdictReason).isEqualTo("invented numbers");
+        assertThat(exec(run, "n2").status).isEqualTo("passed");
+        assertThat(exec(run, "v1").status).isEqualTo("passed");
+        assertThat(run.status).isEqualTo("IDLE");
+        assertThat(run.finalOutput()).contains("Resultado final");
+
+        // The graph metrics carry the kill rate and the fan-out shape.
+        com.concentus.model.GraphMetrics m = run.graphMetrics();
+        assertThat(m).isNotNull();
+        assertThat(m.workers()).isEqualTo(2);
+        assertThat(m.verdicts()).isEqualTo(2);
+        assertThat(m.workersRejected()).isEqualTo(1);
+        assertThat(m.workersFailed()).isZero();
+        assertThat(m.sumWorkerMs()).isGreaterThanOrEqualTo(m.wallMs());
+    }
+
+    @Test
+    void aVerifierThatNeverSubmitsAVerdictFailsTheRunAsUnverified() {
+        AgentSpec worker = spec("n1", "Worker A", "worker-a", "");
+        AgentSpec verifier = spec("v1", "Verifier", "verifier", "");
+        AgentRun run = runWith(null, verifier, worker);
+
+        FanoutExecutor.ProcessStarter starter = (args, workdir) ->
+                new FakeProcess(okStream("todo bien supongo", "todo bien supongo"), 0);
+
+        executor(starter, 900, 0).runTurn(run, run.compiled, "go");
+
+        assertThat(run.status).isEqualTo("ERROR");
+        assertThat(run.error).contains("without submitting a verdict").contains("UNVERIFIED");
+        assertThat(exec(run, "v1").status).isEqualTo("failed");
+        // The workers' work is not lost: the combined report still sits on the coordinator.
+        assertThat(exec(run, "c1").output).contains("todo bien supongo");
+        assertThat(exec(run, "n1").status).isEqualTo("passed");
+    }
+
+    @Test
+    void whenTheVerifierRejectsEverythingTheRunFailsAndTheMergeNeverRuns() {
+        AgentSpec worker = spec("n1", "Worker A", "worker-a", "");
+        AgentSpec verifier = spec("v1", "Verifier", "verifier", "");
+        AgentSpec merger = spec("m1", "Merge", "merge", "");
+        AgentRun run = runWith(merger, verifier, worker);
+
+        List<List<String>> spawned = new CopyOnWriteArrayList<>();
+        FanoutExecutor.ProcessStarter starter = (args, workdir) -> {
+            spawned.add(args);
+            if (workdir.toString().endsWith("verifier")) {
+                run.submittedVerdict = new com.concentus.model.WorkVerdict(null, List.of(
+                        new com.concentus.model.WorkVerdict.Item("n1", "reject", "off-task")));
+                return new FakeProcess(okStream("Nada sobrevive", "Nada sobrevive"), 0);
+            }
+            return new FakeProcess(okStream("Informe A", "Informe A"), 0);
+        };
+
+        executor(starter, 900, 0).runTurn(run, run.compiled, "go");
+
+        assertThat(spawned).hasSize(2); // worker + verifier — the merge never spawned
+        assertThat(run.status).isEqualTo("ERROR");
+        assertThat(run.error).contains("rejected every worker");
+        assertThat(exec(run, "n1").verdict).isEqualTo("rejected");
+    }
+
+    @Test
+    void graphMetricsExistOnlyForRunsThatFannedOut() {
+        // A single-session flow has no graph to measure — the report must carry nothing, not
+        // a strip of zeros.
+        AgentRun plain = new AgentRun("run-2", "flow-1", "Flow", "local");
+        AgentSpec coord = new AgentSpec();
+        coord.nodeId = "c1";
+        AgentSpec sub = new AgentSpec();
+        sub.nodeId = "s1";
+        plain.compiled = new CompiledFlow(coord, List.of(sub));
+        plain.nodeExec("c1", "agent", "Coord");
+        plain.nodeExec("s1", "agent", "Sub");
+        assertThat(plain.graphMetrics()).isNull();
+
+        // The same shape under fanout execution measures its workers.
+        AgentRun fanned = run(spec("n1", "W", "w", ""));
+        executor((args, dir) -> new FakeProcess(okStream("hola", "Informe"), 0), 900, 0)
+                .runTurn(fanned, fanned.compiled, "go");
+        com.concentus.model.GraphMetrics m = fanned.graphMetrics();
+        assertThat(m).isNotNull();
+        assertThat(m.workers()).isEqualTo(1);
+        assertThat(m.verdicts()).isZero(); // no verifier ran, and the metrics say so
     }
 }
