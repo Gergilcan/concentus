@@ -311,16 +311,15 @@ public class LocalModelAgentExecutor {
             }
             if (server.url == null || server.url.isBlank()) continue;
             try {
-                // The node's own token first — a server that takes a static token needs nothing
-                // else. Otherwise the OAuth grant this application holds for that URL, which is
-                // what makes an OAuth-protected server reachable without the claude CLI.
-                String token = server.resolveToken();
-                boolean usedGrant = false;
-                if (token == null || token.isBlank()) {
-                    token = mcpOAuth.accessToken(orgContext.defaultOrganizationId(), server.url)
-                            .orElse(null);
-                    usedGrant = token != null;
-                }
+                // The OAuth grant first: it exists only because someone deliberately signed this
+                // server in, and the store vouches for it (a stale one comes back empty). The
+                // node's static token is the fallback — the old order let a leftover credential
+                // shadow a working grant, so an OAuth-only server 401'd every run while the UI
+                // said "Authorized". Same order as the tool picker, so both see the same server.
+                String token = mcpOAuth.accessToken(orgContext.defaultOrganizationId(), server.url)
+                        .orElse(null);
+                boolean usedGrant = token != null;
+                if (token == null || token.isBlank()) token = server.resolveToken();
                 authenticated.put(server.name, usedGrant || token != null);
                 String bearer = token;
                 McpClient client = run.mcpClients.computeIfAbsent(server.name,
@@ -750,6 +749,9 @@ public class LocalModelAgentExecutor {
             exec.outputTokens += usage.outputTokens();
             exec.cacheReadTokens += usage.cacheReadTokens();
             exec.cacheWriteTokens += usage.cacheWriteTokens();
+            // OpenAI-shaped prompt_tokens already span the whole prompt — snapshot, not sum.
+            long prompt = usage.inputTokens() + usage.cacheReadTokens() + usage.cacheWriteTokens();
+            LocalStreamEventHandler.applyContext(exec, prompt, prompt + usage.outputTokens());
             if (reply.text() != null && !reply.text().isBlank()) exec.appendOutput(reply.text());
         }
         run.totalInputTokens += usage.inputTokens();

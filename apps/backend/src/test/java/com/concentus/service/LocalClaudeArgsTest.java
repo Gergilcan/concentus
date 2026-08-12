@@ -20,9 +20,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 class LocalClaudeArgsTest {
 
     private static LocalClaudeExecutor executor() {
+        return executor(null);
+    }
+
+    private static LocalClaudeExecutor executor(PluginRegistry plugins) {
         return new LocalClaudeExecutor(null, null, null, null, null,
-                new com.fasterxml.jackson.databind.ObjectMapper(), null, null, null, null,
+                new com.fasterxml.jackson.databind.ObjectMapper(), null, null, null, null, plugins,
                 "bypassPermissions", "data", true, true, 8734);
+    }
+
+    /** A registry with a fixed installed list — the CLI is never shelled from a unit test. */
+    private static PluginRegistry fixedPlugins() {
+        return new PluginRegistry(new com.concentus.support.LocalClaudeSupport("claude"),
+                new com.fasterxml.jackson.databind.ObjectMapper()) {
+            @Override
+            public java.util.List<PluginInfo> list() {
+                return java.util.List.of(
+                        new PluginInfo("caveman@caveman", "1", "user", true),
+                        new PluginInfo("other@mkt", "1", "user", true));
+            }
+        };
     }
 
     private static AgentRun run() {
@@ -123,6 +140,32 @@ class LocalClaudeArgsTest {
 
         int i = a.indexOf("--permission-mode");
         org.assertj.core.api.Assertions.assertThat(a.get(i + 1)).isEqualTo("bypassPermissions");
+    }
+
+    @Test
+    void selectedPluginsBecomeSessionSettingsThatDisableTheRest() {
+        AgentRun run = run();
+        run.compiled.coordinator().plugins = List.of("caveman@caveman");
+
+        List<String> a = executor(fixedPlugins())
+                .buildArgs("claude", run, Path.of("."), true, "hola", List.of(), false);
+
+        int i = a.indexOf("--settings");
+        assertThat(i).isGreaterThanOrEqualTo(0);
+        // Exactly the selection: enabled, and every other installed plugin explicitly disabled —
+        // a leftover globally-enabled plugin must not ride along into a flow that chose its set.
+        assertThat(a.get(i + 1))
+                .contains("\"caveman@caveman\":true")
+                .contains("\"other@mkt\":false");
+    }
+
+    @Test
+    void noPluginSelectionMeansNoSettingsFlagAtAll() {
+        // The CLI's own defaults (the user's globally enabled plugins) apply untouched.
+        List<String> a = executor(fixedPlugins())
+                .buildArgs("claude", run(), Path.of("."), true, "hola", List.of(), false);
+
+        assertThat(a).doesNotContain("--settings");
     }
 
     @org.junit.jupiter.api.Test

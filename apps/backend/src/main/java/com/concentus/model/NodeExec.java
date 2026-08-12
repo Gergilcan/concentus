@@ -42,6 +42,23 @@ public class NodeExec {
     /** USD estimate for this block, filled in when the report is built. */
     public volatile Double estimatedCostUsd;
 
+    /**
+     * Context-window occupancy after this node's latest message: the whole prompt the model just
+     * read (fresh + cached input) plus what it wrote. Overwritten on every message rather than
+     * summed — the cached history is re-read each turn, so a running sum would count the same
+     * conversation once per turn and overstate wildly. 0 until the first usage report arrives.
+     */
+    public volatile long contextTokens;
+    /**
+     * The context this node STARTED with: its first message's prompt — system prompt, tool
+     * schemas, the task it was handed — before it wrote a single token. The difference with
+     * {@link #contextTokens} is exactly what the run's conversation (its answers, tool results)
+     * added to the window, which is the number that says who is filling the context up.
+     */
+    public volatile long contextStartTokens;
+    /** The model's context-window size, filled in at report time; null when unknown. */
+    public volatile Long contextWindow;
+
     /** Extra process launches after a failed attempt (fan-out only; 0 elsewhere). */
     public volatile int retries;
     /**

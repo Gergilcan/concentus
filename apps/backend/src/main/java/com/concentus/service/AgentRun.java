@@ -347,11 +347,12 @@ public class AgentRun {
      */
     public List<NodeExec> pricedNodeExecList() {
         List<NodeExec> nodes = nodeExecList();
-        if (pricing != null) {
-            for (NodeExec n : nodes) {
+        for (NodeExec n : nodes) {
+            if (pricing != null) {
                 n.estimatedCostUsd = pricing.costUsd(
                         n.model, n.inputTokens, n.cacheReadTokens, n.cacheWriteTokens, n.outputTokens);
             }
+            n.contextWindow = ContextWindows.windowFor(n.model);
         }
         return nodes;
     }

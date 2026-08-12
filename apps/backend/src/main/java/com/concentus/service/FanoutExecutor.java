@@ -69,6 +69,7 @@ public class FanoutExecutor {
     private final ContextFolderResolver contextFolders;
     private final ObjectMapper mapper;
     private final com.concentus.store.FacadeProfileStore profiles;
+    private final PluginRegistry pluginRegistry;
     private final String dataDir;
     private final String permissionMode;
     private final int serverPort;
@@ -82,14 +83,15 @@ public class FanoutExecutor {
     public FanoutExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
                           ContextFolderResolver contextFolders, ObjectMapper mapper,
                           com.concentus.store.FacadeProfileStore profiles,
+                          PluginRegistry pluginRegistry,
                           @Value("${app.data-dir}") String dataDir,
                           @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                           @Value("${server.port:8734}") int serverPort,
                           @Value("${workers.max-concurrent:4}") int maxConcurrent,
                           @Value("${workers.timeout-seconds:900}") int timeoutSeconds,
                           @Value("${workers.retries:1}") int retries) {
-        this(support, ragInjector, contextFolders, mapper, profiles, dataDir, permissionMode,
-                serverPort, maxConcurrent, timeoutSeconds, retries, (args, workdir) ->
+        this(support, ragInjector, contextFolders, mapper, profiles, pluginRegistry, dataDir,
+                permissionMode, serverPort, maxConcurrent, timeoutSeconds, retries, (args, workdir) ->
                         new ProcessBuilder(args).directory(workdir.toFile())
                                 .redirectErrorStream(true).start());
     }
@@ -97,6 +99,7 @@ public class FanoutExecutor {
     FanoutExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
                    ContextFolderResolver contextFolders, ObjectMapper mapper,
                    com.concentus.store.FacadeProfileStore profiles,
+                   PluginRegistry pluginRegistry,
                    String dataDir, String permissionMode, int serverPort, int maxConcurrent,
                    int timeoutSeconds, int retries, ProcessStarter starter) {
         this.support = support;
@@ -104,6 +107,7 @@ public class FanoutExecutor {
         this.contextFolders = contextFolders;
         this.mapper = mapper;
         this.profiles = profiles;
+        this.pluginRegistry = pluginRegistry;
         this.dataDir = dataDir;
         this.permissionMode = permissionMode;
         this.serverPort = serverPort;
@@ -695,6 +699,13 @@ public class FanoutExecutor {
         a.add(LocalClaudeExecutor.effectivePermissionMode(run, permissionMode));
         a.add("--model");
         a.add(LocalClaudeExecutor.modelAlias(spec.model.id));
+        // Workers are separate processes, so plugin selection here is truly per-agent — this
+        // worker's own list, not the flow-wide union the shared session gets.
+        String pluginSettings = pluginRegistry == null ? null : pluginRegistry.settingsJsonFor(spec.plugins);
+        if (pluginSettings != null) {
+            a.add("--settings");
+            a.add(pluginSettings);
+        }
         a.add("--mcp-config");
         a.add(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE).toString());
         a.add("--strict-mcp-config");
@@ -739,6 +750,8 @@ public class FanoutExecutor {
                     exec.outputTokens += usage.path("output_tokens").asLong(0);
                     exec.cacheReadTokens += usage.path("cache_read_input_tokens").asLong(0);
                     exec.cacheWriteTokens += usage.path("cache_creation_input_tokens").asLong(0);
+                    LocalStreamEventHandler.applyContext(exec,
+                            LocalStreamEventHandler.promptOf(usage), LocalStreamEventHandler.contextOf(usage));
                 }
                 String text = null;
                 JsonNode content = node.path("message").path("content");

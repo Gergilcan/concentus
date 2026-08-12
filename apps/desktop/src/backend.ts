@@ -33,7 +33,9 @@ const SHUTDOWN_TIMEOUT_MS = 8_000
 
 export interface RunningBackend {
   port: number
-  process: ChildProcess
+  /** Null when the backend was ADOPTED — found already running (a dev `mvn spring-boot:run`
+   *  with devtools), used but never owned: quitting the shell must not kill it. */
+  process: ChildProcess | null
 }
 
 /**
@@ -189,6 +191,20 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
     try { onProgress?.(percent, label) } catch { /* the splash is cosmetic; never fail a start over it */ }
   }
 
+  // The live backend loop: a dev backend already running on the preferred port (started with
+  // `pnpm dev:backend`, where Spring devtools hot-restarts it on every recompile) is adopted
+  // rather than duplicated — Java edits then reload INSIDE the real app, with no jar rebuild.
+  // Dev only: packaged installs own their backend outright, and something squatting the port
+  // there is exactly what the orphan sweep below exists to remove.
+  if (!isPackaged()) {
+    const preferred = loadSettings().port ?? DEFAULT_PORT
+    if (await probeReady(preferred)) {
+      log.info(`Adopting the backend already running on 127.0.0.1:${preferred} (devtools dev loop).`)
+      advance(85, 'Using the running dev backend')
+      return { port: preferred, process: null }
+    }
+  }
+
   const artifact = backendJar()
   if (!fs.existsSync(artifact)) {
     throw new Error(`Backend jar not found at ${artifact}. Build it with: pnpm backend:build`)
@@ -220,9 +236,9 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
     PATH: claude.path,
     APP_DATA_DIR: data,
     CONCENTUS_SECRET_KEY: masterSecret(),
-    // Must be the address the browser (this window) actually uses, because it is registered with
-    // each MCP authorization server.
-    MCP_OAUTH_REDIRECT_BASE: `http://127.0.0.1:${port}`,
+    // MCP_OAUTH_REDIRECT_BASE is deliberately NOT set: the backend derives the OAuth callback
+    // from each request's own Host, which is right both here (the window loads the UI from the
+    // backend's port) and in desktop:dev (the browser sits on Vite's port, which proxies /api).
     // Blank is meaningful and safe: the backend then falls back to its own PATH resolution.
     CLAUDE_COMMAND: claude.command ?? '',
     // What the header's version chip shows. Packaged only: a dev run's package.json version is
@@ -313,6 +329,11 @@ function requestShutdown(port: number): Promise<boolean> {
 export async function stopBackend(backend: RunningBackend | null): Promise<void> {
   if (!backend) return
   const { port, process: child } = backend
+  if (child === null) {
+    // Adopted, not owned: the developer's `mvn spring-boot:run` keeps running for the next launch.
+    log.info('Leaving the adopted dev backend running.')
+    return
+  }
   if (child.exitCode !== null) return
 
   log.info('Asking the backend to shut down.')

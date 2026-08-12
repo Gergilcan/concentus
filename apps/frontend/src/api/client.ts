@@ -234,6 +234,17 @@ export const api = {
   installCatalogSkill: (owner: string, repo: string, path: string) =>
     req<import('./types.ts').SkillInfo>('/skills/catalog/install',
       { method: 'POST', body: JSON.stringify({ owner, repo, path }) }, 120_000),
+  // Claude Code plugins, via the `claude plugin` CLI. Installing clones a marketplace repo,
+  // hence the long timeouts.
+  listPlugins: () => req<import('./types.ts').PluginsView>('/plugins'),
+  installPlugin: (id: string) =>
+    req<{ status: string }>('/plugins/install', { method: 'POST', body: JSON.stringify({ id }) }, 120_000),
+  uninstallPlugin: (id: string) =>
+    req<{ status: string }>('/plugins/uninstall', { method: 'POST', body: JSON.stringify({ id }) }, 60_000),
+  addPluginMarketplace: (source: string) =>
+    req<{ status: string }>('/plugins/marketplaces', { method: 'POST', body: JSON.stringify({ source }) }, 180_000),
+  removePluginMarketplace: (name: string) =>
+    req<{ status: string }>('/plugins/marketplaces/remove', { method: 'POST', body: JSON.stringify({ name }) }, 60_000),
   /** Measured Claude consumption on this machine (CLI transcripts). Cached 30s server-side. */
   usageSummary: () => req<import('./types.ts').UsageSummary>('/usage'),
   listDatabases: () => req<DatabaseDef[]>('/databases'),

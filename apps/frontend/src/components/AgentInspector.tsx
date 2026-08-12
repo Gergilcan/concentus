@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.ts'
-import type { FacadeProfile, SkillInfo } from '../api/types.ts'
+import type { FacadeProfile, PluginInfo, SkillInfo } from '../api/types.ts'
 import type { AgentNodeData, LibraryAgent } from '../api/types.ts'
 import { EFFORT_OPTIONS } from '../constants.ts'
 import { Field, FineTuning, SelectField, TextArea } from './fields.tsx'
@@ -17,6 +17,7 @@ export function AgentInspector({ data, set }: Props) {
   const [library, setLibrary] = useState<LibraryAgent[]>([])
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [facades, setFacades] = useState<FacadeProfile[]>([])
+  const [plugins, setPlugins] = useState<PluginInfo[]>([])
 
   useEffect(() => {
     api
@@ -25,7 +26,16 @@ export function AgentInspector({ data, set }: Props) {
       .catch(() => setLibrary([]))
     api.listSkills().then(setSkills).catch(() => setSkills([]))
     api.listFacadeProfiles().then(setFacades).catch(() => setFacades([]))
+    api
+      .listPlugins()
+      .then((v) => setPlugins(v.plugins))
+      .catch(() => setPlugins([]))
   }, [])
+
+  const togglePlugin = (id: string) => {
+    const current = data.plugins ?? []
+    set({ plugins: current.includes(id) ? current.filter((p) => p !== id) : [...current, id] })
+  }
 
   const applyLibrary = (id: string) => {
     const a = library.find((x) => x.id === id)
@@ -74,6 +84,25 @@ export function AgentInspector({ data, set }: Props) {
           selectedIds={data.skillIds ?? []}
           onChange={(skillIds) => set({ skillIds })}
         />
+      )}
+      {plugins.length > 0 && (
+        <div className={styles.pluginPick}>
+          <span
+            title="Claude Code plugins this agent's runs load. None selected = the CLI's own defaults; selecting any = exactly those, with the rest disabled for the run. Claude backend only."
+          >
+            Plugins ⓘ
+          </span>
+          {plugins.map((p) => (
+            <label key={p.id} className={styles.pluginRow}>
+              <input
+                type="checkbox"
+                checked={(data.plugins ?? []).includes(p.id)}
+                onChange={() => togglePlugin(p.id)}
+              />
+              <span>{p.id}</span>
+            </label>
+          ))}
+        </div>
       )}
       <TextArea label="System prompt" rows={6} value={data.systemPrompt} onChange={(v) => set({ systemPrompt: v })} />
 

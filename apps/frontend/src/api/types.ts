@@ -80,6 +80,18 @@ export interface NodeExec {
   estimatedCostUsd?: number
   /** Model this block ran on. */
   model?: string | null
+  /**
+   * Context-window occupancy after this block's latest message — the whole prompt it read plus
+   * what it wrote, like Claude Code's /context. A snapshot, not a running sum.
+   */
+  contextTokens?: number
+  /**
+   * The context this block STARTED with (system prompt, tools, its task). The difference with
+   * `contextTokens` is what its own work added to the window.
+   */
+  contextStartTokens?: number
+  /** The model's context-window size; absent when unknown (e.g. self-hosted models). */
+  contextWindow?: number | null
   startedAt: number
   endedAt: number
   /** Extra process launches after a failed attempt (fan-out only). */
@@ -269,6 +281,11 @@ export type AgentNodeData = {
   tools?: string[]
   /** Installed skills assigned to this agent (Resources → Skills). */
   skillIds?: string[]
+  /**
+   * Claude Code plugin ids (name@marketplace) this agent runs with (Resources → Plugins).
+   * Empty = the CLI's own defaults; non-empty = exactly these. Claude backend only.
+   */
+  plugins?: string[]
   /**
    * How much the run may do without asking. **Coordinator only.**
    *
@@ -706,10 +723,31 @@ export interface McpToolInfo {
   description: string
 }
 
+/** One installed Claude Code plugin, as `claude plugin list` reports it. */
+export interface PluginInfo {
+  /** name@marketplace */
+  id: string
+  version?: string
+  scope?: string
+  enabled: boolean
+}
+
+export interface PluginMarketplace {
+  name: string
+  source?: string
+}
+
+export interface PluginsView {
+  plugins: PluginInfo[]
+  marketplaces: PluginMarketplace[]
+}
+
 export interface McpToolList {
   ok: boolean
   tools?: McpToolInfo[]
   error?: string
+  /** The server answered 401: a sign-in (the app's own OAuth) would fix it, so the UI offers one. */
+  needsAuth?: boolean
 }
 
 /** A named collection of documents agents retrieve from (Resources → Knowledge). */

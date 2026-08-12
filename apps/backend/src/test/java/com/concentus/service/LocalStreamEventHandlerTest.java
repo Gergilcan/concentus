@@ -284,4 +284,51 @@ class LocalStreamEventHandlerTest {
         assertThat(exec(SUB_NODE).outputTokens).isEqualTo(40L);
         assertThat(exec(SUB_NODE).inputTokens).isEqualTo(100L);
     }
+
+    @Test
+    void contextIsTheLatestMessagesWholePromptNotARunningSum() {
+        // Each turn's prompt already contains the entire history (mostly as cache reads), so
+        // summing per-message context would count the same conversation once per turn. The
+        // node's context is a snapshot of its LAST message: uncached + cached prompt + output.
+        handler.handleLine(run, """
+                {"type":"assistant","parent_tool_use_id":null,
+                 "message":{"usage":{"input_tokens":500,"output_tokens":100,
+                            "cache_read_input_tokens":10000,"cache_creation_input_tokens":2000},
+                            "content":[{"type":"text","text":"first"}]}}""");
+        handler.handleLine(run, """
+                {"type":"assistant","parent_tool_use_id":null,
+                 "message":{"usage":{"input_tokens":200,"output_tokens":50,
+                            "cache_read_input_tokens":12600,"cache_creation_input_tokens":0},
+                            "content":[{"type":"text","text":"second"}]}}""");
+
+        // 200 + 50 + 12600 + 0 — the second message's view of the window, not 12600 + 12850.
+        assertThat(exec(COORD_NODE).contextTokens).isEqualTo(12_850L);
+        // The starting context is the FIRST message's prompt alone (500 + 10000 + 2000): what
+        // was in the window before the model wrote anything. contextTokens - this = what the
+        // run's conversation added.
+        assertThat(exec(COORD_NODE).contextStartTokens).isEqualTo(12_500L);
+        // The cost counters still accrue across messages — the two facts are different.
+        assertThat(exec(COORD_NODE).cacheReadTokens).isEqualTo(22_600L);
+    }
+
+    @Test
+    void contextWindowIsFilledPerModelAtReportTime() {
+        run.compiled = new CompiledFlow(
+                agentWithModel(COORD_NODE, "Coordinator", "claude-opus-4-8"),
+                List.of(agentWithModel(SUB_NODE, "Researcher", "qwen3:14b")));
+
+        handler.handleLine(run, """
+                {"type":"assistant","parent_tool_use_id":null,
+                 "message":{"usage":{"input_tokens":100,"output_tokens":10},
+                            "content":[{"type":"text","text":"a"}]}}""");
+        handler.handleLine(run, taskCall("tool_1", "researcher", "go"));
+        handler.handleLine(run, assistantText("b", "tool_1"));
+
+        var byId = run.pricedNodeExecList().stream()
+                .collect(java.util.stream.Collectors.toMap(n -> n.nodeId, n -> n));
+        assertThat(byId.get(COORD_NODE).contextWindow).isEqualTo(200_000L);
+        // A self-hosted model's window is whatever the server was started with — guessing one
+        // would look authoritative and be wrong, so it stays null and the UI shows no percentage.
+        assertThat(byId.get(SUB_NODE).contextWindow).isNull();
+    }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { NodeExec } from '../api/types.ts'
-import { pctDelta, stepSummary } from './compareRuns.ts'
+import { pctDelta, peakContext, stepSummary } from './compareRuns.ts'
 
 describe('pctDelta', () => {
   it('signs the change relative to the reference', () => {
@@ -34,5 +34,34 @@ describe('stepSummary', () => {
 
   it('says when there are no steps at all', () => {
     expect(stepSummary([])).toBe('no steps')
+  })
+})
+
+// Context compares by its peak: each node runs in its own window, so summing them would
+// describe a window nothing ever ran in. The fullest node decides whether the flow fits.
+describe('peakContext', () => {
+  const node = (over: Partial<NodeExec>): NodeExec => ({
+    nodeId: 'n',
+    kind: 'agent',
+    label: 'A',
+    status: 'passed',
+    inputTokens: 0,
+    outputTokens: 0,
+    startedAt: 0,
+    endedAt: 0,
+    ...over,
+  })
+
+  it('is null when no node recorded context (runs from before tracking existed)', () => {
+    expect(peakContext([node({}), node({ contextTokens: 0 })])).toBeNull()
+  })
+
+  it('picks the fullest node and carries its window', () => {
+    const nodes = [
+      node({ nodeId: 'a', contextTokens: 12_000, contextWindow: 200_000 }),
+      node({ nodeId: 'b', contextTokens: 87_000, contextWindow: 200_000 }),
+      node({ nodeId: 'c', contextTokens: 40_000, contextWindow: null }),
+    ]
+    expect(peakContext(nodes)).toEqual({ tokens: 87_000, window: 200_000 })
   })
 })

@@ -228,6 +228,7 @@ public class FlowCompiler {
             skill.id = skillId;
             s.skills.add(skill);
         }
+        s.plugins = strList(d, "plugins");
         s.description = str(d, "description", "");
         s.systemPrompt = str(d, "systemPrompt", "");
         // Only the coordinator's value is ever read, but it is carried for every agent so the

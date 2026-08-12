@@ -16,6 +16,9 @@ interface Props {
 export function McpInspector({ data, set }: Props) {
   const [servers, setServers] = useState<McpServerInfo[]>([])
   const [defs, setDefs] = useState<McpDef[]>([])
+  // When this server is signed in with OAuth, the token fields disappear: a grant makes them
+  // dead weight, and a leftover token used to shadow the grant and turn every request into 401.
+  const [oauthConnected, setOauthConnected] = useState<boolean | null>(null)
 
   useEffect(() => {
     api
@@ -136,64 +139,53 @@ export function McpInspector({ data, set }: Props) {
               set({ env })
             }}
           />
-          <p className={styles.hint}>
-            The run launches this command itself and talks to it over stdio — nothing to sign in
-            to. The tool picker and OAuth below don't apply; the agent sees every tool the server
-            exposes.
+          <p
+            className={styles.hint}
+            title="The run launches this command itself and talks to it over stdio. The tool picker and OAuth don't apply; the agent sees every tool the server exposes."
+          >
+            Launched by the run itself — nothing to sign in to. ⓘ
           </p>
         </>
       ) : (
         <>
           <Field label="URL" value={data.url} onChange={(v) => set({ url: v })} />
-          <CredentialField
-            label="Access token (optional)"
-            value={data.credentialId}
-            onChange={(v) => set({ credentialId: v })}
-            what="this MCP server"
-          />
+          <McpOAuthConnect url={data.url} onStatus={setOauthConnected} />
+          {oauthConnected !== true && (
+            <CredentialField
+              label="Access token (optional)"
+              value={data.credentialId}
+              onChange={(v) => set({ credentialId: v })}
+              what="this MCP server"
+            />
+          )}
         </>
       )}
 
       {!isStdio && (
       <FineTuning>
-        <SelectField
-          label="Send token in"
-          value={data.authHeader ?? ''}
-          onChange={(v) => set({ authHeader: v })}
-        >
-          <option value="">Authorization: Bearer … (most servers, GitHub)</option>
-          <option value="PRIVATE-TOKEN">PRIVATE-TOKEN: … (GitLab)</option>
-        </SelectField>
-        <p className={styles.hint}>
-          GitLab reads its project, group and personal access tokens from <code>PRIVATE-TOKEN</code>,
-          without a <code>Bearer</code> prefix — sending one there just makes the token wrong. Most
-          other servers, GitHub included, take the default.
-        </p>
-        <p className={styles.hint}>
-          Neither provider needs an interactive sign-in: a <b>fine-grained PAT</b> (GitHub) or a{' '}
-          <b>project/group access token</b> (GitLab) is a plain header, so it works headlessly — which
-          is what makes this usable from Docker.
-        </p>
+        {oauthConnected !== true && (
+          <SelectField
+            label={
+              <span title="GitLab reads its tokens from PRIVATE-TOKEN without a Bearer prefix — sending one there makes the token wrong. Most other servers, GitHub included, take the default.">
+                Send token in ⓘ
+              </span>
+            }
+            value={data.authHeader ?? ''}
+            onChange={(v) => set({ authHeader: v })}
+          >
+            <option value="">Authorization: Bearer … (most servers, GitHub)</option>
+            <option value="PRIVATE-TOKEN">PRIVATE-TOKEN: … (GitLab)</option>
+          </SelectField>
+        )}
 
         <McpToolPicker
           url={data.url}
-          credentialId={data.credentialId}
+          credentialId={oauthConnected === true ? undefined : data.credentialId}
           selected={data.tools ?? []}
           onChange={(tools) => set({ tools })}
         />
-        <p className={styles.hint}>
-          <b>This matters most on a self-hosted model.</b> A real server can expose hundreds of tools
-          — Holded's has 338 — and each is a JSON schema in the prompt. That overflows the context
-          before the conversation starts; the model server then truncates <i>silently</i>, and the
-          model reports having only the few that survived. Claude has the room; a 14B does not, and it
-          also picks better from eight tools than from three hundred. One agent per area — invoicing,
-          contacts, treasury — each with its own short list, is what the delegation on this canvas is
-          for.
-        </p>
       </FineTuning>
       )}
-
-      {!isStdio && <McpOAuthConnect url={data.url} />}
 
       {!isStdio && (
         <McpClaudeActions

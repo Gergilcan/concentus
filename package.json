@@ -7,7 +7,8 @@
   "url": "http://www.concentus-ai.com/",
   "scripts": {
     "dev": "concurrently -n backend,frontend -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\"",
-    "dev:backend": "cd apps/backend && mvn -q spring-boot:run",
+    "//dev:backend": "8734 on purpose — the port Vite's proxy targets AND the desktop shell prefers: a shell launched while this runs ADOPTS this backend instead of starting the jar, so devtools hot-restarts (triggered by the IDE compiling on save, or `mvn compile`) reach the real app. Java edits reload in seconds; only a dependency change still needs a restart.",
+    "dev:backend": "cd apps/backend && mvn -q spring-boot:run -Dspring-boot.run.arguments=--server.port=8734",
     "dev:frontend": "pnpm --filter frontend dev",
     "build": "pnpm --filter frontend build",
     "backend": "cd apps/backend && mvn spring-boot:run",
@@ -16,7 +17,7 @@
     "//desktop:build": "-DskipTests: this is the launch-the-app loop, and paying the full suite on every UI tweak makes people stop launching the app. CI runs the tests on every push; `pnpm backend:build` still runs them for a deliberate pre-release check.",
     "desktop:build": "pnpm --filter frontend build && cd apps/backend && mvn -q clean package -DskipTests",
     "desktop": "pnpm desktop:build && pnpm --filter desktop start",
-    "//desktop:dev": "The live loop INSIDE the real app: Vite serves the UI with hot reload, the Electron shell detects it and loads it instead of the jar's baked copy, and Vite proxies /api and /ws to the backend the shell itself started (8734). Frontend edits appear on save; backend (Java) changes still need `pnpm desktop:build` — a JVM has no hot reload to offer. No backend jar built here: the shell still runs the last one from target/, so build it once first.",
+    "//desktop:dev": "The live loop INSIDE the real app: Vite serves the UI with hot reload, the Electron shell detects it and loads it instead of the jar's baked copy, and Vite proxies /api and /ws to the backend (8734). Frontend edits appear on save. For backend hot reload too, start `pnpm dev:backend` FIRST: the shell adopts it and Spring devtools restarts it on every recompile — no jar rebuild. Without it the shell runs the last jar from target/, so build that once first.",
     "desktop:dev": "concurrently -n ui,shell -c green,magenta \"pnpm dev:frontend\" \"pnpm --filter desktop start\""
   },
   "devDependencies": {

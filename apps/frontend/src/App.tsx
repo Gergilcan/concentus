@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { AppHeader, type View } from './components/AppHeader.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { FlowsPage } from './components/FlowsPage.tsx'
@@ -53,6 +53,45 @@ function usePanelOpen(key: string): [boolean, () => void] {
   return [open, toggle]
 }
 
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
+
+/**
+ * A panel dimension the user can drag, remembered across sessions — same home as the panels'
+ * open state, for the same reason: how much room the palette or the executions deserve is a fact
+ * about this screen, not about any flow.
+ *
+ * `startDrag(measure)` is a pointerdown handler; `measure` turns the pointer position into the
+ * new size (distance from the relevant window edge). Written once, on release — resizing is
+ * dozens of moves per second and none of the intermediate values is worth persisting.
+ */
+function usePanelSize(
+  key: string,
+  fallback: number,
+  min: number,
+  max: number,
+): [number, (measure: (e: PointerEvent) => number) => (down: ReactPointerEvent) => void] {
+  const [size, setSize] = useState(() => {
+    const stored = Number(localStorage.getItem(key) ?? NaN)
+    return Number.isFinite(stored) ? clamp(stored, min, max) : fallback
+  })
+  const startDrag = (measure: (e: PointerEvent) => number) => (down: ReactPointerEvent) => {
+    down.preventDefault()
+    let last: number | null = null
+    const move = (e: PointerEvent) => {
+      last = clamp(measure(e), min, max)
+      setSize(last)
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      if (last !== null) localStorage.setItem(key, String(last))
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+  return [size, startDrag]
+}
+
 interface WorkspaceProps {
   signedInAs: string | null
   onSignOut: () => void
@@ -67,6 +106,10 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
   const [paletteOpen, togglePalette] = usePanelOpen('studio.palette')
   const [inspectorOpen, toggleInspector] = usePanelOpen('studio.inspector')
   const [runsOpen, toggleRuns] = usePanelOpen('studio.runs')
+  // Every Studio panel resizes by dragging its inner edge, and keeps its size across sessions.
+  const [paletteW, dragPalette] = usePanelSize('studio.palette.width', 260, 180, 480)
+  const [inspectorW, dragInspector] = usePanelSize('studio.inspector.width', 300, 220, 560)
+  const [runsH, dragRuns] = usePanelSize('studio.runs.height', 260, 140, 600)
 
   useEffect(() => {
     if (!toast) return
@@ -120,7 +163,7 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
             <div
               className={styles.main}
               style={{
-                gridTemplateColumns: `${paletteOpen ? '230px' : '26px'} 1fr ${inspectorOpen ? '300px' : '26px'}`,
+                gridTemplateColumns: `${paletteOpen ? `${paletteW}px` : '26px'} 1fr ${inspectorOpen ? `${inspectorW}px` : '26px'}`,
               }}
             >
               {paletteOpen ? (
@@ -134,6 +177,12 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
                   >
                     ◂
                   </button>
+                  <div
+                    className={styles.resizeX}
+                    style={{ right: -4 }}
+                    onPointerDown={dragPalette((e) => e.clientX)}
+                    title="Drag to resize"
+                  />
                 </div>
               ) : (
                 <button
@@ -159,6 +208,12 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
                   >
                     ▸
                   </button>
+                  <div
+                    className={styles.resizeX}
+                    style={{ left: -4 }}
+                    onPointerDown={dragInspector((e) => window.innerWidth - e.clientX)}
+                    title="Drag to resize"
+                  />
                 </div>
               ) : (
                 <button
@@ -172,7 +227,7 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
               )}
             </div>
             {runsOpen ? (
-              <div className={styles.bottomWrap}>
+              <div className={styles.bottomWrap} style={{ '--runs-h': `${runsH}px` } as CSSProperties}>
                 <RunsPanel
                   runs={runs}
                   loading={runsLoading}
@@ -188,6 +243,12 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
                 >
                   ▾
                 </button>
+                <div
+                  className={styles.resizeY}
+                  style={{ top: -4 }}
+                  onPointerDown={dragRuns((e) => window.innerHeight - e.clientY)}
+                  title="Drag to resize"
+                />
               </div>
             ) : (
               <button

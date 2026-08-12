@@ -56,12 +56,13 @@ public class McpToolsController {
             return out;
         }
 
-        String token = null;
-        if (credentialId != null && !credentialId.isBlank()) {
+        // The OAuth grant first: it exists only because someone deliberately signed this server in,
+        // and the store vouches for it (a stale one comes back empty). The node's static token is
+        // the fallback — the old order let a leftover credential shadow a working grant, and an
+        // OAuth-only server (Holded) answered the pasted token with a 401 nobody could explain.
+        String token = oauthStore.accessToken(orgContext.defaultOrganizationId(), mcpUrl).orElse(null);
+        if ((token == null || token.isBlank()) && credentialId != null && !credentialId.isBlank()) {
             token = com.concentus.config.AgentSpec.resolveCredentialForLookup(credentialId);
-        }
-        if (token == null || token.isBlank()) {
-            token = oauthStore.accessToken(orgContext.defaultOrganizationId(), mcpUrl).orElse(null);
         }
 
         try (McpClient client = new McpClient("picker", mcpUrl, token, mapper)) {
@@ -73,8 +74,20 @@ public class McpToolsController {
             out.put("tools", tools);
             return out;
         } catch (RuntimeException e) {
+            String msg = e.getMessage() == null ? "The server could not be read." : e.getMessage();
             out.put("ok", false);
-            out.put("error", e.getMessage());
+            // A 401 is a state the UI can FIX (start the app's own OAuth sign-in), not just
+            // report. Named explicitly so the dialog offers the button instead of a dead error.
+            // The claude CLI's grant ("Connected in Claude Code") cannot help here — the CLI
+            // keeps its authorizations to itself; this endpoint connects directly.
+            if (msg.contains(" 401") || msg.toLowerCase(java.util.Locale.ROOT).contains("unauthorized")) {
+                out.put("needsAuth", true);
+                out.put("error", token == null
+                        ? "This server requires a sign-in."
+                        : "The server rejected the stored authorization — sign in again.");
+            } else {
+                out.put("error", msg);
+            }
             return out;
         }
     }

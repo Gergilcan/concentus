@@ -335,6 +335,40 @@
   color: t.$muted;
 }
 
+/* /context-style breakdown of a block's window: stacked bar + legend. */
+.ctxBox {
+  margin: 0 0 10px;
+}
+.ctxBar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: t.$bg;
+  border: 1px solid t.$border;
+
+  span {
+    display: block;
+    height: 100%;
+  }
+}
+.ctxLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 5px;
+  font-family: monospace;
+  font-size: 10.5px;
+  color: t.$muted;
+}
+.ctxSwatch {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  margin-right: 4px;
+}
+
 .execText {
   background: t.$bg;
   border: 1px solid t.$border;
@@ -504,6 +538,30 @@
       opacity: 0.4;
       cursor: default;
     }
+  }
+}
+
+/* Per-agent plugin checkboxes: a short fixed list, so no search or pagination needed. */
+.pluginPick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 12px;
+
+  > span:first-child {
+    color: t.$muted;
+    font-size: 11px;
+  }
+}
+.pluginRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+
+  input {
+    width: 14px;
   }
 }
 

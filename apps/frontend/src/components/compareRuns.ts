@@ -13,6 +13,23 @@ export function pctDelta(reference: number, candidate: number): string | null {
   return `${pct > 0 ? '+' : '−'}${magnitude}%`
 }
 
+/**
+ * The run's fullest context window: the node closest to compaction, which is the one that
+ * decides whether the flow fits. Per-node contexts must not be summed across a run — each node
+ * has its own window — so "the peak" is the honest single number. Null before any usage arrived
+ * (e.g. runs recorded before context tracking existed).
+ */
+export function peakContext(nodes: NodeExec[]): { tokens: number; window: number | null } | null {
+  let peak: { tokens: number; window: number | null } | null = null
+  for (const n of nodes) {
+    const tokens = n.contextTokens ?? 0
+    if (tokens > 0 && (!peak || tokens > peak.tokens)) {
+      peak = { tokens, window: n.contextWindow ?? null }
+    }
+  }
+  return peak
+}
+
 /** "3 passed · 1 failed" — omitting zero counts, so the common all-passed case stays short. */
 export function stepSummary(nodes: NodeExec[]): string {
   const counts = new Map<string, number>()

@@ -46,6 +46,7 @@ public class LocalClaudeExecutor {
     private final LocalClaudeSupport support;
     private final RagContextInjector ragInjector;
     private final McpRegistry mcpRegistry;
+    private final PluginRegistry pluginRegistry;
     private final LocalStreamEventHandler streamHandler;
     private final ContextFolderResolver contextFolders;
     private final GitWorkspace gitWorkspace;
@@ -99,6 +100,7 @@ public class LocalClaudeExecutor {
                                com.concentus.store.SkillStore skillStore,
                                SkillService skillService,
                                OrgContext orgContext,
+                               PluginRegistry pluginRegistry,
                                @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                                @Value("${app.data-dir}") String dataDir,
                                @Value("${local.auto-register-mcp:true}") boolean autoRegisterMcp,
@@ -115,6 +117,7 @@ public class LocalClaudeExecutor {
         this.skillStore = skillStore;
         this.skillService = skillService;
         this.orgContext = orgContext;
+        this.pluginRegistry = pluginRegistry;
         this.permissionMode = permissionMode;
         this.dataDir = dataDir;
         this.autoRegisterMcp = autoRegisterMcp;
@@ -661,6 +664,15 @@ public class LocalClaudeExecutor {
         a.add("--model");
         a.add(modelAlias(coord.model.id));
 
+        // Plugins are session-wide: the coordinator and its Task sub-agents share one CLI
+        // process, so the session loads the union of every agent's selection. No selection
+        // anywhere → no flag → the CLI's own defaults apply.
+        String pluginSettings = pluginSettingsFor(run);
+        if (pluginSettings != null) {
+            a.add("--settings");
+            a.add(pluginSettings);
+        }
+
         // The run's own MCP configuration (see writeMcpConfig): only the flow's servers, with
         // --strict-mcp-config so the user's personal MCP list stays theirs. Registration into the
         // user list still happens separately — it is what `claude mcp login` and the tool picker
@@ -682,6 +694,18 @@ public class LocalClaudeExecutor {
         // only read the prompt from stdin, which is the point.
         if (promptOnStdin) a.add("-p");
         return a;
+    }
+
+    /**
+     * The union of every agent's plugin selection, as a {@code --settings} JSON — or null when
+     * no agent selected any. Union because the coordinator and its sub-agents share one CLI
+     * process; only fan-out workers (separate processes) get truly per-agent plugin sets.
+     */
+    private String pluginSettingsFor(AgentRun run) {
+        if (pluginRegistry == null || run.compiled == null) return null;
+        java.util.LinkedHashSet<String> union = new java.util.LinkedHashSet<>(run.compiled.coordinator().plugins);
+        for (AgentSpec s : run.compiled.subAgents()) union.addAll(s.plugins);
+        return pluginRegistry.settingsJsonFor(union);
     }
 
     /**

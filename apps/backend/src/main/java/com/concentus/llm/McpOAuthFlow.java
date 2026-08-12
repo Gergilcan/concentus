@@ -34,15 +34,25 @@ public class McpOAuthFlow {
     private final String redirectBase;
 
     public McpOAuthFlow(McpOAuth oauth, McpOAuthStore store,
-                        @Value("${mcp.oauth.redirect-base:http://localhost:3000}") String redirectBase) {
+                        @Value("${mcp.oauth.redirect-base:}") String redirectBase) {
         this.oauth = oauth;
         this.store = store;
-        this.redirectBase = redirectBase.replaceAll("/+$", "");
+        // Blank is the default and means "derive from the request": the host the browser reached
+        // us through is, by definition, one that browser can reach again for the callback. The
+        // explicit setting remains for deployments where the two differ (an exotic proxy).
+        this.redirectBase = redirectBase == null ? "" : redirectBase.trim().replaceAll("/+$", "");
     }
 
-    /** An authorization in flight, keyed by the {@code state} the server will echo back. */
+    /**
+     * An authorization in flight, keyed by the {@code state} the server will echo back.
+     *
+     * <p>Carries the exact {@code redirectUri} the sign-in was registered with: the token
+     * exchange must repeat it verbatim (RFC 6749 §4.1.3), and recomputing it at callback time
+     * could differ — the callback may arrive through another host spelling than the start did.
+     */
     private record Pending(String mcpUrl, String organizationId, McpOAuth.Endpoints endpoints,
-                           McpOAuth.Registration registration, String codeVerifier, Instant startedAt) {
+                           McpOAuth.Registration registration, String codeVerifier,
+                           String redirectUri, Instant startedAt) {
     }
 
     private final Map<String, Pending> pending = new ConcurrentHashMap<>();
@@ -54,30 +64,38 @@ public class McpOAuthFlow {
     public record CallbackOutcome(boolean connected, String title, String detail) {
     }
 
-    public String redirectUri() {
-        return redirectBase + "/api/mcp/oauth/callback";
+    /**
+     * The callback URL for a sign-in: the configured base when one is set, else wherever the
+     * browser actually reached the backend ({@code requestBase}) — an address that browser can,
+     * by definition, reach again when the authorization server sends it back.
+     */
+    public String redirectUri(String requestBase) {
+        String base = !redirectBase.isBlank() ? redirectBase
+                : (requestBase == null ? "" : requestBase.trim().replaceAll("/+$", ""));
+        return base + "/api/mcp/oauth/callback";
     }
 
-    public StartResult start(String organizationId, String url, String scope) {
+    public StartResult start(String organizationId, String url, String scope, String requestBase) {
+        String redirect = redirectUri(requestBase);
         if (url == null || url.isBlank()) {
-            return new StartResult(false, "The MCP node has no URL yet.", null, redirectUri());
+            return new StartResult(false, "The MCP node has no URL yet.", null, redirect);
         }
         String mcpUrl = url.trim();
         try {
             McpOAuth.Endpoints endpoints = oauth.discover(mcpUrl);
-            McpOAuth.Registration registration = oauth.register(endpoints, redirectUri(), "Concentus AI");
+            McpOAuth.Registration registration = oauth.register(endpoints, redirect, "Concentus AI");
             String verifier = oauth.newCodeVerifier();
             String state = oauth.newState();
 
             expireStalePending();
             pending.put(state, new Pending(mcpUrl, organizationId, endpoints, registration,
-                    verifier, Instant.now()));
+                    verifier, redirect, Instant.now()));
 
             return new StartResult(true, null,
-                    oauth.authorizationUrl(endpoints, registration, redirectUri(), verifier, state, scope),
-                    redirectUri());
+                    oauth.authorizationUrl(endpoints, registration, redirect, verifier, state, scope),
+                    redirect);
         } catch (McpOAuth.OAuthNotSupported e) {
-            return new StartResult(false, e.getMessage(), null, redirectUri());
+            return new StartResult(false, e.getMessage(), null, redirect);
         }
     }
 
@@ -109,7 +127,7 @@ public class McpOAuthFlow {
 
         try {
             McpOAuth.Tokens tokens = oauth.exchangeCode(p.endpoints(), p.registration(), code,
-                    redirectUri(), p.codeVerifier());
+                    p.redirectUri(), p.codeVerifier());
             store.save(p.organizationId(), p.mcpUrl(),
                     new McpOAuthStore.Session(p.endpoints(), p.registration(), tokens));
             log.info("Authorized MCP server at {} for organization {}.", p.mcpUrl(), p.organizationId());

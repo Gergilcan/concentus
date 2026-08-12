@@ -6,7 +6,7 @@ import { useFlowStore } from '../state/store.ts'
 import { clockTime, money } from '../utils/format.ts'
 import { agentKey } from '../utils/agentKey.ts'
 import { cx } from '../utils/cx.ts'
-import { kindOf } from './flowFormat.ts'
+import { compact, kindOf } from './flowFormat.ts'
 import styles from './runs.module.scss'
 
 /** Stable hue per agent name, so an agent keeps the same colour for the whole run. */
@@ -129,7 +129,26 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
   const totals = useFlowStore((s) => s.runTotals)
   const hasTotals = totals.input > 0 || totals.output > 0
   const graph = useFlowStore((s) => s.runGraph)
+  // Per-node exec state (polled) decorates the event-born agent chips with context occupancy —
+  // the executions panel is where people look for a run's numbers, so ctx must show here too.
+  const execByNode = useFlowStore((s) => s.runExecByNode)
   const secs = (ms: number) => `${(ms / 1000).toFixed(ms >= 10_000 ? 0 : 1)}s`
+
+  const ctxOf = (nodeId: string) => {
+    const exec = execByNode[nodeId]
+    const ctx = exec?.contextTokens ?? 0
+    if (ctx <= 0) return null
+    const win = exec?.contextWindow ?? 0
+    const grew = ctx - (exec?.contextStartTokens ?? 0)
+    return {
+      label: win > 0 ? `${Math.round((ctx / win) * 100)}%` : compact(ctx),
+      title:
+        `Context window in use: ${ctx.toLocaleString()}${win > 0 ? ` of ${win.toLocaleString()}` : ''} tokens` +
+        (grew > 0
+          ? ` — started at ${(exec?.contextStartTokens ?? 0).toLocaleString()}, its work added ${grew.toLocaleString()}`
+          : ''),
+    }
+  }
 
   return (
     <div className={styles.console}>
@@ -175,16 +194,21 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
           >
             All agents
           </button>
-          {agents.map((a) => (
-            <button
-              key={a.id}
-              className={cx(styles.agentChip, agentFilter === a.id && styles.agentChipOn)}
-              style={{ '--h': hueOf(a.name) } as CSSProperties}
-              onClick={() => setAgentFilter(agentFilter === a.id ? null : a.id)}
-            >
-              {a.name}
-            </button>
-          ))}
+          {agents.map((a) => {
+            const ctx = ctxOf(a.id)
+            return (
+              <button
+                key={a.id}
+                className={cx(styles.agentChip, agentFilter === a.id && styles.agentChipOn)}
+                style={{ '--h': hueOf(a.name) } as CSSProperties}
+                onClick={() => setAgentFilter(agentFilter === a.id ? null : a.id)}
+                title={ctx?.title}
+              >
+                {a.name}
+                {ctx && <span className={styles.chipCtx}>{ctx.label}</span>}
+              </button>
+            )
+          })}
         </div>
       )}
       <div className={styles.log}>

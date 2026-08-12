@@ -97,15 +97,19 @@ export function FlowsPage({
   const draftTiles = useMemo(() => {
     const prefix = path === '' ? '' : path + '/'
     const realNames = new Set(tiles.map((t) => t.name))
-    return drafts
+    // A nested draft ("Team/Ops") surfaces at each level by its first segment, exactly like a
+    // real folder would — dropping it here would make "use / to nest" look like a silent no-op.
+    const names = drafts
       .filter((d) => (prefix === '' || d.startsWith(prefix)) && d !== path)
-      .map((d) => d.slice(prefix.length))
-      .filter((rest) => rest !== '' && !rest.includes('/'))
-      .filter((name) => !realNames.has(name))
-      .sort()
+      .map((d) => d.slice(prefix.length).split('/')[0])
+    return [...new Set(names)].filter((name) => name !== '' && !realNames.has(name)).sort()
   }, [drafts, tiles, path])
-  const createFolder = () => {
-    const name = normalizePath(window.prompt('Folder name (use / to nest):') ?? '')
+  // Inline naming instead of window.prompt(): Electron's renderer doesn't implement prompt()
+  // (it throws), so the tile itself turns into an input. Enter commits, Escape/blur cancels.
+  const [namingFolder, setNamingFolder] = useState(false)
+  const commitFolder = (raw: string) => {
+    setNamingFolder(false)
+    const name = normalizePath(raw)
     if (!name) return
     const full = path === '' ? name : path + '/' + name
     if (!drafts.includes(full)) saveDrafts([...drafts, full])
@@ -308,9 +312,23 @@ export function FlowsPage({
                       </button>
                     )
                   })}
-                  <button className={styles.folderNew} onClick={createFolder}>
-                    + New folder
-                  </button>
+                  {namingFolder ? (
+                    <input
+                      className={styles.folderNewInput}
+                      placeholder="Folder name (use / to nest)"
+                      aria-label="New folder name"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitFolder(e.currentTarget.value)
+                        if (e.key === 'Escape') setNamingFolder(false)
+                      }}
+                      onBlur={() => setNamingFolder(false)}
+                    />
+                  ) : (
+                    <button className={styles.folderNew} onClick={() => setNamingFolder(true)}>
+                      + New folder
+                    </button>
+                  )}
                 </div>
                 {here.length > 0 ? (
                   <div className={styles.grid}>{here.map(renderCard)}</div>

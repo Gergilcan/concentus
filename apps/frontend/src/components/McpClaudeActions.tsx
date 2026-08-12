@@ -115,7 +115,10 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
 
   return (
     <div className={styles.mcpActions}>
-      <div className={styles.mcpStatus}>
+      <div
+        className={styles.mcpStatus}
+        title="The claude CLI's own registration, used by runs on the Claude backend. The CLI keeps its authorizations to itself — the tool picker and self-hosted runs use 'Sign in to this server' above instead."
+      >
         <span className={cx(styles.sDot, dotClass)} />
         {statusText}
       </div>
@@ -151,14 +154,13 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
       {caps && !caps.interactiveLogin && (
         <div className={styles.previewMeta}>
           {caps.hint ||
-            'The claude CLI’s own sign-in needs a desktop, which this deployment lacks. For an ' +
-              'OAuth server use “Sign in to this server” above instead — that route works here.'}
+            'The claude CLI’s sign-in needs a desktop — use “Sign in to this server” above instead.'}
         </div>
       )}
       {failed && (
         <div className={styles.previewMeta}>
-          GitHub and GitLab both issue long-lived access tokens that need no sign-in. Store one
-          under <b>Resources → Credentials</b>, select it above, and use “Add with token”.
+          Store a token under <b>Resources → Credentials</b>, select it above, and use “Add with
+          token”.
         </div>
       )}
       {status && <div className={styles.previewMeta}>{status}</div>}

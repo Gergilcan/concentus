@@ -49,13 +49,9 @@ public class McpController {
         return Map.of(
                 "interactiveLogin", interactive,
                 "hint", interactive ? ""
-                        : "The claude CLI's own sign-in needs a desktop, which this deployment does "
-                          + "not have — but that is only one of two routes. For a server that uses "
-                          + "OAuth (Holded, Atlassian, Linear), press \"Sign in to this server\" on "
-                          + "the MCP node: Concentus gets its own authorization through this "
-                          + "browser, which works headlessly. A server that accepts a static token "
-                          + "needs neither — store it under Resources → Credentials and select it "
-                          + "on the node.");
+                        : "The claude CLI's sign-in needs a desktop, which this deployment lacks. "
+                          + "For OAuth servers use \"Sign in to this server\" on the MCP node; "
+                          + "static tokens go under Resources → Credentials.");
     }
 
     /** Registers an MCP server into Claude Code (user scope), with its stored credential. */

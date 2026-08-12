@@ -5,6 +5,7 @@ import type { AgentNodeData, LibraryAgent } from '../api/types.ts'
 import { AgentInspector } from './AgentInspector.tsx'
 
 const listAgentsMock = vi.fn<() => Promise<LibraryAgent[]>>()
+const listPluginsMock = vi.fn()
 
 vi.mock('../api/client.ts', () => ({
   api: {
@@ -16,6 +17,8 @@ vi.mock('../api/client.ts', () => ({
     // The model picker probes this for per-model rates.
     listModels: () =>
       Promise.resolve({ pricing: {}, fallback: { input: 3, output: 15 }, backends: [] }),
+    // The per-agent plugin checkboxes load the installed list; empty keeps them out of a test.
+    listPlugins: () => listPluginsMock(),
   },
 }))
 
@@ -38,6 +41,7 @@ function coordinatorData(overrides: Partial<AgentNodeData> = {}): AgentNodeData 
 describe('AgentInspector', () => {
   beforeEach(() => {
     listAgentsMock.mockResolvedValue([])
+    listPluginsMock.mockResolvedValue({ plugins: [], marketplaces: [] })
   })
 
   afterEach(() => {
@@ -108,5 +112,25 @@ describe('AgentInspector', () => {
 
     await screen.findByLabelText('Name')
     expect(screen.queryByLabelText('Load from library')).not.toBeInTheDocument()
+  })
+
+  it('offers installed plugins as per-agent checkboxes and toggles the selection', async () => {
+    listPluginsMock.mockResolvedValue({
+      plugins: [{ id: 'caveman@caveman', enabled: true }],
+      marketplaces: [],
+    })
+    const set = vi.fn()
+    render(<AgentInspector data={coordinatorData()} set={set} />)
+
+    fireEvent.click(await screen.findByText('caveman@caveman'))
+    expect(set).toHaveBeenCalledWith({ plugins: ['caveman@caveman'] })
+  })
+
+  it('shows no plugin section at all when none are installed', async () => {
+    render(<AgentInspector data={coordinatorData()} set={vi.fn()} />)
+
+    await screen.findByLabelText('Name')
+    await waitFor(() => expect(listPluginsMock).toHaveBeenCalled())
+    expect(screen.queryByText(/Plugins/)).not.toBeInTheDocument()
   })
 })

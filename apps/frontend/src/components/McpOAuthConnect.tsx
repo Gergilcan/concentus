@@ -3,19 +3,79 @@ import { api } from '../api/client.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import styles from './panels.module.scss'
 
+const isLoopback = (host: string) =>
+  host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1'
+
+/**
+ * Whether the browser will NOT be able to reach the sign-in's callback.
+ *
+ * The callback is handled by the BACKEND, not by this page, so origin equality is not the test —
+ * a dev UI on localhost:5173 with the backend on 127.0.0.1:8734 works fine, and so does a
+ * backend on its own api. host. The one setup that genuinely dies is a loopback callback used
+ * from another machine: the provider sends the browser to ITS OWN localhost, where nothing
+ * listens, after the code has been issued and spent. That is the only case flagged.
+ */
+export function callbackUnreachable(redirectUri: string | undefined, page: { origin: string; hostname: string }): boolean {
+  if (!redirectUri || redirectUri.startsWith(page.origin)) return false
+  try {
+    return isLoopback(new URL(redirectUri).hostname) && !isLoopback(page.hostname)
+  } catch {
+    // A malformed redirect URI will fail loudly at the provider; guessing here adds nothing.
+    return false
+  }
+}
+
+/**
+ * Starts the app's own OAuth sign-in for an MCP server and opens the approval tab.
+ * Returns an error message, or null when the tab is open and approval is now up to the user.
+ * Shared with the tool picker's dialog, which offers this sign-in when a server answers 401.
+ */
+export async function beginMcpSignIn(url: string): Promise<string | null> {
+  const started = await api.startMcpOAuth(url)
+  if (!started.ok || !started.authorizationUrl) {
+    return started.error ?? 'This server could not be signed in to.'
+  }
+  if (callbackUnreachable(started.redirectUri, window.location)) {
+    return (
+      `This sign-in would return to ${started.redirectUri}, which only exists on the backend's ` +
+      `own machine — you are using Concentus from ${window.location.origin}. Set ` +
+      `MCP_OAUTH_REDIRECT_BASE=${window.location.origin} and restart the backend.`
+    )
+  }
+  // A new tab, not a redirect: the canvas has unsaved state.
+  window.open(started.authorizationUrl, '_blank', 'noopener')
+  return null
+}
+
 /**
  * Signs Concentus in to an MCP server that uses OAuth.
  *
- * Separate from the token field above it because they answer different questions. A token is
- * something you paste; this is a grant the server issues to *this application*. The distinction
- * matters most on the self-hosted-model backend: the `claude` CLI holds its own MCP
- * authorizations, so a server that works there returns 401 to everything else — which reads as a
- * broken flow rather than as a missing sign-in.
+ * Separate from the token field because they answer different questions. A token is something
+ * you paste; this is a grant the server issues to *this application*. The distinction matters
+ * most on the self-hosted-model backend: the `claude` CLI holds its own MCP authorizations, so a
+ * server that works there returns 401 to everything else — which reads as a broken flow rather
+ * than as a missing sign-in.
+ *
+ * `onStatus` reports the connection state upward: once a server is authorized, the inspector
+ * hides the token fields entirely — a grant makes them dead weight, and a leftover token there
+ * used to shadow the grant and 401.
  */
-export function McpOAuthConnect({ url }: { url: string }) {
+export function McpOAuthConnect({
+  url,
+  onStatus,
+}: {
+  url: string
+  onStatus?: (connected: boolean | null) => void
+}) {
   const [connected, setConnected] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    onStatus?.(connected)
+    // Reporting upward is a consequence of the state changing, not of the parent re-rendering.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected])
 
   const trimmed = url.trim()
 
@@ -36,26 +96,7 @@ export function McpOAuthConnect({ url }: { url: string }) {
     setBusy(true)
     setError(null)
     try {
-      const started = await api.startMcpOAuth(trimmed)
-      if (!started.ok || !started.authorizationUrl) {
-        setError(started.error ?? 'This server could not be signed in to.')
-        return
-      }
-      // The browser knows where it actually is; the backend only knows what it was configured
-      // with. A mismatch is invisible until the very end, when the authorization server sends the
-      // browser somewhere nothing is listening and the sign-in dies on ERR_CONNECTION_REFUSED —
-      // after the code has been issued and spent. Caught here, before anything is registered.
-      if (started.redirectUri && !started.redirectUri.startsWith(window.location.origin)) {
-        setError(
-          `This sign-in would return to ${started.redirectUri}, but you are using Concentus at ` +
-            `${window.location.origin}. Nothing will be listening there when the browser comes ` +
-            `back. Set MCP_OAUTH_REDIRECT_BASE=${window.location.origin} and restart the backend.`,
-        )
-        return
-      }
-      // A new tab, not a redirect: the canvas has unsaved state, and navigating away from it to
-      // approve a tool server would lose the flow being edited.
-      window.open(started.authorizationUrl, '_blank', 'noopener')
+      setError(await beginMcpSignIn(trimmed))
     } catch (e) {
       setError(errMessage(e))
     } finally {
@@ -95,17 +136,13 @@ export function McpOAuthConnect({ url }: { url: string }) {
 
       <p className={styles.hint}>
         {connected === true ? (
-          <>
-            <b>Authorized.</b> Concentus holds its own grant for this server, so agents on a
-            self-hosted model can use its tools — not only the Claude backends.
-          </>
+          <span title="Concentus holds its own encrypted grant for this server and renews it automatically. No token needed — every backend reaches it.">
+            <b>Signed in with OAuth.</b> No token needed. ⓘ
+          </span>
         ) : (
-          <>
-            For a server that uses <b>OAuth</b> rather than a pasted token. Approve it once in the
-            tab that opens; the grant is stored encrypted and renews itself. Without it a
-            self-hosted model gets <code>401</code> from this server even though Claude reaches it
-            fine — that sign-in belongs to the <code>claude</code> CLI, not to this app.
-          </>
+          <span title="Approve once in the tab that opens; the grant is stored encrypted and renews itself. The claude CLI's own sign-in is separate — without this grant, non-CLI backends get 401 from OAuth servers.">
+            For servers that use <b>OAuth</b> instead of a pasted token. ⓘ
+          </span>
         )}
       </p>
       {error && (

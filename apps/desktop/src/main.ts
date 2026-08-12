@@ -11,7 +11,7 @@ import { Splash, noSplash, showSplash } from './splash'
 import { resetRunNotifications, startRunNotifications } from './run-notifications'
 import { loadSettings, saveSettings } from './settings'
 import { applyStartWithSystem, createTray } from './tray'
-import { startAutoUpdates } from './updater'
+import { checkForUpdatesNow, installUpdateNow, startAutoUpdates, updateStatus } from './updater'
 import { log } from './log'
 
 /**
@@ -232,9 +232,11 @@ async function showMainWindow(port: number): Promise<void> {
     autoHideMenuBar: true,
     backgroundColor: '#0b0e14',
     webPreferences: {
-      // No preload and no node access: this window loads the application's own UI over HTTP, and
-      // it has no reason to reach the main process. Keeping it a plain browsing context means a
-      // compromised page in it is worth no more than a tab.
+      // No node access, and the narrowest possible preload: this window loads the application's
+      // own UI over HTTP and should stay worth no more than a tab if a page in it is ever
+      // compromised. The one exception is the updates bridge — three fixed, argument-less
+      // actions so the UI can show and drive the auto-updater (see preload-main.ts).
+      preload: path.join(__dirname, 'preload-main.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -382,6 +384,12 @@ function showFailureWindow(message: string): void {
 }
 
 function registerIpc(): void {
+  // The main window's updates bridge (preload-main.ts). Status is a poll target — the panel asks
+  // while a check or download is in flight — so it must stay cheap and side-effect free.
+  ipcMain.handle('updates:status', () => updateStatus())
+  ipcMain.handle('updates:check', () => checkForUpdatesNow())
+  ipcMain.handle('updates:install', () => installUpdateNow())
+
   ipcMain.on('failure:retry', () => {
     failureWindow?.close()
     failureWindow = null

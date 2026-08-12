@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -61,10 +62,19 @@ public class McpOAuthController {
         return orgContext.defaultOrganizationId();
     }
 
+    /**
+     * Where the browser reached the backend for THIS request — scheme, host and port as the
+     * Host header carries them. The default callback base, because it is by definition an
+     * address that browser can come back to; MCP_OAUTH_REDIRECT_BASE still overrides it.
+     */
+    private static String requestBase() {
+        return ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
+    }
+
     @PostMapping("/start")
     public Map<String, Object> start(@RequestBody StartRequest body) {
         orgContext.requireAdmin();
-        McpOAuthFlow.StartResult result = flow.start(grantOwner(), body.url(), body.scope());
+        McpOAuthFlow.StartResult result = flow.start(grantOwner(), body.url(), body.scope(), requestBase());
         Map<String, Object> out = new HashMap<>();
         out.put("ok", result.ok());
         out.put("redirectUri", result.redirectUri());
@@ -95,7 +105,7 @@ public class McpOAuthController {
     public Map<String, Object> status(@RequestParam String url) {
         orgContext.requireAdmin();
         return Map.of("connected", flow.connected(grantOwner(), url),
-                "redirectUri", flow.redirectUri());
+                "redirectUri", flow.redirectUri(requestBase()));
     }
 
     @PostMapping("/disconnect")

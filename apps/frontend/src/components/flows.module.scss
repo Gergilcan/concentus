@@ -991,6 +991,20 @@
     border-color: t.$accent;
   }
 }
+/* The "+ New folder" tile while it's being named: same footprint, now an input. */
+.folderNewInput {
+  padding: 9px 11px;
+  background: t.$panel;
+  border: 1px dashed t.$accent;
+  border-radius: t.$radius;
+  color: t.$text;
+  font-size: 12.5px;
+  outline: none;
+
+  &::placeholder {
+    color: t.$muted;
+  }
+}
 /* The current drop target — tile or breadcrumb segment — while a drag hovers it. */
 .dropOver {
   border-color: t.$accent;

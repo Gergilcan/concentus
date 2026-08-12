@@ -299,7 +299,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     // the verifier's judgment would be dismissed as "no change".
     const g = report.graph
     const signature = report.nodes
-      .map((n) => `${n.nodeId}|${n.status}|${n.inputTokens}|${n.outputTokens}|${n.endedAt ?? ''}|${n.verdict ?? ''}`)
+      .map((n) => `${n.nodeId}|${n.status}|${n.inputTokens}|${n.outputTokens}|${n.contextTokens ?? 0}|${n.endedAt ?? ''}|${n.verdict ?? ''}`)
       .join(';') + `#${report.totalInputTokens}|${report.totalOutputTokens}|${report.totalCostUsd ?? 0}`
       + `#${g ? `${g.workers}|${g.workersFailed}|${g.workersRejected}|${g.retries}|${g.verdicts}|${g.wallMs}` : ''}`
     if (signature === lastRunExecSignature) return

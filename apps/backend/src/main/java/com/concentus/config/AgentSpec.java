@@ -71,6 +71,13 @@ public class AgentSpec {
 
     public ModelSpec model = new ModelSpec();
     public List<SkillSpec> skills = new ArrayList<>();
+    /**
+     * Claude Code plugin ids ({@code name@marketplace}) this agent runs with. Empty means the
+     * CLI's own defaults — whatever the user has enabled globally. Non-empty means exactly these:
+     * the run's settings enable the selection and disable every other installed plugin, so a flow
+     * behaves the same on any machine with the plugins installed. Claude backend only.
+     */
+    public List<String> plugins = new ArrayList<>();
     public List<McpServerSpec> mcpServers = new ArrayList<>();
     public List<RepoSpec> repositories = new ArrayList<>();
     /**

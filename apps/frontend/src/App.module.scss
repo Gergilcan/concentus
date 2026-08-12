@@ -9,7 +9,8 @@
 .main {
   flex: 1;
   display: grid;
-  grid-template-columns: 230px 1fr 300px;
+  /* Defaults only — App.tsx overrides inline with the user's dragged (persisted) widths. */
+  grid-template-columns: 260px 1fr 300px;
   min-height: 0;
 }
 
@@ -90,6 +91,32 @@
 
 .bottomWrap {
   position: relative;
+}
+
+/* Drag handles on a panel's inner edge; the panel's size persists across sessions (App.tsx). */
+.resizeX {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 6;
+
+  &:hover {
+    background: rgba(110, 168, 254, 0.25); /* $accent at 25% */
+  }
+}
+.resizeY {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: row-resize;
+  z-index: 6;
+
+  &:hover {
+    background: rgba(110, 168, 254, 0.25);
+  }
 }
 .collapseBottom {
   position: absolute;

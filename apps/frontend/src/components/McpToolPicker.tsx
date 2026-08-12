@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client.ts'
 import type { McpToolInfo, ToolSearchStatus } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
+import { beginMcpSignIn } from './McpOAuthConnect.tsx'
 import { Modal } from './Modal.tsx'
 import modal from './flows.module.scss'
 import styles from './panels.module.scss'
@@ -63,10 +64,9 @@ export function McpToolPicker({ url, credentialId, selected, onChange }: Props) 
 
       <p className={styles.hint}>
         {selected.length === 0 ? (
-          <>
-            <b>All tools</b> this server has. Fine for a small server; on a large one every tool is
-            a JSON schema in the prompt, and a self-hosted model’s context will not hold them.
-          </>
+          <span title="Every tool is a JSON schema in the prompt. Claude has the room; a self-hosted model's context often doesn't — give each agent a short list.">
+            <b>All tools</b> this server exposes go to the agent. ⓘ
+          </span>
         ) : (
           <>
             <b>{selected.length} selected:</b> {selected.slice(0, 6).join(', ')}
@@ -77,19 +77,16 @@ export function McpToolPicker({ url, credentialId, selected, onChange }: Props) 
 
       {toolSearch?.enabled && selected.length === 0 && (
         <p className={styles.hint}>
-          Above <b>{toolSearch.threshold}</b> tools the agent is given a single{' '}
-          <code>search_…_tools</code> instead of every definition — it describes what it needs and
-          gets back the matching schemas. Every tool stays callable.
-          <br />
+          <span title="The agent describes what it needs and gets back the matching schemas; every tool stays callable.">
+            Above <b>{toolSearch.threshold}</b> tools the agent gets one search tool instead of
+            every schema. ⓘ
+          </span>{' '}
           {toolSearch.vectorReady && toolSearch.modelPresent ? (
-            <>
-              ✓ <b>Semantic ranking</b> via <code>{toolSearch.embeddingModel}</code>, served by the
-              same model server as your chat model.
-            </>
+            <span title={`Semantic ranking via ${toolSearch.embeddingModel}, served by the same model server as your chat model.`}>
+              ✓ semantic
+            </span>
           ) : (
-            <>
-              ⚠ {toolSearch.detail}
-            </>
+            <>⚠ {toolSearch.detail}</>
           )}
         </p>
       )}
@@ -116,31 +113,84 @@ function ToolDialog({
 }: Props & { onClose: () => void }) {
   const [tools, setTools] = useState<McpToolInfo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [needsAuth, setNeedsAuth] = useState(false)
   const [busy, setBusy] = useState(true)
+  const [signing, setSigning] = useState(false)
   const [search, setSearch] = useState('')
   const [onlyChosen, setOnlyChosen] = useState(false)
   // Edited locally and committed on Done, so closing with Escape or the backdrop leaves the node
   // as it was — a half-built allowlist saved by accident is worse than losing two clicks.
   const [draft, setDraft] = useState<string[]>(selected)
-
+  const alive = useRef(true)
   useEffect(() => {
-    let alive = true
-    void api
-      .listMcpTools(url.trim(), credentialId)
-      .then((res) => {
-        if (!alive) return
-        if (!res.ok) {
-          setError(res.error ?? 'Could not read this server’s tools.')
-          return
-        }
-        setTools(res.tools ?? [])
-      })
-      .catch((e) => alive && setError(errMessage(e)))
-      .finally(() => alive && setBusy(false))
+    alive.current = true
     return () => {
-      alive = false
+      alive.current = false
+    }
+  }, [])
+
+  const load = useCallback(async () => {
+    setBusy(true)
+    setError(null)
+    setNeedsAuth(false)
+    try {
+      const res = await api.listMcpTools(url.trim(), credentialId)
+      if (!alive.current) return
+      if (!res.ok) {
+        setError(res.error ?? 'Could not read this server’s tools.')
+        setNeedsAuth(res.needsAuth === true)
+        return
+      }
+      setTools(res.tools ?? [])
+    } catch (e) {
+      if (alive.current) setError(errMessage(e))
+    } finally {
+      if (alive.current) setBusy(false)
     }
   }, [url, credentialId])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  // The dialog fixes its own 401: start the app's OAuth sign-in, then watch for the grant to
+  // land and re-read the list — nobody should have to close this, sign in elsewhere, and reopen.
+  const signIn = async () => {
+    setSigning(true)
+    setError(null)
+    try {
+      const failed = await beginMcpSignIn(url.trim())
+      if (failed) {
+        setError(failed)
+        setSigning(false)
+        return
+      }
+      const deadline = Date.now() + 120_000
+      const poll = async () => {
+        if (!alive.current) return
+        try {
+          const s = await api.mcpOAuthStatus(url.trim())
+          if (s.connected) {
+            setSigning(false)
+            await load()
+            return
+          }
+        } catch {
+          /* transient; keep polling until the deadline */
+        }
+        if (Date.now() < deadline) setTimeout(() => void poll(), 2000)
+        else if (alive.current) {
+          setSigning(false)
+          setError('The sign-in did not complete. Approve it in the tab that opened, then retry.')
+          setNeedsAuth(true)
+        }
+      }
+      setTimeout(() => void poll(), 2000)
+    } catch (e) {
+      setError(errMessage(e))
+      setSigning(false)
+    }
+  }
 
   const shown = useMemo(() => {
     let list = tools ?? []
@@ -178,10 +228,21 @@ function ToolDialog({
   return (
     <Modal wide title={`Tools for this server${tools ? ` — ${draft.length} of ${tools.length}` : ''}`} onClose={onClose}>
       {busy && <p className={modal.modalHint}>Reading the server’s tool list…</p>}
-      {error && (
+      {signing && <p className={modal.modalHint}>Waiting for the sign-in to complete…</p>}
+      {error && !signing && (
         <p className={modal.modalHint}>
           <b>{error}</b>
         </p>
+      )}
+      {needsAuth && !signing && (
+        <div className={styles.mcpBtns}>
+          <button className={styles.previewBtn} onClick={() => void signIn()}>
+            Sign in to this server
+          </button>
+          <button className={styles.linkBtn} onClick={() => void load()}>
+            Retry
+          </button>
+        </div>
       )}
 
       {tools && (
@@ -259,9 +320,8 @@ function ToolDialog({
           </div>
 
           <p className={modal.modalHint}>
-            Leaving this empty sends <b>every</b> tool. Each one is a JSON schema in the prompt, so
-            on a self-hosted model that is what overflows the context — the server then truncates
-            silently and the model reports having only the few that survived.
+            Leaving this empty sends <b>every</b> tool — on a self-hosted model that can overflow
+            the context and truncate silently.
           </p>
         </>
       )}

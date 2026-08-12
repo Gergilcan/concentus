@@ -9,11 +9,14 @@ import { McpCatalog } from './McpCatalog.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import { McpJsonEditor } from './McpJsonEditor.tsx'
 import { ModelField } from './ModelField.tsx'
+import { PluginsPanel } from './PluginsPanel.tsx'
 import { SkillsPanel } from './SkillsPanel.tsx'
 import { StoragePanel } from './StoragePanel.tsx'
+import { UpdatesPanel } from './UpdatesPanel.tsx'
+import { shellBridge } from '../api/shell.ts'
 import styles from './resources.module.scss'
 
-type Tab = 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'variables' | 'credentials' | 'storage'
+type Tab = 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
 
 export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
   const [tab, setTab] = useState<Tab>('agents')
@@ -53,6 +56,13 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           Skills
         </button>
         <button
+          className={tab === 'plugins' ? styles.active : ''}
+          onClick={() => setTab('plugins')}
+          title="Claude Code plugins installed on this machine. Each agent picks which ones its runs load."
+        >
+          Plugins
+        </button>
+        <button
           className={tab === 'variables' ? styles.active : ''}
           onClick={() => setTab('variables')}
           title="Values substituted into every flow's prompts as {{NAME}} when a run starts. A flow can override any of them — or add its own — in its settings."
@@ -71,6 +81,15 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
         >
           Storage
         </button>
+        {shellBridge() && (
+          // Only inside the desktop shell: a browser tab has no app to update.
+          <button
+            className={tab === 'updates' ? styles.active : ''}
+            onClick={() => setTab('updates')}
+          >
+            Updates
+          </button>
+        )}
       </div>
 
       <div className={styles.tabBody}>
@@ -257,7 +276,9 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
 
         {tab === 'credentials' && <CredentialsPanel pushError={pushError} />}
 
+        {tab === 'plugins' && <PluginsPanel pushError={pushError} />}
         {tab === 'storage' && <StoragePanel pushError={pushError} />}
+        {tab === 'updates' && <UpdatesPanel />}
       </div>
     </div>
   )

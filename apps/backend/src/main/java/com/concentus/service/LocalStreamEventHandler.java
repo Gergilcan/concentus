@@ -104,6 +104,7 @@ final class LocalStreamEventHandler {
             target.inputTokens += usage.path("input_tokens").asLong(0);
             target.cacheReadTokens += usage.path("cache_read_input_tokens").asLong(0);
             target.cacheWriteTokens += usage.path("cache_creation_input_tokens").asLong(0);
+            applyContext(target, promptOf(usage), contextOf(usage));
         }
 
         JsonNode content = node.path("message").path("content");
@@ -184,6 +185,37 @@ final class LocalStreamEventHandler {
                 usage.path("output_tokens").asLong(0),
                 usage.path("cache_read_input_tokens").asLong(0),
                 usage.path("cache_creation_input_tokens").asLong(0));
+    }
+
+    /**
+     * Context-window occupancy after one message: the whole prompt the model read — uncached
+     * remainder plus both cache buckets — and what it wrote. This is a snapshot, not a delta:
+     * each turn's prompt already contains the entire history, so callers must overwrite the
+     * node's previous value, never add to it.
+     */
+    static long contextOf(JsonNode usage) {
+        return usage.path("input_tokens").asLong(0)
+                + usage.path("cache_read_input_tokens").asLong(0)
+                + usage.path("cache_creation_input_tokens").asLong(0)
+                + usage.path("output_tokens").asLong(0);
+    }
+
+    /** The prompt part alone — what the model READ this message, before it wrote anything. */
+    static long promptOf(JsonNode usage) {
+        return usage.path("input_tokens").asLong(0)
+                + usage.path("cache_read_input_tokens").asLong(0)
+                + usage.path("cache_creation_input_tokens").asLong(0);
+    }
+
+    /**
+     * Records a context snapshot on a node. The FIRST message's prompt — before the model wrote
+     * a single token — is kept as the starting context (system prompt + tool schemas + the task),
+     * so {@code contextTokens - contextStartTokens} is exactly what the run's conversation added.
+     */
+    static void applyContext(NodeExec target, long promptTokens, long snapshot) {
+        if (snapshot <= 0) return;
+        if (target.contextStartTokens == 0 && promptTokens > 0) target.contextStartTokens = promptTokens;
+        target.contextTokens = snapshot;
     }
 
     /** Sets status/error/endedAt on a node execution record; a no-op if {@code ne} is null. */
