@@ -6,21 +6,9 @@ import { useFlowStore } from '../state/store.ts'
 import { clockTime, money } from '../utils/format.ts'
 import { agentKey } from '../utils/agentKey.ts'
 import { cx } from '../utils/cx.ts'
+import { hueOf } from '../utils/hueOf.ts'
 import { compact, kindOf } from './flowFormat.ts'
 import styles from './runs.module.scss'
-
-/** Stable hue per agent name, so an agent keeps the same colour for the whole run. */
-const hueCache = new Map<string, number>()
-function hueOf(name: string): number {
-  let h = hueCache.get(name)
-  if (h === undefined) {
-    h = 0
-    for (let i = 0; i < name.length; i += 1) h = (h * 31 + name.charCodeAt(i)) % 360
-    // A handful of agent names per run; the map never grows meaningfully.
-    hueCache.set(name, h)
-  }
-  return h
-}
 
 export function Console({ runId, status }: { runId: string; status?: RunStatus }) {
   // Stopping only means something while something is running: IDLE is a turn-based run waiting
@@ -70,7 +58,9 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
   const filteredName = agents.find((a) => a.id === agentFilter)?.name ?? agentFilter
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // The CSS reduced-motion floor can't reach a JS-initiated smooth scroll, so it's honored here.
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    bottomRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' })
   }, [events])
 
   const send = async () => {

@@ -3,7 +3,7 @@
 .page {
   flex: 1;
   overflow: auto;
-  padding: 24px 28px;
+  padding: var(--sp-5);
   background: t.$bg;
 }
 .h2 {

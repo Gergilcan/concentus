@@ -103,7 +103,7 @@
   z-index: 6;
 
   &:hover {
-    background: rgba(110, 168, 254, 0.25); /* $accent at 25% */
+    background: t.$accent-strong;
   }
 }
 .resizeY {
@@ -115,7 +115,7 @@
   z-index: 6;
 
   &:hover {
-    background: rgba(110, 168, 254, 0.25);
+    background: t.$accent-strong;
   }
 }
 .collapseBottom {

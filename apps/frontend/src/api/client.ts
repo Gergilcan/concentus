@@ -237,10 +237,15 @@ export const api = {
   // Claude Code plugins, via the `claude plugin` CLI. Installing clones a marketplace repo,
   // hence the long timeouts.
   listPlugins: () => req<import('./types.ts').PluginsView>('/plugins'),
+  /** The whole marketplace catalog; the panel filters it client-side. Heavier read, cached 30s server-side. */
+  listAvailablePlugins: () => req<import('./types.ts').AvailablePlugin[]>('/plugins/available', {}, 60_000),
   installPlugin: (id: string) =>
     req<{ status: string }>('/plugins/install', { method: 'POST', body: JSON.stringify({ id }) }, 120_000),
   uninstallPlugin: (id: string) =>
     req<{ status: string }>('/plugins/uninstall', { method: 'POST', body: JSON.stringify({ id }) }, 60_000),
+  setPluginEnabled: (id: string, enabled: boolean) =>
+    req<{ status: string }>('/plugins/enable',
+      { method: 'POST', body: JSON.stringify({ id, enabled: String(enabled) }) }, 60_000),
   addPluginMarketplace: (source: string) =>
     req<{ status: string }>('/plugins/marketplaces', { method: 'POST', body: JSON.stringify({ source }) }, 180_000),
   removePluginMarketplace: (name: string) =>

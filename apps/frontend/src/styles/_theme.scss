@@ -1,25 +1,40 @@
 // Design tokens shared across modules via `@use '.../theme' as t;`
-$bg: #0e1117;
-$panel: #161b22;
-$panel-2: #1c2230;
-$border: #2a3140;
-$text: #e6edf3;
-$muted: #8b949e;
+//
+// Every colour here is a CSS custom property resolved at RUNTIME — these SCSS names are aliases,
+// kept so the fourteen modules that already say `t.$panel` didn't have to change when the theme
+// system arrived. The actual palettes (dark, light, high-contrast) live in global.scss, one
+// block per `data-theme` value on <html>; index.html sets the attribute before first paint.
+//
+// Consequence to respect: these are var() references, not colours — SCSS colour functions
+// (rgba(t.$accent, …), darken(…)) can no longer be applied to them. Derived tints get their own
+// token below instead.
+$bg: var(--bg);
+$panel: var(--panel);
+$panel-2: var(--panel-2);
+$border: var(--border);
+$text: var(--text);
+$muted: var(--muted);
 
-$accent: #6ea8fe;
-$agent: #6ea8fe;
-$coordinator: #b98cff;
-$mcp: #63e6be;
-$repo: #ffd43b;
-$sql: #ff922b;
-$api: #e64980;
-$knowledge: #b98cff;
-$merge: #ffa94d;
-$verifier: #94d82d;
+$accent: var(--accent);
+$agent: var(--agent);
+$coordinator: var(--coordinator);
+$mcp: var(--mcp);
+$repo: var(--repo);
+$sql: var(--sql);
+$api: var(--api);
+$knowledge: var(--knowledge);
+$merge: var(--merge);
+$verifier: var(--verifier);
 
-$danger: #ff6b6b;
-$ok: #51cf66;
+$danger: var(--danger);
+$ok: var(--ok);
 // Semantic amber for "needs a person's attention", distinct from the node-type colours above.
-$warn: #ffd43b;
+$warn: var(--warn);
+
+// Derived tints that used to be hardcoded rgba() literals scattered through the modules.
+$accent-soft: var(--accent-soft);
+$accent-strong: var(--accent-strong);
+// Text sitting ON an accent-filled control: dark over the pale dark-theme blue, white in light.
+$on-accent: var(--on-accent);
 
 $radius: 8px;

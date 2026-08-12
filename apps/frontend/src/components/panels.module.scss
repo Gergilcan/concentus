@@ -3,7 +3,7 @@
 .palette,
 .inspector {
   background: t.$panel;
-  padding: 10px;
+  padding: var(--sp-3);
   overflow: auto;
 }
 
@@ -75,7 +75,8 @@
   border: 1px solid t.$border;
   color: t.$text;
   border-radius: 6px;
-  padding: 6px 10px;
+  min-height: var(--control-h);
+  padding: 4px 12px;
   margin-bottom: 8px;
 
   &:hover {
@@ -257,7 +258,8 @@
   border: 1px solid t.$border;
   color: t.$muted;
   border-radius: 6px;
-  padding: 6px 10px;
+  min-height: var(--control-h);
+  padding: 4px 12px;
   font-size: 12px;
 
   &:hover {
@@ -452,7 +454,7 @@
 }
 
 /* ---- api node inspector ---- */
-.addApi span { color: #e64980; }
+.addApi span { color: t.$api; }
 .opList {
   max-height: 260px;
   overflow-y: auto;

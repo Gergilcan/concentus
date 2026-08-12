@@ -147,6 +147,64 @@ public class PluginRegistry {
         return r.exit == 0 ? "installed" : "install failed: " + firstLine(r.output);
     }
 
+    /** One plugin a configured marketplace offers, as the install search shows it. */
+    public record AvailablePlugin(String id, String name, String description,
+                                  String marketplace, long installCount) {
+    }
+
+    private volatile List<AvailablePlugin> cachedAvailable;
+    private volatile long availableAt;
+
+    /**
+     * Everything the configured marketplaces offer. Cached like the installed list, but the
+     * call is a full catalog read (hundreds of entries), so the TTL is what makes typing in
+     * the search box tolerable — the UI filters client-side against this one snapshot.
+     */
+    public List<AvailablePlugin> available() {
+        List<AvailablePlugin> cached = cachedAvailable;
+        if (cached != null && System.currentTimeMillis() - availableAt < CACHE_TTL_MS) return cached;
+        String cmd = support.command().orElse(null);
+        if (cmd == null) return List.of();
+        ProcResult r = run(List.of(cmd, "plugin", "list", "--available", "--json"), 60);
+        List<AvailablePlugin> out = new ArrayList<>();
+        try {
+            JsonNode root = mapper.readTree(r.output == null ? "{}" : r.output.trim());
+            for (JsonNode p : root.path("available")) {
+                String id = p.path("pluginId").asText("");
+                if (id.isBlank()) continue;
+                out.add(new AvailablePlugin(id,
+                        p.path("name").asText(id),
+                        oneLine(p.path("description").asText("")),
+                        p.path("marketplaceName").asText(""),
+                        p.path("installCount").asLong(0)));
+            }
+        } catch (Exception e) {
+            log.warn("claude plugin list --available --json could not be parsed: {}", e.getMessage());
+        }
+        cachedAvailable = out;
+        availableAt = System.currentTimeMillis();
+        return out;
+    }
+
+    /** Catalog descriptions run to paragraphs; the search row has room for one line. */
+    private static String oneLine(String description) {
+        String first = description == null ? "" : description.strip();
+        int stop = first.indexOf('\n');
+        if (stop > 0) first = first.substring(0, stop);
+        return first.length() <= 160 ? first : first.substring(0, 160) + "…";
+    }
+
+    /** Flips a plugin on or off without uninstalling it — what the toggle in Resources calls. */
+    public String setEnabled(String id, boolean enabled) {
+        String cmd = support.command().orElse(null);
+        if (cmd == null) return "claude CLI not found";
+        if (!isSafeId(id)) return "invalid plugin id";
+        ProcResult r = run(List.of(cmd, "plugin", enabled ? "enable" : "disable", id), 60);
+        cachedList = null;
+        return r.exit == 0 ? (enabled ? "enabled" : "disabled")
+                : (enabled ? "enable" : "disable") + " failed: " + firstLine(r.output);
+    }
+
     public String uninstall(String id) {
         String cmd = support.command().orElse(null);
         if (cmd == null) return "claude CLI not found";

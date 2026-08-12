@@ -4,7 +4,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 5px 11px;
+  padding: 6px var(--sp-3);
   background: t.$panel;
   border-bottom: 1px solid t.$border;
 }
@@ -14,7 +14,8 @@
   border: 1px solid t.$border;
   color: t.$muted;
   border-radius: 6px;
-  padding: 6px 10px;
+  min-height: var(--control-h);
+  padding: 4px 10px;
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
@@ -51,7 +52,8 @@
   border: 1px solid t.$border;
   color: t.$text;
   border-radius: 6px;
-  padding: 6px 12px;
+  min-height: var(--control-h);
+  padding: 4px 12px;
 
   &:hover {
     border-color: t.$accent;
@@ -61,7 +63,7 @@
 .run {
   background: t.$accent;
   border-color: t.$accent;
-  color: #08111f;
+  color: t.$on-accent;
   font-weight: 600;
 }
 
@@ -103,7 +105,7 @@
 
 .authKey {
   color: t.$accent;
-  border-color: rgba(110, 168, 254, 0.4);
+  border-color: t.$accent-strong;
 
   .authDot {
     background: t.$accent;

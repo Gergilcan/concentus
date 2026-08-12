@@ -11,7 +11,7 @@
 .tabs {
   display: flex;
   gap: 4px;
-  padding: 12px 16px 0;
+  padding: var(--sp-3) var(--sp-5) 0;
 
   button {
     background: t.$panel;
@@ -49,7 +49,7 @@
 .crudList {
   border-right: 1px solid t.$border;
   overflow: auto;
-  padding: 14px;
+  padding: var(--sp-3);
   background: t.$panel;
 }
 
@@ -73,7 +73,8 @@
   border: 1px solid t.$border;
   color: t.$text;
   border-radius: 6px;
-  padding: 4px 10px;
+  min-height: var(--control-h);
+  padding: 4px 12px;
   font-size: 12px;
 
   &:hover {
@@ -113,7 +114,7 @@
 
 .crudForm {
   overflow: auto;
-  padding: 18px 20px;
+  padding: var(--sp-4) var(--sp-5);
   // Was a flat 720px, which left a document tree squeezed into a third of a wide window while
   // the rest sat empty. It fills its grid column now; text fields keep a readable measure via
   // .field below, so only the things that genuinely want room — the tree, hit previews — take it.
@@ -161,10 +162,11 @@
 .saveBtn {
   background: t.$accent;
   border: 1px solid t.$accent;
-  color: #08111f;
+  color: t.$on-accent;
   font-weight: 600;
   border-radius: 6px;
-  padding: 5px 12px;
+  min-height: var(--control-h);
+  padding: 4px 12px;
 }
 
 .delBtn {
@@ -172,7 +174,8 @@
   border: 1px solid t.$danger;
   color: t.$danger;
   border-radius: 6px;
-  padding: 8px 14px;
+  min-height: var(--control-h);
+  padding: 4px 12px;
 }
 
 .status {
@@ -192,6 +195,122 @@
     background: t.$panel;
     padding: 1px 4px;
     border-radius: 4px;
+  }
+}
+
+/* ---- plugins: one row per plugin, manager-style — name, quiet chips, actions right ---- */
+.pluginList {
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
+  background: t.$panel;
+  overflow: hidden;
+  margin-bottom: var(--sp-3);
+}
+
+.pluginRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 9px var(--sp-3);
+
+  &:not(:last-child) {
+    border-bottom: 1px solid t.$border;
+  }
+}
+
+.pluginInfo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.pluginName {
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+.pluginChip {
+  font-size: 10px;
+  color: t.$muted;
+  border: 1px solid t.$border;
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.pluginOn {
+  color: t.$ok;
+  border-color: color-mix(in srgb, t.$ok 55%, transparent);
+}
+.pluginOff {
+  color: t.$muted;
+}
+
+.pluginActs {
+  margin-left: auto;
+  display: flex;
+  gap: var(--sp-2);
+  flex: 0 0 auto;
+}
+
+/* Name row + one-line description, for the search results. */
+.pluginMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pluginDesc {
+  font-size: 11px;
+  color: t.$muted;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A quiet row action, sized like every other control; danger only announces on hover. */
+.rowBtn {
+  background: transparent;
+  border: 1px solid t.$border;
+  color: t.$muted;
+  border-radius: 6px;
+  min-height: var(--control-h);
+  padding: 2px 10px;
+  font-size: 12px;
+
+  &:hover:not(:disabled) {
+    border-color: t.$accent;
+    color: t.$text;
+  }
+}
+
+.rowBtnDanger:hover:not(:disabled) {
+  border-color: t.$danger;
+  color: t.$danger;
+}
+
+/* Input + primary action on one line, input styled like the app's fields. */
+.installRow {
+  display: flex;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+
+  input {
+    flex: 1;
+    max-width: 340px;
+    background: t.$bg;
+    border: 1px solid t.$border;
+    color: t.$text;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
   }
 }
 
@@ -248,14 +367,14 @@
 /* The MCP tab's above-the-grid extras (catalog + JSON editor): without this their collapse
    headers hug the window's left edge — nothing else gives them an inset. */
 .tabExtras {
-  padding: 10px 20px 0;
+  padding: var(--sp-3) var(--sp-5) 0;
 }
 
 /* A panel that fills the tab alone (Storage, Skills): more horizontal air than the CRUD form
    gets, because there is no list column beside it to lean on. */
 .lone {
-  padding-left: 26px;
-  padding-right: 26px;
+  padding-left: var(--sp-5);
+  padding-right: var(--sp-5);
 }
 
 .catalog {
@@ -531,7 +650,7 @@
   font-size: 12.5px;
 }
 .okDot {
-  color: #4ade80;
+  color: t.$ok;
 }
 .errText {
   color: t.$danger;

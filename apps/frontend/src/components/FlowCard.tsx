@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import type { BackendFlow, RunSummary } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
+import { hueOf } from '../utils/hueOf.ts'
 import { KIND_LABEL, compact, countsOf, decided, kindOf, money, timeAgo, triggerOf } from './flowFormat.ts'
 import { templateJson } from './flowTemplate.ts'
 import styles from './flows.module.scss'
@@ -43,20 +44,40 @@ export function FlowCard({
 
   const copyTemplate = async () => {
     const json = templateJson(flow)
-    try {
-      await navigator.clipboard.writeText(json)
+    const markCopied = () => {
       setCopied(true)
       copiedTimer.current = setTimeout(() => setCopied(false), 1500)
+    }
+    try {
+      await navigator.clipboard.writeText(json)
+      markCopied()
     } catch {
-      // Clipboard access can be denied (insecure context, permissions). The prompt is ugly but
-      // it works everywhere, and it still hands over the exact same JSON.
-      window.prompt('Copy the template JSON:', json)
+      // Clipboard access can be denied (insecure context, permissions). The old fallback was
+      // window.prompt — which Electron does not implement, so it threw and copied nothing. A
+      // hidden textarea + execCommand works in exactly the contexts where the async API refuses,
+      // and the ✓ only shows when a copy actually happened.
+      const ta = document.createElement('textarea')
+      ta.value = json
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      if (ok) markCopied()
     }
   }
 
   const last = flowRuns[0]
   const trigger = triggerOf(flow)
   const { agents, tools } = countsOf(flow)
+  // The flow's ensemble: one dot per agent, wearing the same hue that agent's console chip and
+  // log lines wear. Capped so a fan-out monster doesn't turn the card into confetti.
+  const voices = flow.nodes
+    .filter((n) => n.type === 'agent')
+    .map((n) => String((n.data as { name?: unknown })?.name ?? ''))
+    .filter(Boolean)
+    .slice(0, 6)
   const finished = flowRuns.filter(decided)
   const ok = finished.filter((r) => kindOf(r.status) === 'ok').length
   const rate = finished.length ? Math.round((ok / finished.length) * 100) : null
@@ -87,6 +108,13 @@ export function FlowCard({
       <div className={styles.badges}>
         <span className={cx(styles.badge, styles['b_' + trigger.tone])}>{trigger.label}</span>
         {paused && <span className={cx(styles.badge, styles.b_paused)}>paused</span>}
+        {voices.length > 0 && (
+          <span className={styles.voices}>
+            {voices.map((name, i) => (
+              <span key={i} title={name} style={{ background: `hsl(${hueOf(name)} 55% var(--hue-l))` }} />
+            ))}
+          </span>
+        )}
         <span className={styles.meta}>
           {agents} agent{agents === 1 ? '' : 's'} · {tools} tool{tools === 1 ? '' : 's'}
         </span>

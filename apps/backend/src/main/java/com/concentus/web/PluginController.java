@@ -35,6 +35,12 @@ public class PluginController {
         return new PluginsView(registry.list(), registry.marketplaces());
     }
 
+    /** The full marketplace catalog, for the install search. Separate: it is a heavier read. */
+    @GetMapping("/available")
+    public List<PluginRegistry.AvailablePlugin> available() {
+        return registry.available();
+    }
+
     @PostMapping("/install")
     public Map<String, String> install(@RequestBody Map<String, String> body) {
         String id = required(body, "id");
@@ -42,6 +48,16 @@ public class PluginController {
             throw new IllegalArgumentException("Plugin ids look like name or name@marketplace.");
         }
         return Map.of("id", id, "status", registry.install(id));
+    }
+
+    @PostMapping("/enable")
+    public Map<String, String> setEnabled(@RequestBody Map<String, String> body) {
+        String id = required(body, "id");
+        if (!PluginRegistry.isSafeId(id)) {
+            throw new IllegalArgumentException("Plugin ids look like name or name@marketplace.");
+        }
+        boolean enabled = Boolean.parseBoolean(required(body, "enabled"));
+        return Map.of("id", id, "status", registry.setEnabled(id, enabled));
     }
 
     @PostMapping("/uninstall")

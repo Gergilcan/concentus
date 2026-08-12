@@ -158,7 +158,7 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
         {selected ? (
           <Console runId={selected} status={mine.find((r) => r.id === selected)?.status} />
         ) : (
-          <div className={styles.muted}>Select a run to see its output and send commands.</div>
+          <div className={styles.runEmpty}>Select a run to see its output and send commands.</div>
         )}
       </div>
       {compareWith && goldenRun && (

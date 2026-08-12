@@ -1,5 +1,132 @@
 @use './theme' as t;
 
+/*
+ * The three palettes. `data-theme` on <html> picks one; index.html sets it from localStorage
+ * before first paint (no flash) and the header's selector changes it live. Dark is the default
+ * and needs no attribute, so anything that never runs the init script still looks right.
+ *
+ * Per-agent hue colours (console chips, log authors) are hsl(var(--h) S% L%) with the hue set
+ * inline per agent — only the LIGHTNESS is themed, via --hue-l / --hue-border-l, because 70%
+ * lightness reads on a dark panel and disappears on a white one.
+ */
+:root {
+  color-scheme: dark;
+  --bg: #0e1117;
+  --panel: #161b22;
+  --panel-2: #1c2230;
+  --border: #2a3140;
+  --text: #e6edf3;
+  /* Bumped from the old #8b949e: secondary text is still secondary at 4.5:1, just readable. */
+  --muted: #98a2ad;
+
+  --accent: #6ea8fe;
+  --agent: #6ea8fe;
+  --coordinator: #b98cff;
+  --mcp: #63e6be;
+  --repo: #ffd43b;
+  --sql: #ff922b;
+  --api: #e64980;
+  --knowledge: #b98cff;
+  --merge: #ffa94d;
+  --verifier: #94d82d;
+
+  --danger: #ff6b6b;
+  --ok: #51cf66;
+  --warn: #ffd43b;
+
+  --accent-soft: rgba(110, 168, 254, 0.12);
+  --accent-strong: rgba(110, 168, 254, 0.3);
+  --on-accent: #08111f;
+  --hue-l: 70%;
+  --hue-border-l: 55%;
+
+  /* One height for every action button, so rows of controls line up (see the button baseline). */
+  --control-h: 26px;
+
+  /*
+   * Type roles. The display face carries the product's voice and appears in exactly three
+   * places — brand, page titles, KPI figures; everything else stays on the system sans for
+   * density. Data keeps the mono stack. A face on every heading would be noise, not identity.
+   */
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-body: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+
+  /*
+   * Spacing scale. Container padding and stack gaps pick from these five — a page gutter is
+   * always --sp-5, a panel interior always --sp-3 — so two neighbouring surfaces can't drift
+   * a few pixels apart (tabs at 16 over content at 20 was exactly that).
+   */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f6f8fa;
+  --panel: #ffffff;
+  --panel-2: #eef1f5;
+  --border: #d0d7de;
+  --text: #1f2328;
+  --muted: #57606a;
+
+  --accent: #0969da;
+  --agent: #0969da;
+  --coordinator: #8250df;
+  --mcp: #0f7b6c;
+  --repo: #9a6700;
+  --sql: #bc4c00;
+  --api: #bf3989;
+  --knowledge: #8250df;
+  --merge: #b35900;
+  --verifier: #4d7c0f;
+
+  --danger: #d1242f;
+  --ok: #1a7f37;
+  --warn: #9a6700;
+
+  --accent-soft: rgba(9, 105, 218, 0.1);
+  --accent-strong: rgba(9, 105, 218, 0.3);
+  --on-accent: #ffffff;
+  --hue-l: 36%;
+  --hue-border-l: 46%;
+}
+
+/* Dark-based, not inverted: black ground, white text, borders that never vanish. */
+:root[data-theme='contrast'] {
+  color-scheme: dark;
+  --bg: #000000;
+  --panel: #0a0c10;
+  --panel-2: #14171d;
+  --border: #8b96a5;
+  --text: #ffffff;
+  --muted: #d0d7de;
+
+  --accent: #82c7ff;
+  --agent: #82c7ff;
+  --coordinator: #d2a8ff;
+  --mcp: #7ce8d0;
+  --repo: #ffe066;
+  --sql: #ffab5e;
+  --api: #ff7bac;
+  --knowledge: #d2a8ff;
+  --merge: #ffc078;
+  --verifier: #b3e355;
+
+  --danger: #ff8383;
+  --ok: #6ee787;
+  --warn: #ffd75e;
+
+  --accent-soft: rgba(130, 199, 255, 0.22);
+  --accent-strong: rgba(130, 199, 255, 0.5);
+  --on-accent: #000000;
+  --hue-l: 78%;
+  --hue-border-l: 70%;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -14,14 +141,42 @@ body,
 body {
   background: t.$bg;
   color: t.$text;
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-body);
   font-size: 12.5px;
   -webkit-font-smoothing: antialiased;
 }
 
+/* The floor, not a feature: someone who asked their OS for less motion gets less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * The button baseline every module builds on: element-level, so any class wins any argument
+ * with it. What it standardizes is the part that was ragged — keyboard focus was invisible,
+ * disabled looked enabled, and each module picked its own radius.
+ */
 button {
   font: inherit;
   cursor: pointer;
+  border-radius: 6px;
+
+  &:focus-visible {
+    outline: 2px solid t.$accent;
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
 }
 
 input,
@@ -32,6 +187,11 @@ textarea {
 
   &:focus {
     border-color: t.$accent;
+  }
+
+  &:focus-visible {
+    outline: 2px solid t.$accent;
+    outline-offset: -1px;
   }
 }
 

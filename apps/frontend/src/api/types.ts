@@ -742,6 +742,16 @@ export interface PluginsView {
   marketplaces: PluginMarketplace[]
 }
 
+/** One plugin a configured marketplace offers, as the install search shows it. */
+export interface AvailablePlugin {
+  /** name@marketplace */
+  id: string
+  name: string
+  description?: string
+  marketplace?: string
+  installCount?: number
+}
+
 export interface McpToolList {
   ok: boolean
   tools?: McpToolInfo[]
