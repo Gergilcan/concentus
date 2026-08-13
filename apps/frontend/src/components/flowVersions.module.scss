@@ -1,0 +1,108 @@
+@use '../styles/theme' as t;
+
+/* Shared by the dashboard's History modal and Studio's Versions tab — one list, one look. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.empty {
+  color: t.$muted;
+  font-size: 12px;
+}
+
+/* The canvas is showing a past revision. Loud enough to notice before editing, quiet enough to
+   live above a list you are reading. */
+.previewBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  padding: var(--sp-2);
+  border: 1px solid color-mix(in srgb, t.$warn 55%, transparent);
+  border-radius: t.$radius;
+  background: color-mix(in srgb, t.$warn 10%, transparent);
+  color: t.$text;
+  font-size: 12px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px 9px;
+  border: 1px solid t.$border;
+  border-radius: 8px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.num {
+  font-family: monospace;
+  color: t.$accent;
+  flex: 0 0 auto;
+}
+
+.name {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.author {
+  color: t.$muted;
+  font-size: 10px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time,
+.shape {
+  color: t.$muted;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.current {
+  font-size: 10px;
+  color: t.$ok;
+  border: 1px solid color-mix(in srgb, t.$ok 55%, transparent);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+
+.ghost {
+  background: t.$panel;
+  border: 1px solid t.$border;
+  color: t.$text;
+  border-radius: t.$radius;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

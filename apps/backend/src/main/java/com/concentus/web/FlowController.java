@@ -1,5 +1,7 @@
 package com.concentus.web;
 
+import com.concentus.auth.ConcentusUserDetails;
+import com.concentus.auth.OrgContext;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.FlowMemoryView;
 import com.concentus.model.FlowVersionInfo;
@@ -37,16 +39,18 @@ public class FlowController {
     private final MailTriggerService mailTriggers;
     private final FlowVersionStore versions;
     private final FlowMemoryStore memory;
+    private final OrgContext orgContext;
 
     public FlowController(FlowStore store, RunService runService, ScheduleService scheduler,
                           MailTriggerService mailTriggers, FlowVersionStore versions,
-                          FlowMemoryStore memory) {
+                          FlowMemoryStore memory, OrgContext orgContext) {
         this.store = store;
         this.runService = runService;
         this.scheduler = scheduler;
         this.mailTriggers = mailTriggers;
         this.versions = versions;
         this.memory = memory;
+        this.orgContext = orgContext;
     }
 
     @GetMapping
@@ -62,7 +66,7 @@ public class FlowController {
     @PostMapping
     public FlowGraph save(@RequestBody FlowGraph flow) {
         FlowGraph saved = store.save(flow);
-        versions.snapshot(saved);  // keep a restorable revision of every save
+        versions.snapshot(saved, currentAuthor());  // keep a restorable revision of every save
         rescheduleTriggers();
         return saved;
     }
@@ -73,15 +77,42 @@ public class FlowController {
         return versions.list(id);
     }
 
+    /**
+     * One earlier revision, as it was, without touching the saved flow — what the Versions tab
+     * previews on the canvas. Read-only by virtue of changing nothing: the preview lives in the
+     * editor, and saving it is the user restoring it by hand.
+     */
+    @GetMapping("/{id}/versions/{version}")
+    public FlowGraph version(@PathVariable String id, @PathVariable int version) {
+        return versions.get(id, version)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such version"))
+                .withId(id);
+    }
+
     /** Restores an earlier revision as the current flow (and snapshots it as a new version). */
     @PostMapping("/{id}/versions/{version}/restore")
     public FlowGraph restore(@PathVariable String id, @PathVariable int version) {
         FlowGraph old = versions.get(id, version)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such version"));
         FlowGraph saved = store.save(old.withId(id));
-        versions.snapshot(saved);
+        // Credited to whoever pressed Restore, not to whoever authored the revision being
+        // restored: this row records a save that just happened, and the original stays in history
+        // with its own author.
+        versions.snapshot(saved, currentAuthor());
         rescheduleTriggers();
         return saved;
+    }
+
+    /**
+     * Who to credit for a save: the signed-in email, or {@code "local"} when authentication is
+     * off (single-user desktop install — there is exactly one person and no account to name).
+     * Null when auth is on but the request carried no principal, which leaves the revision
+     * unsigned rather than attributing it to someone who did not save it.
+     */
+    private String currentAuthor() {
+        return orgContext.currentUser()
+                .map(ConcentusUserDetails::email)
+                .orElseGet(() -> orgContext.authEnabled() ? null : "local");
     }
 
     @DeleteMapping("/{id}")

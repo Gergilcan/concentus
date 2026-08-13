@@ -88,6 +88,20 @@ describe('RunsPanel', () => {
 
     expect(screen.queryByText(/manual/)).not.toBeInTheDocument()
   })
+
+  it('badges the flow version an execution ran', () => {
+    renderPanel([run({ flowVersion: 12 })], 'f1')
+
+    expect(screen.getByText('v12')).toBeInTheDocument()
+  })
+
+  it('shows no version badge for a run that recorded none', () => {
+    // Runs from before versions were recorded, and runs of an unsaved flow: no revision to name,
+    // so no badge — a made-up "v0" would read as a real revision.
+    renderPanel([run({ flowVersion: 0 })], 'f1')
+
+    expect(screen.queryByText(/^v\d/)).not.toBeInTheDocument()
+  })
 })
 
 describe('RunsPanel golden runs', () => {

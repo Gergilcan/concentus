@@ -26,6 +26,13 @@ public class AgentRun {
     public volatile long createdAt = System.currentTimeMillis();
     /** FlowGraph snapshot (JSON) used to recompile and continue this run after a restart. */
     public volatile String flowJson;
+    /**
+     * The flow's version number at launch — the human-readable anchor between an execution and the
+     * Versions list. 0 when the flow has no history (unsaved, or history unavailable). What the
+     * run actually executed is {@link #flowJson}, always: this number names that revision, it does
+     * not define it.
+     */
+    public volatile int flowVersion;
 
     // STARTING | RUNNING | IDLE (waiting for its first instruction) | AWAITING_APPROVAL |
     // AWAITING_ANSWER (the final answer asked the user something) | COMPLETED | ERROR | TERMINATED
@@ -317,7 +324,7 @@ public class AgentRun {
 
     public RunSummary toSummary() {
         return new RunSummary(id, flowId, flowName, mode, status, createdAt, sessionId, agentIds, error,
-                trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd(), golden);
+                trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd(), golden, flowVersion);
     }
 
     /**

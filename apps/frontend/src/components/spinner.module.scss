@@ -1,0 +1,26 @@
+@use '../styles/theme' as t;
+
+.wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: t.$muted;
+  font-size: 12px;
+  padding: var(--sp-3);
+}
+
+.ring {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid t.$border;
+  border-top-color: t.$accent;
+  animation: spin 0.7s linear infinite;
+  flex: 0 0 auto;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

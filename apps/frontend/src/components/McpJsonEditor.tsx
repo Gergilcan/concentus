@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '../api/client.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import panels from './panels.module.scss'
+import { Spinner } from './Spinner.tsx'
 import styles from './resources.module.scss'
 
 /**
@@ -76,14 +77,15 @@ export function McpJsonEditor({ onSaved }: { onSaved: () => void }) {
         Edit as JSON (mcp.json)
       </button>
 
-      {open && (
+      {open && text === null && <Spinner />}
+      {open && text !== null && (
         <>
           <textarea
             className={styles.jsonEditor}
             aria-label="MCP registry JSON"
             rows={14}
             spellCheck={false}
-            value={text ?? 'Loading…'}
+            value={text}
             onChange={(e) => setText(e.target.value)}
           />
           <div className={styles.crudActions}>

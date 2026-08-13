@@ -8,6 +8,7 @@ import { agentKey } from '../utils/agentKey.ts'
 import { cx } from '../utils/cx.ts'
 import { hueOf } from '../utils/hueOf.ts'
 import { compact, kindOf } from './flowFormat.ts'
+import { Spinner } from './Spinner.tsx'
 import styles from './runs.module.scss'
 
 // One derived notice rendered in two places, instead of the same strings written twice with
@@ -17,7 +18,16 @@ const CONN_NOTICE: Partial<Record<RunSocketStatus, string>> = {
   disconnected: 'Disconnected from run output.',
 }
 
-export function Console({ runId, status }: { runId: string; status?: RunStatus }) {
+export function Console({
+  runId,
+  status,
+  flowVersion,
+}: {
+  runId: string
+  status?: RunStatus
+  /** The flow revision this run executed; absent/0 for runs from before versions were recorded. */
+  flowVersion?: number
+}) {
   // Stopping only means something while something is running: IDLE is a turn-based run waiting
   // for its next command, with no process to kill, and TERMINATED/ERROR are over. kindOf is the
   // shared definition of "in flight" — a third active status added there reaches this button too,
@@ -142,6 +152,16 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
 
   return (
     <div className={styles.console}>
+      {!!flowVersion && (
+        // The run's anchor into the flow's history. The canvas already shows the exact graph this
+        // run executed (openRun loads the run's own snapshot); this names which revision that was.
+        <div
+          className={styles.tokenBar}
+          title="The flow revision this execution ran. Studio's Versions tab lists them all."
+        >
+          ⑂ flow version v{flowVersion}
+        </div>
+      )}
       {hasTotals && (
         <div className={styles.tokenBar}>
           Σ execution tokens · in {totals.input.toLocaleString()} · out {totals.output.toLocaleString()}
@@ -203,7 +223,7 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
       )}
       <div className={styles.log}>
         {events.length === 0 && (
-          <div className={styles.logMuted}>{connNotice ?? 'Waiting for output…'}</div>
+          <div className={styles.logMuted}>{connNotice ?? <Spinner label="Waiting for output" />}</div>
         )}
         {agentFilter && shown.length === 0 && (
           <div className={styles.logMuted}>No output from {filteredName} yet.</div>

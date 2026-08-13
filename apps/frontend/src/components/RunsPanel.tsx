@@ -5,6 +5,7 @@ import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { CompareRunsModal } from './CompareRunsModal.tsx'
 import { Console } from './Console.tsx'
+import { Spinner } from './Spinner.tsx'
 import styles from './runs.module.scss'
 
 /** Every trigger that isn't `manual` gets a badge; an unknown one falls back to its own name. */
@@ -104,9 +105,7 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
         )}
         {err && <div className={styles.err}>{err}</div>}
         {loading ? (
-          <div className={styles.muted} role="status">
-            Loading executions…
-          </div>
+          <Spinner />
         ) : mine.length === 0 ? (
           <div className={styles.muted}>
             {runs.length > 0
@@ -133,6 +132,14 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
               {r.trigger && r.trigger !== 'manual' && (
                 <span className={styles.trigger}>{TRIGGER_LABEL[r.trigger] ?? r.trigger}</span>
               )}
+              {!!r.flowVersion && (
+                <span
+                  className={styles.version}
+                  title={`Ran flow version ${r.flowVersion}. Opening this execution puts exactly that revision on the canvas.`}
+                >
+                  v{r.flowVersion}
+                </span>
+              )}
               <span className={styles.runStatus}>{r.status}</span>
               {r.flowId && (
                 <button
@@ -156,7 +163,11 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
       </div>
       <div className={styles.runMain}>
         {selected ? (
-          <Console runId={selected} status={mine.find((r) => r.id === selected)?.status} />
+          <Console
+            runId={selected}
+            status={selectedRun?.status}
+            flowVersion={selectedRun?.flowVersion}
+          />
         ) : (
           <div className={styles.runEmpty}>Select a run to see its output and send commands.</div>
         )}

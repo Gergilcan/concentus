@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
-import type { BackendFlow, FlowMemoryView, FlowVersionInfo, Variable } from '../api/types.ts'
+import type { BackendFlow, FlowMemoryView, Variable } from '../api/types.ts'
 import { CredentialField } from './CredentialField.tsx'
+import { FlowVersions } from './FlowVersions.tsx'
 import { Modal } from './Modal.tsx'
 import { timeAgo } from './flowFormat.ts'
 import styles from './flows.module.scss'
@@ -303,7 +303,10 @@ function MemorySection({ flowId }: { flowId: string }) {
   )
 }
 
-/** Version history with one-click rollback. */
+/**
+ * Version history with one-click rollback, for a flow opened from the dashboard. The list itself
+ * is {@link FlowVersions}, shared with Studio's Versions tab.
+ */
 export function VersionsModal({
   flow,
   onClose,
@@ -313,64 +316,9 @@ export function VersionsModal({
   onClose: () => void
   pushError: (m: string) => void
 }) {
-  const [versions, setVersions] = useState<FlowVersionInfo[] | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    if (!flow.id) {
-      setVersions([])
-      return
-    }
-    api
-      .listFlowVersions(flow.id)
-      .then(setVersions)
-      .catch(() => setVersions([]))
-  }, [flow.id])
-
-  const restore = async (version: number) => {
-    if (!flow.id) return
-    if (!confirm(`Restore version ${version}? The current version is kept in history.`)) return
-    setBusy(true)
-    try {
-      await api.restoreFlowVersion(flow.id, version)
-      onClose()
-    } catch (e) {
-      pushError(errMessage(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
   return (
     <Modal title={`History — ${flow.name}`} onClose={onClose}>
-      {versions === null ? (
-        <div className={styles.sideEmpty}>Loading…</div>
-      ) : versions.length === 0 ? (
-        <div className={styles.sideEmpty}>
-          No history yet. Every save from now on adds a restorable version.
-        </div>
-      ) : (
-        <ul className={styles.versionList}>
-          {versions.map((v, i) => (
-            <li key={v.version} className={styles.versionRow}>
-              <span className={styles.versionNum}>v{v.version}</span>
-              <span className={styles.versionName}>{v.name}</span>
-              <span className={styles.versionTime}>{timeAgo(v.createdAt)}</span>
-              {i === 0 ? (
-                <span className={styles.versionCurrent}>current</span>
-              ) : (
-                <button
-                  className={styles.ghost}
-                  disabled={busy}
-                  onClick={() => void restore(v.version)}
-                >
-                  Restore
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <FlowVersions flowId={flow.id ?? null} onRestored={onClose} pushError={pushError} />
     </Modal>
   )
 }

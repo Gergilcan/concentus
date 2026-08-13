@@ -42,6 +42,22 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", safe(e)));
     }
 
+    /**
+     * A method the endpoint doesn't support — routine, not an incident. The MCP Streamable HTTP
+     * transport GETs the run-tools endpoints (with {@code Accept: text/event-stream}) probing for
+     * a server-initiated stream; answering 405 is the spec's own "no stream here", and the CLI
+     * carries on over POST. Before this handler, every scheduled run logged that probe as an
+     * unhandled ERROR with two stack traces — and the generic handler then failed to serialize
+     * its JSON body for a client that only accepts event-stream, adding a second alarm.
+     * The empty body is what makes the response acceptable to any Accept header.
+     */
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Void> methodNotSupported(
+            org.springframework.web.HttpRequestMethodNotSupportedException e) {
+        log.debug("Method not supported: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).build();
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> generic(Exception e) {
         // Unlike badRequest/conflict above (whose messages come from our own validate() calls and

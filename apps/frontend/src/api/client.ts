@@ -141,6 +141,9 @@ export const api = {
   deleteFlow: (id: string) => req<void>(`/flows/${id}`, { method: 'DELETE' }),
   runSavedFlow: (id: string) => req<RunSummary>(`/flows/${id}/run`, { method: 'POST' }),
   listFlowVersions: (id: string) => req<FlowVersionInfo[]>(`/flows/${id}/versions`),
+  /** One revision as it was, for previewing it on the canvas. Changes nothing on the server. */
+  getFlowVersion: (id: string, version: number) =>
+    req<BackendFlow>(`/flows/${id}/versions/${version}`),
   restoreFlowVersion: (id: string, version: number) =>
     req<BackendFlow>(`/flows/${id}/versions/${version}/restore`, { method: 'POST' }),
   /** Notes this flow's agents left for future runs (memory_append), newest first. */

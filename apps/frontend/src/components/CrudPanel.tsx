@@ -115,7 +115,31 @@ export function CrudPanel<T extends Record<string, unknown>>({
               setStatus(null)
             }}
           >
-            {labelOf(it) || '(unnamed)'}
+            <span className={styles.crudItemLabel}>{labelOf(it) || '(unnamed)'}</span>
+            {/* Delete from the LIST, without opening: a record with data the form cannot render
+                must still be removable — opening it first is exactly what a broken one can't
+                survive. A span with role=button because a button may not contain a button. */}
+            <span
+              role="button"
+              aria-label={`Delete ${labelOf(it) || 'this entry'}`}
+              title="Delete without opening"
+              className={styles.crudItemDelete}
+              onClick={(e) => {
+                e.stopPropagation()
+                const id = idOf(it)
+                if (!id) return
+                if (!window.confirm(`Delete "${labelOf(it) || 'this entry'}"?`)) return
+                void remove(id)
+                  .then(() => refresh())
+                  .then(() => {
+                    if (idOf(draft) === id) setDraft(empty())
+                    setStatus('Deleted')
+                  })
+                  .catch((err) => setStatus(errMessage(err)))
+              }}
+            >
+              ✕
+            </span>
           </button>
         ))}
       </div>

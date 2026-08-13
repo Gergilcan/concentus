@@ -101,6 +101,18 @@
   white-space: nowrap;
 }
 
+/* The flow revision an execution ran. Muted, not coloured like the trigger: it is an anchor to
+   the Versions list, not a state anyone has to act on. */
+.version {
+  font-size: 9px;
+  font-family: monospace;
+  color: t.$muted;
+  border: 1px solid t.$border;
+  border-radius: 6px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
 .runStatus {
   font-size: 10px;
   color: t.$muted;

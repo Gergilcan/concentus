@@ -30,6 +30,11 @@ export interface RunSummary {
   estimatedCostUsd?: number
   /** This run is its flow's golden reference — the known-good execution edits are compared against. */
   golden?: boolean
+  /**
+   * The flow revision this execution ran, 0 when the flow had no history at launch. The exact
+   * graph is always the run's own snapshot (`getRunFlow`); this number just names it.
+   */
+  flowVersion?: number
 }
 
 /** One side of a golden comparison: headline numbers, per-node steps (priced), final answer. */
@@ -500,6 +505,14 @@ export interface FlowVersionInfo {
   version: number
   name: string
   createdAt: number
+  /** Who saved it: an email, `"local"` when auth is off, null for revisions saved before this. */
+  author?: string | null
+  nodeCount: number
+  edgeCount: number
+  /** Change against the previous revision; both 0 on the oldest one, which has nothing before it. */
+  nodesDelta: number
+  edgesDelta: number
+  renamed: boolean
 }
 
 // --- Flow memory ------------------------------------------------------------

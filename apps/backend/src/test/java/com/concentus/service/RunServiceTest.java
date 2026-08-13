@@ -45,6 +45,12 @@ class RunServiceTest {
     private final RunStore runStore = mock(RunStore.class);
     private final NotificationService notifier = mock(NotificationService.class);
     private final RemoteApprovalService remoteApprovals = mock(RemoteApprovalService.class);
+    /**
+     * Version history, stubbed per test. The default 0 is what a run without a database sees: no
+     * version number, so no badge. The versioning itself is covered by {@code FlowVersionStoreTest}.
+     */
+    private final com.concentus.store.FlowVersionStore flowVersions =
+            mock(com.concentus.store.FlowVersionStore.class);
     private final ObjectMapper mapper = new ObjectMapper();
 
     private final List<RunService> created = new ArrayList<>();
@@ -69,7 +75,7 @@ class RunServiceTest {
     private RunService newService(int maxConcurrent, int queueCapacity, int maxRetainedRuns) {
         RunService s = new RunService(clientProvider, compiler, launcher, backends(),
                 new PricingTable("", 3.0, 15.0),
-                new CloudStreamEventHandler(), runStore, mapper,
+                new CloudStreamEventHandler(), runStore, flowVersions, mapper,
                 notifier, remoteApprovals, variableStore(),
                 maxConcurrent, queueCapacity, maxRetainedRuns, 3.0, 15.0);
         created.add(s);
@@ -336,6 +342,36 @@ class RunServiceTest {
         release.countDown();
     }
 
+    // ---------------------------------------------------------------- flow version linkage
+
+    @Test
+    void aRunRecordsTheFlowVersionItLaunchedFrom() {
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        when(flowVersions.currentVersion("f1")).thenReturn(12);
+        RunService svc = newService(4, 8, 10);
+
+        RunSummary summary = svc.start(flow("f1"));
+
+        assertThat(summary.flowVersion()).isEqualTo(12);
+    }
+
+    @Test
+    void aRetryKeepsTheVersionItReplaysRatherThanTheFlowsCurrentOne() {
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        when(flowVersions.currentVersion("f1")).thenReturn(3);
+        RunService svc = newService(4, 8, 10);
+        RunSummary original = svc.start(flow("f1"));
+
+        // The flow is edited twice between the run and its retry. The retry replays the ORIGINAL
+        // snapshot, so labelling it v5 would name a revision it never executed.
+        when(flowVersions.currentVersion("f1")).thenReturn(5);
+        RunSummary retried = svc.retry(original.id());
+
+        assertThat(retried.flowVersion()).isEqualTo(3);
+    }
+
     // ---------------------------------------------------------------- retry()
 
     @Test
@@ -558,13 +594,13 @@ class RunServiceTest {
         String validFlowJson = toJson(flow("f1"));
         RunStore.RunRow runningRow = new RunStore.RunRow(
                 "run_a", "f1", "Flow", "managed", "local", "RUNNING", "manual", "sess1", null, false,
-                null, 10L, 20L, validFlowJson, List.of(), List.of(), 111L, "hello", null, false);
+                null, 10L, 20L, validFlowJson, List.of(), List.of(), 111L, "hello", null, false, 7);
         RunStore.RunRow startingRow = new RunStore.RunRow(
                 "run_b", "f1", "Flow", "managed", "local", "STARTING", "manual", null, null, false,
-                null, 0L, 0L, null, List.of(), List.of(), 222L, null, null, false);
+                null, 0L, 0L, null, List.of(), List.of(), 222L, null, null, false, 0);
         RunStore.RunRow terminatedRow = new RunStore.RunRow(
                 "run_c", "f1", "Flow", "managed", "local", "TERMINATED", "manual", null, null, false,
-                null, 0L, 0L, null, List.of(), List.of(), 333L, null, null, true);
+                null, 0L, 0L, null, List.of(), List.of(), 333L, null, null, true, 0);
         when(runStore.loadAll(anyInt())).thenReturn(List.of(runningRow, startingRow, terminatedRow));
         when(runStore.isAvailable()).thenReturn(true);
         RunService svc = newService(4, 8, 10);
@@ -578,16 +614,19 @@ class RunServiceTest {
         assertThat(svc.get("run_b").orElseThrow().status).isEqualTo("IDLE"); // STARTING -> IDLE too
         assertThat(svc.get("run_c").orElseThrow().status).isEqualTo("TERMINATED"); // terminal statuses pass through
         assertThat(svc.get("run_c").orElseThrow().golden).isTrue(); // the reference flag survives restarts
+        // The version an execution ran is a fact about it, so it survives the restart too — the
+        // flow may be on v20 by now and this run still ran v7.
+        assertThat(svc.get("run_a").orElseThrow().flowVersion).isEqualTo(7);
     }
 
     @Test
     void restoreSkipsRowsThatFailToReconstructButKeepsTheOthers() {
         RunStore.RunRow badRow = new RunStore.RunRow(
                 "run_bad", "f2", "Flow2", "managed", "local", "TERMINATED", "manual", null, null, false,
-                null, 0L, 0L, "{ not valid json", List.of(), List.of(), 222L, null, null, false);
+                null, 0L, 0L, "{ not valid json", List.of(), List.of(), 222L, null, null, false, 0);
         RunStore.RunRow goodRow = new RunStore.RunRow(
                 "run_good", "f1", "Flow", "managed", "local", "ERROR", "manual", null, null, false,
-                "boom", 0L, 0L, null, List.of(), List.of(), 333L, null, null, false);
+                "boom", 0L, 0L, null, List.of(), List.of(), 333L, null, null, false, 0);
         when(runStore.loadAll(anyInt())).thenReturn(List.of(badRow, goodRow));
         when(runStore.isAvailable()).thenReturn(false);
         RunService svc = newService(4, 8, 10);
@@ -788,8 +827,8 @@ class RunServiceTest {
     private RunService service() {
         RunService s = new RunService(clientProvider, compiler, launcher, backends(),
                 new PricingTable("", 3.0, 15.0),
-                new CloudStreamEventHandler(), runStore, mapper, notifier, remoteApprovals,
-                variableStore(), 4, 8, 10, 3.0, 15.0);
+                new CloudStreamEventHandler(), runStore, flowVersions, mapper, notifier,
+                remoteApprovals, variableStore(), 4, 8, 10, 3.0, 15.0);
         created.add(s);
         return s;
     }

@@ -63,7 +63,7 @@ class WebhookControllerTest {
 
     private static RunSummary summary() {
         return new RunSummary("run_abc123", "f1", "Flow", "managed", "RUNNING", 0L, null, List.of(), null, "webhook",
-                0L, 0L, 0.0, false);
+                0L, 0L, 0.0, false, 1);
     }
 
     /** Signs exactly as a provider would: hex HMAC-SHA256 over the raw body bytes. */
