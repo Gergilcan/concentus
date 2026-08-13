@@ -158,42 +158,38 @@ export function McpInspector({ data, set }: Props) {
               what="this MCP server"
             />
           )}
+
+          <FineTuning>
+            {oauthConnected !== true && (
+              <SelectField
+                label={
+                  <span title="GitLab reads its tokens from PRIVATE-TOKEN without a Bearer prefix — sending one there makes the token wrong. Most other servers, GitHub included, take the default.">
+                    Send token in ⓘ
+                  </span>
+                }
+                value={data.authHeader ?? ''}
+                onChange={(v) => set({ authHeader: v })}
+              >
+                <option value="">Authorization: Bearer … (most servers, GitHub)</option>
+                <option value="PRIVATE-TOKEN">PRIVATE-TOKEN: … (GitLab)</option>
+              </SelectField>
+            )}
+
+            <McpToolPicker
+              url={data.url}
+              credentialId={oauthConnected === true ? undefined : data.credentialId}
+              selected={data.tools ?? []}
+              onChange={(tools) => set({ tools })}
+            />
+          </FineTuning>
+
+          <McpClaudeActions
+            name={data.name}
+            url={data.url}
+            credentialId={data.credentialId}
+            authHeader={data.authHeader}
+          />
         </>
-      )}
-
-      {!isStdio && (
-      <FineTuning>
-        {oauthConnected !== true && (
-          <SelectField
-            label={
-              <span title="GitLab reads its tokens from PRIVATE-TOKEN without a Bearer prefix — sending one there makes the token wrong. Most other servers, GitHub included, take the default.">
-                Send token in ⓘ
-              </span>
-            }
-            value={data.authHeader ?? ''}
-            onChange={(v) => set({ authHeader: v })}
-          >
-            <option value="">Authorization: Bearer … (most servers, GitHub)</option>
-            <option value="PRIVATE-TOKEN">PRIVATE-TOKEN: … (GitLab)</option>
-          </SelectField>
-        )}
-
-        <McpToolPicker
-          url={data.url}
-          credentialId={oauthConnected === true ? undefined : data.credentialId}
-          selected={data.tools ?? []}
-          onChange={(tools) => set({ tools })}
-        />
-      </FineTuning>
-      )}
-
-      {!isStdio && (
-        <McpClaudeActions
-          name={data.name}
-          url={data.url}
-          credentialId={data.credentialId}
-          authHeader={data.authHeader}
-        />
       )}
     </>
   )

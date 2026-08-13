@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
@@ -14,8 +13,6 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -51,9 +48,9 @@ public class McpRegistry {
     public List<McpServerInfo> list() {
         String cmd = support.command().orElse(null);
         if (cmd == null) return List.of();
-        ProcResult r = run(List.of(cmd, "mcp", "list"), 30);
+        CliProcess.Result r = CliProcess.run(List.of(cmd, "mcp", "list"), 30);
         List<McpServerInfo> out = new ArrayList<>();
-        for (String line : r.output.split("\\R")) {
+        for (String line : r.output().split("\\R")) {
             Matcher m = LINE.matcher(line.trim());
             if (m.matches()) {
                 out.add(new McpServerInfo(m.group(1).trim(), m.group(2).trim(),
@@ -97,16 +94,16 @@ public class McpRegistry {
             args.add("-H");
             args.add(header + ": " + prefix + token);
         }
-        ProcResult r = run(args, 30);
-        String out = r.output == null ? "" : r.output;
+        CliProcess.Result r = CliProcess.run(args, 30);
+        String out = r.output() == null ? "" : r.output();
         if (out.toLowerCase().contains("already exists")) {
             return "already configured";
         }
-        if (r.exit == 0) {
+        if (r.exit() == 0) {
             return hasToken ? "added" : "added — run `claude mcp login \"" + name + "\"` to authorize";
         }
         log.warn("claude mcp add failed for {}: {}", name, out);
-        return "add failed: " + firstLine(out);
+        return "add failed: " + CliProcess.lastLine(out);
     }
 
     /**
@@ -215,40 +212,9 @@ public class McpRegistry {
         String cmd = support.command().orElse(null);
         if (cmd == null) return "claude CLI not found";
         if (name == null || name.isBlank()) return "missing name";
-        ProcResult r = run(List.of(cmd, "mcp", "remove", name, "-s", "user"), 30);
-        if (r.exit == 0) return "removed";
-        return "remove failed: " + firstLine(r.output);
+        CliProcess.Result r = CliProcess.run(List.of(cmd, "mcp", "remove", name, "-s", "user"), 30);
+        if (r.exit() == 0) return "removed";
+        return "remove failed: " + CliProcess.lastLine(r.output());
     }
 
-    // ------------------------------------------------------------- process
-
-    private record ProcResult(int exit, String output) {}
-
-    private ProcResult run(List<String> args, int timeoutSec) {
-        try {
-            Process p = new ProcessBuilder(args).redirectErrorStream(true).start();
-            p.getOutputStream().close();
-            CompletableFuture<String> out = CompletableFuture.supplyAsync(() -> {
-                try {
-                    return new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                } catch (Exception e) {
-                    return "";
-                }
-            });
-            boolean done = p.waitFor(timeoutSec, TimeUnit.SECONDS);
-            if (!done) {
-                p.destroyForcibly();
-                return new ProcResult(-1, "timed out");
-            }
-            return new ProcResult(p.exitValue(), out.get(3, TimeUnit.SECONDS));
-        } catch (Exception e) {
-            return new ProcResult(-1, e.getMessage() == null ? e.toString() : e.getMessage());
-        }
-    }
-
-    private static String firstLine(String s) {
-        if (s == null || s.isBlank()) return "unknown error";
-        String[] lines = s.strip().split("\\R");
-        return lines[lines.length - 1];
-    }
 }

@@ -4,6 +4,10 @@ import { NodeShell } from './NodeShell.tsx'
 import styles from './nodes.module.scss'
 
 export function ApiNode({ id, data, selected }: NodeProps<ApiRFNode>) {
+  let summary: string
+  if (data.ops.length > 0) summary = `${data.ops.length} operation(s) allowed`
+  else if (data.specUrl) summary = 'no operations allowed yet'
+  else summary = 'no spec loaded'
   return (
     <NodeShell
       id={id}
@@ -14,13 +18,7 @@ export function ApiNode({ id, data, selected }: NodeProps<ApiRFNode>) {
       badge="API"
       showStatus
     >
-      <div className={styles.snippet}>
-        {data.ops.length > 0
-          ? `${data.ops.length} operation(s) allowed`
-          : data.specUrl
-            ? 'no operations allowed yet'
-            : 'no spec loaded'}
-      </div>
+      <div className={styles.snippet}>{summary}</div>
     </NodeShell>
   )
 }

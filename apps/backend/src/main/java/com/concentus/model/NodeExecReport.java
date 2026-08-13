@@ -12,10 +12,4 @@ import java.util.List;
  */
 public record NodeExecReport(List<NodeExec> nodes, long totalInputTokens, long totalOutputTokens,
                              double totalCostUsd, GraphMetrics graph) {
-
-    /** The shape every caller had before graph metrics existed. */
-    public NodeExecReport(List<NodeExec> nodes, long totalInputTokens, long totalOutputTokens,
-                          double totalCostUsd) {
-        this(nodes, totalInputTokens, totalOutputTokens, totalCostUsd, null);
-    }
 }

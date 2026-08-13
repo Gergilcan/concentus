@@ -21,8 +21,8 @@ import { nodeTypes } from './nodeTypes.ts'
 // Minimap swatch per node kind, read straight from the shared table. The if-chain this replaces
 // made adding a node kind a two-file edit and ignored entries the table already had — 'knowledge'
 // nodes were grey on the minimap for no reason anyone chose.
-function nodeColor(type?: string): string {
-  return NODE_COLORS[type as keyof typeof NODE_COLORS] ?? NODE_COLORS.default
+function nodeColor(type = 'default'): string {
+  return NODE_COLORS[type] ?? NODE_COLORS.default
 }
 
 const edgeTypes: EdgeTypes = { deletable: DeletableEdge }

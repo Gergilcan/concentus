@@ -10,6 +10,13 @@ import { hueOf } from '../utils/hueOf.ts'
 import { compact, kindOf } from './flowFormat.ts'
 import styles from './runs.module.scss'
 
+// One derived notice rendered in two places, instead of the same strings written twice with
+// complementary conditions — the copies had already drifted. A healthy socket says nothing.
+const CONN_NOTICE: Partial<Record<RunSocketStatus, string>> = {
+  reconnecting: 'Connection lost — reconnecting…',
+  disconnected: 'Disconnected from run output.',
+}
+
 export function Console({ runId, status }: { runId: string; status?: RunStatus }) {
   // Stopping only means something while something is running: IDLE is a turn-based run waiting
   // for its next command, with no process to kill, and TERMINATED/ERROR are over. kindOf is the
@@ -107,14 +114,7 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
     }
   }
 
-  // One derived notice rendered in two places, instead of the same strings written twice with
-  // complementary conditions — the copies had already drifted.
-  const connNotice =
-    connStatus === 'reconnecting'
-      ? 'Connection lost — reconnecting…'
-      : connStatus === 'disconnected'
-        ? 'Disconnected from run output.'
-        : null
+  const connNotice = CONN_NOTICE[connStatus] ?? null
 
   const totals = useFlowStore((s) => s.runTotals)
   const hasTotals = totals.input > 0 || totals.output > 0

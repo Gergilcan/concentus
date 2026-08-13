@@ -12,21 +12,19 @@ export function NodeStatusBadge({ id }: { id: string }) {
   // count when it isn't. The exact figures live in the title — the badge has no room for them.
   const ctx = exec.contextTokens ?? 0
   const win = exec.contextWindow ?? 0
-  const grew = ctx > 0 ? ctx - (exec.contextStartTokens ?? 0) : 0
-  const ctxLabel = ctx > 0 ? (win > 0 ? ` · ctx ${Math.round((ctx / win) * 100)}%` : ` · ctx ${compact(ctx)}`) : ''
+  const started = exec.contextStartTokens ?? 0
+  let ctxLabel = ''
+  let ctxTitle: string | undefined
+  if (ctx > 0) {
+    ctxLabel = win > 0 ? ` · ctx ${Math.round((ctx / win) * 100)}%` : ` · ctx ${compact(ctx)}`
+    const grew = ctx - started
+    ctxTitle =
+      `Context window in use: ${ctx.toLocaleString()}${win > 0 ? ` of ${win.toLocaleString()}` : ''} tokens` +
+      (grew > 0 ? ` — started at ${started.toLocaleString()}, its work added ${grew.toLocaleString()}` : '')
+  }
   return (
     <>
-      <div
-        className={cx(styles.execBadge, styles['eb_' + exec.status])}
-        title={
-          ctx > 0
-            ? `Context window in use: ${ctx.toLocaleString()}${win > 0 ? ` of ${win.toLocaleString()}` : ''} tokens` +
-              (grew > 0
-                ? ` — started at ${(exec.contextStartTokens ?? 0).toLocaleString()}, its work added ${grew.toLocaleString()}`
-                : '')
-            : undefined
-        }
-      >
+      <div className={cx(styles.execBadge, styles['eb_' + exec.status])} title={ctxTitle}>
         <span className={styles.ebDot} />
         {exec.status}
         {tokens}

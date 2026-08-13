@@ -12,6 +12,13 @@ const THEMES: Array<{ id: Theme; icon: string; label: string }> = [
   { id: 'contrast', icon: '◐', label: 'High contrast' },
 ]
 
+const NAV: Array<{ id: View; label: string }> = [
+  { id: 'flows', label: 'Flows' },
+  { id: 'studio', label: 'Studio' },
+  { id: 'resources', label: 'Resources' },
+  { id: 'usage', label: 'Usage' },
+]
+
 /**
  * Applies a theme by stamping data-theme on <html> — the same contract index.html's pre-paint
  * script uses, so the choice survives reloads without a flash. Dark is the stylesheet default
@@ -63,21 +70,15 @@ export function AppHeader({ view, onView, signedInAs, onSignOut }: Props) {
         <span className={styles.logo}>⬡</span> Concentus
       </div>
       <nav className={styles.nav}>
-        <button className={view === 'flows' ? styles.active : ''} onClick={() => onView('flows')}>
-          Flows
-        </button>
-        <button className={view === 'studio' ? styles.active : ''} onClick={() => onView('studio')}>
-          Studio
-        </button>
-        <button
-          className={view === 'resources' ? styles.active : ''}
-          onClick={() => onView('resources')}
-        >
-          Resources
-        </button>
-        <button className={view === 'usage' ? styles.active : ''} onClick={() => onView('usage')}>
-          Usage
-        </button>
+        {NAV.map((item) => (
+          <button
+            key={item.id}
+            className={view === item.id ? styles.active : ''}
+            onClick={() => onView(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
       </nav>
       <div className={styles.spacer} />
       <ThemeSwitch />

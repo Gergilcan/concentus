@@ -1,6 +1,7 @@
 package com.concentus.llm;
 
 import com.concentus.secrets.CredentialStore;
+import com.concentus.support.Texts;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -12,6 +13,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 
 /**
  * Holds an MCP server's OAuth authorization, and hands out a usable access token.
@@ -57,11 +59,21 @@ public class McpOAuthStore {
      * which shows as "connected" in the UI and 401 in every run, with nothing to connect the two.
      */
     static String normalize(String mcpUrl) {
-        return mcpUrl == null ? "" : mcpUrl.trim().replaceAll("/+$", "");
+        return Texts.trimTrailingSlashes(mcpUrl);
     }
 
     static String labelFor(String mcpUrl) {
         return LABEL_PREFIX + normalize(mcpUrl);
+    }
+
+    /**
+     * The credentials filed under one grant's label. A stream rather than a single result because
+     * the callers differ on purpose: save and load take the first match, while forget must delete
+     * every one of them.
+     */
+    private Stream<CredentialStore.Credential> filedUnder(String organizationId, String label) {
+        return credentials.list(organizationId).stream()
+                .filter(c -> label.equalsIgnoreCase(c.label()));
     }
 
     public void save(String organizationId, String mcpUrl, Session session) {
@@ -81,8 +93,7 @@ public class McpOAuthStore {
         String json = node.toString();
         // Replace rather than accumulate: re-authorizing a server must not leave the previous
         // grant behind, both because it is dead weight and because the older one may still work.
-        credentials.list(organizationId).stream()
-                .filter(c -> label.equalsIgnoreCase(c.label()))
+        filedUnder(organizationId, label)
                 .findFirst()
                 .ifPresentOrElse(
                         existing -> credentials.updateSecret(organizationId, existing.id(), json),
@@ -93,8 +104,7 @@ public class McpOAuthStore {
 
     public Optional<Session> load(String organizationId, String mcpUrl) {
         String label = labelFor(mcpUrl);
-        return credentials.list(organizationId).stream()
-                .filter(c -> label.equalsIgnoreCase(c.label()))
+        return filedUnder(organizationId, label)
                 .findFirst()
                 .flatMap(c -> credentials.reveal(organizationId, c.id()))
                 .flatMap(this::parse);
@@ -160,9 +170,7 @@ public class McpOAuthStore {
     /** Drops a stored authorization, so the server has to be signed in to again. */
     public void forget(String organizationId, String mcpUrl) {
         cache.remove(normalize(mcpUrl));
-        String label = labelFor(mcpUrl);
-        credentials.list(organizationId).stream()
-                .filter(c -> label.equalsIgnoreCase(c.label()))
+        filedUnder(organizationId, labelFor(mcpUrl))
                 .forEach(c -> credentials.delete(organizationId, c.id()));
     }
 }

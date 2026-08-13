@@ -85,7 +85,7 @@ public class KnowledgeService {
                 .filter(f -> f.hasText())
                 .map(f -> f.text())
                 .collect(Collectors.joining("\n\n"));
-        if (text == null || text.isBlank()) {
+        if (text.isBlank()) {
             throw new IllegalArgumentException(
                     "No text could be extracted from '" + filename + "'. Supported: PDF, Word, "
                             + "Excel/CSV, plain text and HTML; images need OCR to be installed.");
@@ -348,6 +348,10 @@ public class KnowledgeService {
         return out;
     }
 
+    /** The vectors and which model produced them, so the UI can name it instead of guessing. */
+    private record Embeddings(List<float[]> vectors, String model) {
+    }
+
     /**
      * The embeddings, or null when nothing can produce them — never an exception.
      *
@@ -355,10 +359,6 @@ public class KnowledgeService {
      * in-process, and it needs no server to be up. Ollama (or any OpenAI-shaped server) remains
      * the alternative for anyone wanting a larger model such as bge-m3.
      */
-    /** The vectors and which model produced them, so the UI can name it instead of guessing. */
-    private record Embeddings(List<float[]> vectors, String model) {
-    }
-
     private Embeddings tryEmbed(List<String> texts, boolean queries) {
         if (builtIn.isReady()) {
             try {

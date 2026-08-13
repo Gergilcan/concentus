@@ -39,7 +39,12 @@ public class AnthropicClientProvider {
         return switch (mode) {
             case "api-key" -> key ? "cloud" : "none";
             case "local" -> local ? "local" : "none";
-            default -> key ? "cloud" : (local ? "local" : "none");
+            // Auto: a key wins when both are present, because it is the explicit choice.
+            default -> {
+                if (key) yield "cloud";
+                else if (local) yield "local";
+                else yield "none";
+            }
         };
     }
 

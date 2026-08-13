@@ -26,22 +26,27 @@ public class LocalClaudeSupport {
             return Optional.of(configured);
         }
         String home = System.getProperty("user.home", "");
-        Path installed = Path.of(home, ".local", "bin", "claude.exe");
-        if (Files.isRegularFile(installed)) {
-            return Optional.of(installed.toString());
-        }
-        Path installedNix = Path.of(home, ".local", "bin", "claude");
-        if (Files.isRegularFile(installedNix)) {
-            return Optional.of(installedNix.toString());
+        // Both spellings of the installer's own binary, .exe first for Windows. Probed before the
+        // PATH fallback below, so a real install outranks whatever `claude` resolves to.
+        for (String name : new String[] {"claude.exe", "claude"}) {
+            Path installed = Path.of(home, ".local", "bin", name);
+            if (Files.isRegularFile(installed)) {
+                return Optional.of(installed.toString());
+            }
         }
         // Fall back to PATH resolution.
         return Optional.of("claude");
     }
 
-    /** True when the CLI is present and there is a Claude Code login on disk. */
+    /**
+     * True when there is a Claude Code login on disk.
+     *
+     * <p>Only the login is checked: {@link #command()} always yields something (bare
+     * {@code "claude"}, for PATH to resolve), so asking whether a command exists could never
+     * answer no. Whether that command actually runs is settled by running it.
+     */
     public boolean available() {
         String home = System.getProperty("user.home", "");
-        boolean loggedIn = Files.exists(Path.of(home, ".claude.json")) || Files.exists(Path.of(home, ".claude"));
-        return loggedIn && command().isPresent();
+        return Files.exists(Path.of(home, ".claude.json")) || Files.exists(Path.of(home, ".claude"));
     }
 }

@@ -21,8 +21,6 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -73,9 +71,7 @@ public class RunToolsController {
                                         @RequestHeader(value = TOKEN_HEADER, required = false) String token,
                                         @RequestBody JsonNode request) {
         AgentRun run = runs.get(runId).orElse(null);
-        if (run == null || run.toolToken == null || token == null
-                || !MessageDigest.isEqual(run.toolToken.getBytes(StandardCharsets.UTF_8),
-                        token.getBytes(StandardCharsets.UTF_8))) {
+        if (run == null || !McpJsonRpc.tokenMatches(run.toolToken, token)) {
             return ResponseEntity.status(401).build();
         }
 
@@ -94,13 +90,7 @@ public class RunToolsController {
     }
 
     private ObjectNode initializeResult() {
-        ObjectNode result = mapper.createObjectNode();
-        result.put("protocolVersion", "2024-11-05");
-        result.putObject("capabilities").putObject("tools");
-        ObjectNode info = result.putObject("serverInfo");
-        info.put("name", "concentus-apis");
-        info.put("version", "1.0");
-        return result;
+        return McpJsonRpc.initializeResult(mapper, "concentus-apis");
     }
 
     /**
@@ -256,31 +246,15 @@ public class RunToolsController {
         }
     }
 
-    /** MCP tool-result shape: content blocks plus an isError flag the model can react to. */
     private ObjectNode callResult(boolean isError, String text) {
-        ObjectNode result = mapper.createObjectNode();
-        ObjectNode content = result.putArray("content").addObject();
-        content.put("type", "text");
-        content.put("text", text);
-        result.put("isError", isError);
-        return result;
+        return McpJsonRpc.callResult(mapper, isError, text);
     }
 
     private ResponseEntity<JsonNode> ok(JsonNode id, ObjectNode result) {
-        ObjectNode envelope = mapper.createObjectNode();
-        envelope.put("jsonrpc", "2.0");
-        if (id != null) envelope.set("id", id);
-        envelope.set("result", result);
-        return ResponseEntity.ok(envelope);
+        return McpJsonRpc.ok(mapper, id, result);
     }
 
     private ResponseEntity<JsonNode> error(JsonNode id, int code, String message) {
-        ObjectNode envelope = mapper.createObjectNode();
-        envelope.put("jsonrpc", "2.0");
-        if (id != null) envelope.set("id", id);
-        ObjectNode err = envelope.putObject("error");
-        err.put("code", code);
-        err.put("message", message);
-        return ResponseEntity.ok(envelope);
+        return McpJsonRpc.error(mapper, id, code, message);
     }
 }

@@ -59,11 +59,7 @@ public class FlowCompiler {
 
     private CompiledFlow compileRaw(FlowGraph flow) {
         List<FlowNode> agents = byType(flow, "agent");
-        List<FlowNode> mcps = byType(flow, "mcp");
-        List<FlowNode> repos = byType(flow, "repo");
-        List<FlowNode> sqls = byType(flow, "sql");
-        List<FlowNode> knowledges = byType(flow, "knowledge");
-        List<FlowNode> apis = byType(flow, "api");
+        Resources resources = Resources.of(flow);
 
         if (agents.isEmpty()) {
             throw new IllegalArgumentException("Flow has no agent nodes.");
@@ -85,7 +81,7 @@ public class FlowCompiler {
             throw new IllegalArgumentException("Flow has more than one coordinator — mark exactly one.");
         }
 
-        AgentSpec coordinator = buildAgentSpec(coordinatorNode, flow, mcps, repos, sqls, knowledges, apis);
+        AgentSpec coordinator = buildAgentSpec(coordinatorNode, flow, resources);
 
         // Every agent reachable from the coordinator through agent-to-agent edges — not just the
         // directly linked ones. A reviewer wired behind an engineer exists to review that
@@ -93,7 +89,7 @@ public class FlowCompiler {
         Delegation tree = delegationTree(coordinatorNode, agents, flow.edgesOrEmpty());
         List<AgentSpec> subAgents = new ArrayList<>();
         for (FlowNode n : tree.ordered()) {
-            subAgents.add(buildAgentSpec(n, flow, mcps, repos, sqls, knowledges, apis));
+            subAgents.add(buildAgentSpec(n, flow, resources));
         }
 
         assignCliNames(coordinator, subAgents);
@@ -101,26 +97,39 @@ public class FlowCompiler {
 
         // The merge step of a fan-out flow. Same data shape as an agent node, so the same spec
         // builder serves; at most one, because "the merge" must be a single answer.
-        List<FlowNode> merges = byType(flow, "merge");
-        if (merges.size() > 1) {
-            throw new IllegalArgumentException("Flow has more than one merge node — keep exactly one.");
-        }
-        AgentSpec merger = merges.isEmpty()
-                ? null
-                : buildAgentSpec(merges.get(0), flow, mcps, repos, sqls, knowledges, apis);
+        AgentSpec merger = singleAgentNode(flow, "merge", resources);
 
         // The adversarial verifier of a fan-out flow, cut from the same cloth as the merge: at
         // most one, because a worker's output must get ONE verdict, not a committee's.
-        List<FlowNode> verifiers = byType(flow, "verifier");
-        if (verifiers.size() > 1) {
-            throw new IllegalArgumentException(
-                    "Flow has more than one verifier node — keep exactly one.");
-        }
-        AgentSpec verifier = verifiers.isEmpty()
-                ? null
-                : buildAgentSpec(verifiers.get(0), flow, mcps, repos, sqls, knowledges, apis);
+        AgentSpec verifier = singleAgentNode(flow, "verifier", resources);
 
         return new CompiledFlow(coordinator, subAgents, merger, verifier);
+    }
+
+    /**
+     * The at-most-one node of a type, compiled with the agent spec builder; null when the flow
+     * draws none. More than one is refused rather than silently picking a winner.
+     */
+    private AgentSpec singleAgentNode(FlowGraph flow, String type, Resources resources) {
+        List<FlowNode> found = byType(flow, type);
+        if (found.size() > 1) {
+            throw new IllegalArgumentException(
+                    "Flow has more than one " + type + " node — keep exactly one.");
+        }
+        return found.isEmpty() ? null : buildAgentSpec(found.get(0), flow, resources);
+    }
+
+    /**
+     * The resource nodes an agent can be wired to, gathered once and passed as one — the five
+     * lists were threaded through every spec-building call site individually.
+     */
+    private record Resources(List<FlowNode> mcps, List<FlowNode> repos, List<FlowNode> sqls,
+                             List<FlowNode> knowledges, List<FlowNode> apis) {
+
+        static Resources of(FlowGraph flow) {
+            return new Resources(byType(flow, "mcp"), byType(flow, "repo"), byType(flow, "sql"),
+                    byType(flow, "knowledge"), byType(flow, "api"));
+        }
     }
 
     /** Agents reachable from the coordinator, plus who delegates to whom. */
@@ -213,9 +222,7 @@ public class FlowCompiler {
         }
     }
 
-    private AgentSpec buildAgentSpec(FlowNode node, FlowGraph flow,
-                                     List<FlowNode> mcps, List<FlowNode> repos, List<FlowNode> sqls,
-                                     List<FlowNode> knowledges, List<FlowNode> apis) {
+    private AgentSpec buildAgentSpec(FlowNode node, FlowGraph flow, Resources resources) {
         Map<String, Object> d = node.dataOrEmpty();
         AgentSpec s = new AgentSpec();
         s.mode = flow.modeOrDefault();
@@ -244,7 +251,7 @@ public class FlowCompiler {
         s.model.maxTokens = lng(d, "maxTokens", 16000);
         s.model.effort = str(d, "effort", "high");
 
-        collectConnected(flow, node, mcps, s.mcpServers, mcp -> {
+        collectConnected(flow, node, resources.mcps(), s.mcpServers, mcp -> {
             Map<String, Object> md = mcp.dataOrEmpty();
             McpServerSpec spec = new McpServerSpec();
             spec.nodeId = mcp.id();
@@ -262,7 +269,7 @@ public class FlowCompiler {
             spec.env = strMap(md, "env");
             return spec;
         });
-        collectConnected(flow, node, repos, s.repositories, repo -> {
+        collectConnected(flow, node, resources.repos(), s.repositories, repo -> {
             Map<String, Object> rd = repo.dataOrEmpty();
             RepoSpec spec = new RepoSpec();
             spec.provider = str(rd, "provider", "github");
@@ -278,7 +285,7 @@ public class FlowCompiler {
             spec.includeArchived = bool(rd, "includeArchived", false);
             return spec;
         });
-        collectConnected(flow, node, sqls, s.ragSources, sql -> {
+        collectConnected(flow, node, resources.sqls(), s.ragSources, sql -> {
             Map<String, Object> qd = sql.dataOrEmpty();
             SqlSourceSpec spec = new SqlSourceSpec();
             spec.nodeId = sql.id();
@@ -290,7 +297,7 @@ public class FlowCompiler {
             spec.maxRows = (int) lng(qd, "maxRows", 50);
             return spec;
         });
-        collectConnected(flow, node, knowledges, s.knowledgeSources, kb -> {
+        collectConnected(flow, node, resources.knowledges(), s.knowledgeSources, kb -> {
             Map<String, Object> kd = kb.dataOrEmpty();
             KnowledgeSourceSpec spec = new KnowledgeSourceSpec();
             spec.nodeId = kb.id();
@@ -299,7 +306,7 @@ public class FlowCompiler {
             spec.topK = (int) lng(kd, "topK", 5);
             return spec;
         });
-        collectConnected(flow, node, apis, s.apiSources, api -> {
+        collectConnected(flow, node, resources.apis(), s.apiSources, api -> {
             Map<String, Object> ad = api.dataOrEmpty();
             AgentSpec.ApiSourceSpec spec = new AgentSpec.ApiSourceSpec();
             spec.nodeId = api.id();

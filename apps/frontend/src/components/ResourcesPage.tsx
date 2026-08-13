@@ -18,6 +18,39 @@ import styles from './resources.module.scss'
 
 type Tab = 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
 
+/**
+ * The tab strip, in display order. `desktopOnly` keeps Updates out of a browser tab, which has no
+ * app to update — the shell bridge is absent there.
+ */
+const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolean }> = [
+  { id: 'agents', label: 'Agents' },
+  { id: 'mcp', label: 'MCP Servers' },
+  {
+    id: 'facades',
+    label: 'Facades',
+    title:
+      'What an independent worker may reach through its MCP facade: which tools, whether writes are blocked (read-only) or simulated (dry-run). Enforced by the backend on every call.',
+  },
+  { id: 'databases', label: 'Databases' },
+  { id: 'knowledge', label: 'Knowledge' },
+  { id: 'skills', label: 'Skills' },
+  {
+    id: 'plugins',
+    label: 'Plugins',
+    title:
+      'Claude Code plugins installed on this machine. Each agent picks which ones its runs load.',
+  },
+  {
+    id: 'variables',
+    label: 'Variables',
+    title:
+      "Values substituted into every flow's prompts as {{NAME}} when a run starts. A flow can override any of them — or add its own — in its settings.",
+  },
+  { id: 'credentials', label: 'Credentials' },
+  { id: 'storage', label: 'Storage' },
+  { id: 'updates', label: 'Updates', desktopOnly: true },
+]
+
 export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
   const [tab, setTab] = useState<Tab>('agents')
   // Remounts the MCP CrudPanel after a catalog add, so the new definition appears in its list —
@@ -27,69 +60,16 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
   return (
     <div className={styles.resources}>
       <div className={styles.tabs}>
-        <button className={tab === 'agents' ? styles.active : ''} onClick={() => setTab('agents')}>
-          Agents
-        </button>
-        <button className={tab === 'mcp' ? styles.active : ''} onClick={() => setTab('mcp')}>
-          MCP Servers
-        </button>
-        <button
-          className={tab === 'facades' ? styles.active : ''}
-          onClick={() => setTab('facades')}
-          title="What an independent worker may reach through its MCP facade: which tools, whether writes are blocked (read-only) or simulated (dry-run). Enforced by the backend on every call."
-        >
-          Facades
-        </button>
-        <button
-          className={tab === 'databases' ? styles.active : ''}
-          onClick={() => setTab('databases')}
-        >
-          Databases
-        </button>
-        <button
-          className={tab === 'knowledge' ? styles.active : ''}
-          onClick={() => setTab('knowledge')}
-        >
-          Knowledge
-        </button>
-        <button className={tab === 'skills' ? styles.active : ''} onClick={() => setTab('skills')}>
-          Skills
-        </button>
-        <button
-          className={tab === 'plugins' ? styles.active : ''}
-          onClick={() => setTab('plugins')}
-          title="Claude Code plugins installed on this machine. Each agent picks which ones its runs load."
-        >
-          Plugins
-        </button>
-        <button
-          className={tab === 'variables' ? styles.active : ''}
-          onClick={() => setTab('variables')}
-          title="Values substituted into every flow's prompts as {{NAME}} when a run starts. A flow can override any of them — or add its own — in its settings."
-        >
-          Variables
-        </button>
-        <button
-          className={tab === 'credentials' ? styles.active : ''}
-          onClick={() => setTab('credentials')}
-        >
-          Credentials
-        </button>
-        <button
-          className={tab === 'storage' ? styles.active : ''}
-          onClick={() => setTab('storage')}
-        >
-          Storage
-        </button>
-        {shellBridge() && (
-          // Only inside the desktop shell: a browser tab has no app to update.
+        {TABS.filter((t) => !t.desktopOnly || shellBridge()).map((t) => (
           <button
-            className={tab === 'updates' ? styles.active : ''}
-            onClick={() => setTab('updates')}
+            key={t.id}
+            className={tab === t.id ? styles.active : ''}
+            onClick={() => setTab(t.id)}
+            title={t.title}
           >
-            Updates
+            {t.label}
           </button>
-        )}
+        ))}
       </div>
 
       <div className={styles.tabBody}>

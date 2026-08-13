@@ -23,4 +23,17 @@ public final class Texts {
         if (Character.isHighSurrogate(t.charAt(cut - 1))) cut--;
         return t.substring(0, cut) + "…";
     }
+
+    /**
+     * A base URL with any trailing slashes removed, so callers can append {@code "/path"} without
+     * producing a double slash. Null becomes empty, because a missing base URL is "not configured"
+     * rather than an error at the point of trimming.
+     *
+     * <p>Same reason {@code brief} lives here: every client that joins a configured base to a fixed
+     * path had written this expression itself, and a server address that works with one of them and
+     * 404s on another is an unpleasant thing to debug.
+     */
+    public static String trimTrailingSlashes(String url) {
+        return url == null ? "" : url.trim().replaceAll("/+$", "");
+    }
 }

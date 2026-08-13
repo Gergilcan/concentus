@@ -17,7 +17,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -358,8 +357,4 @@ public class RemoteApprovalService {
         return watches.size();
     }
 
-    /** For tests: the emoji sets are the contract users learn, so they are asserted directly. */
-    static List<Set<String>> reactionSets() {
-        return List.of(APPROVE_REACTIONS, REJECT_REACTIONS);
-    }
 }

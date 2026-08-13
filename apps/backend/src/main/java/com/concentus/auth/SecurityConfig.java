@@ -163,7 +163,8 @@ public class SecurityConfig {
         return http.build();
     }
 
-    static void writeError(HttpServletResponse res, ObjectMapper mapper, HttpStatus status, String message) {
+    private static void writeError(HttpServletResponse res, ObjectMapper mapper, HttpStatus status,
+                                   String message) {
         try {
             res.setStatus(status.value());
             res.setContentType(MediaType.APPLICATION_JSON_VALUE);

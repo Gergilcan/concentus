@@ -53,7 +53,6 @@ public class RunWebSocketHandler extends TextWebSocketHandler {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         AgentRun run = (AgentRun) session.getAttributes().get("run");
         if (run == null) return;

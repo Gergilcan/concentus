@@ -44,6 +44,12 @@ function nameKey(kind: NodeKind): 'name' | 'label' | null {
   return null
 }
 
+/** The node's human-facing name, when its kind has one. */
+function nameOf(data: AppNodeData): string | null {
+  const key = nameKey(data.kind)
+  return key ? (data as unknown as Record<string, string>)[key] : null
+}
+
 function uniqueName(base: string, taken: Set<string>): string {
   if (!taken.has(base)) return base
   let n = 2
@@ -83,6 +89,15 @@ function targetNodes(s: FlowState): AppNode[] {
 }
 
 /**
+ * The self-contained block `nodes` form: the nodes plus only the edges with BOTH endpoints inside
+ * the set, since an edge reaching outside it would dangle once the block is cloned.
+ */
+function blockOf(nodes: AppNode[], edges: Edge[]): Clipboard {
+  const ids = new Set(nodes.map((n) => n.id))
+  return { nodes, edges: edges.filter((e) => ids.has(e.source) && ids.has(e.target)) }
+}
+
+/**
  * Inserts clones of `src` into the flow, offset by `offset`, remapping ids so the
  * copies wire up among themselves. Edges are carried over only when BOTH endpoints
  * were part of the copied set — a dangling half-edge would point at the original.
@@ -90,8 +105,8 @@ function targetNodes(s: FlowState): AppNode[] {
 function insertClones(s: FlowState, src: Clipboard, offset: number) {
   const taken = new Set<string>()
   for (const n of s.nodes) {
-    const key = nameKey(n.data.kind)
-    if (key) taken.add((n.data as unknown as Record<string, string>)[key])
+    const name = nameOf(n.data)
+    if (name) taken.add(name)
   }
 
   const idMap = new Map<string, string>()
@@ -254,6 +269,15 @@ interface FlowState {
 // component should render or subscribe to.
 let lastRunExecSignature: string | null = null
 
+/**
+ * The run overlay with nothing in it — the shape three places have to agree on (initial state,
+ * switching run, clearing). Fresh objects every call on purpose: canvas badges and the console's
+ * token bar select these by reference (see setRunExec).
+ */
+function emptyOverlay(): Pick<FlowState, 'runExecByNode' | 'runTotals' | 'runGraph'> {
+  return { runExecByNode: {}, runTotals: { input: 0, output: 0, costUsd: 0 }, runGraph: null }
+}
+
 export const useFlowStore = create<FlowState>((set, get) => ({
   flowId: null,
   name: 'Untitled flow',
@@ -264,31 +288,29 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   selectedId: null,
 
   activeRunId: null,
-  runExecByNode: {},
-  runTotals: { input: 0, output: 0, costUsd: 0 },
-  runGraph: null,
+  ...emptyOverlay(),
   runEvents: [],
   // Bounded so a long-running flow can't grow this array without limit; the backend keeps the
   // authoritative buffer and replays it on reconnect.
   addRunEvent: (e) =>
-    set((s) => ({
-      runEvents: s.runEvents.length >= MAX_RUN_EVENTS
-        ? [...s.runEvents.slice(s.runEvents.length - MAX_RUN_EVENTS + 1), e]
-        : [...s.runEvents, e],
-    })),
+    set((s) => {
+      const next = [...s.runEvents, e]
+      const overflow = next.length - MAX_RUN_EVENTS
+      return { runEvents: overflow > 0 ? next.slice(overflow) : next }
+    }),
   clearRunEvents: () => set({ runEvents: [] }),
 
   setActiveRun: (id) =>
-    set((s) =>
-      s.activeRunId === id
-        ? {}
-        : (lastRunExecSignature = null,
-           { activeRunId: id, runExecByNode: {}, runTotals: { input: 0, output: 0, costUsd: 0 }, runGraph: null, runEvents: [] }),
-    ),
+    set((s) => {
+      // Re-setting the id already active must not wipe the overlay just built for that run.
+      if (s.activeRunId === id) return {}
+      lastRunExecSignature = null
+      return { activeRunId: id, ...emptyOverlay(), runEvents: [] }
+    }),
   setRunExec: (report) => {
     if (!report) {
       lastRunExecSignature = null
-      set({ runExecByNode: {}, runTotals: { input: 0, output: 0, costUsd: 0 }, runGraph: null })
+      set(emptyOverlay())
       return
     }
     // Bail out when the poll brought back the same state. Every node badge on the canvas and the
@@ -362,13 +384,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     const s = get()
     const picked = targetNodes(s)
     if (!picked.length) return 0
-    const ids = new Set(picked.map((n) => n.id))
-    set({
-      clipboard: {
-        nodes: picked,
-        edges: s.edges.filter((e) => ids.has(e.source) && ids.has(e.target)),
-      },
-    })
+    set({ clipboard: blockOf(picked, s.edges) })
     pasteCount = 0
     return picked.length
   },
@@ -385,9 +401,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     set((s) => {
       const picked = targetNodes(s)
       if (!picked.length) return {}
-      const ids = new Set(picked.map((n) => n.id))
-      const edges = s.edges.filter((e) => ids.has(e.source) && ids.has(e.target))
-      return insertClones(s, { nodes: picked, edges }, PASTE_OFFSET)
+      return insertClones(s, blockOf(picked, s.edges), PASTE_OFFSET)
     }),
 
   duplicateNode: (id) =>

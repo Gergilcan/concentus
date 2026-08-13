@@ -163,14 +163,6 @@ public class AgentSpec {
     }
 
     /**
-     * Shared by {@link McpServerSpec#resolveToken()}, {@link RepoSpec#resolveToken()} and {@link
-     * SqlSourceSpec#resolvePassword()}: decrypts the credential a node references.
-     *
-     * <p>A missing or unknown id yields null rather than throwing, so a node pointing at a deleted
-     * credential behaves like one with none configured — the caller reports "no credential" rather
-     * than failing in a way that looks like a bug.
-     */
-    /**
      * Resolves a stored credential outside a spec, for the designer.
      *
      * <p>The tool picker has to authenticate exactly as a run does, or it shows a list the run
@@ -180,6 +172,14 @@ public class AgentSpec {
         return resolveCredential(credentialId, credentialLookup);
     }
 
+    /**
+     * Shared by {@link McpServerSpec#resolveToken()}, {@link RepoSpec#resolveToken()} and {@link
+     * SqlSourceSpec#resolvePassword()}: decrypts the credential a node references.
+     *
+     * <p>A missing or unknown id yields null rather than throwing, so a node pointing at a deleted
+     * credential behaves like one with none configured — the caller reports "no credential" rather
+     * than failing in a way that looks like a bug.
+     */
     private static String resolveCredential(String credentialId, Function<String, String> lookup) {
         if (credentialId == null || credentialId.isBlank()) return null;
         return emptyToNull(lookup.apply(credentialId));

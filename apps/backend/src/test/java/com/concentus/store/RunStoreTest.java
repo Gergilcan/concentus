@@ -152,7 +152,7 @@ class RunStoreTest {
         assertThat(goodRow.nodeExecs().get(0).nodeId).isEqualTo("n1");
 
         // A row with corrupt JSON in both columns must still map, with empty lists instead of
-        // throwing (parseEvents/parseExecs fail closed to List.of()).
+        // throwing (parseList fails closed to List.of()).
         ResultSet badRs = mockResultSet("run_b", "flow1", "Flow", "managed", "local", "ERROR", "manual",
                 null, null, false, "boom", 0L, 0L, null, "{ not valid json", "[ also broken",
                 200L, null, null);

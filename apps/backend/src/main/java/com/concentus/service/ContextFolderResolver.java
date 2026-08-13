@@ -60,10 +60,6 @@ public class ContextFolderResolver {
         return !roots.isEmpty();
     }
 
-    public List<Path> roots() {
-        return roots;
-    }
-
     /** Why this folder may not be used, or null when it is allowed. */
     public String rejectionReason(String raw) {
         if (raw == null || raw.isBlank()) return "empty path";

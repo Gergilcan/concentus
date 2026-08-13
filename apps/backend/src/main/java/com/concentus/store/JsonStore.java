@@ -6,6 +6,7 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -13,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -37,6 +39,9 @@ import java.util.stream.Stream;
 public abstract class JsonStore<T> {
 
     private static final Logger log = LoggerFactory.getLogger(JsonStore.class);
+    /** Doubles as the availability probe in {@code init} and the "already imported?" check. */
+    private static final String COUNT_BY_KIND = "select count(*) from resources where kind = ?";
+    private static final String BAD_ID = "Invalid id: ";
 
     protected final JdbcTemplate jdbc;
     protected final ObjectMapper mapper;
@@ -47,6 +52,8 @@ public abstract class JsonStore<T> {
     /** The folder these records used to live in, imported once and then set aside. */
     private final Path legacyDir;
     private volatile boolean available;
+    /** Every read selects the same single column; {@code parse} may return null, hence the filters. */
+    private final RowMapper<T> jsonRow = (rs, i) -> parse(rs.getString("json"));
 
     protected JsonStore(JdbcTemplate jdbc, ObjectMapper mapper, Class<T> type, String kind,
                         String idPrefix, Path legacyDir) {
@@ -64,7 +71,7 @@ public abstract class JsonStore<T> {
         // there — which is the same question the old `create table if not exists` answered as a
         // side effect, and the answer still decides whether reads return empty or writes throw.
         try {
-            jdbc.queryForObject("select count(*) from resources where kind = ?", Integer.class, kind);
+            jdbc.queryForObject(COUNT_BY_KIND, Integer.class, kind);
             available = true;
         } catch (Exception e) {
             log.error("{} storage unavailable: {}", kind, e.getMessage());
@@ -89,8 +96,8 @@ public abstract class JsonStore<T> {
             // Sorted in SQL, case-insensitively, to match what the file-backed version did.
             return jdbc.query(
                     "select json from resources where kind = ? order by lower(coalesce(sort_key, '')), id",
-                    (rs, i) -> parse(rs.getString("json")), kind)
-                    .stream().filter(java.util.Objects::nonNull).toList();
+                    jsonRow, kind)
+                    .stream().filter(Objects::nonNull).toList();
         } catch (RuntimeException e) {
             log.warn("Could not list {} records: {}", kind, e.getMessage());
             return List.of();
@@ -99,11 +106,11 @@ public abstract class JsonStore<T> {
 
     public Optional<T> get(String id) {
         if (!available) return Optional.empty();
-        String safe = Ids.sanitize(id, "Invalid id: ");
+        String safe = Ids.sanitize(id, BAD_ID);
         try {
             return jdbc.query("select json from resources where kind = ? and id = ?",
-                            (rs, i) -> parse(rs.getString("json")), kind, safe)
-                    .stream().findFirst().filter(java.util.Objects::nonNull);
+                            jsonRow, kind, safe)
+                    .stream().findFirst().filter(Objects::nonNull);
         } catch (RuntimeException e) {
             log.warn("Could not read {} {}: {}", kind, safe, e.getMessage());
             return Optional.empty();
@@ -112,9 +119,10 @@ public abstract class JsonStore<T> {
 
     public T save(T item) {
         requireAvailable();
-        String id = (idOf(item) == null || idOf(item).isBlank())
+        String given = idOf(item);
+        String id = (given == null || given.isBlank())
                 ? Ids.generate(idPrefix, 10)
-                : Ids.sanitize(idOf(item), "Invalid id: ");
+                : Ids.sanitize(given, BAD_ID);
         T toSave = withId(item, id);
         write(id, toSave);
         return toSave;
@@ -123,7 +131,7 @@ public abstract class JsonStore<T> {
     public boolean delete(String id) {
         requireAvailable();
         return jdbc.update("delete from resources where kind = ? and id = ?",
-                kind, Ids.sanitize(id, "Invalid id: ")) > 0;
+                kind, Ids.sanitize(id, BAD_ID)) > 0;
     }
 
     private void write(String id, T item) {
@@ -161,15 +169,6 @@ public abstract class JsonStore<T> {
     }
 
     /**
-     * Imports records written by an older, file-backed build.
-     *
-     * <p>Runs once: the directory is renamed afterwards rather than deleted, so if anything about
-     * the import turns out to be wrong the original files are still sitting there. Skipped entirely
-     * when the table already holds records of this kind — that is the case where an install has
-     * been running on the database for a while and the folder is a stale leftover, and re-importing
-     * it would resurrect flows the user had deleted.
-     */
-    /**
      * Reads the records an older build left on disk. JSON files by default; overridden where a
      * store used a different format, which is why the import is a method rather than inlined.
      *
@@ -194,11 +193,19 @@ public abstract class JsonStore<T> {
         return out;
     }
 
+    /**
+     * Imports records written by an older, file-backed build.
+     *
+     * <p>Runs once: the directory is renamed afterwards rather than deleted, so if anything about
+     * the import turns out to be wrong the original files are still sitting there. Skipped entirely
+     * when the table already holds records of this kind — that is the case where an install has
+     * been running on the database for a while and the folder is a stale leftover, and re-importing
+     * it would resurrect flows the user had deleted.
+     */
     private void migrateLegacyFiles() {
         if (legacyDir == null || !Files.isDirectory(legacyDir)) return;
         try {
-            Integer existing = jdbc.queryForObject(
-                    "select count(*) from resources where kind = ?", Integer.class, kind);
+            Integer existing = jdbc.queryForObject(COUNT_BY_KIND, Integer.class, kind);
             if (existing != null && existing > 0) return;
 
             List<T> legacy = readLegacy(legacyDir);
@@ -208,8 +215,7 @@ public abstract class JsonStore<T> {
             int imported = 0;
             for (T item : legacy) {
                 try {
-                    String id = idOf(item);
-                    write(Ids.sanitize(id, "Invalid id: "), item);
+                    write(Ids.sanitize(idOf(item), BAD_ID), item);
                     imported++;
                 } catch (Exception e) {
                     failed.add(idOf(item) + " (" + e.getMessage() + ")");

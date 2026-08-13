@@ -43,13 +43,13 @@ export function useSelectedRun(pushError: (m: string) => void, runs: RunSummary[
   // one flow's node executions onto another's nodes — and the run's own console kept streaming
   // beside a canvas it had nothing to do with.
   const openFlowId = useFlowStore((s) => s.flowId)
-  // A string, so effects can depend on the VALUE rather than on the runs array identity.
-  const selectedStatus = runs.find((r) => r.id === selectedRun)?.status
+  const selected = runs.find((r) => r.id === selectedRun)
+  // A string, so the poll below can depend on the VALUE rather than on the runs array identity.
+  const selectedStatus = selected?.status
   useEffect(() => {
     if (!selectedRun) return
-    const run = runs.find((r) => r.id === selectedRun)
-    if (!runBelongsToOpenFlow(run?.flowId, openFlowId, !!run)) setSelectedRun(null)
-  }, [selectedRun, openFlowId, runs])
+    if (!runBelongsToOpenFlow(selected?.flowId, openFlowId, !!selected)) setSelectedRun(null)
+  }, [selectedRun, openFlowId, selected])
 
   const setActiveRun = useFlowStore((s) => s.setActiveRun)
   const setRunExec = useFlowStore((s) => s.setRunExec)

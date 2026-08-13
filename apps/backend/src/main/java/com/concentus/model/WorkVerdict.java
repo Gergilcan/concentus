@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -38,11 +37,19 @@ public record WorkVerdict(String summary, List<Item> items) {
     public record Item(String id, String verdict, String reason) {
 
         public boolean rejected() {
-            return "reject".equalsIgnoreCase(verdict == null ? "" : verdict.trim());
+            return "reject".equalsIgnoreCase(spelling());
         }
 
         public boolean accepted() {
-            return "accept".equalsIgnoreCase(verdict == null ? "" : verdict.trim());
+            return "accept".equalsIgnoreCase(spelling());
+        }
+
+        /**
+         * The verdict word as written, tolerant of the padding a model adds. Not bean-named on
+         * purpose: a {@code get}/{@code is} method here would join the serialized JSON.
+         */
+        private String spelling() {
+            return verdict == null ? "" : verdict.trim();
         }
     }
 

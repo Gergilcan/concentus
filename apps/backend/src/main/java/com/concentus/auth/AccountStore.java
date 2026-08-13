@@ -72,10 +72,6 @@ public class AccountStore {
         return jdbc.query("select * from organizations where id = ?", ORG_MAPPER, id).stream().findFirst();
     }
 
-    public List<Accounts.Organization> listOrganizations() {
-        return jdbc.query("select * from organizations order by created_at", ORG_MAPPER);
-    }
-
     // ---- users ----
 
     /**
@@ -108,11 +104,6 @@ public class AccountStore {
                 .stream().findFirst();
     }
 
-    public Optional<Accounts.UserAccount> findById(String id) {
-        if (id == null || id.isBlank()) return Optional.empty();
-        return jdbc.query("select * from users where id = ?", USER_MAPPER, id).stream().findFirst();
-    }
-
     public List<Accounts.UserAccount> listUsers(String organizationId) {
         return jdbc.query("select * from users where organization_id = ? order by created_at",
                 USER_MAPPER, organizationId);
@@ -125,10 +116,6 @@ public class AccountStore {
 
     public void updatePassword(String userId, String passwordHash) {
         jdbc.update("update users set password_hash = ? where id = ?", passwordHash, userId);
-    }
-
-    public void setEnabled(String userId, boolean enabled) {
-        jdbc.update("update users set enabled = ? where id = ?", enabled, userId);
     }
 
     private static String normalizeEmail(String email) {

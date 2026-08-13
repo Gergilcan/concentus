@@ -18,7 +18,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /** Knowledge bases: named document collections agents retrieve from. */
 @RestController
@@ -39,18 +38,18 @@ public class KnowledgeController {
         this.extraction = extraction;
     }
 
-    /**
-     * The built-in embedding model: download it, drop it, see how far a download has got.
-     *
-     * <p>Polled while downloading rather than streamed — 130 MB behind a frozen button is
-     * indistinguishable from a hang, and a poll needs no new transport.
-     */
     /** What the picker may offer — derived from the extractors actually present and working. */
     @GetMapping("/capabilities")
     public Map<String, Object> capabilities() {
         return Map.of("extensions", extraction.supportedExtensions());
     }
 
+    /**
+     * The built-in embedding model: download it, drop it, see how far a download has got.
+     *
+     * <p>Polled while downloading rather than streamed — 130 MB behind a frozen button is
+     * indistinguishable from a hang, and a poll needs no new transport.
+     */
     @GetMapping("/embedder")
     public Map<String, Object> embedderStatus() {
         // Carries overall semantic availability too, not only the built-in model's state: with
@@ -151,7 +150,8 @@ public class KnowledgeController {
     }
 
     private void requireBase(String id) {
-        Optional<KnowledgeDef> base = store.get(id);
-        if (base.isEmpty()) throw new IllegalArgumentException("No knowledge base '" + id + "'.");
+        if (store.get(id).isEmpty()) {
+            throw new IllegalArgumentException("No knowledge base '" + id + "'.");
+        }
     }
 }

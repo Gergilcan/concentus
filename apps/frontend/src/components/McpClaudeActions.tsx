@@ -13,6 +13,36 @@ interface Props {
 }
 
 /**
+ * The CLI registration as ONE value rather than four overlapping booleans. The dot and the label
+ * are two views of the same state, so they read it from the same place and cannot drift apart.
+ * The four states are exclusive by construction — a listed server is exactly one of the last
+ * three, which is why "listed but otherwise fine" is spelled `connected` and has no fourth label.
+ */
+type ClaudeState = 'absent' | 'needsAuth' | 'failed' | 'connected'
+
+function claudeState(server: McpServerInfo | undefined): ClaudeState {
+  if (!server) return 'absent'
+  const status = (server.status ?? '').toLowerCase()
+  if (status.includes('fail')) return 'failed'
+  if (status.includes('auth')) return 'needsAuth'
+  return 'connected'
+}
+
+const STATE_LABEL: Record<ClaudeState, string> = {
+  connected: 'Connected in Claude Code',
+  failed: 'In Claude Code — failed to connect',
+  needsAuth: 'In Claude Code — needs authorization',
+  absent: 'Not yet in Claude Code',
+}
+
+const STATE_DOT: Record<ClaudeState, string> = {
+  connected: styles.sOk,
+  failed: styles.sErr,
+  needsAuth: styles.sWarn,
+  absent: '',
+}
+
+/**
  * Registration and status for one MCP server **in the Claude Code CLI's own list**.
  *
  * Only the Claude backends use this: the CLI holds its own MCP registrations and its own
@@ -45,25 +75,26 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
     void api
       .mcpCapabilities()
       .then((c) => alive && setCaps(c))
-      .catch(() => alive && setCaps({ interactiveLogin: false, hint: "" }))
+      .catch(() => alive && setCaps({ interactiveLogin: false, hint: '' }))
     return () => {
       alive = false
     }
   }, [])
 
   const current = servers.find((s) => s.name.toLowerCase() === name.trim().toLowerCase())
-  const listed = !!current
-  const s = (current?.status ?? '').toLowerCase()
-  const failed = listed && s.includes('fail')
-  const needsAuth = listed && s.includes('auth')
-  const connected = listed && !failed && !needsAuth
+  const state = claudeState(current)
+  const listed = state !== 'absent'
+  const failed = state === 'failed'
+  const connected = state === 'connected'
   const canAct = name.trim().length > 0 && url.trim().length > 0
 
-  const add = async () => {
+  // Every action here is the same shape: block the buttons, run one CLI call, show whatever it
+  // says, and re-read the list only if it succeeded. The three used to be written out separately.
+  const act = async (run: () => Promise<{ status: string }>, pending?: string) => {
     setBusy(true)
-    setStatus(null)
+    setStatus(pending ?? null)
     try {
-      const r = await api.addMcpServer({ name, url, credentialId, authHeader })
+      const r = await run()
       setStatus(r.status)
       load()
     } catch (e) {
@@ -73,45 +104,15 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
     }
   }
 
-  const authorize = async () => {
-    setBusy(true)
-    setStatus('Starting sign-in…')
-    try {
+  const add = () => act(() => api.addMcpServer({ name, url, credentialId, authHeader }))
+
+  const authorize = () =>
+    act(async () => {
       if (!listed) await api.addMcpServer({ name, url, credentialId, authHeader })
-      const r = await api.loginMcpServer(name)
-      setStatus(r.status)
-      load()
-    } catch (e) {
-      setStatus(errMessage(e))
-    } finally {
-      setBusy(false)
-    }
-  }
+      return api.loginMcpServer(name)
+    }, 'Starting sign-in…')
 
-  const removeSrv = async () => {
-    setBusy(true)
-    setStatus(null)
-    try {
-      const r = await api.removeMcpServer(name)
-      setStatus(r.status)
-      load()
-    } catch (e) {
-      setStatus(errMessage(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const dotClass = connected ? styles.sOk : failed ? styles.sErr : listed ? styles.sWarn : ''
-  const statusText = connected
-    ? 'Connected in Claude Code'
-    : failed
-      ? 'In Claude Code — failed to connect'
-      : needsAuth
-        ? 'In Claude Code — needs authorization'
-        : listed
-          ? 'In Claude Code'
-          : 'Not yet in Claude Code'
+  const removeSrv = () => act(() => api.removeMcpServer(name))
 
   return (
     <div className={styles.mcpActions}>
@@ -119,8 +120,8 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
         className={styles.mcpStatus}
         title="The claude CLI's own registration, used by runs on the Claude backend. The CLI keeps its authorizations to itself — the tool picker and self-hosted runs use 'Sign in to this server' above instead."
       >
-        <span className={cx(styles.sDot, dotClass)} />
-        {statusText}
+        <span className={cx(styles.sDot, STATE_DOT[state])} />
+        {STATE_LABEL[state]}
       </div>
 
       <div className={styles.mcpBtns}>

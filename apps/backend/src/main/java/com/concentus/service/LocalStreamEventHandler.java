@@ -194,10 +194,7 @@ final class LocalStreamEventHandler {
      * node's previous value, never add to it.
      */
     static long contextOf(JsonNode usage) {
-        return usage.path("input_tokens").asLong(0)
-                + usage.path("cache_read_input_tokens").asLong(0)
-                + usage.path("cache_creation_input_tokens").asLong(0)
-                + usage.path("output_tokens").asLong(0);
+        return promptOf(usage) + usage.path("output_tokens").asLong(0);
     }
 
     /** The prompt part alone — what the model READ this message, before it wrote anything. */

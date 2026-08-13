@@ -278,7 +278,7 @@ public class FanoutExecutor {
     private WorkPlan planPhase(AgentRun run, CompiledFlow flow, String cmd, String userText,
                                NodeExec coordExec) {
         AgentSpec coord = flow.coordinator();
-        Path workdir = Path.of(dataDir, "local", run.id, "coordinator").toAbsolutePath().normalize();
+        Path workdir = runWorkspace(run, "coordinator");
         run.submittedPlan = null; // a stale plan from the previous turn must never run twice
         boolean readOnly = plannerReadOnly(flow);
         // Named on every planning turn, because it decides what the planner may do to this
@@ -302,29 +302,19 @@ public class FanoutExecutor {
             return null;
         }
 
-        List<Path> dirs = contextFolders.resolve(coord.contextFolders, (path, reason) ->
-                run.emit(RunEvent.of("system", "Context folder ignored — " + path + ": " + reason,
-                        coord.name, coord.nodeId)));
+        List<Path> dirs = contextFoldersFor(run, coord);
 
         Outcome outcome = execute(run, coord, coordExec, cmd, userText, workdir, dirs,
                 readOnly ? PLANNER_READ_ONLY : PLANNER_MAY_ACT);
         if ("TERMINATED".equals(run.status)) return null;
         if (!outcome.ok()) {
-            if (coordExec != null) {
-                coordExec.status = "failed";
-                coordExec.error = outcome.error();
-                coordExec.endedAt = System.currentTimeMillis();
-            }
+            markFailed(coordExec, outcome.error());
             fail(run, "The planning step failed: " + outcome.error());
             return null;
         }
         WorkPlan plan = run.submittedPlan;
         if (plan == null) {
-            if (coordExec != null) {
-                coordExec.status = "failed";
-                coordExec.error = "finished without submitting a plan";
-                coordExec.endedAt = System.currentTimeMillis();
-            }
+            markFailed(coordExec, "finished without submitting a plan");
             fail(run, "The coordinator finished without submitting a plan (plan_submit was never "
                     + "accepted), so nothing ran."
                     + (outcome.finalText() == null || outcome.finalText().isBlank()
@@ -373,21 +363,13 @@ public class FanoutExecutor {
                     + "facade profile): ").append(coord.mcpServers.stream()
                             .map(m -> m.name).collect(Collectors.joining(", "))).append(".\n");
         }
-        if (coord.systemPrompt != null && !coord.systemPrompt.isBlank()) {
-            md.append('\n').append(coord.systemPrompt).append('\n');
-        }
+        appendSystemPrompt(coord, md);
         LocalClaudeExecutor.appendContextFolderNote(coord, md);
         Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
 
         // The planner's whole MCP world is the plan endpoint.
-        var root = mapper.createObjectNode();
-        var server = root.putObject("mcpServers").putObject("concentus-plan");
-        server.put("type", "http");
-        server.put("url", "http://127.0.0.1:" + serverPort + "/api/runs/" + run.id + "/plan");
-        server.putObject("headers")
-                .put(com.concentus.web.RunToolsController.TOKEN_HEADER, run.toolToken);
-        Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
-                mapper.writeValueAsString(root));
+        writeSingleServerMcpConfig(workdir, "concentus-plan",
+                runEndpoint(run, "plan"), run.toolToken);
     }
 
     /**
@@ -441,8 +423,7 @@ public class FanoutExecutor {
             exec.status = "running";
         }
 
-        Path workdir = Path.of(dataDir, "local", run.id, "workers", workerFolder(spec))
-                .toAbsolutePath().normalize();
+        Path workdir = runWorkspace(run, "workers", workerFolder(spec));
         try {
             prepareWorkspace(run, spec, workdir);
         } catch (IOException e) {
@@ -450,9 +431,7 @@ public class FanoutExecutor {
                     "workspace could not be prepared: " + e.getMessage()));
         }
 
-        List<Path> dirs = contextFolders.resolve(spec.contextFolders, (path, reason) ->
-                run.emit(RunEvent.of("system",
-                        "Context folder ignored — " + path + ": " + reason, spec.name, spec.nodeId)));
+        List<Path> dirs = contextFoldersFor(run, spec);
 
         // No Bash, deliberately: a fan-out is N unattended processes, and N shells is N times
         // the blast radius. Verification commands belong to the single merge step.
@@ -576,12 +555,30 @@ public class FanoutExecutor {
     }
 
     private Outcome finish(NodeExec exec, Outcome outcome) {
-        if (exec != null) {
-            exec.status = outcome.ok() ? "passed" : "failed";
-            if (!outcome.ok()) exec.error = outcome.error();
-            exec.endedAt = System.currentTimeMillis();
+        if (outcome.ok()) {
+            markPassed(exec);
+        } else {
+            markFailed(exec, outcome.error());
         }
         return outcome;
+    }
+
+    /**
+     * Settles a node's box. Every step here — planner, worker, verifier, merge — ends by stamping
+     * the same three fields, and a no-op on a null box is what lets each caller stay one line: a
+     * plan-born step may have no canvas node to record against.
+     */
+    private static void markFailed(NodeExec exec, String error) {
+        if (exec == null) return;
+        exec.status = "failed";
+        exec.error = error;
+        exec.endedAt = System.currentTimeMillis();
+    }
+
+    private static void markPassed(NodeExec exec) {
+        if (exec == null) return;
+        exec.status = "passed";
+        exec.endedAt = System.currentTimeMillis();
     }
 
     // ---------------------------------------------------------------- workspace
@@ -616,26 +613,26 @@ public class FanoutExecutor {
                     to confirm — never claim it was done.
                     """);
         }
-        if (spec.systemPrompt != null && !spec.systemPrompt.isBlank()) {
-            md.append('\n').append(spec.systemPrompt).append('\n');
-        }
+        appendSystemPrompt(spec, md);
         LocalClaudeExecutor.appendContextFolderNote(spec, md);
         Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
 
         // With a facade: exactly one server — this backend, scoped to this worker, authenticated
         // by a token only this worker's process is given. Without one: empty and strict, which
         // states "no servers" in both places rather than leaving one to be inferred.
-        var root = mapper.createObjectNode();
-        var servers = root.putObject("mcpServers");
         if (facade) {
-            var server = servers.putObject("concentus-facade");
-            server.put("type", "http");
-            server.put("url", "http://127.0.0.1:" + serverPort + "/api/runs/" + run.id
-                    + "/workers/" + spec.nodeId + "/tools");
-            server.putObject("headers").put(
-                    com.concentus.web.RunToolsController.TOKEN_HEADER,
+            writeSingleServerMcpConfig(workdir, "concentus-facade",
+                    runEndpoint(run, "workers/" + spec.nodeId + "/tools"),
                     run.workerToolTokens.get(spec.nodeId));
+        } else {
+            writeEmptyMcpConfig(workdir);
         }
+    }
+
+    /** No servers at all, said in the file rather than by leaving it out — see {@link #prepareWorkspace}. */
+    private void writeEmptyMcpConfig(Path workdir) throws IOException {
+        var root = mapper.createObjectNode();
+        root.putObject("mcpServers");
         Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
                 mapper.writeValueAsString(root));
     }
@@ -673,6 +670,54 @@ public class FanoutExecutor {
     /** Folder-safe, unique per agent: the compiler already made {@code cliName} both. */
     private static String workerFolder(AgentSpec spec) {
         return spec.cliName != null ? spec.cliName : LocalClaudeExecutor.sanitize(spec.name);
+    }
+
+    /** A step's own directory under this run's local workspace. Absolute, so no cwd re-resolves it. */
+    private Path runWorkspace(AgentRun run, String... parts) {
+        Path dir = Path.of(dataDir, "local", run.id);
+        for (String part : parts) {
+            dir = dir.resolve(part);
+        }
+        return dir.toAbsolutePath().normalize();
+    }
+
+    /** This backend's per-run endpoint for a step's own tool server. */
+    private String runEndpoint(AgentRun run, String suffix) {
+        return "http://127.0.0.1:" + serverPort + "/api/runs/" + run.id + "/" + suffix;
+    }
+
+    /** Appends an agent's own instructions, when the node carries any. */
+    private static void appendSystemPrompt(AgentSpec spec, StringBuilder md) {
+        if (spec.systemPrompt != null && !spec.systemPrompt.isBlank()) {
+            md.append('\n').append(spec.systemPrompt).append('\n');
+        }
+    }
+
+    /** The folders a step may read, with every rejection reported on its own box. */
+    private List<Path> contextFoldersFor(AgentRun run, AgentSpec spec) {
+        return contextFolders.resolve(spec.contextFolders, (path, reason) ->
+                run.emit(RunEvent.of("system", "Context folder ignored — " + path + ": " + reason,
+                        spec.name, spec.nodeId)));
+    }
+
+    /**
+     * Writes a step's MCP config carrying exactly one server: this backend, at {@code endpoint},
+     * authenticated by a token only that step's process is given.
+     *
+     * <p>The single-server shape is what confines a step to the one endpoint it may talk to — the
+     * planner to plan_submit, the verifier to verdict_submit — so neither can act on the world
+     * while it is deciding what should happen to it.
+     */
+    private void writeSingleServerMcpConfig(Path workdir, String serverName, String endpoint,
+                                            String token) throws IOException {
+        var root = mapper.createObjectNode();
+        var server = root.putObject("mcpServers").putObject(serverName);
+        server.put("type", "http");
+        server.put("url", endpoint);
+        server.putObject("headers")
+                .put(com.concentus.web.RunToolsController.TOKEN_HEADER, token);
+        Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
+                mapper.writeValueAsString(root));
     }
 
     // Package-private for the arg-shape test, like LocalClaudeExecutor.buildArgs: the ordering is
@@ -853,8 +898,8 @@ public class FanoutExecutor {
     private WorkVerdict runVerifier(AgentRun run, AgentSpec verifier, String cmd, String userText,
                                     List<Outcome> outcomes) {
         NodeExec exec = run.nodeExec(verifier.nodeId, "agent", verifier.name);
-        Path workdir = Path.of(dataDir, "local", run.id, "verifier").toAbsolutePath().normalize();
-        Path workersRoot = Path.of(dataDir, "local", run.id, "workers").toAbsolutePath().normalize();
+        Path workdir = runWorkspace(run, "verifier");
+        Path workersRoot = runWorkspace(run, "workers");
 
         run.submittedVerdict = null; // last turn's judgment must never cover this turn's outputs
         run.verdictExpected.clear();
@@ -879,9 +924,7 @@ public class FanoutExecutor {
 
         List<Path> dirs = new ArrayList<>();
         if (Files.isDirectory(workersRoot)) dirs.add(workersRoot);
-        dirs.addAll(contextFolders.resolve(verifier.contextFolders, (path, reason) ->
-                run.emit(RunEvent.of("system", "Context folder ignored — " + path + ": " + reason,
-                        verifier.name, verifier.nodeId))));
+        dirs.addAll(contextFoldersFor(run, verifier));
 
         Outcome outcome = execute(run, verifier, exec, cmd, prompt, workdir, dirs, PLANNER_READ_ONLY);
         if ("TERMINATED".equals(run.status)) return null;
@@ -897,10 +940,7 @@ public class FanoutExecutor {
                             ? "" : ". Its final message: " + outcome.finalText()));
             return null;
         }
-        if (exec != null) {
-            exec.status = "passed";
-            exec.endedAt = System.currentTimeMillis();
-        }
+        markPassed(exec);
         return verdict;
     }
 
@@ -934,11 +974,7 @@ public class FanoutExecutor {
     }
 
     private void markVerifierFailed(AgentRun run, NodeExec exec, String error) {
-        if (exec != null) {
-            exec.status = "failed";
-            exec.error = error;
-            exec.endedAt = System.currentTimeMillis();
-        }
+        markFailed(exec, error);
         if (!"TERMINATED".equals(run.status)) {
             fail(run, "The verification step failed: " + error + " The workers' combined report "
                     + "above still stands, but it is UNVERIFIED — the run stops rather than "
@@ -968,21 +1004,13 @@ public class FanoutExecutor {
                 worker is judged, submit ALL verdicts in one verdict_submit call (a rejected
                 output is withheld from the merge step), then finish with a one-line summary.
                 """);
-        if (verifier.systemPrompt != null && !verifier.systemPrompt.isBlank()) {
-            md.append('\n').append(verifier.systemPrompt).append('\n');
-        }
+        appendSystemPrompt(verifier, md);
         LocalClaudeExecutor.appendContextFolderNote(verifier, md);
         Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
 
         // The verifier's whole MCP world is the verdict endpoint — judging is all it can do.
-        var root = mapper.createObjectNode();
-        var server = root.putObject("mcpServers").putObject("concentus-verdict");
-        server.put("type", "http");
-        server.put("url", "http://127.0.0.1:" + serverPort + "/api/runs/" + run.id + "/verdict");
-        server.putObject("headers")
-                .put(com.concentus.web.RunToolsController.TOKEN_HEADER, run.verdictToken);
-        Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
-                mapper.writeValueAsString(root));
+        writeSingleServerMcpConfig(workdir, "concentus-verdict",
+                runEndpoint(run, "verdict"), run.verdictToken);
     }
 
     /** The verifier's input: the goal, each surviving output, and where the real files sit. */
@@ -1018,8 +1046,8 @@ public class FanoutExecutor {
     private void runMerge(AgentRun run, AgentSpec merger, String cmd, String userText,
                           List<Outcome> outcomes) {
         NodeExec exec = run.nodeExec(merger.nodeId, "agent", merger.name);
-        Path workdir = Path.of(dataDir, "local", run.id, "merge").toAbsolutePath().normalize();
-        Path workersRoot = Path.of(dataDir, "local", run.id, "workers").toAbsolutePath().normalize();
+        Path workdir = runWorkspace(run, "merge");
+        Path workersRoot = runWorkspace(run, "workers");
 
         String prompt = mergePrompt(userText, outcomes, workersRoot);
         if (exec != null) {
@@ -1040,28 +1068,19 @@ public class FanoutExecutor {
 
         List<Path> dirs = new ArrayList<>();
         if (Files.isDirectory(workersRoot)) dirs.add(workersRoot);
-        dirs.addAll(contextFolders.resolve(merger.contextFolders, (path, reason) ->
-                run.emit(RunEvent.of("system", "Context folder ignored — " + path + ": " + reason,
-                        merger.name, merger.nodeId))));
+        dirs.addAll(contextFoldersFor(run, merger));
 
         // Bash stays available — running the tests is the point — but delegation does not.
         Outcome outcome = execute(run, merger, exec, cmd, prompt, workdir, dirs, "Task");
         if (outcome.ok()) {
-            if (exec != null) {
-                exec.status = "passed";
-                exec.endedAt = System.currentTimeMillis();
-            }
+            markPassed(exec);
         } else {
             markMergeFailed(run, exec, outcome.error());
         }
     }
 
     private void markMergeFailed(AgentRun run, NodeExec exec, String error) {
-        if (exec != null) {
-            exec.status = "failed";
-            exec.error = error;
-            exec.endedAt = System.currentTimeMillis();
-        }
+        markFailed(exec, error);
         if (!"TERMINATED".equals(run.status)) {
             fail(run, "The merge step failed: " + error
                     + " The workers' combined report above still stands.");
@@ -1084,18 +1103,13 @@ public class FanoutExecutor {
                 commands (tests, diffs) to verify claims; the workers could not, so unverified
                 claims are yours to check, not to repeat.
                 """);
-        if (merger.systemPrompt != null && !merger.systemPrompt.isBlank()) {
-            md.append('\n').append(merger.systemPrompt).append('\n');
-        }
+        appendSystemPrompt(merger, md);
         LocalClaudeExecutor.appendContextFolderNote(merger, md);
         Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
 
         // Empty and strict, like a worker without a facade: the merge reconciles and verifies on
         // disk; if it ever needs MCP reach, that is a facade profile decision, not a default.
-        var root = mapper.createObjectNode();
-        root.putObject("mcpServers");
-        Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
-                mapper.writeValueAsString(root));
+        writeEmptyMcpConfig(workdir);
     }
 
     /** The merge's input: the goal, each worker's outcome, and where their real files sit. */

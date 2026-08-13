@@ -25,8 +25,6 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.Locale;
 
 /**
@@ -68,9 +66,7 @@ public class WorkerToolsController {
                                         @RequestBody JsonNode request) {
         AgentRun run = runs.get(runId).orElse(null);
         String expected = run == null ? null : run.workerToolTokens.get(nodeId);
-        if (expected == null || token == null
-                || !MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),
-                        token.getBytes(StandardCharsets.UTF_8))) {
+        if (!McpJsonRpc.tokenMatches(expected, token)) {
             return ResponseEntity.status(401).build();
         }
 
@@ -105,13 +101,7 @@ public class WorkerToolsController {
     }
 
     private ObjectNode initializeResult() {
-        ObjectNode result = mapper.createObjectNode();
-        result.put("protocolVersion", "2024-11-05");
-        result.putObject("capabilities").putObject("tools");
-        ObjectNode info = result.putObject("serverInfo");
-        info.put("name", "concentus-facade");
-        info.put("version", "1.0");
-        return result;
+        return McpJsonRpc.initializeResult(mapper, "concentus-facade");
     }
 
     // ------------------------------------------------------------------- tools
@@ -241,29 +231,14 @@ public class WorkerToolsController {
     }
 
     private ObjectNode callResult(boolean isError, String text) {
-        ObjectNode result = mapper.createObjectNode();
-        ObjectNode content = result.putArray("content").addObject();
-        content.put("type", "text");
-        content.put("text", text);
-        result.put("isError", isError);
-        return result;
+        return McpJsonRpc.callResult(mapper, isError, text);
     }
 
     private ResponseEntity<JsonNode> ok(JsonNode id, ObjectNode result) {
-        ObjectNode envelope = mapper.createObjectNode();
-        envelope.put("jsonrpc", "2.0");
-        if (id != null) envelope.set("id", id);
-        envelope.set("result", result);
-        return ResponseEntity.ok(envelope);
+        return McpJsonRpc.ok(mapper, id, result);
     }
 
     private ResponseEntity<JsonNode> error(JsonNode id, int code, String message) {
-        ObjectNode envelope = mapper.createObjectNode();
-        envelope.put("jsonrpc", "2.0");
-        if (id != null) envelope.set("id", id);
-        ObjectNode err = envelope.putObject("error");
-        err.put("code", code);
-        err.put("message", message);
-        return ResponseEntity.ok(envelope);
+        return McpJsonRpc.error(mapper, id, code, message);
     }
 }

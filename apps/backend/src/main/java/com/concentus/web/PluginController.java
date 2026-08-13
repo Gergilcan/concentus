@@ -43,29 +43,20 @@ public class PluginController {
 
     @PostMapping("/install")
     public Map<String, String> install(@RequestBody Map<String, String> body) {
-        String id = required(body, "id");
-        if (!PluginRegistry.isSafeId(id)) {
-            throw new IllegalArgumentException("Plugin ids look like name or name@marketplace.");
-        }
+        String id = requiredPluginId(body);
         return Map.of("id", id, "status", registry.install(id));
     }
 
     @PostMapping("/enable")
     public Map<String, String> setEnabled(@RequestBody Map<String, String> body) {
-        String id = required(body, "id");
-        if (!PluginRegistry.isSafeId(id)) {
-            throw new IllegalArgumentException("Plugin ids look like name or name@marketplace.");
-        }
+        String id = requiredPluginId(body);
         boolean enabled = Boolean.parseBoolean(required(body, "enabled"));
         return Map.of("id", id, "status", registry.setEnabled(id, enabled));
     }
 
     @PostMapping("/uninstall")
     public Map<String, String> uninstall(@RequestBody Map<String, String> body) {
-        String id = required(body, "id");
-        if (!PluginRegistry.isSafeId(id)) {
-            throw new IllegalArgumentException("Plugin ids look like name or name@marketplace.");
-        }
+        String id = requiredPluginId(body);
         return Map.of("id", id, "status", registry.uninstall(id));
     }
 
@@ -85,6 +76,18 @@ public class PluginController {
             throw new IllegalArgumentException("Invalid marketplace name.");
         }
         return Map.of("name", name, "status", registry.marketplaceRemove(name));
+    }
+
+    /**
+     * The id every plugin endpoint takes, checked the same way at each of them. Rejected here
+     * rather than deeper down because the id becomes an argument to the {@code claude plugin} CLI.
+     */
+    private static String requiredPluginId(Map<String, String> body) {
+        String id = required(body, "id");
+        if (!PluginRegistry.isSafeId(id)) {
+            throw new IllegalArgumentException("Plugin ids look like name or name@marketplace.");
+        }
+        return id;
     }
 
     private static String required(Map<String, String> body, String key) {

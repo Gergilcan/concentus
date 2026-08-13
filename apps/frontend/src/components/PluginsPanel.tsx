@@ -80,7 +80,7 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
     <div className={`${styles.crudForm} ${styles.lone}`} style={{ maxWidth: '46rem' }}>
       <h3 className={styles.h4}>Installed plugins</h3>
 
-      {view.plugins.length > 0 && (
+      {view.plugins.length > 0 ? (
         <div className={styles.pluginList}>
           {view.plugins.map((p) => {
             const [name, marketplace] = p.id.split('@')
@@ -117,8 +117,7 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
             )
           })}
         </div>
-      )}
-      {view.plugins.length === 0 && (
+      ) : (
         <p className={styles.hint}>None installed yet — add a marketplace below, then install from it.</p>
       )}
 
@@ -140,38 +139,41 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
       </div>
       {results.length > 0 && (
         <div className={styles.pluginList}>
-          {results.map((p) => (
-            <div key={p.id} className={styles.pluginRow}>
-              <div className={styles.pluginMain}>
-                <div className={styles.pluginInfo}>
-                  <span className={styles.pluginName}>{p.name}</span>
-                  {p.marketplace && <span className={styles.pluginChip}>@{p.marketplace}</span>}
-                  {(p.installCount ?? 0) > 0 && (
-                    <span className={styles.pluginChip}>{compact(p.installCount ?? 0)} installs</span>
-                  )}
-                  {installedIds.has(p.id) && (
-                    <span className={cx(styles.pluginChip, styles.pluginOn)}>installed</span>
+          {results.map((p) => {
+            const installed = installedIds.has(p.id)
+            return (
+              <div key={p.id} className={styles.pluginRow}>
+                <div className={styles.pluginMain}>
+                  <div className={styles.pluginInfo}>
+                    <span className={styles.pluginName}>{p.name}</span>
+                    {p.marketplace && <span className={styles.pluginChip}>@{p.marketplace}</span>}
+                    {(p.installCount ?? 0) > 0 && (
+                      <span className={styles.pluginChip}>{compact(p.installCount ?? 0)} installs</span>
+                    )}
+                    {installed && (
+                      <span className={cx(styles.pluginChip, styles.pluginOn)}>installed</span>
+                    )}
+                  </div>
+                  {p.description && (
+                    <div className={styles.pluginDesc} title={p.description}>
+                      {p.description}
+                    </div>
                   )}
                 </div>
-                {p.description && (
-                  <div className={styles.pluginDesc} title={p.description}>
-                    {p.description}
+                {!installed && (
+                  <div className={styles.pluginActs}>
+                    <button
+                      className={styles.rowBtn}
+                      disabled={busy}
+                      onClick={() => void act(() => api.installPlugin(p.id))}
+                    >
+                      Install
+                    </button>
                   </div>
                 )}
               </div>
-              {!installedIds.has(p.id) && (
-                <div className={styles.pluginActs}>
-                  <button
-                    className={styles.rowBtn}
-                    disabled={busy}
-                    onClick={() => void act(() => api.installPlugin(p.id))}
-                  >
-                    Install
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
       {catalog && catalog.length === 0 && (
@@ -183,7 +185,7 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
 
       <h3 className={styles.h4}>Marketplaces</h3>
 
-      {view.marketplaces.length > 0 && (
+      {view.marketplaces.length > 0 ? (
         <div className={styles.pluginList}>
           {view.marketplaces.map((m) => (
             <div key={m.name} className={styles.pluginRow}>
@@ -203,8 +205,7 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
             </div>
           ))}
         </div>
-      )}
-      {view.marketplaces.length === 0 && (
+      ) : (
         <p className={styles.hint}>No marketplaces yet — add one to install plugins from it.</p>
       )}
 

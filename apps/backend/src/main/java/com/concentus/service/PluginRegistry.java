@@ -7,11 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
@@ -77,10 +74,10 @@ public class PluginRegistry {
     private List<PluginInfo> listUncached() {
         String cmd = support.command().orElse(null);
         if (cmd == null) return List.of();
-        ProcResult r = run(List.of(cmd, "plugin", "list", "--json"), 30);
+        CliProcess.Result r = CliProcess.run(List.of(cmd, "plugin", "list", "--json"), 30);
         List<PluginInfo> out = new ArrayList<>();
         try {
-            JsonNode arr = mapper.readTree(r.output == null ? "[]" : r.output.trim());
+            JsonNode arr = mapper.readTree(r.output() == null ? "[]" : r.output().trim());
             if (arr.isArray()) {
                 for (JsonNode p : arr) {
                     String id = p.path("id").asText("");
@@ -98,10 +95,10 @@ public class PluginRegistry {
     public List<MarketplaceInfo> marketplaces() {
         String cmd = support.command().orElse(null);
         if (cmd == null) return List.of();
-        ProcResult r = run(List.of(cmd, "plugin", "marketplace", "list", "--json"), 30);
+        CliProcess.Result r = CliProcess.run(List.of(cmd, "plugin", "marketplace", "list", "--json"), 30);
         List<MarketplaceInfo> out = new ArrayList<>();
         try {
-            JsonNode arr = mapper.readTree(r.output == null ? "[]" : r.output.trim());
+            JsonNode arr = mapper.readTree(r.output() == null ? "[]" : r.output().trim());
             if (arr.isArray()) {
                 for (JsonNode m : arr) {
                     String name = m.path("name").asText("");
@@ -142,9 +139,9 @@ public class PluginRegistry {
         String cmd = support.command().orElse(null);
         if (cmd == null) return "claude CLI not found";
         if (!isSafeId(id)) return "invalid plugin id";
-        ProcResult r = run(List.of(cmd, "plugin", "install", id), 120);
+        CliProcess.Result r = CliProcess.run(List.of(cmd, "plugin", "install", id), 120);
         cachedList = null; // after the CLI finished, so a concurrent list() can't re-cache stale state
-        return r.exit == 0 ? "installed" : "install failed: " + firstLine(r.output);
+        return r.exit() == 0 ? "installed" : "install failed: " + CliProcess.lastLine(r.output());
     }
 
     /** One plugin a configured marketplace offers, as the install search shows it. */
@@ -165,10 +162,10 @@ public class PluginRegistry {
         if (cached != null && System.currentTimeMillis() - availableAt < CACHE_TTL_MS) return cached;
         String cmd = support.command().orElse(null);
         if (cmd == null) return List.of();
-        ProcResult r = run(List.of(cmd, "plugin", "list", "--available", "--json"), 60);
+        CliProcess.Result r = CliProcess.run(List.of(cmd, "plugin", "list", "--available", "--json"), 60);
         List<AvailablePlugin> out = new ArrayList<>();
         try {
-            JsonNode root = mapper.readTree(r.output == null ? "{}" : r.output.trim());
+            JsonNode root = mapper.readTree(r.output() == null ? "{}" : r.output().trim());
             for (JsonNode p : root.path("available")) {
                 String id = p.path("pluginId").asText("");
                 if (id.isBlank()) continue;
@@ -199,19 +196,19 @@ public class PluginRegistry {
         String cmd = support.command().orElse(null);
         if (cmd == null) return "claude CLI not found";
         if (!isSafeId(id)) return "invalid plugin id";
-        ProcResult r = run(List.of(cmd, "plugin", enabled ? "enable" : "disable", id), 60);
+        CliProcess.Result r = CliProcess.run(List.of(cmd, "plugin", enabled ? "enable" : "disable", id), 60);
         cachedList = null;
-        return r.exit == 0 ? (enabled ? "enabled" : "disabled")
-                : (enabled ? "enable" : "disable") + " failed: " + firstLine(r.output);
+        return r.exit() == 0 ? (enabled ? "enabled" : "disabled")
+                : (enabled ? "enable" : "disable") + " failed: " + CliProcess.lastLine(r.output());
     }
 
     public String uninstall(String id) {
         String cmd = support.command().orElse(null);
         if (cmd == null) return "claude CLI not found";
         if (!isSafeId(id)) return "invalid plugin id";
-        ProcResult r = run(List.of(cmd, "plugin", "uninstall", id), 60);
+        CliProcess.Result r = CliProcess.run(List.of(cmd, "plugin", "uninstall", id), 60);
         cachedList = null;
-        return r.exit == 0 ? "uninstalled" : "uninstall failed: " + firstLine(r.output);
+        return r.exit() == 0 ? "uninstalled" : "uninstall failed: " + CliProcess.lastLine(r.output());
     }
 
     public String marketplaceAdd(String source) {
@@ -219,48 +216,16 @@ public class PluginRegistry {
         if (cmd == null) return "claude CLI not found";
         if (!isSafeSource(source)) return "invalid marketplace source";
         // Cloning a marketplace repo can be slow; the timeout reflects a git clone, not an RPC.
-        ProcResult r = run(List.of(cmd, "plugin", "marketplace", "add", source), 180);
-        return r.exit == 0 ? "added" : "add failed: " + firstLine(r.output);
+        CliProcess.Result r = CliProcess.run(List.of(cmd, "plugin", "marketplace", "add", source), 180);
+        return r.exit() == 0 ? "added" : "add failed: " + CliProcess.lastLine(r.output());
     }
 
     public String marketplaceRemove(String name) {
         String cmd = support.command().orElse(null);
         if (cmd == null) return "claude CLI not found";
         if (!isSafeId(name)) return "invalid marketplace name";
-        ProcResult r = run(List.of(cmd, "plugin", "marketplace", "remove", name), 60);
-        return r.exit == 0 ? "removed" : "remove failed: " + firstLine(r.output);
+        CliProcess.Result r = CliProcess.run(List.of(cmd, "plugin", "marketplace", "remove", name), 60);
+        return r.exit() == 0 ? "removed" : "remove failed: " + CliProcess.lastLine(r.output());
     }
 
-    // ------------------------------------------------------------- process
-
-    private record ProcResult(int exit, String output) {
-    }
-
-    private ProcResult run(List<String> args, int timeoutSec) {
-        try {
-            Process p = new ProcessBuilder(args).redirectErrorStream(true).start();
-            p.getOutputStream().close();
-            CompletableFuture<String> out = CompletableFuture.supplyAsync(() -> {
-                try {
-                    return new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                } catch (Exception e) {
-                    return "";
-                }
-            });
-            boolean done = p.waitFor(timeoutSec, TimeUnit.SECONDS);
-            if (!done) {
-                p.destroyForcibly();
-                return new ProcResult(-1, "timed out");
-            }
-            return new ProcResult(p.exitValue(), out.get(3, TimeUnit.SECONDS));
-        } catch (Exception e) {
-            return new ProcResult(-1, e.getMessage() == null ? e.toString() : e.getMessage());
-        }
-    }
-
-    private static String firstLine(String s) {
-        if (s == null || s.isBlank()) return "unknown error";
-        String[] lines = s.strip().split("\\R");
-        return lines[lines.length - 1];
-    }
 }

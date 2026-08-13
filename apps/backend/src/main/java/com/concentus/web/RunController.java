@@ -41,8 +41,7 @@ public class RunController {
 
     @GetMapping("/{id}")
     public RunDetail get(@PathVariable String id) {
-        AgentRun run = runService.get(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run"));
+        AgentRun run = requireRun(id);
         return new RunDetail(run.toSummary(), run.bufferedEvents());
     }
 
@@ -53,8 +52,7 @@ public class RunController {
      */
     @GetMapping("/{id}/flow")
     public FlowGraph flow(@PathVariable String id) {
-        AgentRun run = runService.get(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run"));
+        AgentRun run = requireRun(id);
         return runService.flowOf(run)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "This run has no stored flow snapshot."));
@@ -63,8 +61,7 @@ public class RunController {
     /** Per-node execution state (Input/Output, status, per-box tokens) + run token totals. */
     @GetMapping("/{id}/nodes")
     public NodeExecReport nodes(@PathVariable String id) {
-        AgentRun run = runService.get(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run"));
+        AgentRun run = requireRun(id);
         // Cost is filled in at read time rather than stored, so a pricing change applies to
         // existing runs instead of freezing whatever the rates happened to be when they ran.
         // Graph metrics likewise: derived from the node records on every read, never accrued.
@@ -130,8 +127,7 @@ public class RunController {
      */
     @PostMapping("/{id}/golden/rerun")
     public RunSummary goldenRerun(@PathVariable String id) {
-        AgentRun golden = runService.get(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run"));
+        AgentRun golden = requireRun(id);
         if (golden.flowId == null || golden.flowId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "This run belongs to no saved flow, so there is no current flow to test.");
@@ -153,8 +149,15 @@ public class RunController {
     }
 
     private RunComparison.Side side(String id) {
+        // Names the id, unlike requireRun: a comparison has two of them, and "No such run" alone
+        // would not say which side is missing.
         AgentRun run = runService.get(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run: " + id));
         return new RunComparison.Side(run.toSummary(), run.pricedNodeExecList(), run.finalOutput());
+    }
+
+    private AgentRun requireRun(String id) {
+        return runService.get(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run"));
     }
 }

@@ -69,6 +69,17 @@ public class EmbeddedPostgresConfig {
     }
 
     /**
+     * The storage this process actually started on.
+     *
+     * <p>Separate from reading the file, which answers a different question: the file is what the
+     * <em>next</em> start will use. Comparing the two is how the UI knows to ask for a restart.
+     */
+    @Bean
+    public StorageSettings activeStorage(StorageSettingsStore storageSettings) {
+        return storageSettings.load();
+    }
+
+    /**
      * The application's DataSource: the embedded server, or an external PostgreSQL when one has
      * been configured.
      *
@@ -81,17 +92,6 @@ public class EmbeddedPostgresConfig {
      * bean exists; that is what makes the datasource properties in application.properties
      * irrelevant here.
      */
-    /**
-     * The storage this process actually started on.
-     *
-     * <p>Separate from reading the file, which answers a different question: the file is what the
-     * <em>next</em> start will use. Comparing the two is how the UI knows to ask for a restart.
-     */
-    @Bean
-    public StorageSettings activeStorage(StorageSettingsStore storageSettings) {
-        return storageSettings.load();
-    }
-
     @Bean
     public DataSource dataSource(StorageSettingsStore storageSettings,
                                  @Value("${app.data-dir}") String dataDir,
@@ -162,8 +162,7 @@ public class EmbeddedPostgresConfig {
         long start = System.currentTimeMillis();
         // First launch pays for extracting the binaries and initdb — several seconds. Later
         // launches reuse both, so this is a one-time cost rather than a per-start one.
-        boolean firstRun = isEmpty(pgdata);
-        if (firstRun) log.info("Preparing the embedded database for first use in {} …", pgdata);
+        if (isEmpty(pgdata)) log.info("Preparing the embedded database for first use in {} …", pgdata);
 
         requireMatchingMajorVersion(pgdata);
         clearStalePidFile(pgdata);

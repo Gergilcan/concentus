@@ -38,13 +38,16 @@ public class SkillController {
     /** The list omits file contents — the UI needs names and sizes, not megabytes of base64. */
     @GetMapping
     public List<Map<String, Object>> list() {
-        return store.list().stream()
-                .map(s -> Map.<String, Object>of(
-                        "id", s.id(),
-                        "name", s.name(),
-                        "description", s.description() == null ? "" : s.description(),
-                        "fileCount", s.files().size()))
-                .toList();
+        return store.list().stream().map(SkillController::view).toList();
+    }
+
+    /** One skill as the UI sees it, so listing and installing cannot describe the same skill differently. */
+    private static Map<String, Object> view(SkillDef skill) {
+        return Map.of(
+                "id", skill.id(),
+                "name", skill.name(),
+                "description", skill.description() == null ? "" : skill.description(),
+                "fileCount", skill.files().size());
     }
 
     @PostMapping
@@ -82,10 +85,7 @@ public class SkillController {
         store.list().stream()
                 .filter(existing -> existing.name().equals(parsed.name()))
                 .forEach(existing -> store.delete(existing.id()));
-        SkillDef saved = store.save(parsed);
-        return Map.of("id", saved.id(), "name", saved.name(),
-                "description", saved.description() == null ? "" : saved.description(),
-                "fileCount", saved.files().size());
+        return view(store.save(parsed));
     }
 
     @DeleteMapping("/{id}")

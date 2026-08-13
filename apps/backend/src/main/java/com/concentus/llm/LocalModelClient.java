@@ -1,6 +1,7 @@
 package com.concentus.llm;
 
 import com.concentus.support.Texts;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -60,7 +61,7 @@ public class LocalModelClient {
                             @Value("${local-model.api-key:}") String apiKey,
                             @Value("${local-model.request-timeout-seconds:900}") int timeoutSeconds) {
         this.mapper = mapper;
-        this.baseUrl = baseUrl == null ? "" : baseUrl.trim().replaceAll("/+$", "");
+        this.baseUrl = Texts.trimTrailingSlashes(baseUrl);
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         this.requestTimeout = Duration.ofSeconds(Math.max(30, timeoutSeconds));
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
@@ -113,14 +114,8 @@ public class LocalModelClient {
         texts.forEach(input::add);
 
         try {
-            HttpRequest.Builder b = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/embeddings"))
-                    .timeout(requestTimeout)
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)));
-            if (!apiKey.isBlank()) b.header("Authorization", "Bearer " + apiKey);
-
-            HttpResponse<String> res = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> res = http.send(post("/embeddings", body),
+                    HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() == 404) {
                 throw new LlmException(ID, "The server has no embedding model '" + model
                         + "'. Pull one — `ollama pull " + model + "` — or set "
@@ -157,14 +152,8 @@ public class LocalModelClient {
     public ChatTypes.ChatReply chat(ChatTypes.ChatRequest request) {
         ObjectNode body = buildBody(request);
         try {
-            HttpRequest.Builder b = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/chat/completions"))
-                    .timeout(requestTimeout)
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)));
-            if (!apiKey.isBlank()) b.header("Authorization", "Bearer " + apiKey);
-
-            HttpResponse<String> res = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> res = http.send(post("/chat/completions", body),
+                    HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() / 100 != 2) {
                 throw new LlmException(ID, explain(res.statusCode(), res.body(), request.model()));
             }
@@ -240,7 +229,8 @@ public class LocalModelClient {
 
     private ChatTypes.ChatReply parse(JsonNode root, List<ChatTypes.ToolSpec> offered) {
         JsonNode message = root.path("choices").path(0).path("message");
-        String text = message.path("content").isTextual() ? message.path("content").asText() : null;
+        JsonNode content = message.path("content");
+        String text = content.isTextual() ? content.asText() : null;
 
         List<ChatTypes.ToolCall> calls = new ArrayList<>();
         int index = 0;
@@ -317,9 +307,7 @@ public class LocalModelClient {
         String name = node.path("name").asText("");
         if (name.isBlank() || !node.has("arguments")) return null;
 
-        boolean known = offered != null && offered.stream()
-                .anyMatch(t -> t.name().equals(name));
-        if (known) {
+        if (offered != null && offered.stream().anyMatch(t -> t.name().equals(name))) {
             return new Leaked(new ChatTypes.ToolCall("call_recovered", name,
                     argumentsOf(node.path("arguments"))), null);
         }
@@ -365,6 +353,20 @@ public class LocalModelClient {
                     + "LOCAL_MODEL_API_KEY to match how the server is configured.";
         }
         return "The local model server returned " + status + ": " + brief;
+    }
+
+    /**
+     * A JSON POST to one of the server's paths. The full request timeout, not {@code get}'s short
+     * one: generation and embedding both do real work, and a cold start loads weights first.
+     */
+    private HttpRequest post(String path, ObjectNode body) throws JsonProcessingException {
+        HttpRequest.Builder b = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + path))
+                .timeout(requestTimeout)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)));
+        if (!apiKey.isBlank()) b.header("Authorization", "Bearer " + apiKey);
+        return b.build();
     }
 
     private JsonNode get(String path) {

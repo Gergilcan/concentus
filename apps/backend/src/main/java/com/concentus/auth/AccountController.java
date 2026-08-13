@@ -23,6 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Sign-in, sign-out, "who am I", and organization membership.
@@ -71,13 +72,14 @@ public class AccountController {
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("authEnabled", orgContext.authEnabled());
         out.put("storeAvailable", accounts.isAvailable());
-        orgContext.currentUser().ifPresent(u -> {
+        Optional<ConcentusUserDetails> me = orgContext.currentUser();
+        me.ifPresent(u -> {
             out.put("userId", u.userId());
             out.put("email", u.email());
             out.put("organizationId", u.organizationId());
             out.put("role", u.role());
         });
-        out.put("signedIn", orgContext.currentUser().isPresent());
+        out.put("signedIn", me.isPresent());
         return out;
     }
 
@@ -127,7 +129,7 @@ public class AccountController {
         if (body == null || body.email() == null || body.email().isBlank()) {
             throw new IllegalArgumentException("An email address is required.");
         }
-        requireStrongPassword(body.password());
+        Accounts.requireStrongPassword(body.password());
         String role = Accounts.ROLE_ADMIN.equalsIgnoreCase(body.role())
                 ? Accounts.ROLE_ADMIN : Accounts.ROLE_MEMBER;
         return accounts.createUser(orgContext.requireOrganizationId(), body.email(),
@@ -143,11 +145,7 @@ public class AccountController {
                 || !encoder.matches(body.currentPassword(), me.passwordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current password is incorrect.");
         }
-        requireStrongPassword(body.newPassword());
+        Accounts.requireStrongPassword(body.newPassword());
         accounts.updatePassword(me.userId(), encoder.encode(body.newPassword()));
-    }
-
-    private static void requireStrongPassword(String password) {
-        Accounts.requireStrongPassword(password);
     }
 }

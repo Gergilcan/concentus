@@ -108,6 +108,41 @@ function CtxBreakdown({ exec }: { exec: NodeExec }) {
   )
 }
 
+/**
+ * The answer itself: a declared table, the raw text, or — when there is neither — a line naming
+ * which kind of nothing this is. A block still working and a block that finished empty are the
+ * same blank box to the eye, so they are never allowed to share a message.
+ */
+function OutputBody({ exec }: { exec: NodeExec }) {
+  if (exec.format === 'table' && exec.columns) {
+    return (
+      <div className={styles.previewTable}>
+        <table>
+          <thead>
+            <tr>
+              {exec.columns.map((c) => (
+                <th key={c}>{c}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(exec.rows ?? []).map((row, i) => (
+              <tr key={i}>
+                {row.map((cell, j) => (
+                  <td key={j}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+  if (exec.output) return <pre className={styles.execText}>{exec.output}</pre>
+  if (exec.status === 'running') return <div className={styles.empty}>Working…</div>
+  return <div className={styles.empty}>No output produced.</div>
+}
+
 export function InputView({ exec }: { exec?: NodeExec }) {
   if (!exec || !exec.input) {
     return <div className={styles.empty}>No input recorded yet for this run.</div>
@@ -135,34 +170,7 @@ export function OutputView({ exec }: { exec?: NodeExec }) {
 
       {exec.error && <div className={styles.execError}>{exec.error}</div>}
 
-      {exec.format === 'table' && exec.columns ? (
-        <div className={styles.previewTable}>
-          <table>
-            <thead>
-              <tr>
-                {exec.columns.map((c) => (
-                  <th key={c}>{c}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(exec.rows ?? []).map((row, i) => (
-                <tr key={i}>
-                  {row.map((cell, j) => (
-                    <td key={j}>{cell}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : exec.output ? (
-        <pre className={styles.execText}>{exec.output}</pre>
-      ) : exec.status === 'running' ? (
-        <div className={styles.empty}>Working…</div>
-      ) : (
-        <div className={styles.empty}>No output produced.</div>
-      )}
+      <OutputBody exec={exec} />
     </div>
   )
 }

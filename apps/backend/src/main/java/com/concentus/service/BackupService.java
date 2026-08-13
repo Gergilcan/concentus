@@ -143,37 +143,50 @@ public class BackupService {
         imported.put("variables", importList(bundle, "variables", Variable.class, variables::save, warnings));
 
         List<String> reenter = new ArrayList<>();
-        int placeholders = 0;
-        if (bundle.path("credentials").isArray()) {
-            if (!credentials.isAvailable()) {
-                if (!bundle.path("credentials").isEmpty()) {
-                    warnings.add("Credential storage is unavailable here — the file's credentials "
-                            + "were skipped; flows referencing them need new ones.");
-                }
-            } else {
-                for (JsonNode meta : bundle.path("credentials")) {
-                    String id = meta.path("id").asText("");
-                    String label = meta.path("label").asText("");
-                    if (id.isBlank() || label.isBlank()) continue;
-                    try {
-                        boolean created = credentials.importPlaceholder(
-                                orgContext.defaultOrganizationId(), id, label,
-                                meta.path("kind").asText("api-token"));
-                        if (created) {
-                            reenter.add(label);
-                            placeholders++;
-                        }
-                    } catch (RuntimeException e) {
-                        warnings.add("Credential '" + label + "': " + e.getMessage());
-                    }
-                }
-            }
-        }
-        imported.put("credentials", placeholders);
+        imported.put("credentials", importCredentials(bundle, reenter, warnings));
 
         log.info("Imported a configuration bundle: {}{}", imported,
                 reenter.isEmpty() ? "" : " — " + reenter.size() + " credential value(s) to re-enter");
         return new ImportReport(imported, reenter, warnings);
+    }
+
+    /**
+     * Re-creates the file's credentials as placeholders under their original ids, and reports how
+     * many are now waiting for a value.
+     *
+     * <p>The id is the whole point: every flow that referenced {@code cred_x} still points at a
+     * credential of that name, so the person re-enters each secret once instead of re-wiring every
+     * node. {@code reenter} collects the labels to put in front of them.
+     */
+    private int importCredentials(JsonNode bundle, List<String> reenter, List<String> warnings) {
+        JsonNode metas = bundle.path("credentials");
+        if (!metas.isArray()) return 0;
+        if (!credentials.isAvailable()) {
+            if (!metas.isEmpty()) {
+                warnings.add("Credential storage is unavailable here — the file's credentials "
+                        + "were skipped; flows referencing them need new ones.");
+            }
+            return 0;
+        }
+
+        int placeholders = 0;
+        for (JsonNode meta : metas) {
+            String id = meta.path("id").asText("");
+            String label = meta.path("label").asText("");
+            if (id.isBlank() || label.isBlank()) continue;
+            try {
+                boolean created = credentials.importPlaceholder(
+                        orgContext.defaultOrganizationId(), id, label,
+                        meta.path("kind").asText("api-token"));
+                if (created) {
+                    reenter.add(label);
+                    placeholders++;
+                }
+            } catch (RuntimeException e) {
+                warnings.add("Credential '" + label + "': " + e.getMessage());
+            }
+        }
+        return placeholders;
     }
 
     private <T> int importList(JsonNode bundle, String key, Class<T> type,

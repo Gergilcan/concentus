@@ -5,6 +5,8 @@ import com.concentus.model.LibraryAgent;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
@@ -34,6 +36,8 @@ import java.util.stream.Stream;
  */
 @Component
 public class AgentLibraryStore extends JsonStore<LibraryAgent> {
+
+    private static final Logger log = LoggerFactory.getLogger(AgentLibraryStore.class);
 
     private static final String DEFAULT_MODEL = "claude-opus-4-8";
     private static final String DEFAULT_EFFORT = "high";
@@ -91,29 +95,35 @@ public class AgentLibraryStore extends JsonStore<LibraryAgent> {
                     out.add(parse(file));
                 } catch (Exception e) {
                     // One malformed file must not stop the rest of a library being imported.
-                    logSkipped(file, e);
+                    log.warn("Skipping unreadable library agent {}: {}",
+                            file.getFileName(), e.getMessage());
                 }
             }
         }
         return out;
     }
 
-    private void logSkipped(Path file, Exception e) {
-        org.slf4j.LoggerFactory.getLogger(AgentLibraryStore.class)
-                .warn("Skipping unreadable library agent {}: {}", file.getFileName(), e.getMessage());
-    }
-
     private LibraryAgent parse(Path p) throws IOException {
-        AgentSpec s = yaml.readValue(Files.readString(p), AgentSpec.class);
+        AgentSpec spec = yaml.readValue(Files.readString(p), AgentSpec.class);
         // The filename was the id in the file-backed layout, so importing keeps it — a flow node
         // that recorded which library agent it came from still matches.
-        String id = p.getFileName().toString().replaceFirst("\\.(ya?ml)$", "");
-        String model = (s.model != null && s.model.id != null) ? s.model.id : DEFAULT_MODEL;
-        String effort = (s.model != null && s.model.effort != null) ? s.model.effort : DEFAULT_EFFORT;
-        long maxTokens = (s.model != null && s.model.maxTokens > 0) ? s.model.maxTokens : DEFAULT_MAX_TOKENS;
-        String name = (s.name == null || s.name.isBlank()) ? id : s.name;
+        return toLibraryAgent(spec, p.getFileName().toString().replaceFirst("\\.(ya?ml)$", ""));
+    }
+
+    /**
+     * One AgentSpec, as the library row it becomes. Shared by the YAML import and the bundled
+     * examples: a default that applied on one path and not the other would show as two agents
+     * that look identical in the picker and behave differently at run time.
+     */
+    private static LibraryAgent toLibraryAgent(AgentSpec spec, String id) {
+        String model = (spec.model != null && spec.model.id != null) ? spec.model.id : DEFAULT_MODEL;
+        String effort = (spec.model != null && spec.model.effort != null)
+                ? spec.model.effort : DEFAULT_EFFORT;
+        long maxTokens = (spec.model != null && spec.model.maxTokens > 0)
+                ? spec.model.maxTokens : DEFAULT_MAX_TOKENS;
+        String name = (spec.name == null || spec.name.isBlank()) ? id : spec.name;
         return new LibraryAgent(id, name, model, effort, maxTokens,
-                s.systemPrompt == null ? "" : s.systemPrompt);
+                spec.systemPrompt == null ? "" : spec.systemPrompt);
     }
 
     private static boolean isYaml(Path p) {
@@ -139,18 +149,11 @@ public class AgentLibraryStore extends JsonStore<LibraryAgent> {
                 if (filename == null) continue;
                 try (InputStream in = r.getInputStream()) {
                     AgentSpec spec = yaml.readValue(in.readAllBytes(), AgentSpec.class);
-                    String id = filename.replaceFirst("\\.(ya?ml)$", "");
-                    super.save(new LibraryAgent(id,
-                            spec.name == null || spec.name.isBlank() ? id : spec.name,
-                            spec.model != null && spec.model.id != null ? spec.model.id : DEFAULT_MODEL,
-                            spec.model != null && spec.model.effort != null ? spec.model.effort : DEFAULT_EFFORT,
-                            spec.model != null && spec.model.maxTokens > 0 ? spec.model.maxTokens : DEFAULT_MAX_TOKENS,
-                            spec.systemPrompt == null ? "" : spec.systemPrompt));
+                    super.save(toLibraryAgent(spec, filename.replaceFirst("\\.(ya?ml)$", "")));
                 }
             }
         } catch (IOException e) {
-            org.slf4j.LoggerFactory.getLogger(AgentLibraryStore.class)
-                    .warn("Could not install the bundled library agents: {}", e.getMessage());
+            log.warn("Could not install the bundled library agents: {}", e.getMessage());
         }
     }
 }

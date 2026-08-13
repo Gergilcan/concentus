@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -119,17 +119,15 @@ public class McpDefController {
         for (McpDef def : store.list()) existing.put(def.name().toLowerCase(Locale.ROOT), def);
 
         int saved = 0;
-        Set<String> seen = new java.util.HashSet<>();
-        Iterator<Map.Entry<String, JsonNode>> fields = serversNode.properties().iterator();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> entry = fields.next();
+        Set<String> seen = new HashSet<>();
+        for (Map.Entry<String, JsonNode> entry : serversNode.properties()) {
             String name = entry.getKey().trim();
             JsonNode server = entry.getValue();
             if (name.isBlank() || !server.isObject()) continue;
 
-            for (String key : (Iterable<String>) () -> server.fieldNames()) {
-                if (!KNOWN_KEYS.contains(key)) {
-                    warnings.add("'" + name + "': unknown key '" + key + "' ignored.");
+            for (Map.Entry<String, JsonNode> field : server.properties()) {
+                if (!KNOWN_KEYS.contains(field.getKey())) {
+                    warnings.add("'" + name + "': unknown key '" + field.getKey() + "' ignored.");
                 }
             }
             if (server.has("headers")) {

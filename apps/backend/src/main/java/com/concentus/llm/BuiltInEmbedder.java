@@ -63,6 +63,8 @@ public class BuiltInEmbedder {
             "https://huggingface.co/Xenova/multilingual-e5-small/resolve/main/onnx/model_quantized.onnx";
     private static final String TOKENIZER_URL =
             "https://huggingface.co/Xenova/multilingual-e5-small/resolve/main/tokenizer.json";
+    /** Batch size per forward pass: big enough to amortise, small enough to keep memory flat. */
+    private static final int BATCH = 16;
 
     private final Path dir;
     private final String modelUrl;
@@ -241,9 +243,6 @@ public class BuiltInEmbedder {
      * @param queries true when embedding search queries, false for stored passages — E5's
      *                training makes the distinction, so this API does too
      */
-    /** Batch size per forward pass: big enough to amortise, small enough to keep memory flat. */
-    private static final int BATCH = 16;
-
     public synchronized List<float[]> embed(List<String> texts, boolean queries) {
         if (!isReady()) throw new IllegalStateException("The built-in embedding model is not ready.");
         String prefix = queries ? "query: " : "passage: ";

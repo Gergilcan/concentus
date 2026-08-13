@@ -97,7 +97,6 @@ public class RunStore {
         return available;
     }
 
-    /** Queue an upsert of the run's current state. Non-blocking; best-effort. */
     /**
      * What this flow has spent since {@code sinceMillis} — the budget gate's one query.
      * Zero when persistence is down: a broken database must not also stop every budgeted flow.
@@ -115,6 +114,7 @@ public class RunStore {
         }
     }
 
+    /** Queue an upsert of the run's current state. Non-blocking; best-effort. */
     public void persist(AgentRun run) {
         if (!isAvailable()) return;
         String eventsJson = toJson(run.bufferedEvents());
@@ -175,7 +175,8 @@ public class RunStore {
                     rs.getString("local_session_id"), rs.getBoolean("local_started"),
                     rs.getString("error"), rs.getLong("total_input_tokens"),
                     rs.getLong("total_output_tokens"), rs.getString("flow_json"),
-                    parseEvents(rs.getString("events_json")), parseExecs(rs.getString("node_execs_json")),
+                    parseList(rs.getString("events_json"), new TypeReference<List<RunEvent>>() {}),
+                    parseList(rs.getString("node_execs_json"), new TypeReference<List<NodeExec>>() {}),
                     rs.getLong("created_at"), rs.getString("initial_prompt"),
                     rs.getString("notify_webhook"), rs.getBoolean("golden")),
                 limit);
@@ -220,19 +221,15 @@ public class RunStore {
         }
     }
 
-    private List<RunEvent> parseEvents(String json) {
+    /**
+     * A JSON column back into a list, empty when it is absent or unreadable. A run row that has
+     * outlived a change to one of these shapes still loads, minus the part that no longer parses —
+     * losing the events of an old run beats losing the run.
+     */
+    private <E> List<E> parseList(String json, TypeReference<List<E>> type) {
         if (json == null || json.isBlank()) return List.of();
         try {
-            return mapper.readValue(json, new TypeReference<List<RunEvent>>() {});
-        } catch (Exception e) {
-            return List.of();
-        }
-    }
-
-    private List<NodeExec> parseExecs(String json) {
-        if (json == null || json.isBlank()) return List.of();
-        try {
-            return mapper.readValue(json, new TypeReference<List<NodeExec>>() {});
+            return mapper.readValue(json, type);
         } catch (Exception e) {
             return List.of();
         }

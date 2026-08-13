@@ -1,4 +1,5 @@
 import type { NodeProps, Node } from '@xyflow/react'
+import type { ReactElement } from 'react'
 import type { InputNodeData } from '../../api/types.ts'
 import { describeCron } from '../../components/cron.ts'
 import { NodeShell } from './NodeShell.tsx'
@@ -12,6 +13,23 @@ const LABEL: Record<InputNodeData['mode'], string> = {
   cron: 'Automatic (cron)',
   webhook: 'Webhook',
   mail: 'Mail (IMAP)',
+}
+
+/** What this input will do when the flow runs — the line under the mode badge. */
+function summary(data: InputNodeData): ReactElement {
+  if (data.mode === 'webhook') {
+    return <div className={styles.snippetMuted}>starts on an external event</div>
+  }
+  if (data.mode === 'manual') {
+    return <div className={styles.snippetMuted}>you type the first message</div>
+  }
+  if (!data.prompt) return <div className={styles.snippetMuted}>no prompt set</div>
+  // Full text, clamped by CSS — slicing here cut mid-word with nothing to show for it.
+  return (
+    <div className={styles.snippet} title={data.prompt}>
+      {data.prompt}
+    </div>
+  )
 }
 
 export function InputNode({ data, selected }: NodeProps<InputRFNode>) {
@@ -36,18 +54,7 @@ export function InputNode({ data, selected }: NodeProps<InputRFNode>) {
       {data.mode === 'mail' && (
         <div className={styles.meta}>{data.mailFolder || 'no folder set'}</div>
       )}
-      {data.mode === 'webhook' ? (
-        <div className={styles.snippetMuted}>starts on an external event</div>
-      ) : data.mode === 'manual' ? (
-        <div className={styles.snippetMuted}>you type the first message</div>
-      ) : data.prompt ? (
-        // Full text, clamped by CSS — slicing here cut mid-word with nothing to show for it.
-        <div className={styles.snippet} title={data.prompt}>
-          {data.prompt}
-        </div>
-      ) : (
-        <div className={styles.snippetMuted}>no prompt set</div>
-      )}
+      {summary(data)}
     </NodeShell>
   )
 }

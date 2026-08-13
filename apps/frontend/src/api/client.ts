@@ -57,6 +57,22 @@ function csrfToken(): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
+/**
+ * `?a=1&b=2` from the entries that have a value at all, so a route with optional parameters reads
+ * as a list instead of a chain of `+` and inline conditionals.
+ *
+ * encodeURIComponent, NOT URLSearchParams: the latter spells a space `+`, which would silently
+ * change every URL these routes already produce. Pass `x || undefined` for a parameter that
+ * should be omitted when blank rather than sent empty.
+ */
+function query(params: Record<string, string | undefined>): string {
+  const pairs: string[] = []
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) pairs.push(`${key}=${encodeURIComponent(value)}`)
+  }
+  return pairs.length ? `?${pairs.join('&')}` : ''
+}
+
 async function req<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -193,10 +209,10 @@ export const api = {
   // name as a query param: folder-upload names contain slashes, and Tomcat rejects an encoded
   // slash inside a path segment.
   deleteKnowledgeDoc: (id: string, docName: string) =>
-    req<void>(`/knowledge/${id}/documents?name=${encodeURIComponent(docName)}`, { method: 'DELETE' }),
+    req<void>(`/knowledge/${id}/documents${query({ name: docName })}`, { method: 'DELETE' }),
   /** Deletes a folder and every document under it; returns how many went. */
   deleteKnowledgeFolder: (id: string, path: string) =>
-    req<{ deleted: number }>(`/knowledge/${id}/folders?path=${encodeURIComponent(path)}`, {
+    req<{ deleted: number }>(`/knowledge/${id}/folders${query({ path })}`, {
       method: 'DELETE',
     }),
   /** Extensions the backend can actually extract — the picker's source of truth. */
@@ -347,14 +363,9 @@ export const api = {
   // its own grant for any backend that is not the CLI.
   /** What a server can do, fetched with the same credential a run uses. */
   listMcpTools: (url: string, credentialId?: string) =>
-    req<McpToolList>(
-      '/mcp/tools?url=' +
-        encodeURIComponent(url) +
-        (credentialId ? '&credentialId=' + encodeURIComponent(credentialId) : ''),
-    ),
+    req<McpToolList>(`/mcp/tools${query({ url, credentialId: credentialId || undefined })}`),
 
-  mcpOAuthStatus: (url: string) =>
-    req<McpOAuthStatus>('/mcp/oauth/status?url=' + encodeURIComponent(url)),
+  mcpOAuthStatus: (url: string) => req<McpOAuthStatus>(`/mcp/oauth/status${query({ url })}`),
   startMcpOAuth: (url: string) =>
     req<McpOAuthStart>('/mcp/oauth/start', { method: 'POST', body: JSON.stringify({ url }) }),
   disconnectMcpOAuth: (url: string) =>
@@ -382,12 +393,12 @@ export const api = {
   /** Lists a GitHub organization's or GitLab group's repositories. The token never crosses the wire. */
   listGroupRepos: (provider: string, group: string, credentialId?: string, baseUrl?: string) =>
     req<RemoteRepoList>(
-      '/git/repos?provider=' +
-        encodeURIComponent(provider) +
-        '&group=' +
-        encodeURIComponent(group) +
-        (credentialId ? '&credentialId=' + encodeURIComponent(credentialId) : '') +
-        (baseUrl ? '&baseUrl=' + encodeURIComponent(baseUrl) : ''),
+      `/git/repos${query({
+        provider,
+        group,
+        credentialId: credentialId || undefined,
+        baseUrl: baseUrl || undefined,
+      })}`,
     ),
 
   // rag

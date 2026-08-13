@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import com.concentus.execution.ExecutionBackend;
@@ -174,6 +175,29 @@ public class RunService {
     }
 
     /**
+     * Where this flow will run.
+     *
+     * <p>The model decides, and only then does the credential. Asked in this order because a flow
+     * naming a self-hosted model must not be sent to Claude — and must not be refused for lacking
+     * a Claude credential it was never going to use. A backend only claims a model it can actually
+     * serve right now, so an unclaimed model falls through to the Claude paths exactly as before.
+     */
+    private String chooseBackend(CompiledFlow compiled) {
+        String coordinatorModel = compiled.coordinator().model == null
+                ? null : compiled.coordinator().model.id;
+        var claimed = backends.forModel(coordinatorModel).filter(ExecutionBackend::isTurnBased);
+        if (claimed.isPresent()) return claimed.get().id();
+
+        // Which Claude credential is available decides the rest: the local CLI on a subscription,
+        // or the hosted Managed Agents API on a key.
+        String backend = clientProvider.backend();
+        if ("none".equals(backend)) {
+            throw new IllegalStateException(unroutableMessage(coordinatorModel));
+        }
+        return backend;
+    }
+
+    /**
      * Records what the trigger handed the flow, on the Input node's own box.
      *
      * <p>Without this the Input node is the one box in the run with nothing in it — which is
@@ -216,6 +240,26 @@ public class RunService {
     }
 
     /**
+     * Says in the run itself which values it executed with, and which names nothing defined.
+     *
+     * <p>Recorded on the run because the flow's settings only ever say what the NEXT run would
+     * use — a run that behaved oddly is read months later, when the values have moved on.
+     */
+    private static void reportVariables(AgentRun run, Map<String, String> values,
+                                        Set<String> unresolved) {
+        if (!values.isEmpty()) {
+            run.emit(RunEvent.of("system", "Variables: " + values.entrySet().stream()
+                    .map(e -> e.getKey() + "=" + oneLine(e.getValue()))
+                    .collect(Collectors.joining(" · "))));
+        }
+        if (!unresolved.isEmpty()) {
+            run.emit(RunEvent.of("system", "Variables without a value (left as written): "
+                    + unresolved.stream().map(n -> "{{" + n + "}}")
+                            .collect(Collectors.joining(", "))));
+        }
+    }
+
+    /**
      * Starts a run. When {@code initialPromptOverride} is non-null it becomes the first turn
      * (used by webhook triggers to inject the event payload); otherwise the Input node's own
      * prompt is used for prompt/cron modes.
@@ -230,28 +274,7 @@ public class RunService {
         // Compile synchronously so validation errors surface to the caller immediately.
         CompiledFlow compiled = compiler.compile(flow, variableValues, unresolvedVariables);
         TriggerSpec trigger = TriggerSpec.from(flow);
-
-        // The model decides where the flow runs, and only then does the credential.
-        //
-        // Asked in this order because a flow naming a self-hosted model must not be sent to Claude
-        // — and must not be refused for lacking a Claude credential it was never going to use.
-        // A backend only claims a model it can actually serve right now, so an unclaimed model
-        // falls through to the Claude paths exactly as before.
-        String coordinatorModel = compiled.coordinator().model == null
-                ? null : compiled.coordinator().model.id;
-        var claimed = backends.forModel(coordinatorModel).filter(ExecutionBackend::isTurnBased);
-
-        String backend;
-        if (claimed.isPresent()) {
-            backend = claimed.get().id();
-        } else {
-            // Which Claude credential is available decides the rest: the local CLI on a
-            // subscription, or the hosted Managed Agents API on a key.
-            backend = clientProvider.backend();
-            if ("none".equals(backend)) {
-                throw new IllegalStateException(unroutableMessage(coordinatorModel));
-            }
-        }
+        String backend = chooseBackend(compiled);
 
         String runId = Ids.generate("run_", 12);
         AgentRun run = new AgentRun(runId, flow.id(), flow.name(), flow.modeOrDefault());
@@ -263,7 +286,7 @@ public class RunService {
         run.approvalSlackChannel = flow.approvalSlackChannel();
         run.approvalTeamsWebhook = flow.approvalTeamsWebhook();
         run.pricing = pricing;
-                run.inputUsdPerMTok = inputUsdPerMTok;
+        run.inputUsdPerMTok = inputUsdPerMTok;
         run.outputUsdPerMTok = outputUsdPerMTok;
         run.trigger = trigger.mode() == null ? "manual" : trigger.mode().toLowerCase();
         run.permissionMode = trigger.permissionMode();
@@ -285,18 +308,7 @@ public class RunService {
                 variableValues, unresolvedVariables);
         run.initialPrompt = run.pendingPrompt;
         recordTriggerInput(run, flow, trigger);
-        // Said in the run itself, so every run remembers which values it executed with — the
-        // flow's settings only say what the NEXT run would use.
-        if (!variableValues.isEmpty()) {
-            run.emit(RunEvent.of("system", "Variables: " + variableValues.entrySet().stream()
-                    .map(e -> e.getKey() + "=" + oneLine(e.getValue()))
-                    .collect(java.util.stream.Collectors.joining(" · "))));
-        }
-        if (!unresolvedVariables.isEmpty()) {
-            run.emit(RunEvent.of("system", "Variables without a value (left as written): "
-                    + unresolvedVariables.stream().map(n -> "{{" + n + "}}")
-                            .collect(java.util.stream.Collectors.joining(", "))));
-        }
+        reportVariables(run, variableValues, unresolvedVariables);
         runs.put(runId, run);
         evictOldestCompleted();
         trackForPersistence(run);
@@ -456,7 +468,7 @@ public class RunService {
         }
     }
 
-    private com.concentus.model.NodeExec coordExec(AgentRun run) {
+    private NodeExec coordExec(AgentRun run) {
         if (run.compiled == null) return null;
         var c = run.compiled.coordinator();
         return run.nodeExec(c.nodeId, "agent", c.name);
@@ -614,27 +626,23 @@ public class RunService {
 
         // Each backend knows how to stop itself: the CLI kills a child process, a self-hosted model
         // has none and relies on its loop seeing TERMINATED between turns. Only the cloud path,
-        // which owns a stream rather than a backend bean, falls through below.
+        // which owns a stream rather than a backend bean, closes its own stream here.
         var backend = backends.byId(run.backend).filter(ExecutionBackend::isTurnBased);
         if (backend.isPresent()) {
             backend.get().stop(run);
-            run.emit(RunEvent.of("status", "terminated"));
-            runStore.persist(run);
-            // A stopped run is no longer asking anyone anything.
-            remoteApprovals.settled(runId, "closed");
-            return;
-        }
-
-        run.status = "TERMINATED";
-        AutoCloseable s = run.stream;
-        if (s != null) {
-            try {
-                s.close();
-            } catch (Exception ignored) {
+        } else {
+            run.status = "TERMINATED";
+            AutoCloseable s = run.stream;
+            if (s != null) {
+                try {
+                    s.close();
+                } catch (Exception ignored) {
+                }
             }
         }
         run.emit(RunEvent.of("status", "terminated"));
         runStore.persist(run);
+        // A stopped run is no longer asking anyone anything.
         remoteApprovals.settled(runId, "closed");
     }
 

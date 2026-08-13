@@ -83,6 +83,7 @@ export function FlowCard({
   const rate = finished.length ? Math.round((ok / finished.length) * 100) : null
   const cost = flowRuns.reduce((s, r) => s + (r.estimatedCostUsd ?? 0), 0)
   const paused = flow.enabled === false
+  const tags = flow.tags ?? []
 
   return (
     <article
@@ -120,9 +121,9 @@ export function FlowCard({
         </span>
       </div>
 
-      {(flow.tags ?? []).length > 0 && (
+      {tags.length > 0 && (
         <div className={styles.cardTags}>
-          {(flow.tags ?? []).map((t) => (
+          {tags.map((t) => (
             <button key={t} className={styles.cardTag} onClick={() => setTagFilter(t)}>
               {t}
             </button>

@@ -220,7 +220,7 @@ public class ToolSearchIndex {
                             ps.setString(1, serverUrl);
                             ps.setString(2, tool.name());
                             ps.setString(3, tool.description());
-                            ps.setString(4, tool.parameters() == null ? "{}" : tool.parameters().toString());
+                            ps.setString(4, schemaJson(tool));
                             ps.setString(5, hash);
                             ps.setString(6, literal(vectors.get(i)));
                         }
@@ -293,12 +293,16 @@ public class ToolSearchIndex {
                 else if (description.contains(term)) score += 1;
             }
             if (score > 0) {
-                scored.add(new Hit(tool.name(), tool.description(),
-                        tool.parameters() == null ? "{}" : tool.parameters().toString(), score));
+                scored.add(new Hit(tool.name(), tool.description(), schemaJson(tool), score));
             }
         }
         scored.sort(Comparator.comparingDouble(Hit::score).reversed());
         return scored.size() > limit ? scored.subList(0, limit) : scored;
+    }
+
+    /** A tool's input schema as JSON. An absent schema is the empty object, never null. */
+    private static String schemaJson(ChatTypes.ToolSpec tool) {
+        return tool.parameters() == null ? "{}" : tool.parameters().toString();
     }
 
     /** Name and description together: a name alone is too short to embed meaningfully. */

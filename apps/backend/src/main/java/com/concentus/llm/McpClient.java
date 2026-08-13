@@ -70,13 +70,13 @@ public class McpClient implements AutoCloseable {
         params.putObject("clientInfo").put("name", "concentus").put("version", "1.0.0");
 
         Response res = send("initialize", params, true);
-        JsonNode result = res.body().path("result");
         if (res.body().has("error")) {
             throw new LlmException(serverName, "MCP initialize failed: "
                     + res.body().path("error").path("message").asText("unknown"));
         }
         this.sessionId = res.sessionId();
-        this.protocolVersion = result.path("protocolVersion").asText(PREFERRED_PROTOCOL_VERSION);
+        this.protocolVersion = res.body().path("result")
+                .path("protocolVersion").asText(PREFERRED_PROTOCOL_VERSION);
         // A notification, so the server answers 202 with no body — nothing to parse.
         send("notifications/initialized", null, false);
         this.initialized = true;

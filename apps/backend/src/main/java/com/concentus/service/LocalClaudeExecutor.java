@@ -7,8 +7,11 @@ import com.concentus.llm.McpOAuthStore;
 import com.concentus.model.NodeExec;
 import com.concentus.git.GitWorkspace;
 import com.concentus.model.RunEvent;
+import com.concentus.model.SkillDef;
+import com.concentus.store.SkillStore;
 import com.concentus.support.LocalClaudeSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -20,9 +23,13 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
@@ -55,7 +62,7 @@ public class LocalClaudeExecutor {
     private final boolean autoRegisterMcp;
     private final ObjectMapper mapper;
     private final McpOAuthStore mcpOAuthStore;
-    private final com.concentus.store.SkillStore skillStore;
+    private final SkillStore skillStore;
     private final SkillService skillService;
     private final OrgContext orgContext;
     /** See {@link #writeMcpConfig}: runs see only the flow's MCP servers, not the user's list. */
@@ -97,7 +104,7 @@ public class LocalClaudeExecutor {
                                GitWorkspace gitWorkspace,
                                ObjectMapper mapper,
                                McpOAuthStore mcpOAuthStore,
-                               com.concentus.store.SkillStore skillStore,
+                               SkillStore skillStore,
                                SkillService skillService,
                                OrgContext orgContext,
                                PluginRegistry pluginRegistry,
@@ -364,23 +371,23 @@ public class LocalClaudeExecutor {
      * enforcement — the same honest deal as context folders.
      */
     private void materialiseSkills(AgentRun run, CompiledFlow flow, Path workdir) {
-        java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+        Set<String> ids = new LinkedHashSet<>();
         for (AgentSpec agent : flow.allAgents()) {
             for (AgentSpec.SkillSpec skill : agent.skills) {
                 if ("custom".equals(skill.type) && skill.id != null) ids.add(skill.id);
             }
         }
         if (ids.isEmpty()) return;
-        java.util.List<com.concentus.model.SkillDef> defs = ids.stream()
+        List<SkillDef> defs = ids.stream()
                 .map(skillStore::get)
-                .flatMap(java.util.Optional::stream)
+                .flatMap(Optional::stream)
                 .toList();
         try {
             skillService.materialise(workdir, defs);
             run.emit(RunEvent.of("system", defs.size() + " skill(s) installed for this run: "
-                    + defs.stream().map(com.concentus.model.SkillDef::name)
+                    + defs.stream().map(SkillDef::name)
                             .collect(Collectors.joining(", ")) + "."));
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             run.emit(RunEvent.of("system", "Skills could not be installed: " + e.getMessage()));
         }
     }
@@ -415,49 +422,7 @@ public class LocalClaudeExecutor {
 
         var servers = mapper.createObjectNode();
         for (McpServerSpec m : byName.values()) {
-            var server = mapper.createObjectNode();
-            // The stdio transport: the CLI launches the process itself, per run — the same
-            // command/args/env shape the server's README says to put in mcp.json. Env values of
-            // the form credential:<id> were resolved just now, so tokens live encrypted in the
-            // credential store rather than in the flow.
-            if (m.isStdio()) {
-                server.put("type", "stdio");
-                server.put("command", m.command);
-                var args = server.putArray("args");
-                for (String arg : m.args) args.add(arg);
-                Map<String, String> env = m.resolveEnv();
-                if (!env.isEmpty()) {
-                    var envNode = server.putObject("env");
-                    env.forEach(envNode::put);
-                }
-                servers.set(m.name, server);
-                continue;
-            }
-            server.put("type", "http");
-            server.put("url", m.url);
-            String token = m.resolveToken();
-            String header = null;
-            String value = null;
-            if (token != null && !token.isBlank()) {
-                header = m.authHeader == null || m.authHeader.isBlank()
-                        ? McpRegistry.DEFAULT_AUTH_HEADER : m.authHeader.trim();
-                value = McpRegistry.DEFAULT_AUTH_HEADER.equalsIgnoreCase(header)
-                        ? "Bearer " + token : token;
-            } else {
-                String granted = mcpOAuthStore
-                        .accessToken(orgContext.defaultOrganizationId(), m.url)
-                        .orElse(null);
-                if (granted != null) {
-                    header = McpRegistry.DEFAULT_AUTH_HEADER;
-                    value = "Bearer " + granted;
-                }
-            }
-            if (header != null) {
-                var headers = mapper.createObjectNode();
-                headers.put(header, value);
-                server.set("headers", headers);
-            }
-            servers.set(m.name, server);
+            servers.set(m.name, mcpServerNode(m));
         }
 
         // API nodes become tools served by this very backend, per run. The CLI reaches them like
@@ -468,7 +433,7 @@ public class LocalClaudeExecutor {
         for (AgentSpec agent : run.compiled.allAgents()) apis.addAll(agent.apiSources);
         boolean hasMemory = run.flowId != null && !run.flowId.isBlank();
         if (!apis.isEmpty() || hasMemory) {
-            if (run.toolToken == null) run.toolToken = java.util.UUID.randomUUID().toString();
+            if (run.toolToken == null) run.toolToken = UUID.randomUUID().toString();
             var server = mapper.createObjectNode();
             server.put("type", "http");
             server.put("url", "http://127.0.0.1:" + serverPort + "/api/runs/" + run.id + "/tools");
@@ -502,6 +467,59 @@ public class LocalClaudeExecutor {
                 ? "MCP: this flow has no MCP nodes, so the run sees no MCP servers."
                 : "MCP: this run sees only the flow's server(s): "
                         + String.join(", ", byName.keySet()) + "."));
+    }
+
+    /**
+     * One MCP server as the CLI's config file wants it.
+     *
+     * <p>Auth, in the order documented on {@link #writeMcpConfig}: the node's stored credential;
+     * else an OAuth grant Concentus holds for that URL; else no header at all, which leaves room
+     * for a grant the CLI itself holds from {@code claude mcp login}.
+     */
+    private ObjectNode mcpServerNode(McpServerSpec m) {
+        var server = mapper.createObjectNode();
+        // The stdio transport: the CLI launches the process itself, per run — the same
+        // command/args/env shape the server's README says to put in mcp.json. Env values of
+        // the form credential:<id> were resolved just now, so tokens live encrypted in the
+        // credential store rather than in the flow.
+        if (m.isStdio()) {
+            server.put("type", "stdio");
+            server.put("command", m.command);
+            var args = server.putArray("args");
+            for (String arg : m.args) args.add(arg);
+            Map<String, String> env = m.resolveEnv();
+            if (!env.isEmpty()) {
+                var envNode = server.putObject("env");
+                env.forEach(envNode::put);
+            }
+            return server;
+        }
+
+        server.put("type", "http");
+        server.put("url", m.url);
+        String token = m.resolveToken();
+        String header = null;
+        String value = null;
+        if (token != null && !token.isBlank()) {
+            header = m.authHeader == null || m.authHeader.isBlank()
+                    ? McpRegistry.DEFAULT_AUTH_HEADER : m.authHeader.trim();
+            value = McpRegistry.DEFAULT_AUTH_HEADER.equalsIgnoreCase(header)
+                    ? "Bearer " + token : token;
+        } else {
+            String granted = mcpOAuthStore
+                    .accessToken(orgContext.defaultOrganizationId(), m.url)
+                    .orElse(null);
+            if (granted != null) {
+                header = McpRegistry.DEFAULT_AUTH_HEADER;
+                value = "Bearer " + granted;
+            }
+        }
+        if (header != null) {
+            var headers = mapper.createObjectNode();
+            headers.put(header, value);
+            server.set("headers", headers);
+        }
+        return server;
     }
 
     /** Inlines the agent's referenced CLAUDE.md, if it names one and it passes the allowlist. */
@@ -545,8 +563,8 @@ public class LocalClaudeExecutor {
     private void appendSkillRoster(AgentSpec spec, StringBuilder out) {
         List<String> names = spec.skills.stream()
                 .filter(sk -> "custom".equals(sk.type) && sk.id != null)
-                .map(sk -> skillStore.get(sk.id).map(com.concentus.model.SkillDef::name).orElse(null))
-                .filter(java.util.Objects::nonNull)
+                .map(sk -> skillStore.get(sk.id).map(SkillDef::name).orElse(null))
+                .filter(Objects::nonNull)
                 .toList();
         if (names.isEmpty()) return;
         out.append("\n## Skills assigned to you\n\n");
@@ -703,7 +721,7 @@ public class LocalClaudeExecutor {
      */
     private String pluginSettingsFor(AgentRun run) {
         if (pluginRegistry == null || run.compiled == null) return null;
-        java.util.LinkedHashSet<String> union = new java.util.LinkedHashSet<>(run.compiled.coordinator().plugins);
+        LinkedHashSet<String> union = new LinkedHashSet<>(run.compiled.coordinator().plugins);
         for (AgentSpec s : run.compiled.subAgents()) union.addAll(s.plugins);
         return pluginRegistry.settingsJsonFor(union);
     }

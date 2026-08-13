@@ -1,5 +1,6 @@
 package com.concentus.llm;
 
+import com.concentus.support.Texts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,7 +41,7 @@ public class McpOAuthFlow {
         // Blank is the default and means "derive from the request": the host the browser reached
         // us through is, by definition, one that browser can reach again for the callback. The
         // explicit setting remains for deployments where the two differ (an exotic proxy).
-        this.redirectBase = redirectBase == null ? "" : redirectBase.trim().replaceAll("/+$", "");
+        this.redirectBase = Texts.trimTrailingSlashes(redirectBase);
     }
 
     /**
@@ -70,8 +71,7 @@ public class McpOAuthFlow {
      * by definition, reach again when the authorization server sends it back.
      */
     public String redirectUri(String requestBase) {
-        String base = !redirectBase.isBlank() ? redirectBase
-                : (requestBase == null ? "" : requestBase.trim().replaceAll("/+$", ""));
+        String base = redirectBase.isBlank() ? Texts.trimTrailingSlashes(requestBase) : redirectBase;
         return base + "/api/mcp/oauth/callback";
     }
 

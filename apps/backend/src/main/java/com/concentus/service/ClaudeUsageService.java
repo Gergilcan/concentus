@@ -137,15 +137,23 @@ public class ClaudeUsageService {
         }
     }
 
-    private Map<String, Object> window(List<Sample> samples, long since) {
-        long in = 0;
-        long out = 0;
-        long cacheRead = 0;
-        long cacheWrite = 0;
-        double usd = 0;
-        int messages = 0;
-        for (Sample s : samples) {
-            if (s.at() < since) continue;
+    /**
+     * The running figures a window or a per-model row reports.
+     *
+     * <p>One accumulator rather than the parallel {@code long[4]} plus a second map of costs the
+     * per-model aggregation used to keep: two structures keyed the same way are two chances to
+     * update one and forget the other, and the array's indices said nothing about which token
+     * bucket they held.
+     */
+    private final class Totals {
+        long in;
+        long out;
+        long cacheRead;
+        long cacheWrite;
+        double usd;
+        int messages;
+
+        void add(Sample s) {
             in += s.in();
             out += s.out();
             cacheRead += s.cacheRead();
@@ -153,39 +161,39 @@ public class ClaudeUsageService {
             usd += pricing.costUsd(s.model(), s.in(), s.cacheRead(), s.cacheWrite(), s.out());
             messages++;
         }
+
+        /** The token figures, under the keys and in the order the UI has always read them. */
+        void putTokensInto(Map<String, Object> target) {
+            target.put("inputTokens", in);
+            target.put("outputTokens", out);
+            target.put("cacheReadTokens", cacheRead);
+            target.put("cacheWriteTokens", cacheWrite);
+            target.put("estimatedUsd", usd);
+        }
+    }
+
+    private Map<String, Object> window(List<Sample> samples, long since) {
+        Totals totals = new Totals();
+        for (Sample s : samples) {
+            if (s.at() >= since) totals.add(s);
+        }
         Map<String, Object> w = new LinkedHashMap<>();
-        w.put("inputTokens", in);
-        w.put("outputTokens", out);
-        w.put("cacheReadTokens", cacheRead);
-        w.put("cacheWriteTokens", cacheWrite);
-        w.put("estimatedUsd", usd);
-        w.put("messages", messages);
+        totals.putTokensInto(w);
+        w.put("messages", totals.messages);
         return w;
     }
 
     private List<Map<String, Object>> perModel(List<Sample> samples, long since) {
-        Map<String, long[]> byModel = new LinkedHashMap<>();
-        Map<String, Double> usdByModel = new LinkedHashMap<>();
+        Map<String, Totals> byModel = new LinkedHashMap<>();
         for (Sample s : samples) {
             if (s.at() < since) continue;
-            long[] agg = byModel.computeIfAbsent(s.model(), k -> new long[4]);
-            agg[0] += s.in();
-            agg[1] += s.out();
-            agg[2] += s.cacheRead();
-            agg[3] += s.cacheWrite();
-            usdByModel.merge(s.model(),
-                    pricing.costUsd(s.model(), s.in(), s.cacheRead(), s.cacheWrite(), s.out()),
-                    Double::sum);
+            byModel.computeIfAbsent(s.model(), k -> new Totals()).add(s);
         }
         return byModel.entrySet().stream()
                 .map(e -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("model", e.getKey());
-                    m.put("inputTokens", e.getValue()[0]);
-                    m.put("outputTokens", e.getValue()[1]);
-                    m.put("cacheReadTokens", e.getValue()[2]);
-                    m.put("cacheWriteTokens", e.getValue()[3]);
-                    m.put("estimatedUsd", usdByModel.get(e.getKey()));
+                    e.getValue().putTokensInto(m);
                     return m;
                 })
                 .sorted(Comparator.comparingDouble(

@@ -56,15 +56,14 @@ public class FlowController {
 
     @GetMapping("/{id}")
     public FlowGraph get(@PathVariable String id) {
-        return store.get(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such flow"));
+        return requireFlow(id);
     }
 
     @PostMapping
     public FlowGraph save(@RequestBody FlowGraph flow) {
         FlowGraph saved = store.save(flow);
         versions.snapshot(saved);  // keep a restorable revision of every save
-        scheduler.reschedule();    // pick up new/changed cron triggers (and pauses)
-        mailTriggers.reschedule();
+        rescheduleTriggers();
         return saved;
     }
 
@@ -81,8 +80,7 @@ public class FlowController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such version"));
         FlowGraph saved = store.save(old.withId(id));
         versions.snapshot(saved);
-        scheduler.reschedule();
-        mailTriggers.reschedule();
+        rescheduleTriggers();
         return saved;
     }
 
@@ -90,8 +88,7 @@ public class FlowController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable String id) {
         store.delete(id);
-        scheduler.reschedule();
-        mailTriggers.reschedule();
+        rescheduleTriggers();
     }
 
     /** The notes this flow's agents have left for their future runs, newest first. */
@@ -110,8 +107,20 @@ public class FlowController {
 
     @PostMapping("/{id}/run")
     public RunSummary run(@PathVariable String id) {
-        FlowGraph flow = store.get(id)
+        return runService.start(requireFlow(id));
+    }
+
+    private FlowGraph requireFlow(String id) {
+        return store.get(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such flow"));
-        return runService.start(flow);
+    }
+
+    /**
+     * Both schedulers, after any write: they pick up new, changed and removed cron and mail
+     * triggers — including a flow that was merely paused, which is a schedule change too.
+     */
+    private void rescheduleTriggers() {
+        scheduler.reschedule();
+        mailTriggers.reschedule();
     }
 }

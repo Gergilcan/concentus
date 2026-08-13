@@ -53,16 +53,6 @@ public class ModelCatalogController {
     }
 
     /**
-     * @param pricing     rates for models named in {@code pricing.models}
-     * @param fallback    the rate applied to any model not listed there
-     * @param backends    execution backends and their availability, so the designer can say when a
-     *                    flow could not run rather than failing at launch
-     * @param localModels model ids the self-hosted server is serving right now. Discovered rather
-     *                    than configured — what you can run is whatever you have pulled — so the
-     *                    picker offers exactly those and never a model that would 404 at launch
-     * @param localError  why that list is empty, when it is
-     */
-    /**
      * Whether MCP tool search will rank semantically, and what is missing when it will not.
      *
      * <p>Reported because its two halves live in different places — a Postgres extension and a
@@ -73,6 +63,16 @@ public class ModelCatalogController {
                                    boolean vectorReady, int threshold, String detail) {
     }
 
+    /**
+     * @param pricing     rates for models named in {@code pricing.models}
+     * @param fallback    the rate applied to any model not listed there
+     * @param backends    execution backends and their availability, so the designer can say when a
+     *                    flow could not run rather than failing at launch
+     * @param localModels model ids the self-hosted server is serving right now. Discovered rather
+     *                    than configured — what you can run is whatever you have pulled — so the
+     *                    picker offers exactly those and never a model that would 404 at launch
+     * @param localError  why that list is empty, when it is
+     */
     public record ModelCatalog(Map<String, ModelRate> pricing, ModelRate fallback,
                                List<BackendStatus> backends, List<String> localModels,
                                String localError, ToolSearchStatus toolSearch) {

@@ -1,4 +1,10 @@
-import { useEffect, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react'
 import { AppHeader, type View } from './components/AppHeader.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { FlowsPage } from './components/FlowsPage.tsx'
@@ -16,6 +22,7 @@ import { useFlowsAndRuns } from './state/useFlowsAndRuns.ts'
 import { useSelectedRun } from './state/useSelectedRun.ts'
 import { useSession } from './state/useSession.ts'
 import { TOAST_DURATION_MS } from './constants.ts'
+import { cx } from './utils/cx.ts'
 import styles from './App.module.scss'
 
 /**
@@ -53,7 +60,9 @@ function usePanelOpen(key: string): [boolean, () => void] {
   return [open, toggle]
 }
 
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
+function clamp(v: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, v))
+}
 
 /**
  * A panel dimension the user can drag, remembered across sessions — same home as the panels'
@@ -90,6 +99,65 @@ function usePanelSize(
     window.addEventListener('pointerup', up)
   }
   return [size, startDrag]
+}
+
+interface SidePanelProps {
+  /** Which edge of the canvas the panel is docked to; every direction below follows from it. */
+  side: 'left' | 'right'
+  /** Named as the tooltips read it: "Show/Hide <label>". */
+  label: string
+  /** What the folded rail promises to bring back — shorter than the label, and not a sentence. */
+  railLabel: string
+  open: boolean
+  onToggle: () => void
+  startDrag: (measure: (e: PointerEvent) => number) => (down: ReactPointerEvent) => void
+  children: ReactNode
+}
+
+/**
+ * One of Studio's two side panels: open, the panel itself with a collapse chevron and a drag
+ * handle on the edge facing the canvas; folded, a slim rail naming what it will bring back.
+ *
+ * The palette and the inspector are the same object mirrored, so `side` decides which way the
+ * chevrons point, which edge the handle sits on, and which direction a drag grows the panel —
+ * rather than each caller spelling out its own half of the mirror.
+ */
+function SidePanel({ side, label, railLabel, open, onToggle, startDrag, children }: SidePanelProps) {
+  const onLeft = side === 'left'
+  if (!open) {
+    return (
+      <button
+        className={styles.rail}
+        onClick={onToggle}
+        title={`Show ${label}`}
+        aria-label={`Show ${label}`}
+      >
+        {onLeft ? '▸' : '◂'}
+        <span className={styles.railLabel}>{railLabel}</span>
+      </button>
+    )
+  }
+  return (
+    <div className={styles.sideWrap}>
+      {children}
+      <button
+        className={cx(styles.collapseSide, onLeft ? styles.collapseAtRight : styles.collapseAtLeft)}
+        onClick={onToggle}
+        title={`Hide ${label}`}
+        aria-label={`Hide ${label}`}
+      >
+        {onLeft ? '◂' : '▸'}
+      </button>
+      <div
+        className={styles.resizeX}
+        style={onLeft ? { right: -4 } : { left: -4 }}
+        onPointerDown={startDrag(
+          onLeft ? (e) => e.clientX : (e) => window.innerWidth - e.clientX,
+        )}
+        title="Drag to resize"
+      />
+    </div>
+  )
 }
 
 interface WorkspaceProps {
@@ -131,12 +199,10 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
     retryRun,
   } = useFlowActions({ flows, runs, refreshFlows, refreshRuns, setView, setSelectedRun, pushError: setToast })
 
-  return (
-    <div className={styles.app}>
-      <AppHeader view={view} onView={setView} signedInAs={signedInAs} onSignOut={onSignOut} />
-
-      <ErrorBoundary>
-        {view === 'flows' ? (
+  function renderView(): ReactNode {
+    switch (view) {
+      case 'flows':
+        return (
           <FlowsPage
             flows={flows}
             runs={runs}
@@ -150,9 +216,13 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
             onRetryRun={retryRun}
             pushError={setToast}
           />
-        ) : view === 'usage' ? (
-          <UsagePage />
-        ) : view === 'studio' ? (
+        )
+      case 'usage':
+        return <UsagePage />
+      case 'resources':
+        return <ResourcesPage pushError={setToast} />
+      case 'studio':
+        return (
           <>
             <Toolbar
               onFlowsChanged={refreshFlows}
@@ -166,65 +236,29 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
                 gridTemplateColumns: `${paletteOpen ? `${paletteW}px` : '26px'} 1fr ${inspectorOpen ? `${inspectorW}px` : '26px'}`,
               }}
             >
-              {paletteOpen ? (
-                <div className={styles.sideWrap}>
-                  <Palette />
-                  <button
-                    className={`${styles.collapseSide} ${styles.collapseAtRight}`}
-                    onClick={togglePalette}
-                    title="Hide the node palette"
-                    aria-label="Hide the node palette"
-                  >
-                    ◂
-                  </button>
-                  <div
-                    className={styles.resizeX}
-                    style={{ right: -4 }}
-                    onPointerDown={dragPalette((e) => e.clientX)}
-                    title="Drag to resize"
-                  />
-                </div>
-              ) : (
-                <button
-                  className={styles.rail}
-                  onClick={togglePalette}
-                  title="Show the node palette"
-                  aria-label="Show the node palette"
-                >
-                  ▸<span className={styles.railLabel}>Add node</span>
-                </button>
-              )}
+              <SidePanel
+                side="left"
+                label="the node palette"
+                railLabel="Add node"
+                open={paletteOpen}
+                onToggle={togglePalette}
+                startDrag={dragPalette}
+              >
+                <Palette />
+              </SidePanel>
               <div className={styles.canvas}>
                 <FlowCanvas />
               </div>
-              {inspectorOpen ? (
-                <div className={styles.sideWrap}>
-                  <Inspector />
-                  <button
-                    className={`${styles.collapseSide} ${styles.collapseAtLeft}`}
-                    onClick={toggleInspector}
-                    title="Hide the node properties"
-                    aria-label="Hide the node properties"
-                  >
-                    ▸
-                  </button>
-                  <div
-                    className={styles.resizeX}
-                    style={{ left: -4 }}
-                    onPointerDown={dragInspector((e) => window.innerWidth - e.clientX)}
-                    title="Drag to resize"
-                  />
-                </div>
-              ) : (
-                <button
-                  className={styles.rail}
-                  onClick={toggleInspector}
-                  title="Show the node properties"
-                  aria-label="Show the node properties"
-                >
-                  ◂<span className={styles.railLabel}>Properties</span>
-                </button>
-              )}
+              <SidePanel
+                side="right"
+                label="the node properties"
+                railLabel="Properties"
+                open={inspectorOpen}
+                onToggle={toggleInspector}
+                startDrag={dragInspector}
+              >
+                <Inspector />
+              </SidePanel>
             </div>
             {runsOpen ? (
               <div className={styles.bottomWrap} style={{ '--runs-h': `${runsH}px` } as CSSProperties}>
@@ -261,10 +295,15 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
               </button>
             )}
           </>
-        ) : (
-          <ResourcesPage pushError={setToast} />
-        )}
-      </ErrorBoundary>
+        )
+    }
+  }
+
+  return (
+    <div className={styles.app}>
+      <AppHeader view={view} onView={setView} signedInAs={signedInAs} onSignOut={onSignOut} />
+
+      <ErrorBoundary>{renderView()}</ErrorBoundary>
 
       {toast && (
         <div className={styles.toast} role="alert">

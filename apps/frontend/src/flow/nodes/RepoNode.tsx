@@ -8,6 +8,8 @@ export function RepoNode({ data, selected }: NodeProps<RepoRFNode>) {
   // A group node has no URL to show, so the canvas shows what it stands for instead — otherwise a
   // perfectly configured group would read as "no url".
   const count = data.only?.length ?? 0
+  let summary = data.url || 'no url'
+  if (group) summary = count > 0 ? `${count} of ${group}` : `all repos in ${group}`
   return (
     <NodeShell
       variant="repo"
@@ -16,13 +18,7 @@ export function RepoNode({ data, selected }: NodeProps<RepoRFNode>) {
       title={group || repoName(data.url) || 'repo'}
       badge={data.provider}
     >
-      <div className={styles.snippet}>
-        {group
-          ? count > 0
-            ? `${count} of ${group}`
-            : `all repos in ${group}`
-          : data.url || 'no url'}
-      </div>
+      <div className={styles.snippet}>{summary}</div>
     </NodeShell>
   )
 }

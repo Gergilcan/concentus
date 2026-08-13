@@ -21,6 +21,48 @@
 
 /* ---- collapsible Studio chrome: palette, inspector, executions ---- */
 
+/* The pill that folds a panel away: one button, mounted on whichever edge faces the canvas. */
+@mixin collapse-button {
+  position: absolute;
+  padding: 0;
+  background: t.$panel-2;
+  border: 1px solid t.$border;
+  border-radius: 6px;
+  color: t.$muted;
+  cursor: pointer;
+  z-index: 5;
+
+  &:hover {
+    color: t.$text;
+    border-color: t.$accent;
+  }
+}
+
+/* What a folded panel leaves behind: panel-coloured, borderless, muted until pointed at. */
+@mixin panel-rail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: t.$panel;
+  border: none;
+  color: t.$muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$text;
+  }
+}
+
+/* Drag handles on a panel's inner edge; the panel's size persists across sessions (App.tsx). */
+@mixin resize-handle {
+  position: absolute;
+  z-index: 6;
+
+  &:hover {
+    background: t.$accent-strong;
+  }
+}
+
 /* Wraps an open side panel so its collapse chevron can sit on the edge facing the canvas. */
 .sideWrap {
   position: relative;
@@ -35,26 +77,14 @@
   }
 }
 .collapseSide {
-  position: absolute;
+  @include collapse-button;
   // Mid-edge, not the top corner: the corner is where both panels keep their own headers, and
   // the chevron was sitting on the inspector's title.
   top: 50%;
   transform: translateY(-50%);
   width: 18px;
   height: 26px;
-  padding: 0;
-  background: t.$panel-2;
-  border: 1px solid t.$border;
-  border-radius: 6px;
-  color: t.$muted;
   font-size: 11px;
-  cursor: pointer;
-  z-index: 5;
-
-  &:hover {
-    color: t.$text;
-    border-color: t.$accent;
-  }
 }
 .collapseAtRight {
   right: 4px;
@@ -65,22 +95,12 @@
 
 /* A folded side panel: a slim rail that names what it will bring back. */
 .rail {
-  display: flex;
+  @include panel-rail;
   flex-direction: column;
-  align-items: center;
-  gap: 8px;
   padding-top: 10px;
-  background: t.$panel;
-  border: none;
   border-right: 1px solid t.$border;
   border-left: 1px solid t.$border;
-  color: t.$muted;
   font-size: 11px;
-  cursor: pointer;
-
-  &:hover {
-    color: t.$text;
-  }
 }
 .railLabel {
   writing-mode: vertical-rl;
@@ -93,69 +113,36 @@
   position: relative;
 }
 
-/* Drag handles on a panel's inner edge; the panel's size persists across sessions (App.tsx). */
 .resizeX {
-  position: absolute;
+  @include resize-handle;
   top: 0;
   bottom: 0;
   width: 8px;
   cursor: col-resize;
-  z-index: 6;
-
-  &:hover {
-    background: t.$accent-strong;
-  }
 }
 .resizeY {
-  position: absolute;
+  @include resize-handle;
   left: 0;
   right: 0;
   height: 8px;
   cursor: row-resize;
-  z-index: 6;
-
-  &:hover {
-    background: t.$accent-strong;
-  }
 }
 .collapseBottom {
-  position: absolute;
+  @include collapse-button;
   top: 6px;
   right: 10px;
   width: 26px;
   height: 18px;
-  padding: 0;
-  background: t.$panel-2;
-  border: 1px solid t.$border;
-  border-radius: 6px;
-  color: t.$muted;
   font-size: 10px;
-  cursor: pointer;
-  z-index: 5;
-
-  &:hover {
-    color: t.$text;
-    border-color: t.$accent;
-  }
 }
 .bottomRail {
+  @include panel-rail;
   height: 26px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
   padding: 0 14px;
-  background: t.$panel;
-  border: none;
   border-top: 1px solid t.$border;
-  color: t.$muted;
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  cursor: pointer;
-
-  &:hover {
-    color: t.$text;
-  }
 }
 
 .toast {

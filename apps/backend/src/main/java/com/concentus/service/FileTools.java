@@ -47,8 +47,7 @@ public class FileTools {
     /** Tool definitions for an agent, or empty when it has no folders to work in. */
     public List<ChatTypes.ToolSpec> toolsFor(List<Path> roots) {
         if (roots == null || roots.isEmpty()) return List.of();
-        String where = "Paths must be inside: "
-                + roots.stream().map(Path::toString).reduce((a, b) -> a + ", " + b).orElse("");
+        String where = "Paths must be inside: " + describe(roots, "");
 
         List<ChatTypes.ToolSpec> tools = new ArrayList<>();
         tools.add(new ChatTypes.ToolSpec(LIST,
@@ -209,8 +208,13 @@ public class FileTools {
 
     private static String outside(String raw, List<Path> roots) {
         return "Error: '" + raw + "' is outside this agent's context folders ("
-                + roots.stream().map(Path::toString).reduce((a, b) -> a + ", " + b).orElse("none")
-                + "). Work only inside those.";
+                + describe(roots, "none") + "). Work only inside those.";
+    }
+
+    /** The roots as one readable list — named in both the tool descriptions and the refusals. */
+    private static String describe(List<Path> roots, String ifEmpty) {
+        if (roots == null || roots.isEmpty()) return ifEmpty;
+        return String.join(", ", roots.stream().map(Path::toString).toList());
     }
 
     // ------------------------------------------------------------------ schema helpers

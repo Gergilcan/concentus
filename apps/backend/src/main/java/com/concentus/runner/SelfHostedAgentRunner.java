@@ -103,9 +103,7 @@ final class SelfHostedAgentRunner implements AgentRunner {
             cacheControl.put("ttl", spec.cache.ttl); // "5m" | "1h"
             block.put("cache_control", cacheControl);
         }
-        List<Object> system = new ArrayList<>();
-        system.add(block);
-        return system;
+        return List.of(block);
     }
 
     private List<Object> mcpServersJson() {
