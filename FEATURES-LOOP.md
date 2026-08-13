@@ -138,7 +138,7 @@ heuristic; frontend tests for the missing-runtime banner and the wizard filling 
 runtime" to a working, configured server without a terminal; the install command is always visible
 before it runs; nothing is installed without an explicit press.
 
-### 2. [ ] Describe-your-flow: natural language → generated flow on the canvas
+### 2. [x] Describe-your-flow: natural language → generated flow on the canvas
 
 **Goal:** A text box ("Describe what you want automated…") that generates a complete, editable
 flow — nodes, edges, agent prompts, trigger — from one sentence.

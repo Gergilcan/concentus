@@ -750,6 +750,49 @@
   gap: 8px;
 }
 
+/* "Describe a flow": one big box to write in, and the promise that nothing is saved yet. */
+
+.describeLabel {
+  display: block;
+  font-size: 12px;
+  color: t.$muted;
+  margin-bottom: var(--sp-1);
+}
+
+.describeInput {
+  width: 100%;
+  box-sizing: border-box;
+  background: t.$panel-2;
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
+  color: t.$text;
+  padding: var(--sp-2);
+  font-size: 12.5px;
+  font-family: inherit;
+  resize: vertical;
+
+  &:focus {
+    outline: none;
+    border-color: t.$accent;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+  }
+}
+
+.describeHint {
+  color: t.$muted;
+  font-size: 11px;
+  margin: var(--sp-2) 0;
+}
+
+.describeError {
+  color: t.$danger;
+  font-size: 12px;
+  margin: 0 0 var(--sp-2);
+}
+
 /* A quiet divider inside the settings dialog — a heading, not a component of its own. */
 .sectionHead {
   margin: 16px 0 8px;

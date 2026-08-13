@@ -194,6 +194,7 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
     duplicateFlow,
     deleteFlow,
     newFlow,
+    openGeneratedFlow,
     saveFlowFromDashboard,
     openRun,
     retryRun,
@@ -211,6 +212,7 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
             onDuplicate={duplicateFlow}
             onDelete={deleteFlow}
             onNew={newFlow}
+            onGenerated={openGeneratedFlow}
             onOpenRun={(id) => void openRun(id)}
             onSaveFlow={saveFlowFromDashboard}
             onRetryRun={retryRun}

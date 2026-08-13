@@ -71,6 +71,15 @@ export function useFlowActions({
     setView('studio')
   }
 
+  /**
+   * Opens a generated draft on the canvas. Deliberately the same path as a new flow: the draft
+   * has no id, so Studio treats it as unsaved and the user's own Save is what creates it.
+   */
+  const openGeneratedFlow = (flow: BackendFlow) => {
+    useFlowStore.getState().loadBackendFlow(flow)
+    setView('studio')
+  }
+
   /** Persists a flow edited from the dashboard (favourite, tags, pause, webhook, import). */
   const saveFlowFromDashboard = async (flow: BackendFlow) => {
     const saved = await api.saveFlow(flow)
@@ -116,5 +125,5 @@ export function useFlowActions({
     }
   }
 
-  return { onRunStarted, openFlow, runFlow, duplicateFlow, deleteFlow, newFlow, saveFlowFromDashboard, openRun, retryRun }
+  return { onRunStarted, openFlow, runFlow, duplicateFlow, deleteFlow, newFlow, openGeneratedFlow, saveFlowFromDashboard, openRun, retryRun }
 }

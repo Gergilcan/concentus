@@ -142,6 +142,12 @@ export const api = {
     req<BackendFlow>('/flows', { method: 'POST', body: JSON.stringify(flow) }),
   deleteFlow: (id: string) => req<void>(`/flows/${id}`, { method: 'DELETE' }),
   runSavedFlow: (id: string) => req<RunSummary>(`/flows/${id}/run`, { method: 'POST' }),
+  /**
+   * A flow designed from a sentence. Returned unsaved (no id) — it lands on the canvas as a draft
+   * and only exists once the user saves it.
+   */
+  generateFlow: (description: string) =>
+    req<BackendFlow>('/flows/generate', { method: 'POST', body: JSON.stringify({ description }) }),
   listFlowVersions: (id: string) => req<FlowVersionInfo[]>(`/flows/${id}/versions`),
   /** One revision as it was, for previewing it on the canvas. Changes nothing on the server. */
   getFlowVersion: (id: string, version: number) =>

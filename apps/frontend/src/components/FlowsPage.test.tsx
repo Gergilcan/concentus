@@ -19,6 +19,7 @@ const renderPage = () => {
       onDuplicate={vi.fn()}
       onDelete={vi.fn()}
       onNew={vi.fn()}
+      onGenerated={vi.fn()}
       onOpenRun={vi.fn()}
       onSaveFlow={onSaveFlow}
       onRetryRun={vi.fn()}

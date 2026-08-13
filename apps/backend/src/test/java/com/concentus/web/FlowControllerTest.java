@@ -43,7 +43,8 @@ class FlowControllerTest {
     /** {@code authEnabled=false} is the desktop install: one person, no account to name. */
     private FlowController controller(boolean authEnabled) {
         return new FlowController(store, runService, scheduler, mailTriggers, versions, memory,
-                new OrgContext("default", authEnabled));
+                new OrgContext("default", authEnabled),
+                mock(com.concentus.service.FlowGenerator.class));
     }
 
     @Test

@@ -2,6 +2,7 @@ import { useMemo, useState, type DragEvent } from 'react'
 import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import type { BackendFlow, RunSummary } from '../api/types.ts'
+import { DescribeFlowModal } from './DescribeFlowModal.tsx'
 import { FlowCard } from './FlowCard.tsx'
 import { breadcrumbOf, childFolders, flowsAt, folderOf, moveFolder, normalizePath } from './folderTree.ts'
 import { SettingsModal, VersionsModal } from './FlowModals.tsx'
@@ -33,6 +34,8 @@ interface Props {
   onDuplicate: (flow: BackendFlow) => void
   onDelete: (id: string) => void
   onNew: () => void
+  /** Puts a generated draft on the canvas and opens Studio. Nothing has been saved. */
+  onGenerated: (flow: BackendFlow) => void
   onOpenRun: (runId: string) => void
   onSaveFlow: (flow: BackendFlow) => Promise<void>
   onRetryRun: (runId: string) => void
@@ -47,6 +50,7 @@ export function FlowsPage({
   onDuplicate,
   onDelete,
   onNew,
+  onGenerated,
   onOpenRun,
   onSaveFlow,
   onRetryRun,
@@ -57,6 +61,7 @@ export function FlowsPage({
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [settingsFor, setSettingsFor] = useState<BackendFlow | null>(null)
   const [versionsFor, setVersionsFor] = useState<BackendFlow | null>(null)
+  const [describing, setDescribing] = useState(false)
 
   const runsByFlow = useMemo(() => groupRunsByFlow(runs), [runs])
   const allTags = useMemo(() => collectTags(flows), [flows])
@@ -207,6 +212,7 @@ export function FlowsPage({
             onSortChange={setSort}
             onImport={(f) => void importFlow(f)}
             onNew={onNew}
+            onDescribe={() => setDescribing(true)}
           />
         </header>
 
@@ -365,6 +371,14 @@ export function FlowsPage({
 
       {versionsFor && (
         <VersionsModal flow={versionsFor} onClose={() => setVersionsFor(null)} pushError={pushError} />
+      )}
+
+      {describing && (
+        <DescribeFlowModal
+          onClose={() => setDescribing(false)}
+          onGenerated={onGenerated}
+          pushError={pushError}
+        />
       )}
     </div>
   )

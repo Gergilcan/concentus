@@ -10,6 +10,7 @@ export function FlowsToolbar({
   onSortChange,
   onImport,
   onNew,
+  onDescribe,
 }: {
   query: string
   onQueryChange: (q: string) => void
@@ -17,6 +18,8 @@ export function FlowsToolbar({
   onSortChange: (s: Sort) => void
   onImport: (file: File) => void
   onNew: () => void
+  /** Opens the "describe what you want automated" dialog. */
+  onDescribe: () => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -53,6 +56,13 @@ export function FlowsToolbar({
           e.target.value = ''
         }}
       />
+      <button
+        className={styles.ghost}
+        onClick={onDescribe}
+        title="Describe what you want automated in a sentence and get a first draft on the canvas. Nothing is saved until you press Save."
+      >
+        ✨ Describe a flow
+      </button>
       <button className={styles.primary} onClick={onNew}>
         + New flow
       </button>

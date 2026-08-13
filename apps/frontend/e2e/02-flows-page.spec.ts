@@ -24,7 +24,24 @@ test('shows the dashboard: title, KPIs and toolbar', async ({ page }) => {
   await expect(page.getByLabel('Search flows')).toBeVisible()
   await expect(page.getByLabel('Sort flows')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Import' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '✨ Describe a flow' })).toBeVisible()
   await expect(page.getByRole('button', { name: '+ New flow' })).toBeVisible()
+})
+
+test('“Describe a flow” opens its dialog and promises nothing is saved', async ({ page }) => {
+  await openApp(page)
+
+  await page.getByRole('button', { name: '✨ Describe a flow' }).click()
+
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('Describe what you want automated')).toBeVisible()
+  // The generation itself needs the claude CLI and a real model call, which this suite never
+  // makes — what is asserted here is the entry point and its promise. Generate stays disabled
+  // until there is something to generate FROM.
+  await expect(dialog.getByRole('button', { name: 'Generate' })).toBeDisabled()
+  await expect(dialog.getByText(/Nothing is saved/)).toBeVisible()
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
 test('search filters the cards and clearing brings them back', async ({ page }) => {

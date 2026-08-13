@@ -40,10 +40,12 @@ public class FlowController {
     private final FlowVersionStore versions;
     private final FlowMemoryStore memory;
     private final OrgContext orgContext;
+    private final com.concentus.service.FlowGenerator generator;
 
     public FlowController(FlowStore store, RunService runService, ScheduleService scheduler,
                           MailTriggerService mailTriggers, FlowVersionStore versions,
-                          FlowMemoryStore memory, OrgContext orgContext) {
+                          FlowMemoryStore memory, OrgContext orgContext,
+                          com.concentus.service.FlowGenerator generator) {
         this.store = store;
         this.runService = runService;
         this.scheduler = scheduler;
@@ -51,6 +53,7 @@ public class FlowController {
         this.versions = versions;
         this.memory = memory;
         this.orgContext = orgContext;
+        this.generator = generator;
     }
 
     @GetMapping
@@ -69,6 +72,22 @@ public class FlowController {
         versions.snapshot(saved, currentAuthor());  // keep a restorable revision of every save
         rescheduleTriggers();
         return saved;
+    }
+
+    /**
+     * A flow designed from a sentence, returned WITHOUT being saved.
+     *
+     * <p>Not saving is the point: the answer arrives on the canvas as a draft with no id, and the
+     * user's own save is what makes it exist. A generator that wrote to the store would turn a
+     * misunderstood sentence into a flow someone has to go and delete.
+     */
+    @PostMapping("/generate")
+    public FlowGraph generate(@RequestBody GenerateRequest request) {
+        return generator.generate(request == null ? null : request.description());
+    }
+
+    /** What to automate, in the user's own words. */
+    public record GenerateRequest(String description) {
     }
 
     /** Revision history for a flow (newest first). */
