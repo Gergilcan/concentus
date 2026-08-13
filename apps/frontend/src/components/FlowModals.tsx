@@ -150,15 +150,15 @@ export function SettingsModal({
 
       <h4
         className={styles.sectionHead}
-        title="When a run of this flow stops to ask for approval, the plan is sent to these channels. Slack can answer: a ✅ reaction approves, a ❌ rejects — the app polls the message, so no public URL is needed. Teams is notification-only: its webhooks cannot carry a reply back."
+        title="When a run of this flow stops for a human — waiting for approval, or asking you something — it goes to these channels. Slack can answer both: a ✅ reaction approves a plan (❌ rejects), and a reply in a question's thread becomes the run's next command. The app polls, so no public URL is needed. Teams is notification-only: its webhooks cannot carry a reply back."
       >
-        Remote approval ⓘ
+        Remote approvals and questions ⓘ
       </h4>
       <CredentialField
         label="Slack bot token"
         value={slackCredential}
         onChange={setSlackCredential}
-        what="the Slack bot (scopes: chat:write, reactions:read)"
+        what="the Slack bot (scopes: chat:write, reactions:read, channels:history)"
       />
       <label
         className={styles.field}
@@ -173,7 +173,7 @@ export function SettingsModal({
       </label>
       <label
         className={styles.field}
-        title="A Teams incoming-webhook URL (Workflows). Posts the plan as a card — notification only; approve from the app or Slack."
+        title="A Teams incoming-webhook URL (Workflows). Posts the plan or the question as a card — notification only; answer from the app or Slack."
       >
         <span>Teams webhook (notify only) ⓘ</span>
         <input

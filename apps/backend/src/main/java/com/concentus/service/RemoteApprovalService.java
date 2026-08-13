@@ -26,8 +26,12 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Carries an approval wait out of the app: Slack gets the plan and can answer it; Teams gets the
- * plan and cannot.
+ * Carries a run's wait for a human out of the app: Slack can answer it, Teams can only be told.
+ *
+ * <p>Two waits, one transport. A run stopped for APPROVAL is settled by a ✅/❌ reaction on the
+ * message this service posted. A run that stopped to ASK something is settled by a threaded REPLY
+ * to it — the reply becomes the run's next command. Same token, same poll loop, same TTL; the
+ * difference is only what a poll looks for and what it does with the answer.
  *
  * <p>The whole design bends around one constraint: this backend runs on someone's machine with no
  * public URL, so nothing here may depend on being called back. Slack approval therefore works by
@@ -70,24 +74,35 @@ public class RemoteApprovalService {
         JsonNode call(String url, String bearer, JsonNode body) throws Exception;
     }
 
+    /**
+     * One posted message being watched. {@code approve}/{@code reject} belong to an approval
+     * watch and {@code answer} to a question watch; a run is only ever in one of the two states,
+     * so one map keyed by run id holds both.
+     */
     private static final class Watch {
         final AgentRun run;
+        /** "approval" (react to decide) or "answer" (reply in thread to continue). */
+        final String kind;
         final String bearer;
         final String channel;
         final String ts;
         final Runnable approve;
         final Runnable reject;
+        final java.util.function.Consumer<String> answer;
         volatile ScheduledFuture<?> task;
         volatile boolean closed;
         final long deadline = System.currentTimeMillis() + TimeUnit.HOURS.toMillis(WATCH_HOURS);
 
-        Watch(AgentRun run, String bearer, String channel, String ts, Runnable approve, Runnable reject) {
+        Watch(AgentRun run, String kind, String bearer, String channel, String ts,
+              Runnable approve, Runnable reject, java.util.function.Consumer<String> answer) {
             this.run = run;
+            this.kind = kind;
             this.bearer = bearer;
             this.channel = channel;
             this.ts = ts;
             this.approve = approve;
             this.reject = reject;
+            this.answer = answer;
         }
     }
 
@@ -124,7 +139,9 @@ public class RemoteApprovalService {
      * the run's own console, because "why did Slack never ping" is a question about this run.
      */
     public void runAwaitingApproval(AgentRun run, Runnable approve, Runnable reject) {
-        notifyTeams(run);
+        notifyTeams(run, "⏳ \"" + flowName(run) + "\" is waiting for approval",
+                "Approve or reject from Concentus (run " + run.id + ")",
+                ", or react in Slack.", ". This channel cannot carry your reply.");
         watchSlack(run, approve, reject);
     }
 
@@ -138,6 +155,10 @@ public class RemoteApprovalService {
         if (w == null || w.closed) return;
         w.closed = true;
         if (w.task != null) w.task.cancel(false);
+        // A question is left standing. Rewriting that message would erase the question itself
+        // from the channel — and unlike an approval, there are no instructions in it to go stale:
+        // a reply to a run that has moved on is answered in the thread when it arrives.
+        if ("answer".equals(w.kind)) return;
         String text = switch (decision) {
             case "approved" -> "✅ Approved — \"" + flowName(w.run) + "\" is carrying out its plan.";
             case "rejected" -> "🚫 Rejected — \"" + flowName(w.run) + "\" changed nothing.";
@@ -173,7 +194,7 @@ public class RemoteApprovalService {
         ObjectNode body = mapper.createObjectNode();
         body.put("channel", channel.trim());
         body.put("text", "⏳ Concentus: \"" + flowName(run) + "\" is waiting for approval.\n\n"
-                + planExcerpt(run)
+                + finalOutputExcerpt(run)
                 + "\n\nReact with ✅ to approve or ❌ to reject. (run " + run.id + ")");
         JsonNode res;
         try {
@@ -192,8 +213,8 @@ public class RemoteApprovalService {
             return;
         }
 
-        Watch w = new Watch(run, token, res.path("channel").asText(channel.trim()),
-                res.path("ts").asText(), approve, reject);
+        Watch w = new Watch(run, "approval", token, res.path("channel").asText(channel.trim()),
+                res.path("ts").asText(), approve, reject, null);
         watches.put(run.id, w);
         w.task = scheduler.scheduleWithFixedDelay(() -> pollOnce(run.id), POLL_SECONDS,
                 POLL_SECONDS, TimeUnit.SECONDS);
@@ -201,20 +222,147 @@ public class RemoteApprovalService {
                 "Approval request posted to Slack — a ✅ reaction there approves this run."));
     }
 
+    // ------------------------------------------------------------------ questions
+
+    /**
+     * A run stopped to ASK the user something. Posts the question where the flow's approvals go,
+     * and takes the first threaded reply as the run's next command.
+     *
+     * <p>The full human loop from a phone: the run asks, you reply in the thread, the run carries
+     * on. The reply is used verbatim — this service does not interpret it, exactly as the app's
+     * own command box does not.
+     */
+    public void runAwaitingAnswer(AgentRun run, java.util.function.Consumer<String> answer) {
+        notifyTeams(run, "❓ \"" + flowName(run) + "\" asked you something",
+                "Answer from Concentus (run " + run.id + ")",
+                ", or reply in the Slack thread.", ". This channel cannot carry your reply.");
+        watchSlackAnswer(run, answer);
+    }
+
+    private void watchSlackAnswer(AgentRun run, java.util.function.Consumer<String> answer) {
+        String channel = run.approvalSlackChannel;
+        if (channel == null || channel.isBlank()) return;
+        String token = credentials.resolve(run.approvalSlackCredentialId);
+        if (token == null || token.isBlank()) {
+            run.emit(RunEvent.of("system", "Slack is configured for this flow but its bot-token "
+                    + "credential resolves to nothing — answer from the app instead."));
+            return;
+        }
+
+        ObjectNode body = mapper.createObjectNode();
+        body.put("channel", channel.trim());
+        body.put("text", "❓ Concentus: \"" + flowName(run) + "\" asked you something.\n\n"
+                + finalOutputExcerpt(run)
+                + "\n\nReply in this thread and the run continues with your answer. (run "
+                + run.id + ")");
+        JsonNode res;
+        try {
+            res = slack(token, "chat.postMessage", body);
+        } catch (Exception e) {
+            run.emit(RunEvent.of("system", "The question could not be sent to Slack: "
+                    + e.getMessage() + " — answer from the app instead."));
+            return;
+        }
+        if (!res.path("ok").asBoolean(false)) {
+            run.emit(RunEvent.of("system", "Slack rejected the question ("
+                    + res.path("error").asText("unknown error") + ") — answer from the app instead."));
+            return;
+        }
+
+        Watch w = new Watch(run, "answer", token, res.path("channel").asText(channel.trim()),
+                res.path("ts").asText(), null, null, answer);
+        watches.put(run.id, w);
+        w.task = scheduler.scheduleWithFixedDelay(() -> pollOnce(run.id), POLL_SECONDS,
+                POLL_SECONDS, TimeUnit.SECONDS);
+        run.emit(RunEvent.of("system",
+                "Question posted to Slack — a reply in that thread continues this run."));
+    }
+
+    /**
+     * One check of the question's thread. The FIRST human reply wins and closes the watch: a
+     * second reply to a question already answered would be a command the run never asked for.
+     */
+    private void pollAnswer(Watch w) {
+        JsonNode res;
+        try {
+            res = slack(w.bearer, "conversations.replies?channel="
+                    + URLEncoder.encode(w.channel, StandardCharsets.UTF_8)
+                    + "&ts=" + URLEncoder.encode(w.ts, StandardCharsets.UTF_8), null);
+        } catch (Exception e) {
+            log.debug("Slack thread poll for run {} failed: {}", w.run.id, e.getMessage());
+            return; // transient — the next tick retries
+        }
+        if (!res.path("ok").asBoolean(false)) return;
+
+        String reply = null;
+        for (JsonNode message : res.path("messages")) {
+            // The parent is the question itself, and anything with a bot_id is this service —
+            // including the ✔ it posts after answering. Neither is a human replying.
+            if (w.ts.equals(message.path("ts").asText())) continue;
+            if (!message.path("bot_id").asText("").isBlank()) continue;
+            String text = message.path("text").asText("").trim();
+            if (!text.isEmpty()) {
+                reply = text;
+                break;
+            }
+        }
+        if (reply == null) return;
+
+        closeWatch(w);
+        w.run.emit(RunEvent.of("system", "Answered via Slack: " + reply));
+        try {
+            w.answer.accept(reply);
+        } catch (RuntimeException e) {
+            // The app got there first, or the run moved on. Say so in the thread rather than
+            // leaving someone believing their reply is being worked on.
+            replyInThread(w, "⚠ That reply arrived too late — the run was no longer waiting.");
+            return;
+        }
+        replyInThread(w, "✔ Sent to \"" + flowName(w.run) + "\" — it is working on your answer.");
+    }
+
+    /** Posts into the question's own thread, so the confirmation sits under what it answers. */
+    private void replyInThread(Watch w, String text) {
+        ObjectNode body = mapper.createObjectNode();
+        body.put("channel", w.channel);
+        body.put("thread_ts", w.ts);
+        body.put("text", text);
+        scheduler.execute(() -> {
+            try {
+                slack(w.bearer, "chat.postMessage", body);
+            } catch (Exception e) {
+                log.debug("Slack thread reply for run {} failed: {}", w.run.id, e.getMessage());
+            }
+        });
+    }
+
+    /** Stops a watch polling, without touching the message it posted. */
+    private void closeWatch(Watch w) {
+        w.closed = true;
+        watches.remove(w.run.id, w);
+        if (w.task != null) w.task.cancel(false);
+    }
+
     /** One reaction check. Package-private so tests drive the protocol without a scheduler. */
     void pollOnce(String runId) {
         Watch w = watches.get(runId);
         if (w == null || w.closed) return;
 
-        // The app may have decided, or the run may have been stopped: the watch is then noise.
-        if (!"AWAITING_APPROVAL".equals(w.run.status)) {
+        boolean answering = "answer".equals(w.kind);
+        // The app may have answered or decided, or the run may have been stopped: the watch is
+        // then noise. This is also what closes a question watch when the reply came from the app.
+        if (!(answering ? "AWAITING_ANSWER" : "AWAITING_APPROVAL").equals(w.run.status)) {
             settled(runId, "closed");
             return;
         }
         if (System.currentTimeMillis() > w.deadline) {
-            w.run.emit(RunEvent.of("system", "Slack approval request expired after " + WATCH_HOURS
-                    + "h with no reaction — the run still waits in the app."));
+            w.run.emit(RunEvent.of("system", "The Slack " + (answering ? "question" : "approval request")
+                    + " expired after " + WATCH_HOURS + "h with no reply — the run still waits in the app."));
             settled(runId, "closed");
+            return;
+        }
+        if (answering) {
+            pollAnswer(w);
             return;
         }
 
@@ -261,11 +409,12 @@ public class RemoteApprovalService {
      * Teams is told, not asked — see the class comment. The card names where to actually answer,
      * so it never reads as a broken button.
      */
-    private void notifyTeams(AgentRun run) {
+    private void notifyTeams(AgentRun run, String title, String where,
+                             String slackSuffix, String noSlackSuffix) {
         String url = run.approvalTeamsWebhook;
         if (url == null || url.isBlank()) return;
         if (!url.startsWith("https://")) {
-            run.emit(RunEvent.of("system", "Teams approval webhook ignored — not an https URL."));
+            run.emit(RunEvent.of("system", "Teams webhook ignored — not an https URL."));
             return;
         }
 
@@ -274,22 +423,22 @@ public class RemoteApprovalService {
         card.put("version", "1.4");
         card.put("$schema", "http://adaptivecards.io/schemas/adaptive-card.json");
         var cardBody = card.putArray("body");
-        ObjectNode title = cardBody.addObject();
-        title.put("type", "TextBlock");
-        title.put("weight", "Bolder");
-        title.put("wrap", true);
-        title.put("text", "⏳ \"" + flowName(run) + "\" is waiting for approval");
-        ObjectNode plan = cardBody.addObject();
-        plan.put("type", "TextBlock");
-        plan.put("wrap", true);
-        plan.put("text", planExcerpt(run));
-        ObjectNode where = cardBody.addObject();
-        where.put("type", "TextBlock");
-        where.put("wrap", true);
-        where.put("isSubtle", true);
-        where.put("text", "Approve or reject from Concentus (run " + run.id + ")"
+        ObjectNode titleBlock = cardBody.addObject();
+        titleBlock.put("type", "TextBlock");
+        titleBlock.put("weight", "Bolder");
+        titleBlock.put("wrap", true);
+        titleBlock.put("text", title);
+        ObjectNode detail = cardBody.addObject();
+        detail.put("type", "TextBlock");
+        detail.put("wrap", true);
+        detail.put("text", finalOutputExcerpt(run));
+        ObjectNode whereBlock = cardBody.addObject();
+        whereBlock.put("type", "TextBlock");
+        whereBlock.put("wrap", true);
+        whereBlock.put("isSubtle", true);
+        whereBlock.put("text", where
                 + (run.approvalSlackChannel != null && !run.approvalSlackChannel.isBlank()
-                        ? ", or react in Slack." : ". This channel cannot carry your reply."));
+                        ? slackSuffix : noSlackSuffix));
 
         ObjectNode envelope = mapper.createObjectNode();
         envelope.put("type", "message");
@@ -299,10 +448,9 @@ public class RemoteApprovalService {
 
         try {
             transport.call(url, null, envelope);
-            run.emit(RunEvent.of("system", "Approval notice posted to Teams (notification only)."));
+            run.emit(RunEvent.of("system", "Notice posted to Teams (notification only)."));
         } catch (Exception e) {
-            run.emit(RunEvent.of("system",
-                    "Teams approval notice could not be sent: " + e.getMessage()));
+            run.emit(RunEvent.of("system", "Teams notice could not be sent: " + e.getMessage()));
         }
     }
 
@@ -312,15 +460,19 @@ public class RemoteApprovalService {
         return run.flowName == null || run.flowName.isBlank() ? "flow" : run.flowName;
     }
 
-    /** The plan the agent proposed — its last message — cut to what a chat message can carry. */
-    private static String planExcerpt(AgentRun run) {
-        String plan = run.finalOutput();
-        if (plan == null || plan.isBlank()) {
-            return "(The run produced no plan text — open the app to see its console.)";
+    /**
+     * The agent's last message, cut to what a chat message can carry. It is the plan for an
+     * approval and the question for an answer — the same field either way, because in both cases
+     * what a human needs to see is the last thing the agent said.
+     */
+    private static String finalOutputExcerpt(AgentRun run) {
+        String text = run.finalOutput();
+        if (text == null || text.isBlank()) {
+            return "(The run produced no text — open the app to see its console.)";
         }
-        return plan.length() <= PLAN_EXCERPT_CHARS
-                ? plan
-                : plan.substring(0, PLAN_EXCERPT_CHARS) + "\n… (truncated — full plan in the app)";
+        return text.length() <= PLAN_EXCERPT_CHARS
+                ? text
+                : text.substring(0, PLAN_EXCERPT_CHARS) + "\n… (truncated — the rest is in the app)";
     }
 
     /** Real HTTP. Kept dumb: JSON in, JSON out, bearer when given, GET when there is no body. */

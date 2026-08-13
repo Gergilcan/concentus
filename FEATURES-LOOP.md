@@ -172,7 +172,7 @@ Tests: backend unit (stale marker set only on real graph change); frontend test 
 **Accept:** editing a golden-covered flow surfaces the check without the user remembering it;
 comparison opens with the existing modal; no auto-run unless opted in.
 
-### 4. [ ] Answer the agent from Slack (AWAITING_ANSWER remote)
+### 4. [x] Answer the agent from Slack (AWAITING_ANSWER remote)
 
 **Goal:** When a run ends `AWAITING_ANSWER`, the question is posted to the flow's Slack channel;
 a threaded reply becomes the run's next command. Full human loop from the phone.

@@ -185,6 +185,12 @@ public class AgentRun {
     public volatile String approvalTeamsWebhook;
     /** Set when the remote channels were told about this run's approval wait — told once. */
     public volatile boolean approvalRemoteNotified;
+    /**
+     * Set when this run's current QUESTION was posted remotely. Reset at the start of every turn,
+     * unlike the approval flag: a run can ask several questions in a row, and each new one is a
+     * new thing to ask — while a second message about the SAME question reads as two questions.
+     */
+    public volatile boolean answerRemoteNotified;
 
     private final CopyOnWriteArrayList<RunEvent> buffer = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<Consumer<RunEvent>> listeners = new CopyOnWriteArrayList<>();

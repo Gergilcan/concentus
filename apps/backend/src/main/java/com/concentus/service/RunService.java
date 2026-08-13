@@ -454,6 +454,9 @@ public class RunService {
 
     /** One turn on whichever turn-based backend this run uses. */
     private void runLocalTurn(AgentRun run, String prompt) {
+        // A new turn means whatever was asked before has been answered. Cleared here rather than
+        // when the answer arrives, so the next question — a different question — gets posted.
+        run.answerRemoteNotified = false;
         try {
             // Dispatched through the registry rather than an if-chain, so adding a backend — or
             // moving one behind a network call — does not mean editing this method.
@@ -482,6 +485,13 @@ public class RunService {
                 run.approvalRemoteNotified = true;
                 remoteApprovals.runAwaitingApproval(run,
                         () -> approve(run.id), () -> reject(run.id));
+            }
+            // The turn ended with the agent ASKING something. The same channels carry it, and a
+            // threaded reply comes back through sendCommand — the same door the app's own command
+            // box uses, so a remote answer is indistinguishable from one typed here.
+            if ("AWAITING_ANSWER".equals(run.status) && !run.answerRemoteNotified) {
+                run.answerRemoteNotified = true;
+                remoteApprovals.runAwaitingAnswer(run, reply -> sendCommand(run.id, reply));
             }
         }
     }
