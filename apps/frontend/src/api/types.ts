@@ -3,9 +3,14 @@
 export type RunStatus =
   | 'STARTING'
   | 'RUNNING'
+  /** Waiting for its FIRST instruction — nothing has run yet. */
   | 'IDLE'
   /** Stopped mid-run in approval mode: a plan is on screen and a human has to answer. */
   | 'AWAITING_APPROVAL'
+  /** The final answer asked the user something; the session waits for the reply. */
+  | 'AWAITING_ANSWER'
+  /** Delivered its result. Still continuable while retained — terminal means "done", not "dead". */
+  | 'COMPLETED'
   | 'ERROR'
   | 'TERMINATED'
 

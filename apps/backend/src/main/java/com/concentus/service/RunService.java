@@ -374,7 +374,10 @@ public class RunService {
     }
 
     private static boolean isTerminal(String status) {
-        return "TERMINATED".equals(status) || "ERROR".equals(status);
+        // COMPLETED is terminal for retention: a delivered result can be evicted. Its session
+        // is still continuable while it lives — terminal here means "safe to forget", not
+        // "cannot be spoken to".
+        return "TERMINATED".equals(status) || "ERROR".equals(status) || "COMPLETED".equals(status);
     }
 
     private void execute(AgentRun run, CompiledFlow compiled) {
@@ -451,6 +454,15 @@ public class RunService {
                             "No execution backend '" + run.backend + "' is registered."))
                     .runTurn(run, run.compiled, prompt);
         } finally {
+            // A finished turn lands in one of two resting states, not a generic IDLE: the final
+            // answer either ASKS the user something — the run now waits for a reply — or it
+            // delivered a result and is done. IDLE stays what it always was: a run waiting for
+            // its FIRST instruction. Heuristic on purpose: the stream carries no structured
+            // "question" signal, so the final answer's closing line decides.
+            if ("IDLE".equals(run.status)) {
+                run.status = endsWithQuestion(run.finalOutput()) ? "AWAITING_ANSWER" : "COMPLETED";
+                run.emit(RunEvent.of("status", run.status.toLowerCase()));
+            }
             runStore.persist(run);
             if ("ERROR".equals(run.status)) {
                 notifier.runFailed(run);
@@ -730,10 +742,32 @@ public class RunService {
         }
     }
 
-    /** True if a non-terminal run for this flow already exists (used to avoid overlapping cron fires). */
+    /**
+     * True if a run for this flow is actually IN FLIGHT (used to avoid overlapping cron fires).
+     *
+     * <p>In flight means working or waiting on a human decision — not IDLE. An idle run is a
+     * finished turn kept around so its session can be continued; counting it as active made
+     * every cron flow fire exactly once and then starve, because local runs never terminate
+     * on their own and yesterday's idle run blocked every later tick.
+     */
     public boolean hasActiveRun(String flowId) {
         if (flowId == null) return false;
-        return runs.values().stream().anyMatch(r -> flowId.equals(r.flowId) && !isTerminal(r.status));
+        return runs.values().stream().anyMatch(r -> flowId.equals(r.flowId) && isInFlight(r.status));
+    }
+
+    private static boolean isInFlight(String status) {
+        // Waiting on a human — approval or an answer — is still in flight: firing a second run
+        // would stack a duplicate behind the question being asked.
+        return "STARTING".equals(status) || "RUNNING".equals(status)
+                || "AWAITING_APPROVAL".equals(status) || "AWAITING_ANSWER".equals(status);
+    }
+
+    /** The stream has no structured "question" signal; the final answer's last line decides. */
+    private static boolean endsWithQuestion(String text) {
+        if (text == null || text.isBlank()) return false;
+        String[] lines = text.strip().split("\\R");
+        String last = lines[lines.length - 1].strip();
+        return last.endsWith("?") || last.contains("¿");
     }
 
     private AgentRun require(String runId) {

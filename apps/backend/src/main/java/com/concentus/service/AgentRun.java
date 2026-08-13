@@ -27,7 +27,9 @@ public class AgentRun {
     /** FlowGraph snapshot (JSON) used to recompile and continue this run after a restart. */
     public volatile String flowJson;
 
-    public volatile String status = "STARTING"; // STARTING | RUNNING | IDLE | ERROR | TERMINATED
+    // STARTING | RUNNING | IDLE (waiting for its first instruction) | AWAITING_APPROVAL |
+    // AWAITING_ANSWER (the final answer asked the user something) | COMPLETED | ERROR | TERMINATED
+    public volatile String status = "STARTING";
     public volatile String sessionId;
     public volatile List<String> agentIds = List.of();
     public volatile String error;

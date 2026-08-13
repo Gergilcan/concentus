@@ -78,7 +78,7 @@ export function useSelectedRun(pushError: (m: string) => void, runs: RunSummary[
     tick()
     // A finished run is read once and then left alone: its node state cannot change again, so
     // an interval on it is pure waste for as long as the selection lasts.
-    if (selectedStatus === 'TERMINATED' || selectedStatus === 'ERROR') {
+    if (selectedStatus === 'TERMINATED' || selectedStatus === 'ERROR' || selectedStatus === 'COMPLETED') {
       return () => {
         alive = false
       }

@@ -414,6 +414,10 @@
   background: t.$accent;
   animation: pulse 1.4s ease-in-out infinite;
 }
+/* A human owes this run something — an approval, or an answer to what it asked. */
+.k_waiting {
+  background: t.$warn;
+}
 
 @keyframes pulse {
   0%,
@@ -452,6 +456,9 @@
   }
   &.k_active {
     background: t.$accent;
+  }
+  &.k_waiting {
+    background: color-mix(in srgb, t.$warn 75%, transparent);
   }
 }
 

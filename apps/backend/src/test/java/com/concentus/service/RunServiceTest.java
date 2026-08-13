@@ -3,6 +3,7 @@ package com.concentus.service;
 import com.concentus.config.AgentSpec;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.FlowNode;
+import com.concentus.model.RunEvent;
 import com.concentus.model.RunSummary;
 import com.concentus.store.RunStore;
 import com.concentus.support.AnthropicClientProvider;
@@ -165,6 +166,58 @@ class RunServiceTest {
 
         assertThat(summary.trigger()).isEqualTo("prompt");
         verify(localExecutor, timeout(2000)).runTurn(any(), any(), eq("go"));
+    }
+
+    @Test
+    void aFinishedTurnCompletesTheRunAndDoesNotBlockTheNextFire() throws Exception {
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        // The executor ends its turn the way the real one does: a final answer, then idle.
+        doAnswer(inv -> {
+            AgentRun run = inv.getArgument(0);
+            run.emit(RunEvent.of("agent_message", "Briefing sent to the channel.", "Coordinator", "n1"));
+            run.status = "IDLE";
+            return null;
+        }).when(localExecutor).runTurn(any(), any(), any());
+        RunService svc = newService(4, 8, 10);
+
+        RunSummary summary = svc.start(flowWithPrompt("f1", "cron", "daily briefing"));
+        verify(localExecutor, timeout(2000)).runTurn(any(), any(), eq("daily briefing"));
+
+        // A delivered result is COMPLETED (still continuable while retained) — and it must not
+        // block the next scheduled tick. Counting a finished run as active made every cron flow
+        // fire exactly once and then starve behind its own finished run.
+        long deadline = System.currentTimeMillis() + 2000;
+        while (System.currentTimeMillis() < deadline && svc.hasActiveRun("f1")) Thread.sleep(20);
+        assertThat(svc.get(summary.id()).orElseThrow().status).isEqualTo("COMPLETED");
+        assertThat(svc.hasActiveRun("f1")).isFalse();
+    }
+
+    @Test
+    void aTurnEndingInAQuestionAwaitsTheUsersAnswerAndStaysInFlight() throws Exception {
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        doAnswer(inv -> {
+            AgentRun run = inv.getArgument(0);
+            run.emit(RunEvent.of("agent_message",
+                    "I found two invoices with the same number.\nWhich one should I keep?",
+                    "Coordinator", "n1"));
+            run.status = "IDLE";
+            return null;
+        }).when(localExecutor).runTurn(any(), any(), any());
+        RunService svc = newService(4, 8, 10);
+
+        RunSummary summary = svc.start(flowWithPrompt("f1", "prompt", "reconcile"));
+        verify(localExecutor, timeout(2000)).runTurn(any(), any(), eq("reconcile"));
+
+        long deadline = System.currentTimeMillis() + 2000;
+        while (System.currentTimeMillis() < deadline
+                && !"AWAITING_ANSWER".equals(svc.get(summary.id()).orElseThrow().status)) {
+            Thread.sleep(20);
+        }
+        assertThat(svc.get(summary.id()).orElseThrow().status).isEqualTo("AWAITING_ANSWER");
+        // A question on the table blocks the next scheduled fire, exactly like a pending approval.
+        assertThat(svc.hasActiveRun("f1")).isTrue();
     }
 
     // ---------------------------------------------------------------- start(): cloud backend
@@ -427,17 +480,34 @@ class RunServiceTest {
     // ---------------------------------------------------------------- hasActiveRun() / flowOf() / list()
 
     @Test
-    void hasActiveRunReflectsOnlyNonTerminalRunsForThatFlow() {
+    void hasActiveRunReflectsOnlyInFlightRunsForThatFlow() {
         when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
         RunService svc = newService(4, 8, 10);
         RunSummary s = svc.start(flow("f1"));
+        AgentRun run = svc.get(s.id()).orElseThrow();
 
-        assertThat(svc.hasActiveRun("f1")).isTrue();
-        assertThat(svc.hasActiveRun("other-flow")).isFalse();
+        // Idle is a finished turn, not work in flight — it must not block the next scheduled
+        // fire. Counting it as active made every cron flow run exactly once and then starve
+        // behind its own idle run, which never terminates on its own.
+        assertThat(run.status).isEqualTo("IDLE");
+        assertThat(svc.hasActiveRun("f1")).isFalse();
         assertThat(svc.hasActiveRun(null)).isFalse();
 
-        svc.get(s.id()).orElseThrow().status = "TERMINATED";
+        run.status = "RUNNING";
+        assertThat(svc.hasActiveRun("f1")).isTrue();
+        assertThat(svc.hasActiveRun("other-flow")).isFalse();
+
+        // A pending human decision is still in flight: firing a second run would stack a
+        // duplicate behind the question being asked.
+        run.status = "AWAITING_APPROVAL";
+        assertThat(svc.hasActiveRun("f1")).isTrue();
+        run.status = "AWAITING_ANSWER";
+        assertThat(svc.hasActiveRun("f1")).isTrue();
+
+        run.status = "COMPLETED";
+        assertThat(svc.hasActiveRun("f1")).isFalse();
+        run.status = "TERMINATED";
         assertThat(svc.hasActiveRun("f1")).isFalse();
     }
 

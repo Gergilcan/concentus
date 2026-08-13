@@ -1,13 +1,15 @@
 import type { BackendFlow, RunSummary } from '../api/types.ts'
 
 export type Sort = 'recent' | 'name' | 'runs'
-export type Kind = 'ok' | 'fail' | 'active' | 'stopped'
+export type Kind = 'ok' | 'fail' | 'active' | 'stopped' | 'waiting'
 
 export function kindOf(status: string): Kind {
   if (status === 'ERROR') return 'fail'
   // Stopped on purpose — neither a success nor a failure.
   if (status === 'TERMINATED') return 'stopped'
   if (status === 'RUNNING' || status === 'STARTING') return 'active'
+  // A human owes it something — an approval or an answer to the question it asked.
+  if (status === 'AWAITING_APPROVAL' || status === 'AWAITING_ANSWER') return 'waiting'
   return 'ok'
 }
 
@@ -16,6 +18,7 @@ export const KIND_LABEL: Record<Kind, string> = {
   fail: 'Failed',
   active: 'Running',
   stopped: 'Stopped',
+  waiting: 'Waiting for you',
 }
 
 /**

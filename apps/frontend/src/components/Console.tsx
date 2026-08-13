@@ -226,6 +226,14 @@ export function Console({ runId, status }: { runId: string; status?: RunStatus }
 
       {err && <div className={styles.err}>{err}</div>}
 
+      {status === 'AWAITING_ANSWER' && (
+        <div className={styles.approvalRow}>
+          <span>
+            <b>The agent asked you something.</b> Its question is above — answer in the box below.
+          </span>
+        </div>
+      )}
+
       {status === 'AWAITING_APPROVAL' && (
         <div className={styles.approvalRow}>
           <span>

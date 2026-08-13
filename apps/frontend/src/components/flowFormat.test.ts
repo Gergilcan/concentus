@@ -36,8 +36,14 @@ describe('kindOf', () => {
     expect(kindOf('STARTING')).toBe('active')
   })
 
-  it('maps any other status (e.g. IDLE) to ok', () => {
+  it('maps the two waiting-on-a-human states to waiting', () => {
+    expect(kindOf('AWAITING_APPROVAL')).toBe('waiting')
+    expect(kindOf('AWAITING_ANSWER')).toBe('waiting')
+  })
+
+  it('maps any other status (e.g. IDLE, COMPLETED) to ok', () => {
     expect(kindOf('IDLE')).toBe('ok')
+    expect(kindOf('COMPLETED')).toBe('ok')
     expect(kindOf('')).toBe('ok')
   })
 })
@@ -49,6 +55,7 @@ describe('KIND_LABEL', () => {
       fail: 'Failed',
       active: 'Running',
       stopped: 'Stopped',
+      waiting: 'Waiting for you',
     })
   })
 })
