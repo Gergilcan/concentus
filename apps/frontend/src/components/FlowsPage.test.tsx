@@ -1,19 +1,31 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BackendFlow } from '../api/types.ts'
+import type { BackendFlow, RunSummary } from '../api/types.ts'
 import { FlowsPage } from './FlowsPage.tsx'
 
-vi.mock('../api/client.ts', () => ({ api: {} }))
+// The page asks which flows have a golden reference on mount. Empty by default — the state of a
+// dashboard nobody has marked a reference on yet — and stubbed per test where it matters.
+const listGoldenStatusMock = vi.fn().mockResolvedValue([])
+const goldenRerunMock = vi.fn()
+const compareRunsMock = vi.fn()
+
+vi.mock('../api/client.ts', () => ({
+  api: {
+    listGoldenStatus: () => listGoldenStatusMock(),
+    goldenRerun: (id: string) => goldenRerunMock(id),
+    compareRuns: (a: string, b: string) => compareRunsMock(a, b),
+  },
+}))
 
 // One flow at the root keeps the page out of its empty state so the folder grid renders.
 const flow: BackendFlow = { id: 'f1', name: 'Mail triage', mode: 'local', nodes: [], edges: [] }
 
-const renderPage = () => {
+const renderPage = (runs: RunSummary[] = []) => {
   const onSaveFlow = vi.fn().mockResolvedValue(undefined)
-  render(
+  const view = render(
     <FlowsPage
       flows={[flow]}
-      runs={[]}
+      runs={runs}
       onOpen={vi.fn()}
       onRun={vi.fn()}
       onDuplicate={vi.fn()}
@@ -26,7 +38,31 @@ const renderPage = () => {
       pushError={vi.fn()}
     />,
   )
-  return { onSaveFlow }
+  return { onSaveFlow, view }
+}
+
+/** The same page again with a different run list — how a poll reaches it in the real app. */
+function rerenderWith(view: ReturnType<typeof render>, runs: RunSummary[]) {
+  view.rerender(
+    <FlowsPage
+      flows={[flow]}
+      runs={runs}
+      onOpen={vi.fn()}
+      onRun={vi.fn()}
+      onDuplicate={vi.fn()}
+      onDelete={vi.fn()}
+      onNew={vi.fn()}
+      onGenerated={vi.fn()}
+      onOpenRun={vi.fn()}
+      onSaveFlow={vi.fn()}
+      onRetryRun={vi.fn()}
+      pushError={vi.fn()}
+    />,
+  )
+}
+
+function run(id: string, status: RunSummary['status']): RunSummary {
+  return { id, flowId: 'f1', flowName: 'Mail triage', mode: 'local', status, createdAt: 1 }
 }
 
 /** jsdom has no DataTransfer; the drag tests carry one just real enough for the handlers. */
@@ -107,5 +143,50 @@ describe('FlowsPage folder creation', () => {
     fireEvent.drop(tile, { dataTransfer })
 
     expect(onSaveFlow).toHaveBeenCalledWith(expect.objectContaining({ id: 'f1', folder: 'Team A' }))
+  })
+})
+
+// Editing a golden-covered flow should surface the check without anyone remembering it exists.
+describe('FlowsPage golden regression chip', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+    listGoldenStatusMock.mockResolvedValue([])
+  })
+
+  it('offers the check only when the flow drifted from its golden reference', async () => {
+    listGoldenStatusMock.mockResolvedValue([
+      { flowId: 'f1', runId: 'run_g', stale: false, autoRun: false },
+    ])
+    renderPage()
+
+    // A flow that still matches its reference says nothing: a chip that is always there is
+    // furniture, and furniture gets ignored on the day it matters.
+    await waitFor(() => expect(listGoldenStatusMock).toHaveBeenCalled())
+    expect(screen.queryByText(/golden outdated/)).not.toBeInTheDocument()
+  })
+
+  it('fires the golden re-run and opens the comparison once it finishes', async () => {
+    listGoldenStatusMock.mockResolvedValue([
+      { flowId: 'f1', runId: 'run_g', stale: true, autoRun: false },
+    ])
+    goldenRerunMock.mockResolvedValue(run('run_new', 'RUNNING'))
+    compareRunsMock.mockResolvedValue({
+      reference: { run: run('run_g', 'COMPLETED'), nodes: [], finalOutput: 'the reference answer' },
+      candidate: { run: run('run_new', 'COMPLETED'), nodes: [], finalOutput: 'the candidate answer' },
+    })
+    const { view } = renderPage()
+
+    fireEvent.click(await screen.findByText(/golden outdated/))
+    await waitFor(() => expect(goldenRerunMock).toHaveBeenCalledWith('run_g'))
+    // While it runs the chip says so rather than inviting a second run.
+    expect(await screen.findByText(/testing…/)).toBeInTheDocument()
+
+    // The dashboard already polls runs; the finished one arriving is what opens the comparison.
+    rerenderWith(view, [run('run_new', 'COMPLETED')])
+
+    expect(await screen.findByText('the reference answer')).toBeInTheDocument()
+    expect(screen.getByText('the candidate answer')).toBeInTheDocument()
+    expect(compareRunsMock).toHaveBeenCalledWith('run_g', 'run_new')
   })
 })

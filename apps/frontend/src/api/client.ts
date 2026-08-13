@@ -18,6 +18,7 @@ import type {
   KnowledgeHit,
   LibraryAgent,
   FlowVersionInfo,
+  GoldenStatus,
   McpDef,
   McpCapabilities,
   McpServerInfo,
@@ -148,6 +149,11 @@ export const api = {
    */
   generateFlow: (description: string) =>
     req<BackendFlow>('/flows/generate', { method: 'POST', body: JSON.stringify({ description }) }),
+  /**
+   * Which flows have a golden reference, and whether they changed since it ran. One call for the
+   * whole dashboard — the answer is derived, so asking per card would be N requests for free data.
+   */
+  listGoldenStatus: () => req<GoldenStatus[]>('/flows/golden-status'),
   listFlowVersions: (id: string) => req<FlowVersionInfo[]>(`/flows/${id}/versions`),
   /** One revision as it was, for previewing it on the canvas. Changes nothing on the server. */
   getFlowVersion: (id: string, version: number) =>

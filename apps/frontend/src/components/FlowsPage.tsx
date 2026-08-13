@@ -1,13 +1,15 @@
-import { useMemo, useState, type DragEvent } from 'react'
+import { useEffect, useMemo, useState, type DragEvent } from 'react'
+import { api } from '../api/client.ts'
 import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
-import type { BackendFlow, RunSummary } from '../api/types.ts'
+import type { BackendFlow, GoldenStatus, RunSummary } from '../api/types.ts'
+import { CompareRunsModal } from './CompareRunsModal.tsx'
 import { DescribeFlowModal } from './DescribeFlowModal.tsx'
 import { FlowCard } from './FlowCard.tsx'
 import { breadcrumbOf, childFolders, flowsAt, folderOf, moveFolder, normalizePath } from './folderTree.ts'
 import { SettingsModal, VersionsModal } from './FlowModals.tsx'
 import { FlowsKpis } from './FlowsKpis.tsx'
-import { type Sort } from './flowFormat.ts'
+import { decided, type Sort } from './flowFormat.ts'
 import {
   collectTags,
   computeStats,
@@ -62,6 +64,50 @@ export function FlowsPage({
   const [settingsFor, setSettingsFor] = useState<BackendFlow | null>(null)
   const [versionsFor, setVersionsFor] = useState<BackendFlow | null>(null)
   const [describing, setDescribing] = useState(false)
+  // Which flows have a golden reference and whether they drifted from it. Derived server-side, so
+  // this is a read: re-fetched whenever the flow list changes, which is what a save produces.
+  const [goldenStatuses, setGoldenStatuses] = useState<GoldenStatus[]>([])
+  // A check this page started, waiting for its run to finish so the comparison can open by itself.
+  const [checking, setChecking] = useState<{ flowId: string; runId: string; referenceId: string } | null>(null)
+  const [comparing, setComparing] = useState<{ referenceId: string; candidateId: string } | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    void api
+      .listGoldenStatus()
+      .then((s) => alive && setGoldenStatuses(s))
+      // A dashboard that cannot read this still works — it just cannot offer the check.
+      .catch(() => alive && setGoldenStatuses([]))
+    return () => {
+      alive = false
+    }
+  }, [flows])
+
+  const goldenByFlow = useMemo(
+    () => new Map(goldenStatuses.map((s) => [s.flowId, s])),
+    [goldenStatuses],
+  )
+
+  const startGoldenCheck = async (status: GoldenStatus) => {
+    setChecking(null)
+    try {
+      const started = await api.goldenRerun(status.runId)
+      setChecking({ flowId: status.flowId, runId: started.id, referenceId: status.runId })
+    } catch (e) {
+      pushError(errMessage(e))
+    }
+  }
+
+  // The dashboard already polls runs, so watching the started one costs nothing extra: when it
+  // reaches a decided state the comparison opens on its own — which is the whole point of firing
+  // it from a card rather than making the user go and find it.
+  useEffect(() => {
+    if (!checking) return
+    const run = runs.find((r) => r.id === checking.runId)
+    if (!run || !decided(run)) return
+    setComparing({ referenceId: checking.referenceId, candidateId: checking.runId })
+    setChecking(null)
+  }, [runs, checking])
 
   const runsByFlow = useMemo(() => groupRunsByFlow(runs), [runs])
   const allTags = useMemo(() => collectTags(flows), [flows])
@@ -184,6 +230,9 @@ export function FlowsPage({
       setSettingsFor={setSettingsFor}
       setTagFilter={setTagFilter}
       onDragStart={(e) => flow.id && e.dataTransfer.setData(FLOW_DND, flow.id)}
+      golden={flow.id ? goldenByFlow.get(flow.id) : undefined}
+      onGoldenCheck={startGoldenCheck}
+      goldenChecking={!!checking && checking.flowId === flow.id}
     />
   )
 
@@ -371,6 +420,14 @@ export function FlowsPage({
 
       {versionsFor && (
         <VersionsModal flow={versionsFor} onClose={() => setVersionsFor(null)} pushError={pushError} />
+      )}
+
+      {comparing && (
+        <CompareRunsModal
+          referenceId={comparing.referenceId}
+          candidateId={comparing.candidateId}
+          onClose={() => setComparing(null)}
+        />
       )}
 
       {describing && (

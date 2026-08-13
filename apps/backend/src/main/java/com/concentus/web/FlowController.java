@@ -5,6 +5,9 @@ import com.concentus.auth.OrgContext;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.FlowMemoryView;
 import com.concentus.model.FlowVersionInfo;
+import com.concentus.model.GoldenStatus;
+import com.concentus.service.AgentRun;
+import com.concentus.service.GoldenStatusService;
 import com.concentus.model.RunSummary;
 import com.concentus.service.RunService;
 import com.concentus.mail.MailTriggerService;
@@ -30,6 +33,8 @@ import java.util.List;
 @RequestMapping("/api/flows")
 public class FlowController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(FlowController.class);
+
     /** How many notes the memory view returns. The UI paginates; agents read far fewer. */
     private static final int MEMORY_VIEW_LIMIT = 100;
 
@@ -41,11 +46,13 @@ public class FlowController {
     private final FlowMemoryStore memory;
     private final OrgContext orgContext;
     private final com.concentus.service.FlowGenerator generator;
+    private final GoldenStatusService goldenStatus;
 
     public FlowController(FlowStore store, RunService runService, ScheduleService scheduler,
                           MailTriggerService mailTriggers, FlowVersionStore versions,
                           FlowMemoryStore memory, OrgContext orgContext,
-                          com.concentus.service.FlowGenerator generator) {
+                          com.concentus.service.FlowGenerator generator,
+                          GoldenStatusService goldenStatus) {
         this.store = store;
         this.runService = runService;
         this.scheduler = scheduler;
@@ -54,6 +61,7 @@ public class FlowController {
         this.memory = memory;
         this.orgContext = orgContext;
         this.generator = generator;
+        this.goldenStatus = goldenStatus;
     }
 
     @GetMapping
@@ -68,10 +76,44 @@ public class FlowController {
 
     @PostMapping
     public FlowGraph save(@RequestBody FlowGraph flow) {
+        // Read before writing: whether THIS save changed the graph is the only honest trigger for
+        // an automatic golden check. Re-saving an unchanged flow (a tag, a rename, a second click)
+        // must not spend an agent run.
+        FlowGraph before = flow.id() == null ? null : store.get(flow.id()).orElse(null);
         FlowGraph saved = store.save(flow);
         versions.snapshot(saved, currentAuthor());  // keep a restorable revision of every save
         rescheduleTriggers();
+        autoRunGoldenCheck(before, saved);
         return saved;
+    }
+
+    /**
+     * Replays the golden reference against the flow that was just saved — but only for a flow
+     * that asked for it, and only when the save actually changed the graph.
+     *
+     * <p>Best-effort by design: a check that cannot start (no CLI, budget reached, nothing to
+     * replay) must not fail the SAVE. The user's edit is the thing they asked for; the check is
+     * the favour, and a favour that eats the request is a bug.
+     */
+    private void autoRunGoldenCheck(FlowGraph before, FlowGraph saved) {
+        AgentRun golden = goldenStatus.autoCheckAfterSave(before, saved).orElse(null);
+        if (golden == null) return;
+        try {
+            runService.startGoldenCheck(saved, golden.id);
+        } catch (RuntimeException e) {
+            log.warn("Automatic golden check for flow {} did not start: {}", saved.id(), e.getMessage());
+        }
+    }
+
+    /**
+     * Which flows have a golden reference, and whether the flow has changed since it ran.
+     *
+     * <p>One call for the whole dashboard rather than one per card: the answer is derived from
+     * runs already in memory, and a card-by-card endpoint would turn a page render into N requests.
+     */
+    @GetMapping("/golden-status")
+    public List<GoldenStatus> goldenStatus() {
+        return goldenStatus.all(store.list());
     }
 
     /**

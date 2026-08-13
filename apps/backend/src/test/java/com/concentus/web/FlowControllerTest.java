@@ -40,11 +40,14 @@ class FlowControllerTest {
         return new FlowGraph(id, name, "managed", List.of(), List.of(), null, List.of(), null, null);
     }
 
+    private final com.concentus.service.GoldenStatusService goldenStatus =
+            mock(com.concentus.service.GoldenStatusService.class);
+
     /** {@code authEnabled=false} is the desktop install: one person, no account to name. */
     private FlowController controller(boolean authEnabled) {
         return new FlowController(store, runService, scheduler, mailTriggers, versions, memory,
                 new OrgContext("default", authEnabled),
-                mock(com.concentus.service.FlowGenerator.class));
+                mock(com.concentus.service.FlowGenerator.class), goldenStatus);
     }
 
     @Test
@@ -99,5 +102,47 @@ class FlowControllerTest {
 
         assertThatThrownBy(() -> controller(false).version("f1", 9))
                 .hasMessageContaining("No such version");
+    }
+
+    // ---------------------------------------------------------------- automatic golden checks
+
+    @Test
+    void savingAFlowThatOptedInReplaysItsGoldenReference() {
+        when(store.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(store.get("f1")).thenReturn(Optional.of(flow("f1", "Before")));
+        com.concentus.service.AgentRun golden =
+                new com.concentus.service.AgentRun("run_g", "f1", "Flow", "local");
+        when(goldenStatus.autoCheckAfterSave(any(), any())).thenReturn(Optional.of(golden));
+
+        controller(false).save(flow("f1", "After"));
+
+        verify(runService).startGoldenCheck(any(), eq("run_g"));
+    }
+
+    @Test
+    void aGoldenCheckThatCannotStartDoesNotFailTheSave() {
+        // The edit is what the user asked for; the check is the favour. A favour that eats the
+        // request — no CLI, budget reached — would lose their work.
+        when(store.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(store.get("f1")).thenReturn(Optional.of(flow("f1", "Before")));
+        com.concentus.service.AgentRun golden =
+                new com.concentus.service.AgentRun("run_g", "f1", "Flow", "local");
+        when(goldenStatus.autoCheckAfterSave(any(), any())).thenReturn(Optional.of(golden));
+        when(runService.startGoldenCheck(any(), eq("run_g")))
+                .thenThrow(new IllegalStateException("Monthly budget reached."));
+
+        FlowGraph saved = controller(false).save(flow("f1", "After"));
+
+        assertThat(saved.name()).isEqualTo("After");
+    }
+
+    @Test
+    void savingAFlowThatDidNotOptInStartsNothing() {
+        when(store.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(goldenStatus.autoCheckAfterSave(any(), any())).thenReturn(Optional.empty());
+
+        controller(false).save(flow("f1", "After"));
+
+        verify(runService, never()).startGoldenCheck(any(), any());
     }
 }

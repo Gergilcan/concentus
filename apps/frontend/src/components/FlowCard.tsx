@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
-import type { BackendFlow, RunSummary } from '../api/types.ts'
+import type { BackendFlow, GoldenStatus, RunSummary } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
 import { hueOf } from '../utils/hueOf.ts'
 import { KIND_LABEL, compact, countsOf, decided, kindOf, money, timeAgo, triggerOf } from './flowFormat.ts'
@@ -19,9 +19,18 @@ export function FlowCard({
   setSettingsFor,
   setTagFilter,
   onDragStart,
+  golden,
+  onGoldenCheck,
+  goldenChecking = false,
 }: {
   flow: BackendFlow
   flowRuns: RunSummary[]
+  /** This flow's golden reference, when it has one. Absent means there is nothing to be stale. */
+  golden?: GoldenStatus
+  /** Starts a golden re-run against the flow as saved now. */
+  onGoldenCheck?: (status: GoldenStatus) => void
+  /** A check this card started is still running. */
+  goldenChecking?: boolean
   onOpen: (id: string) => void
   onRun: (id: string) => void
   onDuplicate: (flow: BackendFlow) => void
@@ -120,6 +129,20 @@ export function FlowCard({
           {agents} agent{agents === 1 ? '' : 's'} · {tools} tool{tools === 1 ? '' : 's'}
         </span>
       </div>
+
+      {/* The quiet half of "edit without fear": the flow has a run you trust and no longer matches
+          it. One click replays that run's input against what is saved now and opens the two side
+          by side. Only shown when it is actually true — a chip that is always there is furniture. */}
+      {golden?.stale && onGoldenCheck && (
+        <button
+          className={styles.goldenChip}
+          disabled={goldenChecking}
+          title="This flow has changed since its golden reference ran. Replay that run's input against the flow as it is saved now, then compare the two."
+          onClick={() => onGoldenCheck(golden)}
+        >
+          {goldenChecking ? '⭐ testing…' : '⭐ golden outdated — test now'}
+        </button>
+      )}
 
       {tags.length > 0 && (
         <div className={styles.cardTags}>

@@ -28,7 +28,7 @@ class FlowGraphRoundTripTest {
                 false, List.of("ops"), true,
                 "https://hooks.example", 25.0,
                 "cred_slack", "C012345", "https://teams.example",
-                Map.of("COMPANY", "ACME"), "Samples");
+                Map.of("COMPANY", "ACME"), "Samples", true);
 
         // A plain mapper, deliberately: the strictest reader this JSON will ever meet, and the
         // configuration under which the constructor ambiguity bit hardest.
@@ -40,6 +40,8 @@ class FlowGraphRoundTripTest {
         assertThat(back.folder()).isEqualTo("Samples");
         assertThat(back.variables()).containsEntry("COMPANY", "ACME");
         assertThat(back.approvalSlackChannel()).isEqualTo("C012345");
+        // The newest component, which is what this tripwire is for.
+        assertThat(back.goldenAutoRunOrDefault()).isTrue();
     }
 
     @Test
@@ -54,11 +56,14 @@ class FlowGraphRoundTripTest {
                 false, List.of("ops"), true,
                 "https://hooks.example", 25.0,
                 "cred_slack", "C012345", "https://teams.example",
-                Map.of("COMPANY", "ACME"), "Samples");
+                Map.of("COMPANY", "ACME"), "Samples", true);
 
         assertThat(flow.withId("flow_2")).isEqualTo(flow.withId("flow_2").withId("flow_2"))
-                .extracting(FlowGraph::folder, FlowGraph::variables, FlowGraph::budgetUsd)
-                .containsExactly("Samples", Map.of("COMPANY", "ACME"), 25.0);
+                .extracting(FlowGraph::folder, FlowGraph::variables, FlowGraph::budgetUsd,
+                        FlowGraph::goldenAutoRun)
+                .containsExactly("Samples", Map.of("COMPANY", "ACME"), 25.0, true);
         assertThat(flow.withId("flow_2").withId("flow_1")).isEqualTo(flow);
+        // withFolder is the other copy every seeded flow goes through, and it strips the same way.
+        assertThat(flow.withFolder("Other").goldenAutoRun()).isTrue();
     }
 }

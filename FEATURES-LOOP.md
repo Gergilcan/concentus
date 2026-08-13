@@ -156,7 +156,7 @@ logic (stub the CLI runner); frontend test for the modal flow with a mocked api.
 **Accept:** a sentence produces an editable flow in Studio; invalid model output surfaces a clear
 error, never a broken canvas; nothing is persisted without the user saving.
 
-### 3. [ ] Golden regression on save (CI for flows)
+### 3. [x] Golden regression on save (CI for flows)
 
 **Goal:** Editing a flow whose golden reference exists offers/executes an automatic golden re-run
 and flags regressions — "edit without fear".

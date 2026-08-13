@@ -45,8 +45,11 @@ export { expect }
  * exist, the empty card when none do. Only then are counts and clicks deterministic.
  */
 export async function openApp(page: Page): Promise<void> {
+  // endsWith, not includes: the dashboard also GETs /api/flows/golden-status on mount, and an
+  // `includes` matcher happily settled on THAT answer — an empty array, read as "no flows", which
+  // made openApp wait for an empty state on a dashboard full of cards.
   const flowsAnswer = page.waitForResponse(
-    (r) => r.url().includes('/api/flows') && r.request().method() === 'GET',
+    (r) => r.url().endsWith('/api/flows') && r.request().method() === 'GET',
   )
   await page.goto('/')
   const flows = (await (await flowsAnswer).json()) as { folder?: string }[]

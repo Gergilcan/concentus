@@ -491,6 +491,11 @@ export interface BackendFlow {
   /** Dashboard folder; blank/absent = root. The bundled starters live in "Samples". */
   folder?: string
   /**
+   * Saving this flow immediately replays its golden reference against the new graph. Off unless
+   * asked for: every check is a real agent run with a real bill.
+   */
+  goldenAutoRun?: boolean
+  /**
    * Remote approval over Slack: a stored credential holding the bot token, and the channel the
    * request posts to. A ✅/❌ reaction on the posted message approves/rejects the waiting run —
    * outbound polling only, so it works without a public URL.
@@ -513,6 +518,20 @@ export interface FlowVersionInfo {
   nodesDelta: number
   edgesDelta: number
   renamed: boolean
+}
+
+// --- Golden reference status ------------------------------------------------
+
+/**
+ * Where a flow stands against its golden reference. `stale` is derived from the graph the golden
+ * run actually executed, so it needs nothing to be recorded or kept in sync. Only flows that HAVE
+ * a golden run appear at all.
+ */
+export interface GoldenStatus {
+  flowId: string
+  runId: string
+  stale: boolean
+  autoRun: boolean
 }
 
 // --- Runtimes stdio MCP servers need ----------------------------------------

@@ -158,7 +158,7 @@ public class FlowGenerator {
         return new FlowGraph(null, name, mode, nodes, edges, flow.enabled(), flow.tags(),
                 flow.favorite(), flow.notifyWebhook(), flow.budgetUsd(),
                 flow.approvalSlackCredentialId(), flow.approvalSlackChannel(),
-                flow.approvalTeamsWebhook(), flow.variables(), flow.folder());
+                flow.approvalTeamsWebhook(), flow.variables(), flow.folder(), flow.goldenAutoRun());
     }
 
     /**

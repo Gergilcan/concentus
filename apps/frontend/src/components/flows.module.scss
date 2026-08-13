@@ -295,6 +295,30 @@
   }
 }
 
+/* "This flow changed since the run you trust." Quiet on purpose: it is an offer, not an alarm —
+   nothing is broken, and a card that shouts would train people to ignore it. */
+.goldenChip {
+  margin-top: 8px;
+  width: 100%;
+  text-align: left;
+  background: color-mix(in srgb, t.$warn 10%, transparent);
+  border: 1px solid color-mix(in srgb, t.$warn 45%, transparent);
+  color: t.$text;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 10.5px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$warn;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: progress;
+  }
+}
+
 .b_paused {
   color: t.$repo;
   border-color: color-mix(in srgb, t.$repo 55%, transparent);

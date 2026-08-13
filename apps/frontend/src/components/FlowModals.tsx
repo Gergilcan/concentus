@@ -26,6 +26,7 @@ export function SettingsModal({
   const [enabled, setEnabled] = useState(flow.enabled !== false)
   const [webhook, setWebhook] = useState(flow.notifyWebhook ?? '')
   const [budget, setBudget] = useState(flow.budgetUsd != null ? String(flow.budgetUsd) : '')
+  const [goldenAutoRun, setGoldenAutoRun] = useState(flow.goldenAutoRun === true)
   const [slackCredential, setSlackCredential] = useState(flow.approvalSlackCredentialId ?? '')
   const [slackChannel, setSlackChannel] = useState(flow.approvalSlackChannel ?? '')
   const [teamsWebhook, setTeamsWebhook] = useState(flow.approvalTeamsWebhook ?? '')
@@ -56,6 +57,7 @@ export function SettingsModal({
       approvalSlackChannel: slackChannel.trim(),
       approvalTeamsWebhook: teamsWebhook.trim(),
       variables,
+      goldenAutoRun,
     })
     setBusy(false)
   }
@@ -121,6 +123,17 @@ export function SettingsModal({
           onChange={(e) => setBudget(e.target.value)}
           placeholder="e.g. 25"
         />
+      </label>
+      <label
+        className={styles.toggleRow}
+        title="After a save that changes the graph, replay the golden reference's input against the new flow automatically. Each check is a real run with a real cost, which is why it is off unless you ask for it — the dashboard offers the same check as a chip when the flow drifts."
+      >
+        <input
+          type="checkbox"
+          checked={goldenAutoRun}
+          onChange={(e) => setGoldenAutoRun(e.target.checked)}
+        />
+        <span>Re-run the golden check after each save that changes the flow ⓘ</span>
       </label>
       <label className={styles.field}>
         <span>Failure notification webhook</span>
