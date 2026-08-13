@@ -432,6 +432,12 @@ public class RunService {
                 run.emit(RunEvent.of("status", "terminated"));
             }
             runStore.persist(run);
+            // Same contract as runLocalTurn's finally: a run that ended failed notifies,
+            // whoever set the status. The cloud handler marks ERROR from session events —
+            // without this, only exception-shaped cloud failures ever reached the webhook.
+            if ("ERROR".equals(run.status)) {
+                notifier.runFailed(run);
+            }
         }
     }
 

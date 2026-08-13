@@ -153,10 +153,13 @@ test('drag and drop: a card into a folder, a folder into a folder, a card back o
 
 test('a folder can be born empty, filled by drag, and removed when empty again', async ({ page }) => {
   await openApp(page)
-  // One handler for both dialogs this test meets: the creation prompt and the delete confirm.
-  page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? 'E2E Nueva' : undefined))
+  // Only the delete step confirms via a dialog now — creation is an inline input (window.prompt
+  // does not exist in Electron, which is exactly why the tile grew its own field).
+  page.on('dialog', (d) => void d.accept())
 
   await page.getByRole('button', { name: '+ New folder' }).click()
+  await page.getByLabel('New folder name').fill('E2E Nueva')
+  await page.getByLabel('New folder name').press('Enter')
   const tile = page.getByRole('button', { name: 'Folder E2E Nueva', exact: true })
   await expect(tile).toBeVisible()
 
