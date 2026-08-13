@@ -515,6 +515,26 @@ export interface FlowVersionInfo {
   renamed: boolean
 }
 
+// --- Runtimes stdio MCP servers need ----------------------------------------
+
+/** Whether a runtime (node, npm, pnpm, python, pipx, uv) is installed on this machine. */
+export interface RuntimeStatus {
+  id: string
+  label: string
+  found: boolean
+  /** The tool's own `--version` line, proof it ran. Empty when not found. */
+  version: string
+  neededFor: string
+  docsUrl: string
+}
+
+/** What one configured MCP command needs. `runtime` is null when its launcher is not one we manage. */
+export interface RuntimeCheck {
+  command: string
+  runtime: RuntimeStatus | null
+  satisfied: boolean
+}
+
 // --- Flow memory ------------------------------------------------------------
 
 /** One note an agent left for future runs of its flow (memory_append). */

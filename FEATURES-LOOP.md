@@ -102,7 +102,7 @@ version badge.
 **Accept:** save → new version with author visible; restore any version and return to latest
 without losing history; every run shows its version and opens as exactly that flow.
 
-### 1. [ ] MCP runtime doctor + add-server wizard (pipx/python, npm/pnpm/node)
+### 1. [x] MCP runtime doctor + add-server wizard (pipx/python, npm/pnpm/node)
 
 *(Requested by Gerard on 2026-08-14, mid-loop — queued next.)*
 

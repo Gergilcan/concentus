@@ -68,6 +68,48 @@ test('the MCP catalog expands into category tabs with one-click entries', async 
   await expect(page.getByText('Official Microsoft/Azure docs search')).toBeVisible()
 })
 
+test('the guided add walks an MCP server in and it lands in the list', async ({ page }) => {
+  await openApp(page)
+  await goTo(page, 'Resources')
+  await page.getByRole('button', { name: 'MCP Servers' }).click()
+
+  await page.getByRole('button', { name: '+ Add a server (guided)' }).click()
+  // Scoped to the dialog: the CRUD form behind it has a "Name" field of its own.
+  const wizard = page.getByRole('dialog')
+
+  // A remote server has nothing to launch, so it skips the runtime step: two steps, not three.
+  await expect(wizard.getByText('Step 1 of 2')).toBeVisible()
+  await wizard.getByLabel('Name').fill('e2e-guided')
+  // exact: the Transport select's accessible name contains its options, one of which says "URL".
+  await wizard.getByLabel('URL', { exact: true }).fill('https://mcp.example.test/mcp')
+  await wizard.getByRole('button', { name: 'Next' }).click()
+  await expect(wizard.getByText(/the values it needs/)).toBeVisible()
+  await wizard.getByRole('button', { name: 'Add server' }).click()
+
+  // Saved through the real API and picked up by the list below.
+  await expect(page.getByText('e2e-guided')).toBeVisible()
+})
+
+test('a local server asks about the runtime it needs before anything runs', async ({ page }) => {
+  await openApp(page)
+  await goTo(page, 'Resources')
+  await page.getByRole('button', { name: 'MCP Servers' }).click()
+  await page.getByRole('button', { name: '+ Add a server (guided)' }).click()
+  const wizard = page.getByRole('dialog')
+
+  await wizard.getByLabel('Name').fill('e2e-local')
+  await wizard.getByLabel('Transport').selectOption('stdio')
+  await wizard.getByLabel('Command', { exact: true }).fill('uvx')
+  await wizard.getByRole('button', { name: 'Next' }).click()
+
+  // Whether uv exists on the machine running these tests is not something to assert — CI runners
+  // differ. What must hold is that the step EXISTS and the backend answered about it, either way.
+  await expect(wizard.getByText('Step 2 of 3')).toBeVisible()
+  await expect(
+    wizard.getByText(/uv is not installed/).or(wizard.getByText(/uv .* found/)),
+  ).toBeVisible({ timeout: 15_000 })
+})
+
 test('export downloads the whole configuration and import accepts it back', async ({ page }) => {
   await openApp(page)
   await goTo(page, 'Resources')

@@ -159,7 +159,41 @@ const AUTH_LABEL: Record<CatalogEntry['auth'], string> = {
   stdio: 'runs locally',
 }
 
-export function McpCatalog({ onAdded }: { onAdded: () => void }) {
+/**
+ * Entries whose one click leaves work behind: a stdio server with environment variables to fill,
+ * or a token server needing a credential. Those are the ones worth handing to the wizard — the
+ * rest (OAuth, no auth) really are done in one click, and routing them through three steps would
+ * take away the thing this catalogue is for.
+ */
+function needsAnswers(entry: CatalogEntry): boolean {
+  return Object.keys(entry.env ?? {}).length > 0 || entry.auth === 'token'
+}
+
+export function McpCatalog({
+  onAdded,
+  onConfigure,
+  reloadToken = 0,
+}: {
+  onAdded: () => void
+  /**
+   * Bumped by the page when the server list changed elsewhere (the wizard saved one), so the ✓
+   * marks catch up. A prop rather than a remount: remounting would fold the catalogue shut under
+   * someone who has it open and is still browsing it.
+   */
+  reloadToken?: number
+  /**
+   * Opens the guided add for an entry that needs values. Optional: without it every entry is
+   * added directly, which is what the catalogue did before the wizard existed.
+   */
+  onConfigure?: (entry: {
+    name: string
+    url?: string
+    command?: string
+    args?: string[]
+    env?: Record<string, string>
+    authHeader?: string
+  }) => void
+}) {
   const [note, setNote] = useState<string | null>(null)
   // Names already in the user's server list, lowercased. What turns a card into a ✓: adding the
   // same server twice only creates a confusing duplicate below, so an added card says so and
@@ -179,10 +213,21 @@ export function McpCatalog({ onAdded }: { onAdded: () => void }) {
       .then((defs) => setAdded(new Set(defs.map((d) => d.name.toLowerCase()))))
       // If the list cannot be read the catalog still works — it just cannot mark anything.
       .catch(() => setAdded(new Set()))
-  }, [])
+  }, [reloadToken])
 
   const add = async (entry: CatalogEntry) => {
     setNote(null)
+    if (onConfigure && needsAnswers(entry)) {
+      onConfigure({
+        name: entry.name,
+        url: entry.url,
+        command: entry.command,
+        args: entry.args,
+        env: entry.env,
+        authHeader: entry.header,
+      })
+      return
+    }
     setBusy(entry.name)
     try {
       await api.saveMcpDef({
@@ -247,7 +292,13 @@ export function McpCatalog({ onAdded }: { onAdded: () => void }) {
                 <button
                   key={entry.name}
                   className={cx(styles.catalogItem, isAdded && styles.catalogAdded)}
-                  title={isAdded ? 'Already in your server list below.' : entry.note}
+                  title={
+                    isAdded
+                      ? 'Already in your server list below.'
+                      : onConfigure && needsAnswers(entry)
+                        ? `${entry.note} — opens a short setup, because this one needs values before it can run.`
+                        : entry.note
+                  }
                   disabled={isAdded || busy === entry.name}
                   onClick={() => void add(entry)}
                 >

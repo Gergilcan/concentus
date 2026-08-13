@@ -24,6 +24,8 @@ import type {
   NodeExecReport,
   ModelCatalog,
   RemoteRepoList,
+  RuntimeCheck,
+  RuntimeStatus,
   RunComparison,
   RunEvent,
   RunSummary,
@@ -146,6 +148,15 @@ export const api = {
     req<BackendFlow>(`/flows/${id}/versions/${version}`),
   restoreFlowVersion: (id: string, version: number) =>
     req<BackendFlow>(`/flows/${id}/versions/${version}/restore`, { method: 'POST' }),
+  // runtimes (what stdio MCP servers need in order to launch)
+  listRuntimes: (refresh = false) =>
+    req<RuntimeStatus[]>(`/runtimes${refresh ? '?refresh=true' : ''}`),
+  /** What a configured MCP command needs, and whether this machine has it. */
+  checkRuntime: (command: string, refresh = false) =>
+    req<RuntimeCheck>(
+      `/runtimes/check?command=${encodeURIComponent(command)}${refresh ? '&refresh=true' : ''}`,
+    ),
+
   /** Notes this flow's agents left for future runs (memory_append), newest first. */
   getFlowMemory: (id: string) => req<FlowMemoryView>(`/flows/${id}/memory`),
   clearFlowMemory: (id: string) => req<void>(`/flows/${id}/memory`, { method: 'DELETE' }),
