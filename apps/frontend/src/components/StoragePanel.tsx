@@ -203,9 +203,11 @@ function BackupSection() {
   }
 
   return (
-    <div className={styles.crudForm}>
+    // Not another .crudForm: this sits INSIDE the storage panel, which already provides the
+    // gutter, and a second one indented the whole block away from the settings above it.
+    <div className={styles.subSection}>
       <h3
-        className={styles.h3}
+        className={styles.h4}
         title="Everything as one .json: flows, agents, MCP servers, facades, databases, knowledge bases, skills and variables — importable on another machine with every cross-reference intact. Secrets never travel: credentials arrive as placeholders under their original ids, and you re-enter each value once. Knowledge documents and run history stay out."
       >
         Backup — export / import everything ⓘ

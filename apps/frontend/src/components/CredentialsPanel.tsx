@@ -123,10 +123,14 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
             className={editing?.id === c.id ? `${styles.crudItem} ${styles.active}` : styles.crudItem}
             onClick={() => startEdit(c)}
           >
-            <div>{c.label}</div>
-            <div className={styles.muted}>
-              {c.kind} · {c.hint ?? '••••'}
-              {c.lastUsedAt ? ` · used ${new Date(c.lastUsedAt).toLocaleDateString()}` : ' · never used'}
+            {/* Grouped: the row is a flex line, so two loose children would sit side by side
+                instead of stacking — the label and its metadata each squeezed into half a column. */}
+            <div className={styles.crudItemStack}>
+              <div>{c.label}</div>
+              <div className={styles.muted}>
+                {c.kind} · {c.hint ?? '••••'}
+                {c.lastUsedAt ? ` · used ${new Date(c.lastUsedAt).toLocaleDateString()}` : ' · never used'}
+              </div>
             </div>
           </div>
         ))}

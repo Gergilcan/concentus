@@ -95,6 +95,26 @@
   white-space: nowrap;
 }
 
+/**
+ * A row whose content is two stacked lines (a label and its metadata) rather than one.
+ *
+ * `.crudItem` is a flex ROW so a delete button can sit at its end. Any panel with more than one
+ * piece of content therefore has to group it, or its lines end up side by side, each squeezed into
+ * half the width and wrapping — which is exactly what happened to the credentials list.
+ * `min-width: 0` because a flex item defaults to min-content and a long label would widen the
+ * column instead of eliding.
+ */
+.crudItemStack {
+  flex: 1;
+  min-width: 0;
+
+  > * {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 /* Quiet until hovered, like the folder tiles' ✕ — always reachable, never shouting. */
 .crudItemDelete {
   flex: 0 0 auto;
@@ -344,6 +364,18 @@
 }
 .crudForm > .h4:first-child {
   margin-top: 0;
+}
+
+/**
+ * A section inside a panel that already supplies the page's gutter.
+ *
+ * Nesting one `.crudForm` inside another added a SECOND left padding, which is why the backup
+ * block sat indented from the storage settings it belongs beside. This carries the vertical
+ * separation the nesting used to provide, and nothing horizontal.
+ */
+.subSection {
+  margin-top: var(--sp-4);
+  min-width: 0;
 }
 
 /* ---- knowledge bases ---- */
