@@ -908,7 +908,7 @@ you the answer and nothing else.
 | | |
 |---|---|
 | `0` | the run completed |
-| `1` | it failed (errored, or was terminated) |
+| `1` | it failed — the run errored, was terminated, or could not be started at all (no signed-in CLI, no API key, budget reached). The backend's own words are on stderr. |
 | `2` | **it needs a human** — waiting for approval, asking a question, or with no instruction |
 | `3` | timed out; the run is still going in that backend |
 | `4` | usage or setup problem (no such file, jar missing, backend never came up) |

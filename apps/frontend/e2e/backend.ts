@@ -47,10 +47,22 @@ export async function startBackend(port: number): Promise<Backend> {
     ? path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java')
     : 'java'
 
+  // A developer's machine has the claude CLI signed in; a CI runner has neither that nor an API
+  // key, so it cannot execute an agent at all. That is a real difference in what the backend
+  // answers, and a suite only ever run on the first kind of machine is exactly how the second kind
+  // breaks. CONCENTUS_E2E_NO_CLI=1 points the backend's user.home at an empty directory — which is
+  // where it looks for the CLI's login — making the CI condition reproducible locally.
+  //
+  // -Duser.home rather than an environment variable on purpose: on Windows the JVM reads the home
+  // directory from the OS and ignores HOME/USERPROFILE entirely.
+  const noCli = process.env.CONCENTUS_E2E_NO_CLI === '1'
+  const emptyHome = noCli ? fs.mkdtempSync(path.join(os.tmpdir(), 'concentus-e2e-home-')) : null
+
   const child = spawn(
     javaBin,
     [
       '--enable-native-access=ALL-UNNAMED',
+      ...(emptyHome ? [`-Duser.home=${emptyHome}`] : []),
       '-jar', jar,
       '--spring.profiles.active=desktop',
       `--server.port=${port}`,
@@ -61,6 +73,9 @@ export async function startBackend(port: number): Promise<Backend> {
         ...process.env,
         APP_DATA_DIR: dataDir,
         CONCENTUS_SECRET_KEY: crypto.randomBytes(32).toString('base64'),
+        // Cleared alongside the empty home: an API key would give the backend a way to execute
+        // agents again, which is the very thing the CI condition is missing.
+        ...(noCli ? { ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '', CLAUDE_COMMAND: '' } : {}),
       },
       stdio: ['ignore', 'inherit', 'inherit'],
     },

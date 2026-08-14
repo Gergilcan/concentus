@@ -49,17 +49,30 @@ function runCli(args: string[]): Promise<{ code: number; stdout: string; stderr:
   })
 }
 
-test('runs a flow against a live backend and exits saying a human is needed', async ({ baseURL }) => {
+test('runs a flow against a live backend and exits with what really happened', async ({ baseURL, request }) => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'concentus-cli-spec-')), 'flow.json')
   fs.writeFileSync(file, JSON.stringify(FLOW))
 
+  // Which outcome is correct depends on the machine, so the machine is asked rather than assumed.
+  // A developer's laptop has the claude CLI signed in and can start runs; a CI runner has neither
+  // that nor an API key, and the backend refuses to start one at all. Both are real, and the point
+  // of this test is that the CLI reports each one honestly instead of exiting 0 regardless.
+  const status = await (await request.get(`${baseURL}/api/auth/status`)).json()
   const result = await runCli([file, '--url', baseURL!, '--timeout', '60'])
 
-  // 2 is "stopped for a human", which is what a manual flow given no input is: it started, it has
-  // no instruction, and nothing here will invent one.
-  expect(result.code, result.stderr).toBe(2)
-  expect(result.stderr).toContain('started')
-  expect(result.stderr).toMatch(/needs a human/)
+  if (status.authenticated) {
+    // 2 is "stopped for a human", which is what a manual flow given no input is: it started, it
+    // has no instruction, and nothing here will invent one.
+    expect(result.code, result.stderr).toBe(2)
+    expect(result.stderr).toContain('Run ')
+    expect(result.stderr).toMatch(/needs a human/)
+  } else {
+    // Nothing on this machine can execute an agent, so the run never starts. That is a failure of
+    // the invocation, and it exits 1 carrying the backend's own words rather than a bare code —
+    // which is the difference between a CI job someone can fix and one that just says "1".
+    expect(result.code, result.stderr).toBe(1)
+    expect(result.stderr).toContain('Not signed in')
+  }
 })
 
 test('refuses a flow file that is not there, without booting anything', async () => {
