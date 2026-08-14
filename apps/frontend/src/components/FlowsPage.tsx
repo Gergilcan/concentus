@@ -5,6 +5,7 @@ import { errMessage } from '../utils/errMessage.ts'
 import type { BackendFlow, GoldenStatus, RunSummary } from '../api/types.ts'
 import { CompareRunsModal } from './CompareRunsModal.tsx'
 import { DescribeFlowModal } from './DescribeFlowModal.tsx'
+import { DoctorModal } from './DoctorModal.tsx'
 import { FlowCard } from './FlowCard.tsx'
 import { breadcrumbOf, childFolders, flowsAt, folderOf, moveFolder, normalizePath } from './folderTree.ts'
 import { SettingsModal, VersionsModal } from './FlowModals.tsx'
@@ -64,6 +65,7 @@ export function FlowsPage({
   const [settingsFor, setSettingsFor] = useState<BackendFlow | null>(null)
   const [versionsFor, setVersionsFor] = useState<BackendFlow | null>(null)
   const [describing, setDescribing] = useState(false)
+  const [doctorFor, setDoctorFor] = useState<BackendFlow | null>(null)
   // Which flows have a golden reference and whether they drifted from it. Derived server-side, so
   // this is a read: re-fetched whenever the flow list changes, which is what a save produces.
   const [goldenStatuses, setGoldenStatuses] = useState<GoldenStatus[]>([])
@@ -228,6 +230,7 @@ export function FlowsPage({
       exportFlow={downloadFlowJson}
       setVersionsFor={setVersionsFor}
       setSettingsFor={setSettingsFor}
+      setDoctorFor={setDoctorFor}
       setTagFilter={setTagFilter}
       onDragStart={(e) => flow.id && e.dataTransfer.setData(FLOW_DND, flow.id)}
       golden={flow.id ? goldenByFlow.get(flow.id) : undefined}
@@ -420,6 +423,14 @@ export function FlowsPage({
 
       {versionsFor && (
         <VersionsModal flow={versionsFor} onClose={() => setVersionsFor(null)} pushError={pushError} />
+      )}
+
+      {doctorFor?.id && (
+        <DoctorModal
+          flowId={doctorFor.id}
+          flowName={doctorFor.name}
+          onClose={() => setDoctorFor(null)}
+        />
       )}
 
       {comparing && (

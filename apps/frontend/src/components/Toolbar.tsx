@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { api } from '../api/client.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import type { RunSummary } from '../api/types.ts'
 import { useFlowStore } from '../state/store.ts'
 import { cx } from '../utils/cx.ts'
+import { DoctorModal } from './DoctorModal.tsx'
 import styles from './toolbar.module.scss'
 
 interface Props {
@@ -19,6 +21,8 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
   const setMode = useFlowStore((s) => s.setMode)
   const newFlow = useFlowStore((s) => s.newFlow)
   const loadBackendFlow = useFlowStore((s) => s.loadBackendFlow)
+  const flowId = useFlowStore((s) => s.flowId)
+  const [checking, setChecking] = useState(false)
 
   const save = async () => {
     try {
@@ -64,6 +68,20 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
 
       <div className={styles.spacer} />
 
+      {/* Checks the SAVED flow, so an unsaved canvas has nothing to check yet — the button says
+          that rather than disappearing, which would read as a missing feature. */}
+      <button
+        className={styles.btn}
+        onClick={() => flowId && setChecking(true)}
+        disabled={!flowId}
+        title={
+          flowId
+            ? 'Check this flow before running it: missing credentials, servers without auth, un-installed plugins, an invalid schedule, an exhausted budget. Informs — never blocks a run.'
+            : 'Save the flow first — the check runs against the saved version.'
+        }
+      >
+        ⚕ Check
+      </button>
       <button className={styles.btn} onClick={newFlow}>
         New
       </button>
@@ -73,6 +91,10 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
       <button className={cx(styles.btn, styles.run)} onClick={run}>
         ▶ Run
       </button>
+
+      {checking && flowId && (
+        <DoctorModal flowId={flowId} flowName={name} onClose={() => setChecking(false)} />
+      )}
     </header>
   )
 }

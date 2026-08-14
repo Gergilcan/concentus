@@ -47,7 +47,8 @@ class FlowControllerTest {
     private FlowController controller(boolean authEnabled) {
         return new FlowController(store, runService, scheduler, mailTriggers, versions, memory,
                 new OrgContext("default", authEnabled),
-                mock(com.concentus.service.FlowGenerator.class), goldenStatus);
+                mock(com.concentus.service.FlowGenerator.class), goldenStatus,
+                mock(com.concentus.service.FlowDoctor.class));
     }
 
     @Test

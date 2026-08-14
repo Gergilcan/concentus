@@ -520,6 +520,23 @@ export interface FlowVersionInfo {
   renamed: boolean
 }
 
+// --- Pre-run doctor ---------------------------------------------------------
+
+/**
+ * One thing that would go wrong at run time. Every finding carries its own fix — a check that only
+ * says what is wrong has moved the problem rather than solved it.
+ */
+export interface DoctorFinding {
+  /** "error" (this will fail) or "warn" (this may fail, or will work oddly). */
+  level: 'error' | 'warn'
+  /** graph | credential | mcp | plugin | trigger | budget | runtime | cli | variables */
+  area: string
+  message: string
+  fix: string
+  /** The node it is about, or null for the whole flow. */
+  where?: string | null
+}
+
 // --- Golden reference status ------------------------------------------------
 
 /**

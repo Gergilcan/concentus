@@ -817,6 +817,58 @@
   margin: 0 0 var(--sp-2);
 }
 
+/* The pre-run check. Findings are read top to bottom, so each row is a small block rather than a
+   line: what is wrong, then what to do about it. */
+
+.doctorClear {
+  color: t.$ok;
+  font-size: 12.5px;
+  margin: 0;
+}
+
+.doctorList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.doctorRow {
+  display: grid;
+  gap: 2px;
+  padding: 6px 9px;
+  border: 1px solid t.$border;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.doctorError {
+  color: t.$danger;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.doctorWarn {
+  color: t.$warn;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.doctorMessage {
+  color: t.$text;
+}
+
+.doctorFix {
+  color: t.$muted;
+  font-size: 11px;
+}
+
 /* A quiet divider inside the settings dialog — a heading, not a component of its own. */
 .sectionHead {
   margin: 16px 0 8px;

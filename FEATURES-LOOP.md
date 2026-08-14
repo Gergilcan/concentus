@@ -189,7 +189,7 @@ Tests: unit with the fake transport pattern from `RemoteApprovalServiceTest`.
 **Accept:** question arrives in Slack; a reply resumes the run; a second question posts again;
 no double-posting for the same question.
 
-### 5. [ ] Pre-run doctor
+### 5. [x] Pre-run doctor
 
 **Goal:** One check surfacing everything that would fail at runtime, before running: missing
 credential references, MCP servers without auth, un-installed plugins, invalid cron, exhausted

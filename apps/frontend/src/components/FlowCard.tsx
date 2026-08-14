@@ -17,6 +17,7 @@ export function FlowCard({
   exportFlow,
   setVersionsFor,
   setSettingsFor,
+  setDoctorFor,
   setTagFilter,
   onDragStart,
   golden,
@@ -39,6 +40,8 @@ export function FlowCard({
   exportFlow: (flow: BackendFlow) => void
   setVersionsFor: (flow: BackendFlow) => void
   setSettingsFor: (flow: BackendFlow) => void
+  /** Opens the pre-run check. Absent (or an unsaved flow) simply hides the button. */
+  setDoctorFor?: (flow: BackendFlow) => void
   setTagFilter: (tag: string) => void
   /** When set, the card can be dragged (onto a dashboard folder). The handler fills the payload. */
   onDragStart?: (e: DragEvent) => void
@@ -205,6 +208,15 @@ export function FlowCard({
           </button>
         )}
         <div className={styles.spacer} />
+        {flow.id && setDoctorFor && (
+          <button
+            className={styles.icon}
+            title="Check this flow: missing credentials, servers without auth, un-installed plugins, an invalid schedule, an exhausted budget. Informs — never blocks a run."
+            onClick={() => setDoctorFor(flow)}
+          >
+            ⚕
+          </button>
+        )}
         <button className={styles.icon} title="Version history" onClick={() => setVersionsFor(flow)}>
           ⟲
         </button>

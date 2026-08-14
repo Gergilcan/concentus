@@ -1,0 +1,296 @@
+package com.concentus.service;
+
+import com.concentus.auth.OrgContext;
+import com.concentus.llm.McpOAuthStore;
+import com.concentus.model.DoctorFinding;
+import com.concentus.model.FlowEdge;
+import com.concentus.model.FlowGraph;
+import com.concentus.model.FlowNode;
+import com.concentus.model.RuntimeCheck;
+import com.concentus.model.RuntimeStatus;
+import com.concentus.secrets.CredentialResolver;
+import com.concentus.store.RunStore;
+import com.concentus.store.VariableStore;
+import com.concentus.support.LocalClaudeSupport;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+/**
+ * Unit tests for {@link FlowDoctor}: one per check, plus the two cases that matter most — a
+ * healthy flow reporting nothing, and a check that cannot run staying quiet rather than guessing.
+ * Every collaborator is a stub; nothing here touches a host, a CLI or a database.
+ */
+class FlowDoctorTest {
+
+    private final LocalClaudeSupport claude = mock(LocalClaudeSupport.class);
+    private final CredentialResolver credentials = mock(CredentialResolver.class);
+    private final McpOAuthStore mcpOAuth = mock(McpOAuthStore.class);
+    private final PluginRegistry plugins = mock(PluginRegistry.class);
+    private final RuntimeProbe runtimes = mock(RuntimeProbe.class);
+    private final RunStore runStore = mock(RunStore.class);
+    private final VariableStore variables = mock(VariableStore.class);
+
+    private final FlowDoctor doctor = new FlowDoctor(claude, new FlowCompiler(), credentials,
+            mcpOAuth, plugins, runtimes, runStore, variables, new OrgContext("default", false));
+
+    @BeforeEach
+    void healthyMachine() {
+        when(claude.available()).thenReturn(true);
+        when(variables.merged(any())).thenReturn(new LinkedHashMap<>());
+        when(plugins.list()).thenReturn(List.of());
+        when(mcpOAuth.accessToken(anyString(), anyString())).thenReturn(Optional.of("token"));
+        when(runtimes.check(anyString(), anyBoolean()))
+                .thenAnswer(i -> RuntimeCheck.unmanaged(i.getArgument(0)));
+        when(runStore.spendUsdSince(anyString(), anyLong())).thenReturn(0d);
+    }
+
+    // ---------------------------------------------------------------- flow builders
+
+    private static FlowNode input(String mode, String cron) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("mode", mode);
+        data.put("cron", cron);
+        return new FlowNode("in-1", "input", null, data);
+    }
+
+    private static FlowNode coordinator() {
+        Map<String, Object> data = new HashMap<>();
+        data.put("name", "Coord");
+        data.put("systemPrompt", "Do the thing.");
+        return new FlowNode("a-1", "agent", "coordinator", data);
+    }
+
+    private static FlowGraph flow(List<FlowNode> nodes) {
+        return new FlowGraph("f1", "Flow", "local", nodes,
+                List.of(new FlowEdge("e1", "in-1", "a-1")), null, null, null, null, null);
+    }
+
+    private static FlowGraph healthy() {
+        return flow(List.of(input("manual", ""), coordinator()));
+    }
+
+    private static List<DoctorFinding> ofArea(List<DoctorFinding> findings, String area) {
+        return findings.stream().filter(f -> f.area().equals(area)).toList();
+    }
+
+    // ---------------------------------------------------------------- the quiet case
+
+    @Test
+    void aHealthyFlowReportsNothingAtAll() {
+        assertThat(doctor.check(healthy())).isEmpty();
+    }
+
+    // ---------------------------------------------------------------- the machine
+
+    @Test
+    void aMachineWithoutASignedInCliIsAnErrorForALocalFlow() {
+        when(claude.available()).thenReturn(false);
+
+        List<DoctorFinding> cli = ofArea(doctor.check(healthy()), "cli");
+
+        assertThat(cli).hasSize(1);
+        assertThat(cli.get(0).level()).isEqualTo("error");
+        assertThat(cli.get(0).fix()).contains("sign in");
+    }
+
+    // ---------------------------------------------------------------- the graph
+
+    @Test
+    void aGraphTheRunnerWouldRefuseIsReportedAsSuchWithTheCompilersOwnReason() {
+        // Two coordinators: the exact failure a run would hit, said before the run instead.
+        FlowGraph broken = flow(List.of(input("manual", ""), coordinator(),
+                new FlowNode("a-2", "agent", "coordinator", Map.of("name", "Second"))));
+
+        List<DoctorFinding> graph = ofArea(doctor.check(broken), "graph");
+
+        assertThat(graph).hasSize(1);
+        assertThat(graph.get(0).level()).isEqualTo("error");
+    }
+
+    @Test
+    void aVariableNothingDefinesIsAWarningBecauseTheRunStillStarts() {
+        when(variables.merged(any())).thenReturn(new LinkedHashMap<>());
+        Map<String, Object> data = new HashMap<>(coordinator().dataOrEmpty());
+        data.put("systemPrompt", "Invoice {{CLIENT}} today.");
+        FlowGraph withHole = flow(List.of(input("manual", ""),
+                new FlowNode("a-1", "agent", "coordinator", data)));
+
+        List<DoctorFinding> vars = ofArea(doctor.check(withHole), "variables");
+
+        assertThat(vars).hasSize(1);
+        assertThat(vars.get(0).level()).isEqualTo("warn");
+        assertThat(vars.get(0).message()).contains("CLIENT");
+    }
+
+    // ---------------------------------------------------------------- credentials
+
+    @Test
+    void aCredentialThatNoLongerExistsIsAnErrorNamingTheNode() {
+        when(credentials.resolve("cred_gone")).thenReturn(null);
+        Map<String, Object> data = new HashMap<>();
+        data.put("name", "Linear");
+        data.put("url", "https://mcp.linear.app/mcp");
+        data.put("credentialId", "cred_gone");
+        FlowGraph withMcp = flow(List.of(input("manual", ""), coordinator(),
+                new FlowNode("m-1", "mcp", null, data)));
+
+        List<DoctorFinding> creds = ofArea(doctor.check(withMcp), "credential");
+
+        assertThat(creds).hasSize(1);
+        assertThat(creds.get(0).message()).contains("Linear").contains("cred_gone");
+        assertThat(creds.get(0).where()).isEqualTo("m-1");
+    }
+
+    @Test
+    void aCredentialReferenceInAStdioServersEnvIsCheckedToo() {
+        when(credentials.resolve("cred_gone")).thenReturn(null);
+        Map<String, Object> data = new HashMap<>();
+        data.put("name", "Mailchimp");
+        data.put("command", "uvx");
+        data.put("env", Map.of("MAILCHIMP_API_KEY", "credential:cred_gone"));
+        FlowGraph withStdio = flow(List.of(input("manual", ""), coordinator(),
+                new FlowNode("m-1", "mcp", null, data)));
+
+        List<DoctorFinding> creds = ofArea(doctor.check(withStdio), "credential");
+
+        assertThat(creds).hasSize(1);
+        assertThat(creds.get(0).message()).contains("MAILCHIMP_API_KEY");
+    }
+
+    // ---------------------------------------------------------------- mcp
+
+    @Test
+    void aRemoteServerWithNeitherTokenNorSignInIsOnlyAWarning() {
+        // Plenty of servers need no auth at all; calling those broken would be wrong.
+        when(mcpOAuth.accessToken(anyString(), anyString())).thenReturn(Optional.empty());
+        Map<String, Object> data = new HashMap<>();
+        data.put("name", "Docs");
+        data.put("url", "https://learn.microsoft.com/api/mcp");
+        FlowGraph withMcp = flow(List.of(input("manual", ""), coordinator(),
+                new FlowNode("m-1", "mcp", null, data)));
+
+        List<DoctorFinding> mcp = ofArea(doctor.check(withMcp), "mcp");
+
+        assertThat(mcp).hasSize(1);
+        assertThat(mcp.get(0).level()).isEqualTo("warn");
+        assertThat(mcp.get(0).fix()).contains("If it is open, nothing to do");
+    }
+
+    @Test
+    void aLocalServerWhoseRuntimeIsMissingCannotBeLaunched() {
+        when(runtimes.check(anyString(), anyBoolean())).thenReturn(new RuntimeCheck("uvx x",
+                new RuntimeStatus("uv", "uv", false, "", "uvx servers", "https://docs"), false));
+        Map<String, Object> data = new HashMap<>();
+        data.put("name", "Mailchimp");
+        data.put("command", "uvx");
+        FlowGraph withStdio = flow(List.of(input("manual", ""), coordinator(),
+                new FlowNode("m-1", "mcp", null, data)));
+
+        List<DoctorFinding> runtime = ofArea(doctor.check(withStdio), "runtime");
+
+        assertThat(runtime).hasSize(1);
+        assertThat(runtime.get(0).level()).isEqualTo("error");
+        assertThat(runtime.get(0).message()).contains("uv is not installed");
+    }
+
+    // ---------------------------------------------------------------- plugins
+
+    @Test
+    void aPluginAnAgentUsesButNobodyInstalledIsAnError() {
+        when(plugins.list()).thenReturn(List.of(new PluginRegistry.PluginInfo("other@mkt", "1", "user", true)));
+        Map<String, Object> data = new HashMap<>(coordinator().dataOrEmpty());
+        data.put("plugins", List.of("missing@mkt"));
+        FlowGraph withPlugin = flow(List.of(input("manual", ""),
+                new FlowNode("a-1", "agent", "coordinator", data)));
+
+        List<DoctorFinding> found = ofArea(doctor.check(withPlugin), "plugin");
+
+        assertThat(found).hasSize(1);
+        assertThat(found.get(0).message()).contains("missing@mkt");
+    }
+
+    @Test
+    void whenThePluginListItselfCannotBeReadNothingIsClaimedAboutPlugins() {
+        // The CHECK failing is not evidence the plugins are missing — reporting them would send
+        // someone reinstalling what they already have.
+        when(plugins.list()).thenThrow(new IllegalStateException("no CLI"));
+        Map<String, Object> data = new HashMap<>(coordinator().dataOrEmpty());
+        data.put("plugins", List.of("something@mkt"));
+        FlowGraph withPlugin = flow(List.of(input("manual", ""),
+                new FlowNode("a-1", "agent", "coordinator", data)));
+
+        assertThat(ofArea(doctor.check(withPlugin), "plugin")).isEmpty();
+    }
+
+    // ---------------------------------------------------------------- trigger
+
+    @Test
+    void aScheduleThatCannotBeParsedMeansTheFlowNeverFires() {
+        FlowGraph badCron = flow(List.of(input("cron", "every tuesday-ish"), coordinator()));
+
+        List<DoctorFinding> trigger = ofArea(doctor.check(badCron), "trigger");
+
+        assertThat(trigger).hasSize(1);
+        assertThat(trigger.get(0).level()).isEqualTo("error");
+        assertThat(trigger.get(0).message()).contains("never scheduled");
+    }
+
+    @Test
+    void aValidFiveFieldScheduleIsAccepted() {
+        // Five fields is what the picker writes; the scheduler prefixes the seconds itself.
+        assertThat(ofArea(doctor.check(flow(List.of(input("cron", "0 9 * * *"), coordinator()))), "trigger"))
+                .isEmpty();
+    }
+
+    @Test
+    void aPausedFlowIsWorthMentioningButIsNotBroken() {
+        FlowGraph paused = new FlowGraph("f1", "Flow", "local",
+                List.of(input("cron", "0 9 * * *"), coordinator()),
+                List.of(new FlowEdge("e1", "in-1", "a-1")), false, null, null, null, null);
+
+        List<DoctorFinding> trigger = ofArea(doctor.check(paused), "trigger");
+
+        assertThat(trigger).hasSize(1);
+        assertThat(trigger.get(0).level()).isEqualTo("warn");
+    }
+
+    // ---------------------------------------------------------------- budget
+
+    @Test
+    void aFlowAtItsCeilingSaysSoBeforeTheRunIsRefused() {
+        when(runStore.spendUsdSince(anyString(), anyLong())).thenReturn(30d);
+        FlowGraph budgeted = new FlowGraph("f1", "Flow", "local",
+                List.of(input("manual", ""), coordinator()),
+                List.of(new FlowEdge("e1", "in-1", "a-1")), null, null, null, null, 25.0);
+
+        List<DoctorFinding> budget = ofArea(doctor.check(budgeted), "budget");
+
+        assertThat(budget).hasSize(1);
+        assertThat(budget.get(0).level()).isEqualTo("error");
+        assertThat(budget.get(0).message()).contains("$30.00").contains("$25.00");
+    }
+
+    @Test
+    void aFlowUnderItsCeilingSaysNothing() {
+        when(runStore.spendUsdSince(anyString(), anyLong())).thenReturn(3d);
+        FlowGraph budgeted = new FlowGraph("f1", "Flow", "local",
+                List.of(input("manual", ""), coordinator()),
+                List.of(new FlowEdge("e1", "in-1", "a-1")), null, null, null, null, 25.0);
+
+        assertThat(ofArea(doctor.check(budgeted), "budget")).isEmpty();
+    }
+}

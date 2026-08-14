@@ -11,6 +11,7 @@ import type {
   MailSignInResult,
   BackendFlow,
   DatabaseDef,
+  DoctorFinding,
   EmbedderStatus,
   FlowMemoryView,
   KnowledgeDef,
@@ -154,6 +155,8 @@ export const api = {
    * whole dashboard — the answer is derived, so asking per card would be N requests for free data.
    */
   listGoldenStatus: () => req<GoldenStatus[]>('/flows/golden-status'),
+  /** Everything that would fail at run time, before the run. Never blocks anything. */
+  runFlowDoctor: (id: string) => req<DoctorFinding[]>(`/flows/${id}/doctor`),
   listFlowVersions: (id: string) => req<FlowVersionInfo[]>(`/flows/${id}/versions`),
   /** One revision as it was, for previewing it on the canvas. Changes nothing on the server. */
   getFlowVersion: (id: string, version: number) =>

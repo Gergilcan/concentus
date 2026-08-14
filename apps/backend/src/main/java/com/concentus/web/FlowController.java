@@ -2,6 +2,7 @@ package com.concentus.web;
 
 import com.concentus.auth.ConcentusUserDetails;
 import com.concentus.auth.OrgContext;
+import com.concentus.model.DoctorFinding;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.FlowMemoryView;
 import com.concentus.model.FlowVersionInfo;
@@ -47,12 +48,14 @@ public class FlowController {
     private final OrgContext orgContext;
     private final com.concentus.service.FlowGenerator generator;
     private final GoldenStatusService goldenStatus;
+    private final com.concentus.service.FlowDoctor flowDoctor;
 
     public FlowController(FlowStore store, RunService runService, ScheduleService scheduler,
                           MailTriggerService mailTriggers, FlowVersionStore versions,
                           FlowMemoryStore memory, OrgContext orgContext,
                           com.concentus.service.FlowGenerator generator,
-                          GoldenStatusService goldenStatus) {
+                          GoldenStatusService goldenStatus,
+                          com.concentus.service.FlowDoctor flowDoctor) {
         this.store = store;
         this.runService = runService;
         this.scheduler = scheduler;
@@ -62,6 +65,7 @@ public class FlowController {
         this.orgContext = orgContext;
         this.generator = generator;
         this.goldenStatus = goldenStatus;
+        this.flowDoctor = flowDoctor;
     }
 
     @GetMapping
@@ -130,6 +134,15 @@ public class FlowController {
 
     /** What to automate, in the user's own words. */
     public record GenerateRequest(String description) {
+    }
+
+    /**
+     * Everything that would fail at run time, before the run. Never blocks anything — see
+     * {@link com.concentus.service.FlowDoctor}.
+     */
+    @GetMapping("/{id}/doctor")
+    public List<DoctorFinding> doctor(@PathVariable String id) {
+        return flowDoctor.check(requireFlow(id));
     }
 
     /** Revision history for a flow (newest first). */
