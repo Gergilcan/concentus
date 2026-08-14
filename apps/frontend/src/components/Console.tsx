@@ -8,6 +8,7 @@ import { agentKey } from '../utils/agentKey.ts'
 import { cx } from '../utils/cx.ts'
 import { hueOf } from '../utils/hueOf.ts'
 import { compact, kindOf } from './flowFormat.ts'
+import { RunTimeline } from './RunTimeline.tsx'
 import { Spinner } from './Spinner.tsx'
 import styles from './runs.module.scss'
 
@@ -46,6 +47,9 @@ export function Console({
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const [agentFilter, setAgentFilter] = useState<string | null>(null)
+  // The log is hidden rather than unmounted when the timeline is showing: it owns the scroll
+  // position and the auto-scroll-to-bottom effect, both of which a remount would throw away.
+  const [view, setView] = useState<'output' | 'timeline'>('output')
 
   useEffect(() => {
     clearRunEvents()
@@ -221,7 +225,29 @@ export function Console({
           })}
         </div>
       )}
-      <div className={styles.log}>
+      {/* The transcript answers "what did it say"; the timeline answers "what was happening, and
+          when". Both are views of the same run, so they share this strip rather than living in
+          two places. */}
+      <div className={styles.viewTabs}>
+        {(['output', 'timeline'] as const).map((v) => (
+          <button
+            key={v}
+            className={cx(styles.viewTab, view === v && styles.viewTabActive)}
+            onClick={() => setView(v)}
+            title={
+              v === 'output'
+                ? 'The run’s output, line by line'
+                : 'One bar per block over the run’s own span — overlapping bars are real parallelism, gaps are dead time'
+            }
+          >
+            {v === 'output' ? 'Output' : 'Timeline'}
+          </button>
+        ))}
+      </div>
+
+      {view === 'timeline' && <RunTimeline nodes={Object.values(execByNode)} />}
+
+      <div className={styles.log} hidden={view !== 'output'}>
         {events.length === 0 && (
           <div className={styles.logMuted}>{connNotice ?? <Spinner label="Waiting for output" />}</div>
         )}

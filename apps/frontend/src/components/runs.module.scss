@@ -160,6 +160,119 @@
   color: t.$muted;
 }
 
+/* Output vs timeline: two views of one run, switched here rather than hidden in a menu. */
+.viewTabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px 10px 0;
+}
+
+.viewTab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  color: t.$muted;
+  font-size: 11px;
+  padding: 2px 10px;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$text;
+  }
+}
+
+.viewTabActive {
+  border-color: t.$border;
+  background: t.$panel-2;
+  color: t.$text;
+}
+
+/* ---------------- the run as time ----------------
+   Bars over a shared axis: overlapping ones ARE the parallelism, and the gaps between them are
+   the dead time no transcript shows. No animation anywhere — a running bar is marked by its
+   dashed edge, not by movement, so reduced-motion needs no special case. */
+
+.timeline {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 10px;
+  min-height: 0;
+}
+
+.timelineAxis {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: t.$muted;
+  font-size: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid t.$border;
+}
+
+.timelineSpan {
+  color: t.$text;
+}
+
+.timelineRows {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.timelineRow {
+  display: grid;
+  grid-template-columns: minmax(60px, 130px) 1fr 56px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.timelineLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: t.$muted;
+}
+
+.timelineTrack {
+  position: relative;
+  height: 14px;
+  border-radius: 4px;
+  background: t.$panel-2;
+}
+
+.timelineBar {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  min-width: 2px;
+  border-radius: 3px;
+  background: hsl(var(--h, 210) 55% var(--hue-l));
+}
+
+/* A block that has not finished: its end is "so far", not a fact. */
+.timelineRunning {
+  border-right: 2px dashed t.$text;
+}
+
+.tl_failed {
+  background: t.$danger;
+}
+
+.tl_pending {
+  background: t.$border;
+}
+
+.timelineDuration {
+  color: t.$muted;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .line {
   display: flex;
   gap: 10px;

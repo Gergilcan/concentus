@@ -65,7 +65,9 @@ describe('RuntimeNotice', () => {
 
     expect(await screen.findByText(/uv is not installed/)).toBeInTheDocument()
     // The command is visible next to the button that runs it — the whole point of this panel.
-    expect(screen.getByText('curl -LsSf https://astral.sh/uv/install.sh | sh')).toBeInTheDocument()
+    // findBy, not getBy: the shell is asked what it would run only once something is missing, so
+    // the command arrives a tick after the message does.
+    expect(await screen.findByText('curl -LsSf https://astral.sh/uv/install.sh | sh')).toBeInTheDocument()
     expect(screen.getByText('Install uv')).toBeInTheDocument()
   })
 

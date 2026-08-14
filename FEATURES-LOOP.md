@@ -205,7 +205,7 @@ the doctor informs. Tests: backend unit per check with stubs; one frontend modal
 **Accept:** a flow with a missing credential/plugin shows actionable findings in <1s; a healthy
 flow says so plainly.
 
-### 6. [ ] Run timeline (Gantt)
+### 6. [x] Run timeline (Gantt)
 
 **Goal:** A timeline view of a run: one bar per node (startedAt→endedAt), colored by status,
 showing real parallelism and dead gaps. Killer view for fan-out.
