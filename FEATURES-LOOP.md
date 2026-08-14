@@ -273,7 +273,7 @@ Ctrl+K in inputs is fine, it's not a typing key). Tests: opens, filters, invokes
 completion states — add the new status to its trigger set with its own copy.
 **Accept:** question → native toast within one poll interval; no repeat for the same question.
 
-### 12. [ ] One-click sandbox (dry-run duplicate)
+### 12. [x] One-click sandbox (dry-run duplicate)
 
 **Goal:** "Duplicate as sandbox": copy of the flow where every worker facade forces dry-run and
 every write-capable MCP node gets the dry-run profile — try it without touching anything.

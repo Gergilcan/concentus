@@ -12,6 +12,7 @@ export function FlowCard({
   onOpen,
   onRun,
   onDuplicate,
+  onSandbox,
   onDelete,
   patch,
   exportFlow,
@@ -35,6 +36,8 @@ export function FlowCard({
   onOpen: (id: string) => void
   onRun: (id: string) => void
   onDuplicate: (flow: BackendFlow) => void
+  /** Makes a plan-mode, dry-run copy. Absent simply hides the button. */
+  onSandbox?: (flow: BackendFlow) => Promise<void> | void
   onDelete: (id: string) => void
   patch: (flow: BackendFlow, changes: Partial<BackendFlow>) => Promise<void>
   exportFlow: (flow: BackendFlow) => void
@@ -236,6 +239,15 @@ export function FlowCard({
         <button className={styles.icon} title="Duplicate" onClick={() => onDuplicate(flow)}>
           ⧉
         </button>
+        {onSandbox && (
+          <button
+            className={styles.icon}
+            title="Duplicate as sandbox: a copy that runs in plan mode, with every worker facade replaced by a dry-run twin. It proposes instead of acting — the dialog says exactly what is and is not simulated."
+            onClick={() => void onSandbox(flow)}
+          >
+            🧪
+          </button>
+        )}
         <button
           className={cx(styles.icon, styles.danger)}
           title="Delete"

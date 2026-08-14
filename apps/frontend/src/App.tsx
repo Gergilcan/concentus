@@ -198,6 +198,7 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
     openFlow,
     runFlow,
     duplicateFlow,
+    sandboxFlowCopy,
     deleteFlow,
     newFlow,
     openGeneratedFlow,
@@ -281,6 +282,7 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
             onOpen={openFlow}
             onRun={runFlow}
             onDuplicate={duplicateFlow}
+            onSandbox={sandboxFlowCopy}
             onDelete={deleteFlow}
             onNew={newFlow}
             onGenerated={openGeneratedFlow}

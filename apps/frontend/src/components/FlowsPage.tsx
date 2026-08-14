@@ -36,6 +36,8 @@ interface Props {
   onOpen: (id: string) => void
   onRun: (id: string) => void
   onDuplicate: (flow: BackendFlow) => void
+  /** Makes a plan-mode, dry-run copy of a flow. */
+  onSandbox?: (flow: BackendFlow) => Promise<void> | void
   onDelete: (id: string) => void
   onNew: () => void
   /** Puts a generated draft on the canvas and opens Studio. Nothing has been saved. */
@@ -52,6 +54,7 @@ export function FlowsPage({
   onOpen,
   onRun,
   onDuplicate,
+  onSandbox,
   onDelete,
   onNew,
   onGenerated,
@@ -227,6 +230,7 @@ export function FlowsPage({
       onOpen={onOpen}
       onRun={onRun}
       onDuplicate={onDuplicate}
+      onSandbox={onSandbox}
       onDelete={onDelete}
       patch={patch}
       exportFlow={downloadFlowJson}
