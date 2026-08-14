@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api } from '../api/client.ts'
 import type { ModelCatalog, ModelRate } from '../api/types.ts'
 import { MODEL_GROUPS } from '../constants.ts'
@@ -31,7 +31,19 @@ function rateLabel(rate: ModelRate): string {
  * "Custom…" exists and why an unrecognised saved value opens in custom mode rather than being
  * silently reset.
  */
-export function ModelField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function ModelField({
+  value,
+  onChange,
+  label = 'Model',
+  allowNone = false,
+}: {
+  value: string
+  onChange: (v: string) => void
+  /** Overridden by the escalation picker, which is a model field but not "the" model. */
+  label?: ReactNode
+  /** Adds an explicit empty choice, for a model that is optional rather than required. */
+  allowNone?: boolean
+}) {
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null)
 
   useEffect(() => {
@@ -75,7 +87,7 @@ export function ModelField({ value, onChange }: { value: string; onChange: (v: s
   return (
     <>
       <label className={styles.field}>
-        <span>Model</span>
+        <span>{label}</span>
         <select
           value={custom ? CUSTOM : value}
           onChange={(e) => {
@@ -87,6 +99,7 @@ export function ModelField({ value, onChange }: { value: string; onChange: (v: s
             onChange(e.target.value)
           }}
         >
+          {allowNone && <option value="">— none —</option>}
           {groups.map((g) => (
             <optgroup key={g.label} label={g.label}>
               {g.models.map((m) => {

@@ -297,6 +297,13 @@ export type AgentNodeData = {
    */
   plugins?: string[]
   /**
+   * Escalation model. **Independent workers only, and only with a Verifier in the flow.** When the
+   * verifier rejects this worker's output, it runs once more on this model and is judged again.
+   * Blank = off. Without a verifier nothing escalates — there is no signal saying the cheap
+   * answer was wrong, and re-running "in case" would spend more rather than less.
+   */
+  fallbackModelId?: string
+  /**
    * How much the run may do without asking. **Coordinator only.**
    *
    * Not a per-agent setting even though it lives on an agent: a local run launches one `claude`

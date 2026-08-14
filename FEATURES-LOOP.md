@@ -218,7 +218,7 @@ and tokens. Reduced-motion safe (no animation needed). Tests: a pure layout help
 **Accept:** a fan-out run shows overlapping worker bars; a sequential run shows the chain; times
 match the node inspector.
 
-### 7. [ ] Cost router (cheap model first, escalate on rejection)
+### 7. [x] Cost router (cheap model first, escalate on rejection)
 
 **Goal:** Per agent option: try a cheaper/local model first; if the verifier rejects the output,
 retry with the stronger model. "Guaranteed quality at minimum cost."

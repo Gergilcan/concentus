@@ -149,6 +149,19 @@ export function AgentInspector({ data, set }: Props) {
                 </option>
               ))}
             </SelectField>
+            {/* Cheap first, made safe: it only escalates on a verifier REJECTION, which is the
+                one signal that says the answer was actually wrong. Workers only — they are the
+                single path with a verifier to reject anything. */}
+            <ModelField
+              label={
+                <span title="Independent workers only, and only with a Verifier node in the flow: if the verifier rejects this worker's output, it runs once more on this model and is judged again. Without a verifier nothing escalates — there would be no signal saying the cheap answer was wrong. Both attempts' tokens land on this box, priced at the escalation model.">
+                  Escalation model (blank = off) ⓘ
+                </span>
+              }
+              value={data.fallbackModelId ?? ''}
+              onChange={(v) => set({ fallbackModelId: v })}
+              allowNone
+            />
           </>
         )}
 

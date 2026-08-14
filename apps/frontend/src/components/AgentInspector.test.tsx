@@ -68,6 +68,25 @@ describe('AgentInspector', () => {
     expect(await screen.findByLabelText(/Delegate when/)).toBeInTheDocument()
   })
 
+  it('offers the escalation model to workers only, and off by default', async () => {
+    // Workers are the one path with a verifier, and a verifier rejection is the only signal that
+    // says the cheap answer was actually wrong. Offering it on a coordinator would be a control
+    // that quietly does nothing.
+    render(<AgentInspector data={coordinatorData({ role: 'coordinator' })} set={vi.fn()} />)
+    await screen.findByLabelText('Name')
+    fireEvent.click(screen.getByText('Fine-tuning'))
+    expect(screen.queryByLabelText(/Escalation model/)).not.toBeInTheDocument()
+
+    const set = vi.fn()
+    render(<AgentInspector data={coordinatorData({ role: 'subagent' })} set={set} />)
+    fireEvent.click(screen.getAllByText('Fine-tuning')[1])
+    const field = await screen.findByLabelText(/Escalation model/)
+    expect(field).toHaveValue('')
+
+    fireEvent.change(field, { target: { value: 'claude-opus-4-8' } })
+    expect(set).toHaveBeenCalledWith({ fallbackModelId: 'claude-opus-4-8' })
+  })
+
   it('does not show the library dropdown until listAgents resolves with entries', async () => {
     listAgentsMock.mockResolvedValue([
       { id: 'a1', name: 'Researcher', model: 'claude-opus-4-8', effort: 'high', maxTokens: 8000, systemPrompt: 'x' },
