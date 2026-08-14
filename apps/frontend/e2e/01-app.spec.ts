@@ -1,5 +1,20 @@
 import { expect, goTo, openApp, test } from './fixtures'
 
+test('Ctrl+K reaches a view without touching the navigation', async ({ page }) => {
+  await openApp(page)
+
+  await page.keyboard.press('Control+k')
+  const palette = page.getByRole('dialog', { name: 'Command palette' })
+  await expect(palette).toBeVisible()
+
+  // Three keystrokes and Enter: the promise the palette makes.
+  await page.keyboard.type('res')
+  await page.keyboard.press('Enter')
+
+  await expect(page.getByRole('button', { name: 'MCP Servers' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Command palette' })).toHaveCount(0)
+})
+
 /**
  * The shell: the app loads, the header is there, and all four views actually render. This is the
  * canary spec — if serving the UI from the jar broke, everything here fails first and plainly.

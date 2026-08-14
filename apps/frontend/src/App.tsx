@@ -1,12 +1,16 @@
 import {
   useEffect,
+  useMemo,
   useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
-import { AppHeader, type View } from './components/AppHeader.tsx'
+import { AppHeader, NAV, type View } from './components/AppHeader.tsx'
+import { CommandPalette } from './components/CommandPalette.tsx'
+import { type Command } from './components/commandPalette.ts'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
+import { timeAgo } from './components/flowFormat.ts'
 import { FlowsPage } from './components/FlowsPage.tsx'
 import { Inspector } from './components/Inspector.tsx'
 import { Palette } from './components/Palette.tsx'
@@ -23,6 +27,7 @@ import { useSelectedRun } from './state/useSelectedRun.ts'
 import { useSession } from './state/useSession.ts'
 import { TOAST_DURATION_MS } from './constants.ts'
 import { cx } from './utils/cx.ts'
+import { setTheme, THEMES } from './utils/theme.ts'
 import styles from './App.module.scss'
 
 /**
@@ -167,6 +172,7 @@ interface WorkspaceProps {
 
 function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
   const [view, setView] = useState<View>('flows')
+  const [commandsOpen, setCommandsOpen] = useState(false)
   // The executions panel sits under the flow being edited, so it shows that flow's runs only.
   const openFlowId = useFlowStore((s) => s.flowId)
   const [toast, setToast] = useState<string | null>(null)
@@ -199,6 +205,71 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
     openRun,
     retryRun,
   } = useFlowActions({ flows, runs, refreshFlows, refreshRuns, setView, setSelectedRun, pushError: setToast })
+
+  // Ctrl+K / Cmd+K, from anywhere. Deliberately NOT excluded inside text fields: Ctrl+K is not a
+  // typing key, and a palette that refuses to open while the cursor happens to be in a search box
+  // is a palette you cannot rely on.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setCommandsOpen((open) => !open)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  /**
+   * What the palette can reach. Ordered by how often it is what someone wants: where to go, then
+   * their flows, then the runs they might be looking for, then the theme.
+   *
+   * Runs are capped: the palette is for reaching things by name, and a thousand rows of
+   * near-identical run ids is a list nobody scrolls.
+   */
+  const commands = useMemo<Command[]>(() => {
+    const out: Command[] = NAV.map((nav) => ({
+      id: `view:${nav.id}`,
+      group: 'Go to',
+      label: nav.label,
+      run: () => setView(nav.id),
+    }))
+    for (const flow of flows) {
+      if (!flow.id) continue
+      const id = flow.id
+      out.push({
+        id: `flow:${id}`,
+        group: 'Flows',
+        label: `Open ${flow.name}`,
+        hint: flow.folder || undefined,
+        run: () => void openFlow(id),
+      })
+      out.push({
+        id: `run:${id}`,
+        group: 'Flows',
+        label: `Run ${flow.name}`,
+        run: () => void runFlow(id),
+      })
+    }
+    for (const run of runs.slice(0, 20)) {
+      out.push({
+        id: `exec:${run.id}`,
+        group: 'Runs',
+        label: `Open run of ${run.flowName ?? 'flow'}`,
+        hint: `${run.status} · ${timeAgo(run.createdAt)}`,
+        run: () => void openRun(run.id),
+      })
+    }
+    for (const theme of THEMES) {
+      out.push({
+        id: `theme:${theme.id}`,
+        group: 'Theme',
+        label: `${theme.icon} ${theme.label}`,
+        run: () => setTheme(theme.id),
+      })
+    }
+    return out
+  }, [flows, runs, openFlow, runFlow, openRun, setView])
 
   function renderView(): ReactNode {
     switch (view) {
@@ -306,6 +377,10 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
       <AppHeader view={view} onView={setView} signedInAs={signedInAs} onSignOut={onSignOut} />
 
       <ErrorBoundary>{renderView()}</ErrorBoundary>
+
+      {commandsOpen && (
+        <CommandPalette commands={commands} onClose={() => setCommandsOpen(false)} />
+      )}
 
       {toast && (
         <div className={styles.toast} role="alert">

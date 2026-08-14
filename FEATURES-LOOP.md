@@ -257,7 +257,7 @@ modal fills them into a copy of the sample. Start with 2 samples (mailbox assist
 briefing). Tests: wizard fills holes → saved flow carries the answers.
 **Accept:** a new user goes from empty install to a configured, runnable flow in 2 questions.
 
-### 10. [ ] Ctrl+K command palette
+### 10. [x] Ctrl+K command palette
 
 **Goal:** Global palette: jump to flow/run/tab, run a flow, switch theme.
 **Sketch:** frontend-only; overlay listing indexed actions (flows from store, views, theme);

@@ -1,43 +1,21 @@
-import { useState } from 'react'
 import { AuthBadge } from './AuthBadge.tsx'
+import { nextTheme, setTheme, THEMES, useTheme } from '../utils/theme.ts'
 import styles from './appheader.module.scss'
 
 export type View = 'flows' | 'studio' | 'resources' | 'usage'
 
-export type Theme = 'dark' | 'light' | 'contrast'
-
-const THEMES: Array<{ id: Theme; icon: string; label: string }> = [
-  { id: 'dark', icon: '🌙', label: 'Dark' },
-  { id: 'light', icon: '☀️', label: 'Light' },
-  { id: 'contrast', icon: '◐', label: 'High contrast' },
-]
-
-const NAV: Array<{ id: View; label: string }> = [
+export const NAV: Array<{ id: View; label: string }> = [
   { id: 'flows', label: 'Flows' },
   { id: 'studio', label: 'Studio' },
   { id: 'resources', label: 'Resources' },
   { id: 'usage', label: 'Usage' },
 ]
 
-/**
- * Applies a theme by stamping data-theme on <html> — the same contract index.html's pre-paint
- * script uses, so the choice survives reloads without a flash. Dark is the stylesheet default
- * and needs no attribute.
- */
-function applyTheme(theme: Theme) {
-  if (theme === 'dark') delete document.documentElement.dataset.theme
-  else document.documentElement.dataset.theme = theme
-  localStorage.setItem('ui.theme', theme)
-}
-
-function currentTheme(): Theme {
-  const t = localStorage.getItem('ui.theme')
-  return t === 'light' || t === 'contrast' ? t : 'dark'
-}
-
 function ThemeSwitch() {
-  const [theme, setTheme] = useState<Theme>(currentTheme)
-  const next = THEMES[(THEMES.findIndex((t) => t.id === theme) + 1) % THEMES.length]
+  // The theme lives in utils/theme so the command palette can change it too and this button
+  // still knows — two copies of "what the theme is" drift the moment one of them changes it.
+  const theme = useTheme()
+  const next = THEMES.find((t) => t.id === nextTheme(theme)) ?? THEMES[0]
   const active = THEMES.find((t) => t.id === theme) ?? THEMES[0]
   return (
     <button
@@ -45,10 +23,7 @@ function ThemeSwitch() {
       className={styles.themeBtn}
       title={`Theme: ${active.label} — click for ${next.label}`}
       aria-label={`Theme: ${active.label}. Switch to ${next.label}`}
-      onClick={() => {
-        applyTheme(next.id)
-        setTheme(next.id)
-      }}
+      onClick={() => setTheme(next.id)}
     >
       {active.icon}
     </button>
