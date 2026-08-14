@@ -250,6 +250,9 @@ public class FlowCompiler {
         s.model.id = str(d, "model", "claude-opus-4-8");
         s.model.maxTokens = lng(d, "maxTokens", 16000);
         s.model.effort = str(d, "effort", "high");
+        // Carried for every agent like `execution` above: only workers ever escalate, and the
+        // compiler does not need to know which node is one.
+        s.fallbackModelId = str(d, "fallbackModelId", "");
 
         collectConnected(flow, node, resources.mcps(), s.mcpServers, mcp -> {
             Map<String, Object> md = mcp.dataOrEmpty();

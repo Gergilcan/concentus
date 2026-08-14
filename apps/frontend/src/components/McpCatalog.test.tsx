@@ -129,6 +129,44 @@ describe('McpCatalog', () => {
     expect(screen.getByText(/"npx" is installed/)).toBeInTheDocument()
   })
 
+  // The guided add, when the page offers one. Only entries that leave work behind go through it;
+  // the rest keep the one click the catalogue is built around.
+  describe('with a guided add available', () => {
+    it('hands an entry that needs values to the wizard instead of half-adding it', () => {
+      listMcpDefsMock.mockResolvedValue([])
+      const onConfigure = vi.fn()
+      render(<McpCatalog onAdded={vi.fn()} onConfigure={onConfigure} />)
+      expandCatalog()
+      openCategory('Google')
+
+      fireEvent.click(screen.getByText('Google Search Console').closest('button')!)
+
+      expect(saveMcpDefMock).not.toHaveBeenCalled()
+      expect(onConfigure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Google Search Console',
+          command: 'npx',
+          args: ['-y', 'mcp-server-gsc'],
+          env: { GOOGLE_APPLICATION_CREDENTIALS: '' },
+        }),
+      )
+    })
+
+    it('still adds an entry with nothing to fill in one click', async () => {
+      listMcpDefsMock.mockResolvedValue([])
+      saveMcpDefMock.mockResolvedValue({})
+      const onConfigure = vi.fn()
+      render(<McpCatalog onAdded={vi.fn()} onConfigure={onConfigure} />)
+      expandCatalog()
+      openCategory('Planning & docs')
+
+      fireEvent.click(screen.getByText('Linear').closest('button')!)
+
+      await waitFor(() => expect(saveMcpDefMock).toHaveBeenCalled())
+      expect(onConfigure).not.toHaveBeenCalled()
+    })
+  })
+
   it('offers Microsoft Graph locally and the hosted Learn docs without sign-in', () => {
     listMcpDefsMock.mockResolvedValue([])
     render(<McpCatalog onAdded={vi.fn()} />)

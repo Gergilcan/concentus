@@ -1,12 +1,16 @@
-import { useMemo, useState, type DragEvent } from 'react'
+import { useEffect, useMemo, useState, type DragEvent } from 'react'
+import { api } from '../api/client.ts'
 import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
-import type { BackendFlow, RunSummary } from '../api/types.ts'
+import type { BackendFlow, GoldenStatus, RunSummary } from '../api/types.ts'
+import { CompareRunsModal } from './CompareRunsModal.tsx'
+import { DescribeFlowModal } from './DescribeFlowModal.tsx'
+import { DoctorModal } from './DoctorModal.tsx'
 import { FlowCard } from './FlowCard.tsx'
 import { breadcrumbOf, childFolders, flowsAt, folderOf, moveFolder, normalizePath } from './folderTree.ts'
 import { SettingsModal, VersionsModal } from './FlowModals.tsx'
 import { FlowsKpis } from './FlowsKpis.tsx'
-import { type Sort } from './flowFormat.ts'
+import { decided, type Sort } from './flowFormat.ts'
 import {
   collectTags,
   computeStats,
@@ -17,6 +21,7 @@ import {
   visibleFlows,
 } from './flowsDashboard.ts'
 import { FlowsToolbar } from './FlowsToolbar.tsx'
+import { RecipesModal } from './RecipesModal.tsx'
 import { RecentRunsList } from './RecentRunsList.tsx'
 import { TagFilterBar } from './TagFilterBar.tsx'
 import styles from './flows.module.scss'
@@ -31,8 +36,12 @@ interface Props {
   onOpen: (id: string) => void
   onRun: (id: string) => void
   onDuplicate: (flow: BackendFlow) => void
+  /** Makes a plan-mode, dry-run copy of a flow. */
+  onSandbox?: (flow: BackendFlow) => Promise<void> | void
   onDelete: (id: string) => void
   onNew: () => void
+  /** Puts a generated draft on the canvas and opens Studio. Nothing has been saved. */
+  onGenerated: (flow: BackendFlow) => void
   onOpenRun: (runId: string) => void
   onSaveFlow: (flow: BackendFlow) => Promise<void>
   onRetryRun: (runId: string) => void
@@ -45,8 +54,10 @@ export function FlowsPage({
   onOpen,
   onRun,
   onDuplicate,
+  onSandbox,
   onDelete,
   onNew,
+  onGenerated,
   onOpenRun,
   onSaveFlow,
   onRetryRun,
@@ -57,6 +68,53 @@ export function FlowsPage({
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [settingsFor, setSettingsFor] = useState<BackendFlow | null>(null)
   const [versionsFor, setVersionsFor] = useState<BackendFlow | null>(null)
+  const [describing, setDescribing] = useState(false)
+  const [doctorFor, setDoctorFor] = useState<BackendFlow | null>(null)
+  const [pickingRecipe, setPickingRecipe] = useState(false)
+  // Which flows have a golden reference and whether they drifted from it. Derived server-side, so
+  // this is a read: re-fetched whenever the flow list changes, which is what a save produces.
+  const [goldenStatuses, setGoldenStatuses] = useState<GoldenStatus[]>([])
+  // A check this page started, waiting for its run to finish so the comparison can open by itself.
+  const [checking, setChecking] = useState<{ flowId: string; runId: string; referenceId: string } | null>(null)
+  const [comparing, setComparing] = useState<{ referenceId: string; candidateId: string } | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    void api
+      .listGoldenStatus()
+      .then((s) => alive && setGoldenStatuses(s))
+      // A dashboard that cannot read this still works — it just cannot offer the check.
+      .catch(() => alive && setGoldenStatuses([]))
+    return () => {
+      alive = false
+    }
+  }, [flows])
+
+  const goldenByFlow = useMemo(
+    () => new Map(goldenStatuses.map((s) => [s.flowId, s])),
+    [goldenStatuses],
+  )
+
+  const startGoldenCheck = async (status: GoldenStatus) => {
+    setChecking(null)
+    try {
+      const started = await api.goldenRerun(status.runId)
+      setChecking({ flowId: status.flowId, runId: started.id, referenceId: status.runId })
+    } catch (e) {
+      pushError(errMessage(e))
+    }
+  }
+
+  // The dashboard already polls runs, so watching the started one costs nothing extra: when it
+  // reaches a decided state the comparison opens on its own — which is the whole point of firing
+  // it from a card rather than making the user go and find it.
+  useEffect(() => {
+    if (!checking) return
+    const run = runs.find((r) => r.id === checking.runId)
+    if (!run || !decided(run)) return
+    setComparing({ referenceId: checking.referenceId, candidateId: checking.runId })
+    setChecking(null)
+  }, [runs, checking])
 
   const runsByFlow = useMemo(() => groupRunsByFlow(runs), [runs])
   const allTags = useMemo(() => collectTags(flows), [flows])
@@ -172,13 +230,18 @@ export function FlowsPage({
       onOpen={onOpen}
       onRun={onRun}
       onDuplicate={onDuplicate}
+      onSandbox={onSandbox}
       onDelete={onDelete}
       patch={patch}
       exportFlow={downloadFlowJson}
       setVersionsFor={setVersionsFor}
       setSettingsFor={setSettingsFor}
+      setDoctorFor={setDoctorFor}
       setTagFilter={setTagFilter}
       onDragStart={(e) => flow.id && e.dataTransfer.setData(FLOW_DND, flow.id)}
+      golden={flow.id ? goldenByFlow.get(flow.id) : undefined}
+      onGoldenCheck={startGoldenCheck}
+      goldenChecking={!!checking && checking.flowId === flow.id}
     />
   )
 
@@ -207,6 +270,8 @@ export function FlowsPage({
             onSortChange={setSort}
             onImport={(f) => void importFlow(f)}
             onNew={onNew}
+            onDescribe={() => setDescribing(true)}
+            onRecipes={() => setPickingRecipe(true)}
           />
         </header>
 
@@ -365,6 +430,40 @@ export function FlowsPage({
 
       {versionsFor && (
         <VersionsModal flow={versionsFor} onClose={() => setVersionsFor(null)} pushError={pushError} />
+      )}
+
+      {pickingRecipe && (
+        <RecipesModal
+          onClose={() => setPickingRecipe(false)}
+          // Straight onto the canvas: the point of a recipe is having something to run, and a
+          // flow that lands in a list still has to be found before it exists to you.
+          onSaved={(flow) => onGenerated(flow)}
+          pushError={pushError}
+        />
+      )}
+
+      {doctorFor?.id && (
+        <DoctorModal
+          flowId={doctorFor.id}
+          flowName={doctorFor.name}
+          onClose={() => setDoctorFor(null)}
+        />
+      )}
+
+      {comparing && (
+        <CompareRunsModal
+          referenceId={comparing.referenceId}
+          candidateId={comparing.candidateId}
+          onClose={() => setComparing(null)}
+        />
+      )}
+
+      {describing && (
+        <DescribeFlowModal
+          onClose={() => setDescribing(false)}
+          onGenerated={onGenerated}
+          pushError={pushError}
+        />
       )}
     </div>
   )

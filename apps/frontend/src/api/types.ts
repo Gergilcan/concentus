@@ -30,6 +30,11 @@ export interface RunSummary {
   estimatedCostUsd?: number
   /** This run is its flow's golden reference — the known-good execution edits are compared against. */
   golden?: boolean
+  /**
+   * The flow revision this execution ran, 0 when the flow had no history at launch. The exact
+   * graph is always the run's own snapshot (`getRunFlow`); this number just names it.
+   */
+  flowVersion?: number
 }
 
 /** One side of a golden comparison: headline numbers, per-node steps (priced), final answer. */
@@ -292,6 +297,13 @@ export type AgentNodeData = {
    */
   plugins?: string[]
   /**
+   * Escalation model. **Independent workers only, and only with a Verifier in the flow.** When the
+   * verifier rejects this worker's output, it runs once more on this model and is judged again.
+   * Blank = off. Without a verifier nothing escalates — there is no signal saying the cheap
+   * answer was wrong, and re-running "in case" would spend more rather than less.
+   */
+  fallbackModelId?: string
+  /**
    * How much the run may do without asking. **Coordinator only.**
    *
    * Not a per-agent setting even though it lives on an agent: a local run launches one `claude`
@@ -486,6 +498,11 @@ export interface BackendFlow {
   /** Dashboard folder; blank/absent = root. The bundled starters live in "Samples". */
   folder?: string
   /**
+   * Saving this flow immediately replays its golden reference against the new graph. Off unless
+   * asked for: every check is a real agent run with a real bill.
+   */
+  goldenAutoRun?: boolean
+  /**
    * Remote approval over Slack: a stored credential holding the bot token, and the channel the
    * request posts to. A ✅/❌ reaction on the posted message approves/rejects the waiting run —
    * outbound polling only, so it works without a public URL.
@@ -500,6 +517,65 @@ export interface FlowVersionInfo {
   version: number
   name: string
   createdAt: number
+  /** Who saved it: an email, `"local"` when auth is off, null for revisions saved before this. */
+  author?: string | null
+  nodeCount: number
+  edgeCount: number
+  /** Change against the previous revision; both 0 on the oldest one, which has nothing before it. */
+  nodesDelta: number
+  edgesDelta: number
+  renamed: boolean
+}
+
+// --- Pre-run doctor ---------------------------------------------------------
+
+/**
+ * One thing that would go wrong at run time. Every finding carries its own fix — a check that only
+ * says what is wrong has moved the problem rather than solved it.
+ */
+export interface DoctorFinding {
+  /** "error" (this will fail) or "warn" (this may fail, or will work oddly). */
+  level: 'error' | 'warn'
+  /** graph | credential | mcp | plugin | trigger | budget | runtime | cli | variables */
+  area: string
+  message: string
+  fix: string
+  /** The node it is about, or null for the whole flow. */
+  where?: string | null
+}
+
+// --- Golden reference status ------------------------------------------------
+
+/**
+ * Where a flow stands against its golden reference. `stale` is derived from the graph the golden
+ * run actually executed, so it needs nothing to be recorded or kept in sync. Only flows that HAVE
+ * a golden run appear at all.
+ */
+export interface GoldenStatus {
+  flowId: string
+  runId: string
+  stale: boolean
+  autoRun: boolean
+}
+
+// --- Runtimes stdio MCP servers need ----------------------------------------
+
+/** Whether a runtime (node, npm, pnpm, python, pipx, uv) is installed on this machine. */
+export interface RuntimeStatus {
+  id: string
+  label: string
+  found: boolean
+  /** The tool's own `--version` line, proof it ran. Empty when not found. */
+  version: string
+  neededFor: string
+  docsUrl: string
+}
+
+/** What one configured MCP command needs. `runtime` is null when its launcher is not one we manage. */
+export interface RuntimeCheck {
+  command: string
+  runtime: RuntimeStatus | null
+  satisfied: boolean
 }
 
 // --- Flow memory ------------------------------------------------------------

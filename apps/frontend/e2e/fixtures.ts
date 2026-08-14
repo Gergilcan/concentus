@@ -45,14 +45,19 @@ export { expect }
  * exist, the empty card when none do. Only then are counts and clicks deterministic.
  */
 export async function openApp(page: Page): Promise<void> {
+  // endsWith, not includes: the dashboard also GETs /api/flows/golden-status on mount, and an
+  // `includes` matcher happily settled on THAT answer — an empty array, read as "no flows", which
+  // made openApp wait for an empty state on a dashboard full of cards.
   const flowsAnswer = page.waitForResponse(
-    (r) => r.url().includes('/api/flows') && r.request().method() === 'GET',
+    (r) => r.url().endsWith('/api/flows') && r.request().method() === 'GET',
   )
   await page.goto('/')
   const flows = (await (await flowsAnswer).json()) as { folder?: string }[]
   if (flows.length === 0) {
     await expect(page.getByText('No flows yet')).toBeVisible()
   } else if (flows.some((f) => !(f.folder ?? '').trim())) {
+    // .first() on the CARDS alone: an install can legitimately have both root flows and folder
+    // tiles, and asserting on a locator that matches both trips strict mode the moment it does.
     await expect(page.getByRole('article').first()).toBeVisible()
   } else {
     // Every flow lives in a folder (a fresh install: the samples), so the root of the explorer

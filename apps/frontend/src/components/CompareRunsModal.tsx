@@ -8,6 +8,7 @@ import { pctDelta, peakContext, stepSummary } from './compareRuns.ts'
 import { contextParts, ctxColor } from './contextParts.ts'
 import { compact, timeAgo } from './flowFormat.ts'
 import { Modal } from './Modal.tsx'
+import { Spinner } from './Spinner.tsx'
 import styles from './runs.module.scss'
 
 /**
@@ -37,7 +38,7 @@ export function CompareRunsModal({
   return (
     <Modal title="Compared with the golden reference" onClose={onClose} wide>
       {err && <div className={styles.err}>{err}</div>}
-      {!cmp && !err && <div className={styles.muted}>Loading…</div>}
+      {!cmp && !err && <Spinner />}
       {cmp && (
         <div className={styles.compare}>
           <MetricsTable reference={cmp.reference} candidate={cmp.candidate} />

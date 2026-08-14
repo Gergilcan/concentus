@@ -4,6 +4,7 @@ import { cx } from '../utils/cx.ts'
 import { useFlowStore } from '../state/store.ts'
 import { AgentInspector } from './AgentInspector.tsx'
 import { ApiInspector } from './ApiInspector.tsx'
+import { FlowVersions } from './FlowVersions.tsx'
 import { InputInspector } from './InputInspector.tsx'
 import { InputView, OutputView } from './NodeExecView.tsx'
 import { NodeLogView } from './NodeLogView.tsx'
@@ -43,8 +44,13 @@ export function Inspector() {
   const remove = useFlowStore((s) => s.deleteNode)
   const duplicate = useFlowStore((s) => s.duplicateNode)
   const activeRunId = useFlowStore((s) => s.activeRunId)
+  const flowId = useFlowStore((s) => s.flowId)
   const exec = useFlowStore((s) => (selectedId ? s.runExecByNode[selectedId] : undefined))
   const [tab, setTab] = useState<Tab>('properties')
+  // The no-selection panel's own tab. Separate state from `tab` so selecting a node and coming
+  // back does not drop you into a tab that means something else.
+  const [flowTab, setFlowTab] = useState<'flow' | 'versions'>('flow')
+  const [versionsError, setVersionsError] = useState<string | null>(null)
 
   if (!node) {
     // A box that exists only in the run report: a plan-born worker. Nothing to edit — its
@@ -64,9 +70,33 @@ export function Inspector() {
         </aside>
       )
     }
+    // Nothing selected: the inspector is free, so it hosts what belongs to the flow rather than
+    // to a node. Versions lives here instead of behind the dashboard's History modal because
+    // restoring and previewing are editing actions — they belong next to the canvas they change.
     return (
       <aside className={styles.inspector}>
-        <div className={styles.empty}>Select a node to edit its settings.</div>
+        <div className={styles.inspectorHead}>
+          <h3 className={styles.h3}>Flow</h3>
+        </div>
+        <div className={styles.execTabs}>
+          {(['flow', 'versions'] as const).map((t) => (
+            <button
+              key={t}
+              className={cx(styles.execTab, flowTab === t && styles.execTabActive)}
+              onClick={() => setFlowTab(t)}
+            >
+              {t === 'flow' ? 'Properties' : 'Versions'}
+            </button>
+          ))}
+        </div>
+        {flowTab === 'flow' ? (
+          <div className={styles.empty}>Select a node to edit its settings.</div>
+        ) : flowId ? (
+          <FlowVersions flowId={flowId} pushError={setVersionsError} />
+        ) : (
+          <div className={styles.empty}>Save this flow to start its version history.</div>
+        )}
+        {versionsError && <div className={styles.empty}>{versionsError}</div>}
       </aside>
     )
   }

@@ -263,6 +263,17 @@ interface FlowState {
   newFlow: () => void
   loadBackendFlow: (flow: BackendFlow) => void
   toBackendFlow: () => BackendFlow
+
+  /**
+   * The historical revision currently on the canvas, or null when it shows the saved flow. Set
+   * only by the Versions tab's Preview, and cleared by every other load (opening a flow, a run,
+   * a new flow) — so "Back to latest" appears exactly while the canvas is showing the past.
+   *
+   * A preview is not read-only: the canvas is the editor, and the nodes are editable as always.
+   * What it does not do is save — restoring is the explicit action next to it.
+   */
+  previewVersion: number | null
+  setPreviewVersion: (version: number | null) => void
 }
 
 // Module-level rather than store state: it is a memo of the last poll, not something any
@@ -414,6 +425,9 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   setName: (name) => set({ name }),
   setMode: (mode) => set({ mode }),
 
+  previewVersion: null,
+  setPreviewVersion: (version) => set({ previewVersion: version }),
+
   newFlow: () =>
     set({
       flowId: null,
@@ -423,6 +437,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       nodes: [],
       edges: [],
       selectedId: null,
+      previewVersion: null,
     }),
 
   loadBackendFlow: (flow) => {
@@ -456,6 +471,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       nodes,
       edges: flow.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
       selectedId: null,
+      // Any load lands on the saved flow unless the caller says otherwise; Preview re-sets this
+      // right after. Clearing it here means no path can leave the banner claiming a revision the
+      // canvas no longer shows.
+      previewVersion: null,
     })
   },
 

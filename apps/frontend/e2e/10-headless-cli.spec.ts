@@ -1,0 +1,78 @@
+import { spawn } from 'node:child_process'
+import * as fs from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { expect, test } from './fixtures'
+
+/**
+ * The headless CLI against a real backend: `scripts/concentus-run.mjs` imports a flow, starts a
+ * run, prints what it says, and exits with a code that means something.
+ *
+ * It runs against the worker's own backend (`--url`) rather than booting a second jar — the boot
+ * path is the same code the fixture already exercises, and paying for another JVM per test would
+ * buy nothing.
+ *
+ * What is NOT asserted: a completed run. Finishing one needs a model call, which this suite never
+ * makes. The deterministic and genuinely useful case is the other one — a flow with nothing to do
+ * settles as "needs a human", which is exactly the answer a CI job must be able to tell apart
+ * from success.
+ */
+
+const here = path.dirname(fileURLToPath(import.meta.url))
+const script = path.join(here, '..', '..', '..', 'scripts', 'concentus-run.mjs')
+
+/** The smallest flow that compiles: a manual trigger wired to one coordinator. */
+const FLOW = {
+  name: 'E2E headless flow',
+  mode: 'local',
+  nodes: [
+    { id: 'in-1', type: 'input', data: { mode: 'manual', prompt: '' } },
+    {
+      id: 'a-1',
+      type: 'agent',
+      role: 'coordinator',
+      data: { name: 'Coordinator', model: 'claude-opus-4-8', systemPrompt: 'Say hello.' },
+    },
+  ],
+  edges: [{ id: 'e1', source: 'in-1', target: 'a-1' }],
+}
+
+function runCli(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [script, ...args], { stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (c) => (stdout += c))
+    child.stderr.on('data', (c) => (stderr += c))
+    child.on('close', (code) => resolve({ code: code ?? -1, stdout, stderr }))
+  })
+}
+
+test('runs a flow against a live backend and exits saying a human is needed', async ({ baseURL }) => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'concentus-cli-spec-')), 'flow.json')
+  fs.writeFileSync(file, JSON.stringify(FLOW))
+
+  const result = await runCli([file, '--url', baseURL!, '--timeout', '60'])
+
+  // 2 is "stopped for a human", which is what a manual flow given no input is: it started, it has
+  // no instruction, and nothing here will invent one.
+  expect(result.code, result.stderr).toBe(2)
+  expect(result.stderr).toContain('started')
+  expect(result.stderr).toMatch(/needs a human/)
+})
+
+test('refuses a flow file that is not there, without booting anything', async () => {
+  const result = await runCli(['definitely-not-a-flow.json', '--url', 'http://127.0.0.1:1'])
+
+  expect(result.code).toBe(4)
+  expect(result.stderr).toContain('Could not read')
+})
+
+test('explains itself with --help', async () => {
+  const result = await runCli(['--help'])
+
+  expect(result.code).toBe(0)
+  expect(result.stdout).toContain('--input')
+  expect(result.stdout).toContain('needs a human')
+})

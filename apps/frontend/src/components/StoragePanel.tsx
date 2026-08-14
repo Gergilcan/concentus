@@ -3,6 +3,7 @@ import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { StorageConfig } from '../api/types.ts'
 import { Field, SelectField } from './fields.tsx'
+import { Spinner } from './Spinner.tsx'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
 
@@ -67,12 +68,13 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
     }
   }
 
-  if (!config) return <div className={styles.muted}>Loading…</div>
+  if (!config) return <Spinner />
 
   const pendingRestart = config.activeMode !== mode || config.activeMode !== config.mode
 
   return (
-    <div className={`${styles.crudForm} ${styles.lone}`} style={{ maxWidth: '46rem' }}>
+    <div className={`${styles.crudForm} ${styles.lone}`}>
+      <h3 className={styles.h4}>Application storage</h3>
       <SelectField
         label="Where Concentus stores its data"
         value={mode}

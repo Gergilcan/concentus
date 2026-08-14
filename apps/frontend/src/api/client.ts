@@ -11,6 +11,7 @@ import type {
   MailSignInResult,
   BackendFlow,
   DatabaseDef,
+  DoctorFinding,
   EmbedderStatus,
   FlowMemoryView,
   KnowledgeDef,
@@ -18,12 +19,15 @@ import type {
   KnowledgeHit,
   LibraryAgent,
   FlowVersionInfo,
+  GoldenStatus,
   McpDef,
   McpCapabilities,
   McpServerInfo,
   NodeExecReport,
   ModelCatalog,
   RemoteRepoList,
+  RuntimeCheck,
+  RuntimeStatus,
   RunComparison,
   RunEvent,
   RunSummary,
@@ -140,9 +144,34 @@ export const api = {
     req<BackendFlow>('/flows', { method: 'POST', body: JSON.stringify(flow) }),
   deleteFlow: (id: string) => req<void>(`/flows/${id}`, { method: 'DELETE' }),
   runSavedFlow: (id: string) => req<RunSummary>(`/flows/${id}/run`, { method: 'POST' }),
+  /**
+   * A flow designed from a sentence. Returned unsaved (no id) — it lands on the canvas as a draft
+   * and only exists once the user saves it.
+   */
+  generateFlow: (description: string) =>
+    req<BackendFlow>('/flows/generate', { method: 'POST', body: JSON.stringify({ description }) }),
+  /**
+   * Which flows have a golden reference, and whether they changed since it ran. One call for the
+   * whole dashboard — the answer is derived, so asking per card would be N requests for free data.
+   */
+  listGoldenStatus: () => req<GoldenStatus[]>('/flows/golden-status'),
+  /** Everything that would fail at run time, before the run. Never blocks anything. */
+  runFlowDoctor: (id: string) => req<DoctorFinding[]>(`/flows/${id}/doctor`),
   listFlowVersions: (id: string) => req<FlowVersionInfo[]>(`/flows/${id}/versions`),
+  /** One revision as it was, for previewing it on the canvas. Changes nothing on the server. */
+  getFlowVersion: (id: string, version: number) =>
+    req<BackendFlow>(`/flows/${id}/versions/${version}`),
   restoreFlowVersion: (id: string, version: number) =>
     req<BackendFlow>(`/flows/${id}/versions/${version}/restore`, { method: 'POST' }),
+  // runtimes (what stdio MCP servers need in order to launch)
+  listRuntimes: (refresh = false) =>
+    req<RuntimeStatus[]>(`/runtimes${refresh ? '?refresh=true' : ''}`),
+  /** What a configured MCP command needs, and whether this machine has it. */
+  checkRuntime: (command: string, refresh = false) =>
+    req<RuntimeCheck>(
+      `/runtimes/check?command=${encodeURIComponent(command)}${refresh ? '&refresh=true' : ''}`,
+    ),
+
   /** Notes this flow's agents left for future runs (memory_append), newest first. */
   getFlowMemory: (id: string) => req<FlowMemoryView>(`/flows/${id}/memory`),
   clearFlowMemory: (id: string) => req<void>(`/flows/${id}/memory`, { method: 'DELETE' }),

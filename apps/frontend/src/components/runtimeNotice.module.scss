@@ -1,0 +1,114 @@
+@use '../styles/theme' as t;
+
+/* The "you cannot launch this server yet" notice, shown next to a stdio MCP command. */
+
+.ok {
+  margin: 0;
+  color: t.$muted;
+  font-size: 11px;
+}
+
+.missing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border: 1px solid color-mix(in srgb, t.$warn 55%, transparent);
+  border-radius: t.$radius;
+  background: color-mix(in srgb, t.$warn 10%, transparent);
+  font-size: 12px;
+  min-width: 0;
+}
+
+.head {
+  margin: 0;
+
+  code {
+    font-family: monospace;
+    font-size: 11px;
+  }
+}
+
+.hint {
+  margin: 0;
+  color: t.$muted;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+/* The command is shown before it runs, so it has to be readable in full — it scrolls rather than
+   wrapping mid-flag, and the page never scrolls sideways because of it. */
+.command,
+.output {
+  margin: 0;
+  padding: var(--sp-2);
+  border: 1px solid t.$border;
+  border-radius: 6px;
+  background: t.$panel-2;
+  font-family: monospace;
+  font-size: 11px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.output {
+  max-height: 160px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  color: t.$muted;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.install {
+  background: t.$accent-soft;
+  border: 1px solid t.$accent;
+  color: t.$text;
+  border-radius: t.$radius;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.ghost {
+  background: t.$panel;
+  border: 1px solid t.$border;
+  color: t.$text;
+  border-radius: t.$radius;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.docs {
+  color: t.$accent;
+  font-size: 11px;
+}
+
+.err {
+  margin: 0;
+  color: t.$danger;
+  font-size: 11px;
+}

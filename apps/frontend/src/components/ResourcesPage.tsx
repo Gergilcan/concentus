@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '../api/client.ts'
 import type { DatabaseDef, FacadeProfile, LibraryAgent, McpDef } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, EFFORT_OPTIONS } from '../constants.ts'
+import { AddMcpServerModal } from './AddMcpServerModal.tsx'
 import { CredentialsPanel } from './CredentialsPanel.tsx'
 import { CrudPanel } from './CrudPanel.tsx'
 import { KnowledgePanel } from './KnowledgePanel.tsx'
@@ -56,6 +57,9 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
   // Remounts the MCP CrudPanel after a catalog add, so the new definition appears in its list —
   // the panel loads on mount and has no other way to be told.
   const [mcpListVersion, setMcpListVersion] = useState(0)
+  // The guided add. Null when closed; an object (possibly empty) is the draft it starts from, so
+  // a catalogue entry opens it pre-filled and "+ Add a server" opens it blank.
+  const [wizard, setWizard] = useState<Partial<McpDef> | null>(null)
 
   return (
     <div className={styles.resources}>
@@ -109,9 +113,27 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           {/* Padded wrapper: these render above the CRUD grid, and without it their collapse
               headers sat glued to the window's left edge. */}
           <div className={styles.tabExtras}>
-            <McpCatalog onAdded={() => setMcpListVersion((v) => v + 1)} />
+            <button
+              className={styles.newBtn}
+              onClick={() => setWizard({})}
+              title="Add a server step by step: what it is, whether this machine can launch it (with the install button when it cannot), and each value it needs."
+            >
+              + Add a server (guided)
+            </button>
+            <McpCatalog
+              onAdded={() => setMcpListVersion((v) => v + 1)}
+              onConfigure={setWizard}
+              reloadToken={mcpListVersion}
+            />
             <McpJsonEditor onSaved={() => setMcpListVersion((v) => v + 1)} />
           </div>
+          {wizard && (
+            <AddMcpServerModal
+              initial={wizard}
+              onClose={() => setWizard(null)}
+              onSaved={() => setMcpListVersion((v) => v + 1)}
+            />
+          )}
           <CrudPanel<McpDef>
             key={mcpListVersion}
             title="MCP Servers"

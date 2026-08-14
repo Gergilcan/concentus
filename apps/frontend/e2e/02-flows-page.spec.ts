@@ -24,7 +24,51 @@ test('shows the dashboard: title, KPIs and toolbar', async ({ page }) => {
   await expect(page.getByLabel('Search flows')).toBeVisible()
   await expect(page.getByLabel('Sort flows')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Import' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '✨ Describe a flow' })).toBeVisible()
   await expect(page.getByRole('button', { name: '+ New flow' })).toBeVisible()
+})
+
+test('a recipe builds a configured flow from the bundled sample', async ({ page }) => {
+  await openApp(page)
+  await page.getByRole('button', { name: '🍳 Recipes' }).click()
+
+  const dialog = page.getByRole('dialog')
+  await dialog.getByText('Send me a briefing every morning').click()
+
+  await dialog.getByLabel('Topics').fill('E2E topics')
+  await dialog.getByRole('button', { name: 'Next' }).click()
+  // exact: label matching is case-insensitive and substring-based, and the "Start it now"
+  // checkbox's own text says "it runs on a schedule".
+  await dialog.getByLabel('Schedule', { exact: true }).fill('15 6 * * *')
+  await dialog.getByRole('button', { name: 'Create the flow' }).click()
+
+  // Straight onto the canvas, carrying the answers: this is assembled from the REAL bundled
+  // sample through the real API, so a sample the seeder stopped installing would fail here.
+  await expect(page.getByLabel('Flow name')).toHaveValue('Send me a briefing every morning')
+  await expect(page.locator('.react-flow__node')).toHaveCount(2)
+
+  // Cleaned up: this really saves a flow, and the later tests in this file count what is on the
+  // dashboard. A test that leaves state behind breaks its neighbours, not itself.
+  page.on('dialog', (d) => void d.accept())
+  await page.getByRole('button', { name: '← Flows' }).click()
+  await flowCard(page, 'Send me a briefing every morning').getByTitle('Delete').click()
+  await expect(flowCard(page, 'Send me a briefing every morning')).toHaveCount(0)
+})
+
+test('“Describe a flow” opens its dialog and promises nothing is saved', async ({ page }) => {
+  await openApp(page)
+
+  await page.getByRole('button', { name: '✨ Describe a flow' }).click()
+
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('Describe what you want automated')).toBeVisible()
+  // The generation itself needs the claude CLI and a real model call, which this suite never
+  // makes — what is asserted here is the entry point and its promise. Generate stays disabled
+  // until there is something to generate FROM.
+  await expect(dialog.getByRole('button', { name: 'Generate' })).toBeDisabled()
+  await expect(dialog.getByText(/Nothing is saved/)).toBeVisible()
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
 test('search filters the cards and clearing brings them back', async ({ page }) => {

@@ -88,8 +88,31 @@
   padding: 8px 0;
 }
 
+.crudItemLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Quiet until hovered, like the folder tiles' ✕ — always reachable, never shouting. */
+.crudItemDelete {
+  flex: 0 0 auto;
+  color: t.$muted;
+  opacity: 0.4;
+  padding: 0 3px;
+  border-radius: 4px;
+
+  &:hover {
+    opacity: 1;
+    color: t.$danger;
+  }
+}
+
 .crudItem {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   width: 100%;
   text-align: left;
   background: transparent;
@@ -98,9 +121,6 @@
   padding: 8px 10px;
   border-radius: 6px;
   margin-bottom: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 
   &:hover {
     background: t.$panel-2;
@@ -314,7 +334,7 @@
   }
 }
 
-/* ---- knowledge bases ---- */
+/* Section header inside any tab panel; the first one hugs the top instead of floating. */
 .h4 {
   margin: 18px 0 8px;
   font-size: 12.5px;
@@ -322,6 +342,11 @@
   letter-spacing: 0.06em;
   color: t.$muted;
 }
+.crudForm > .h4:first-child {
+  margin-top: 0;
+}
+
+/* ---- knowledge bases ---- */
 .kbDocs {
   border-top: 1px solid t.$border;
   margin-top: 16px;
@@ -375,6 +400,9 @@
 .lone {
   padding-left: var(--sp-5);
   padding-right: var(--sp-5);
+  /* One measure for every full-tab panel (Storage, Plugins, Updates), so switching tabs
+     doesn't reflow the same form to three different widths. */
+  max-width: 46rem;
 }
 
 .catalog {

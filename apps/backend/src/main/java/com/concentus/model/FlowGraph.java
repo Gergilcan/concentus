@@ -27,6 +27,10 @@ import java.util.Map;
  * @param folder        dashboard folder this flow lives in; null/blank means the root. One level
  *                      deep on purpose — the bundled starters land in "Samples" so a first launch
  *                      is an invitation, not a wall.
+ * @param goldenAutoRun when true, saving this flow immediately replays its golden reference's
+ *                      input against the new graph. Off unless asked for, and deliberately: every
+ *                      such check is a real agent run with a real bill, and a setting that spends
+ *                      money on every save must be chosen, not inherited.
  */
 public record FlowGraph(String id, String name, String mode,
                         List<FlowNode> nodes, List<FlowEdge> edges,
@@ -34,7 +38,7 @@ public record FlowGraph(String id, String name, String mode,
                         String notifyWebhook, Double budgetUsd,
                         String approvalSlackCredentialId, String approvalSlackChannel,
                         String approvalTeamsWebhook, Map<String, String> variables,
-                        String folder) {
+                        String folder, Boolean goldenAutoRun) {
 
     // Every convenience constructor below carries @JsonIgnore, and it is load-bearing: Jackson's
     // creator detection, faced with several record constructors, can pick a SECONDARY one to
@@ -42,6 +46,20 @@ public record FlowGraph(String id, String name, String mode,
     // not hypothetical: reading flows back from the store lost `folder` on arrival, and had been
     // losing `variables` the same way. @JsonIgnore takes the shortcuts out of the running; only
     // the canonical constructor deserialises.
+
+    /** The pre-golden-auto-run shape, kept so the many existing constructions stay valid. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public FlowGraph(String id, String name, String mode,
+                     List<FlowNode> nodes, List<FlowEdge> edges,
+                     Boolean enabled, List<String> tags, Boolean favorite,
+                     String notifyWebhook, Double budgetUsd,
+                     String approvalSlackCredentialId, String approvalSlackChannel,
+                     String approvalTeamsWebhook, Map<String, String> variables,
+                     String folder) {
+        this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
+                approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, variables,
+                folder, null);
+    }
 
     /** The pre-folders shape, kept so the many existing constructions stay valid. */
     @com.fasterxml.jackson.annotation.JsonIgnore
@@ -53,7 +71,7 @@ public record FlowGraph(String id, String name, String mode,
                      String approvalTeamsWebhook, Map<String, String> variables) {
         this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
                 approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, variables,
-                null);
+                null, null);
     }
 
     /** The pre-variables shape, kept so the many existing constructions stay valid. */
@@ -65,14 +83,18 @@ public record FlowGraph(String id, String name, String mode,
                      String approvalSlackCredentialId, String approvalSlackChannel,
                      String approvalTeamsWebhook) {
         this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
-                approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, null, null);
+                approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, null, null,
+                null);
     }
 
-    /** This flow, filed under {@code folder} — how the seeder sends starters to "Samples". */
+    /**
+     * This flow, filed under {@code folder} — how the seeder sends starters to "Samples".
+     * Canonical constructor, for the same reason {@link #withId} uses it.
+     */
     public FlowGraph withFolder(String newFolder) {
         return new FlowGraph(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook,
                 budgetUsd, approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook,
-                variables, newFolder);
+                variables, newFolder, goldenAutoRun);
     }
 
     /** The pre-remote-approval shape, kept so the many existing constructions stay valid. */
@@ -133,6 +155,13 @@ public record FlowGraph(String id, String name, String mode,
     public FlowGraph withId(String newId) {
         return new FlowGraph(newId, name, mode, nodes, edges, enabled, tags, favorite,
                 notifyWebhook, budgetUsd, approvalSlackCredentialId, approvalSlackChannel,
-                approvalTeamsWebhook, variables, folder);
+                approvalTeamsWebhook, variables, folder, goldenAutoRun);
+    }
+
+    /** Whether saving this flow should immediately re-run its golden reference. Off by default. */
+    // Not isGoldenAutoRun(): a bean-style getter merges with the record component of the same name
+    // and takes it down with it. See enabledOrDefault above — this cost a release once already.
+    public boolean goldenAutoRunOrDefault() {
+        return goldenAutoRun != null && goldenAutoRun;
     }
 }

@@ -1,6 +1,7 @@
 package com.concentus.store;
 
 import com.concentus.model.FlowGraph;
+import com.concentus.model.FlowVersionInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -46,7 +47,7 @@ class FlowVersionStoreTest {
         store.init();
 
         assertThat(store.isAvailable()).isFalse();
-        store.snapshot(flow("f1"));
+        store.snapshot(flow("f1"), "gerard@example.com");
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 
@@ -55,8 +56,8 @@ class FlowVersionStoreTest {
         FlowVersionStore store = new FlowVersionStore(jdbc, mapper); // init() succeeds
         store.init();
 
-        store.snapshot(null);
-        store.snapshot(flow(null));
+        store.snapshot(null, "gerard@example.com");
+        store.snapshot(flow(null), "gerard@example.com");
 
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
@@ -69,7 +70,7 @@ class FlowVersionStoreTest {
         store.init();
         when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("f1"))).thenReturn(0);
 
-        store.snapshot(flow("f1"));
+        store.snapshot(flow("f1"), "gerard@example.com");
 
         ArgumentCaptor<Object[]> captor = ArgumentCaptor.forClass(Object[].class);
         verify(jdbc).update(anyString(), captor.capture());
@@ -77,6 +78,20 @@ class FlowVersionStoreTest {
         assertThat(args[0]).isEqualTo("f1");   // flow_id
         assertThat(args[1]).isEqualTo(1);      // version
         assertThat(args[2]).isEqualTo("My Flow"); // name
+        assertThat(args[5]).isEqualTo("gerard@example.com"); // author
+    }
+
+    @Test
+    void snapshotStoresANullAuthorRatherThanInventingOne() {
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
+        store.init();
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("f1"))).thenReturn(0);
+
+        store.snapshot(flow("f1"), null);
+
+        ArgumentCaptor<Object[]> captor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbc).update(anyString(), captor.capture());
+        assertThat(captor.getValue()[5]).isNull();
     }
 
     @Test
@@ -85,7 +100,7 @@ class FlowVersionStoreTest {
         store.init();
         when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("f1"))).thenReturn(4);
 
-        store.snapshot(flow("f1"));
+        store.snapshot(flow("f1"), "gerard@example.com");
 
         ArgumentCaptor<Object[]> captor = ArgumentCaptor.forClass(Object[].class);
         verify(jdbc).update(anyString(), captor.capture());
@@ -99,7 +114,7 @@ class FlowVersionStoreTest {
         when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("f1")))
                 .thenThrow(new RuntimeException("boom"));
 
-        store.snapshot(flow("f1")); // must not throw
+        store.snapshot(flow("f1"), "gerard@example.com"); // must not throw
     }
 
     // ---------------------------------------------------------------- list() row mapping
@@ -125,6 +140,76 @@ class FlowVersionStoreTest {
         assertThat(mapped).hasFieldOrPropertyWithValue("version", 3);
         assertThat(mapped).hasFieldOrPropertyWithValue("name", "v3 name");
         assertThat(mapped).hasFieldOrPropertyWithValue("createdAt", 999L);
+    }
+
+    // -------------------------------------------------- list() shape + diff against the previous
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listReportsEachRevisionsShapeAndWhatItChanged() {
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
+        store.init();
+        String older = "{\"nodes\":[{},{}],\"edges\":[{}]}";
+        String newer = "{\"nodes\":[{},{},{}],\"edges\":[]}";
+        when(jdbc.query(anyString(), any(RowMapper.class), eq("f1"))).thenReturn(List.of(
+                new FlowVersionStore.Row(2, "Renamed flow", 20L, "gerard@example.com", newer),
+                new FlowVersionStore.Row(1, "My Flow", 10L, null, older)));
+
+        List<FlowVersionInfo> list = store.list("f1");
+
+        assertThat(list).hasSize(2);
+        FlowVersionInfo newest = list.get(0);
+        assertThat(newest.author()).isEqualTo("gerard@example.com");
+        assertThat(newest.nodeCount()).isEqualTo(3);
+        assertThat(newest.edgeCount()).isZero();
+        assertThat(newest.nodesDelta()).isEqualTo(1);
+        assertThat(newest.edgesDelta()).isEqualTo(-1);
+        assertThat(newest.renamed()).isTrue();
+
+        // The oldest revision has nothing before it: zero deltas, not "everything is new", and an
+        // author of null because it predates authorship rather than belonging to nobody.
+        FlowVersionInfo oldest = list.get(1);
+        assertThat(oldest.nodeCount()).isEqualTo(2);
+        assertThat(oldest.nodesDelta()).isZero();
+        assertThat(oldest.edgesDelta()).isZero();
+        assertThat(oldest.renamed()).isFalse();
+        assertThat(oldest.author()).isNull();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listStillReturnsARevisionWhoseStoredJsonCannotBeParsed() {
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
+        store.init();
+        when(jdbc.query(anyString(), any(RowMapper.class), eq("f1"))).thenReturn(List.of(
+                new FlowVersionStore.Row(1, "My Flow", 10L, "local", "{ not valid json ][")));
+
+        List<FlowVersionInfo> list = store.list("f1");
+
+        // Losing the size of one unreadable revision beats losing the whole history listing.
+        assertThat(list).hasSize(1);
+        assertThat(list.get(0).nodeCount()).isZero();
+        assertThat(list.get(0).edgeCount()).isZero();
+    }
+
+    // ---------------------------------------------------------------- currentVersion()
+
+    @Test
+    void currentVersionIsTheHighestOnRecord() {
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
+        store.init();
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq("f1"))).thenReturn(7);
+
+        assertThat(store.currentVersion("f1")).isEqualTo(7);
+    }
+
+    @Test
+    void currentVersionIsZeroWhenHistoryIsUnavailableSoARunSimplyHasNoVersionBadge() {
+        doThrow(new RuntimeException("db unreachable")).when(jdbc).queryForObject(anyString(), eq(Integer.class));
+        FlowVersionStore store = new FlowVersionStore(jdbc, mapper);
+        store.init();
+
+        assertThat(store.currentVersion("f1")).isZero();
     }
 
     // ---------------------------------------------------------------- get() corrupt-JSON handling

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
-import type { BackendFlow, RunSummary } from '../api/types.ts'
+import type { BackendFlow, GoldenStatus, RunSummary } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
 import { hueOf } from '../utils/hueOf.ts'
 import { KIND_LABEL, compact, countsOf, decided, kindOf, money, timeAgo, triggerOf } from './flowFormat.ts'
@@ -12,24 +12,39 @@ export function FlowCard({
   onOpen,
   onRun,
   onDuplicate,
+  onSandbox,
   onDelete,
   patch,
   exportFlow,
   setVersionsFor,
   setSettingsFor,
+  setDoctorFor,
   setTagFilter,
   onDragStart,
+  golden,
+  onGoldenCheck,
+  goldenChecking = false,
 }: {
   flow: BackendFlow
   flowRuns: RunSummary[]
+  /** This flow's golden reference, when it has one. Absent means there is nothing to be stale. */
+  golden?: GoldenStatus
+  /** Starts a golden re-run against the flow as saved now. */
+  onGoldenCheck?: (status: GoldenStatus) => void
+  /** A check this card started is still running. */
+  goldenChecking?: boolean
   onOpen: (id: string) => void
   onRun: (id: string) => void
   onDuplicate: (flow: BackendFlow) => void
+  /** Makes a plan-mode, dry-run copy. Absent simply hides the button. */
+  onSandbox?: (flow: BackendFlow) => Promise<void> | void
   onDelete: (id: string) => void
   patch: (flow: BackendFlow, changes: Partial<BackendFlow>) => Promise<void>
   exportFlow: (flow: BackendFlow) => void
   setVersionsFor: (flow: BackendFlow) => void
   setSettingsFor: (flow: BackendFlow) => void
+  /** Opens the pre-run check. Absent (or an unsaved flow) simply hides the button. */
+  setDoctorFor?: (flow: BackendFlow) => void
   setTagFilter: (tag: string) => void
   /** When set, the card can be dragged (onto a dashboard folder). The handler fills the payload. */
   onDragStart?: (e: DragEvent) => void
@@ -121,6 +136,20 @@ export function FlowCard({
         </span>
       </div>
 
+      {/* The quiet half of "edit without fear": the flow has a run you trust and no longer matches
+          it. One click replays that run's input against what is saved now and opens the two side
+          by side. Only shown when it is actually true — a chip that is always there is furniture. */}
+      {golden?.stale && onGoldenCheck && (
+        <button
+          className={styles.goldenChip}
+          disabled={goldenChecking}
+          title="This flow has changed since its golden reference ran. Replay that run's input against the flow as it is saved now, then compare the two."
+          onClick={() => onGoldenCheck(golden)}
+        >
+          {goldenChecking ? '⭐ testing…' : '⭐ golden outdated — test now'}
+        </button>
+      )}
+
       {tags.length > 0 && (
         <div className={styles.cardTags}>
           {tags.map((t) => (
@@ -182,6 +211,15 @@ export function FlowCard({
           </button>
         )}
         <div className={styles.spacer} />
+        {flow.id && setDoctorFor && (
+          <button
+            className={styles.icon}
+            title="Check this flow: missing credentials, servers without auth, un-installed plugins, an invalid schedule, an exhausted budget. Informs — never blocks a run."
+            onClick={() => setDoctorFor(flow)}
+          >
+            ⚕
+          </button>
+        )}
         <button className={styles.icon} title="Version history" onClick={() => setVersionsFor(flow)}>
           ⟲
         </button>
@@ -201,6 +239,15 @@ export function FlowCard({
         <button className={styles.icon} title="Duplicate" onClick={() => onDuplicate(flow)}>
           ⧉
         </button>
+        {onSandbox && (
+          <button
+            className={styles.icon}
+            title="Duplicate as sandbox: a copy that runs in plan mode, with every worker facade replaced by a dry-run twin. It proposes instead of acting — the dialog says exactly what is and is not simulated."
+            onClick={() => void onSandbox(flow)}
+          >
+            🧪
+          </button>
+        )}
         <button
           className={cx(styles.icon, styles.danger)}
           title="Delete"

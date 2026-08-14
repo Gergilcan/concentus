@@ -4,6 +4,7 @@ import type { AvailablePlugin, PluginsView } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { compact } from './flowFormat.ts'
+import { Spinner } from './Spinner.tsx'
 import styles from './resources.module.scss'
 
 /**
@@ -74,10 +75,10 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
     }
   }
 
-  if (!view) return <div className={styles.muted}>Loading…</div>
+  if (!view) return <Spinner />
 
   return (
-    <div className={`${styles.crudForm} ${styles.lone}`} style={{ maxWidth: '46rem' }}>
+    <div className={`${styles.crudForm} ${styles.lone}`}>
       <h3 className={styles.h4}>Installed plugins</h3>
 
       {view.plugins.length > 0 ? (

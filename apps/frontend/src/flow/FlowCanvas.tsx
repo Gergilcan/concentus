@@ -10,7 +10,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './canvas-overrides.css'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { NODE_COLORS } from '../constants.ts'
 import type { NodeKind } from '../api/types.ts'
 import { NODE_DRAG_TYPE } from '../components/Palette.tsx'
@@ -34,7 +34,25 @@ function isTextEntry(el: EventTarget | null): boolean {
   return node.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(node.tagName)
 }
 
+/**
+ * React Flow ships its own dark/light variable sets, switched by `colorMode` — hardcoding
+ * "dark" was why the canvas ignored the app's theme. The app's contract is `data-theme` on
+ * <html> (absent = dark); a MutationObserver follows live switches from the header's toggle.
+ * High-contrast maps to dark: it is a dark-ground theme, and xyflow only knows two.
+ */
+function useCanvasColorMode(): 'dark' | 'light' {
+  const read = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark')
+  const [mode, setMode] = useState<'dark' | 'light'>(read)
+  useEffect(() => {
+    const observer = new MutationObserver(() => setMode(read()))
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [])
+  return mode
+}
+
 export function FlowCanvas() {
+  const colorMode = useCanvasColorMode()
   const nodes = useFlowStore((s) => s.nodes)
   const edges = useFlowStore((s) => s.edges)
   const runExecByNode = useFlowStore((s) => s.runExecByNode)
@@ -148,7 +166,7 @@ export function FlowCanvas() {
       // screen — which is why a fresh flow's nodes looked billboard-sized. Fitting only ever
       // zooms out now; the user can still zoom in by hand.
       fitViewOptions={{ maxZoom: 1 }}
-      colorMode="dark"
+      colorMode={colorMode}
       nodesDraggable
       elementsSelectable
       deleteKeyCode={['Backspace', 'Delete']}

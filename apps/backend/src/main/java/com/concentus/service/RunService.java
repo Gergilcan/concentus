@@ -57,6 +57,8 @@ public class RunService {
     private final ExecutionBackends backends;
     private final CloudStreamEventHandler cloudEvents;
     private final RunStore runStore;
+    /** Read-only here: runs stamp the flow's version number at launch, they never write history. */
+    private final com.concentus.store.FlowVersionStore flowVersions;
     private final com.fasterxml.jackson.databind.ObjectMapper mapper;
     private final NotificationService notifier;
     private final RemoteApprovalService remoteApprovals;
@@ -71,7 +73,8 @@ public class RunService {
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
                       ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
                       CloudStreamEventHandler cloudEvents,
-                      RunStore runStore, com.fasterxml.jackson.databind.ObjectMapper mapper,
+                      RunStore runStore, com.concentus.store.FlowVersionStore flowVersions,
+                      com.fasterxml.jackson.databind.ObjectMapper mapper,
                       NotificationService notifier, RemoteApprovalService remoteApprovals,
                       com.concentus.store.VariableStore variableStore,
                       @Value("${runs.max-concurrent:8}") int maxConcurrent,
@@ -86,6 +89,7 @@ public class RunService {
         this.pricing = pricing;
         this.cloudEvents = cloudEvents;
         this.runStore = runStore;
+        this.flowVersions = flowVersions;
         this.mapper = mapper;
         this.notifier = notifier;
         this.remoteApprovals = remoteApprovals;
@@ -281,6 +285,10 @@ public class RunService {
         run.backend = backend;
         run.compiled = compiled;
         run.flowJson = toJson(flow);
+        // Stamped once, at launch, next to the snapshot it names — reading it later would report
+        // whatever version the flow has been edited to since, which is the opposite of what an
+        // execution's version badge is for.
+        run.flowVersion = flowVersions.currentVersion(flow.id());
         run.notifyWebhook = flow.notifyWebhook();
         run.approvalSlackCredentialId = flow.approvalSlackCredentialId();
         run.approvalSlackChannel = flow.approvalSlackChannel();
@@ -446,6 +454,9 @@ public class RunService {
 
     /** One turn on whichever turn-based backend this run uses. */
     private void runLocalTurn(AgentRun run, String prompt) {
+        // A new turn means whatever was asked before has been answered. Cleared here rather than
+        // when the answer arrives, so the next question — a different question — gets posted.
+        run.answerRemoteNotified = false;
         try {
             // Dispatched through the registry rather than an if-chain, so adding a backend — or
             // moving one behind a network call — does not mean editing this method.
@@ -474,6 +485,13 @@ public class RunService {
                 run.approvalRemoteNotified = true;
                 remoteApprovals.runAwaitingApproval(run,
                         () -> approve(run.id), () -> reject(run.id));
+            }
+            // The turn ended with the agent ASKING something. The same channels carry it, and a
+            // threaded reply comes back through sendCommand — the same door the app's own command
+            // box uses, so a remote answer is indistinguishable from one typed here.
+            if ("AWAITING_ANSWER".equals(run.status) && !run.answerRemoteNotified) {
+                run.answerRemoteNotified = true;
+                remoteApprovals.runAwaitingAnswer(run, reply -> sendCommand(run.id, reply));
             }
         }
     }
@@ -559,7 +577,15 @@ public class RunService {
         } catch (Exception e) {
             throw new IllegalStateException("Stored flow for this execution could not be read: " + e.getMessage());
         }
-        return start(flow, old.initialPrompt);
+        RunSummary started = start(flow, old.initialPrompt);
+        AgentRun run = runs.get(started.id());
+        if (run == null) return started;
+        // A retry replays the ORIGINAL revision, so it carries the original's version number.
+        // start() stamped the flow's current version, which for an edited flow would label this
+        // run with a revision it never executed.
+        run.flowVersion = old.flowVersion;
+        runStore.persist(run);
+        return run.toSummary();
     }
 
     /** Sends an explicit instruction to a running session. */
@@ -684,6 +710,7 @@ public class RunService {
                 run.totalInputTokens = row.totalInputTokens();
                 run.totalOutputTokens = row.totalOutputTokens();
                 run.flowJson = row.flowJson();
+                run.flowVersion = row.flowVersion();
                 run.initialPrompt = row.initialPrompt();
                 run.notifyWebhook = row.notifyWebhook();
                 run.golden = row.golden();

@@ -6,7 +6,8 @@
   "email": "gila791@hotmail.com",
   "url": "http://www.concentus-ai.com/",
   "scripts": {
-    "dev": "concurrently -n backend,frontend -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\"",
+    "//dev": "--kill-others: closing either half must take the other with it — without it the survivor (usually Vite) lingers invisibly and squats its port for the next start.",
+    "dev": "concurrently --kill-others -n backend,frontend -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\"",
     "//dev:backend": "8734 on purpose — the port Vite's proxy targets AND the desktop shell prefers: a shell launched while this runs ADOPTS this backend instead of starting the jar, so devtools hot-restarts (triggered by the IDE compiling on save, or `mvn compile`) reach the real app. Java edits reload in seconds; only a dependency change still needs a restart.",
     "dev:backend": "cd apps/backend && mvn -q spring-boot:run -Dspring-boot.run.arguments=--server.port=8734",
     "dev:frontend": "pnpm --filter frontend dev",
@@ -18,7 +19,7 @@
     "desktop:build": "pnpm --filter frontend build && cd apps/backend && mvn -q clean package -DskipTests",
     "desktop": "pnpm desktop:build && pnpm --filter desktop start",
     "//desktop:dev": "The live loop INSIDE the real app: Vite serves the UI with hot reload, the Electron shell detects it and loads it instead of the jar's baked copy, and Vite proxies /api and /ws to the backend (8734). Frontend edits appear on save. For backend hot reload too, start `pnpm dev:backend` FIRST: the shell adopts it and Spring devtools restarts it on every recompile — no jar rebuild. Without it the shell runs the last jar from target/, so build that once first.",
-    "desktop:dev": "concurrently -n ui,shell -c green,magenta \"pnpm dev:frontend\" \"pnpm --filter desktop start\""
+    "desktop:dev": "concurrently --kill-others -n ui,shell -c green,magenta \"pnpm dev:frontend\" \"pnpm --filter desktop start\""
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
-import type { BackendFlow, FlowMemoryView, FlowVersionInfo, Variable } from '../api/types.ts'
+import type { BackendFlow, FlowMemoryView, Variable } from '../api/types.ts'
 import { CredentialField } from './CredentialField.tsx'
+import { FlowVersions } from './FlowVersions.tsx'
 import { Modal } from './Modal.tsx'
 import { timeAgo } from './flowFormat.ts'
 import styles from './flows.module.scss'
@@ -26,6 +26,7 @@ export function SettingsModal({
   const [enabled, setEnabled] = useState(flow.enabled !== false)
   const [webhook, setWebhook] = useState(flow.notifyWebhook ?? '')
   const [budget, setBudget] = useState(flow.budgetUsd != null ? String(flow.budgetUsd) : '')
+  const [goldenAutoRun, setGoldenAutoRun] = useState(flow.goldenAutoRun === true)
   const [slackCredential, setSlackCredential] = useState(flow.approvalSlackCredentialId ?? '')
   const [slackChannel, setSlackChannel] = useState(flow.approvalSlackChannel ?? '')
   const [teamsWebhook, setTeamsWebhook] = useState(flow.approvalTeamsWebhook ?? '')
@@ -56,6 +57,7 @@ export function SettingsModal({
       approvalSlackChannel: slackChannel.trim(),
       approvalTeamsWebhook: teamsWebhook.trim(),
       variables,
+      goldenAutoRun,
     })
     setBusy(false)
   }
@@ -122,6 +124,17 @@ export function SettingsModal({
           placeholder="e.g. 25"
         />
       </label>
+      <label
+        className={styles.toggleRow}
+        title="After a save that changes the graph, replay the golden reference's input against the new flow automatically. Each check is a real run with a real cost, which is why it is off unless you ask for it — the dashboard offers the same check as a chip when the flow drifts."
+      >
+        <input
+          type="checkbox"
+          checked={goldenAutoRun}
+          onChange={(e) => setGoldenAutoRun(e.target.checked)}
+        />
+        <span>Re-run the golden check after each save that changes the flow ⓘ</span>
+      </label>
       <label className={styles.field}>
         <span>Failure notification webhook</span>
         <input
@@ -137,15 +150,15 @@ export function SettingsModal({
 
       <h4
         className={styles.sectionHead}
-        title="When a run of this flow stops to ask for approval, the plan is sent to these channels. Slack can answer: a ✅ reaction approves, a ❌ rejects — the app polls the message, so no public URL is needed. Teams is notification-only: its webhooks cannot carry a reply back."
+        title="When a run of this flow stops for a human — waiting for approval, or asking you something — it goes to these channels. Slack can answer both: a ✅ reaction approves a plan (❌ rejects), and a reply in a question's thread becomes the run's next command. The app polls, so no public URL is needed. Teams is notification-only: its webhooks cannot carry a reply back."
       >
-        Remote approval ⓘ
+        Remote approvals and questions ⓘ
       </h4>
       <CredentialField
         label="Slack bot token"
         value={slackCredential}
         onChange={setSlackCredential}
-        what="the Slack bot (scopes: chat:write, reactions:read)"
+        what="the Slack bot (scopes: chat:write, reactions:read, channels:history)"
       />
       <label
         className={styles.field}
@@ -160,7 +173,7 @@ export function SettingsModal({
       </label>
       <label
         className={styles.field}
-        title="A Teams incoming-webhook URL (Workflows). Posts the plan as a card — notification only; approve from the app or Slack."
+        title="A Teams incoming-webhook URL (Workflows). Posts the plan or the question as a card — notification only; answer from the app or Slack."
       >
         <span>Teams webhook (notify only) ⓘ</span>
         <input
@@ -303,7 +316,10 @@ function MemorySection({ flowId }: { flowId: string }) {
   )
 }
 
-/** Version history with one-click rollback. */
+/**
+ * Version history with one-click rollback, for a flow opened from the dashboard. The list itself
+ * is {@link FlowVersions}, shared with Studio's Versions tab.
+ */
 export function VersionsModal({
   flow,
   onClose,
@@ -313,64 +329,9 @@ export function VersionsModal({
   onClose: () => void
   pushError: (m: string) => void
 }) {
-  const [versions, setVersions] = useState<FlowVersionInfo[] | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    if (!flow.id) {
-      setVersions([])
-      return
-    }
-    api
-      .listFlowVersions(flow.id)
-      .then(setVersions)
-      .catch(() => setVersions([]))
-  }, [flow.id])
-
-  const restore = async (version: number) => {
-    if (!flow.id) return
-    if (!confirm(`Restore version ${version}? The current version is kept in history.`)) return
-    setBusy(true)
-    try {
-      await api.restoreFlowVersion(flow.id, version)
-      onClose()
-    } catch (e) {
-      pushError(errMessage(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
   return (
     <Modal title={`History — ${flow.name}`} onClose={onClose}>
-      {versions === null ? (
-        <div className={styles.sideEmpty}>Loading…</div>
-      ) : versions.length === 0 ? (
-        <div className={styles.sideEmpty}>
-          No history yet. Every save from now on adds a restorable version.
-        </div>
-      ) : (
-        <ul className={styles.versionList}>
-          {versions.map((v, i) => (
-            <li key={v.version} className={styles.versionRow}>
-              <span className={styles.versionNum}>v{v.version}</span>
-              <span className={styles.versionName}>{v.name}</span>
-              <span className={styles.versionTime}>{timeAgo(v.createdAt)}</span>
-              {i === 0 ? (
-                <span className={styles.versionCurrent}>current</span>
-              ) : (
-                <button
-                  className={styles.ghost}
-                  disabled={busy}
-                  onClick={() => void restore(v.version)}
-                >
-                  Restore
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <FlowVersions flowId={flow.id ?? null} onRestored={onClose} pushError={pushError} />
     </Modal>
   )
 }

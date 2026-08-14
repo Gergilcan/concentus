@@ -1,6 +1,13 @@
 import { api } from '../api/client.ts'
 import type { BackendFlow, RunSummary } from '../api/types.ts'
 import type { View } from '../components/AppHeader.tsx'
+import {
+  referencedProfileIds,
+  sandboxFlow,
+  sandboxProfileName,
+  sandboxProfileOf,
+  SANDBOX_WARNING,
+} from '../components/sandbox.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { useFlowStore } from './store.ts'
 
@@ -55,6 +62,39 @@ export function useFlowActions({
     }
   }
 
+  /**
+   * "Duplicate as sandbox": a copy of the flow arranged to propose instead of act, so it can be
+   * run and watched without touching anything.
+   *
+   * Each facade the flow references gets a dry-run twin rather than everyone sharing one sandbox
+   * profile: a profile carries an allowlist, and a single shared one would either widen what some
+   * worker may reach or narrow it until the copy stops exercising the real path. Twins are reused
+   * across sandboxes by name, so doing this twice does not litter the list.
+   */
+  const sandboxFlowCopy = async (flow: BackendFlow) => {
+    if (!confirm(`Make a sandbox copy of "${flow.name}"?\n\n${SANDBOX_WARNING}`)) return
+    try {
+      const wanted = referencedProfileIds(flow)
+      const mapping: Record<string, string> = {}
+      if (wanted.length > 0) {
+        const profiles = await api.listFacadeProfiles()
+        const byId = new Map(profiles.map((p) => [p.id ?? '', p]))
+        const byName = new Map(profiles.map((p) => [p.name, p]))
+        for (const id of wanted) {
+          const original = byId.get(id)
+          if (!original) continue // a reference to a profile that no longer exists: leave it be
+          const existing = byName.get(sandboxProfileName(original.name))
+          const twin = existing ?? (await api.saveFacadeProfile(sandboxProfileOf(original)))
+          if (twin.id) mapping[id] = twin.id
+        }
+      }
+      await api.saveFlow(sandboxFlow(flow, mapping))
+      refreshFlows()
+    } catch (e) {
+      pushError(errMessage(e))
+    }
+  }
+
   const deleteFlow = async (id: string) => {
     const flow = flows.find((f) => f.id === id)
     if (!confirm(`Delete "${flow?.name ?? 'this flow'}"? This cannot be undone.`)) return
@@ -68,6 +108,15 @@ export function useFlowActions({
 
   const newFlow = () => {
     useFlowStore.getState().newFlow()
+    setView('studio')
+  }
+
+  /**
+   * Opens a generated draft on the canvas. Deliberately the same path as a new flow: the draft
+   * has no id, so Studio treats it as unsaved and the user's own Save is what creates it.
+   */
+  const openGeneratedFlow = (flow: BackendFlow) => {
+    useFlowStore.getState().loadBackendFlow(flow)
     setView('studio')
   }
 
@@ -116,5 +165,5 @@ export function useFlowActions({
     }
   }
 
-  return { onRunStarted, openFlow, runFlow, duplicateFlow, deleteFlow, newFlow, saveFlowFromDashboard, openRun, retryRun }
+  return { onRunStarted, openFlow, runFlow, duplicateFlow, sandboxFlowCopy, deleteFlow, newFlow, openGeneratedFlow, saveFlowFromDashboard, openRun, retryRun }
 }

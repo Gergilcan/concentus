@@ -70,6 +70,16 @@ public class AgentSpec {
     public String coordinatorAccess = "";
 
     public ModelSpec model = new ModelSpec();
+    /**
+     * The model to escalate to when the adversarial verifier rejects this agent's output. Empty
+     * (the default) means no escalation: one attempt, on {@link #model}.
+     *
+     * <p>The cheap-first idea, made honest: the primary model does the work, and only an output a
+     * verifier actually refused is worth paying the stronger model for. It applies to FAN-OUT
+     * WORKERS only, because they are the one path with a verifier — an agent nobody judges has no
+     * signal to escalate on, and re-running it "in case" would spend more, not less.
+     */
+    public String fallbackModelId = "";
     public List<SkillSpec> skills = new ArrayList<>();
     /**
      * Claude Code plugin ids ({@code name@marketplace}) this agent runs with. Empty means the

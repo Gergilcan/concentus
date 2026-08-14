@@ -7,6 +7,7 @@ import { installClaude, installCommand, openLoginTerminal } from './claude-insta
 import { failurePage } from './failure-page'
 import { OnboardingState, StorageState, onboardingPage } from './onboarding-page'
 import { backendLogFile, isPackaged, shellLogFile } from './paths'
+import { installRuntime, isRuntimeId, runtimeInstallPlan } from './runtime-install'
 import { Splash, noSplash, showSplash } from './splash'
 import { resetRunNotifications, startRunNotifications } from './run-notifications'
 import { loadSettings, saveSettings } from './settings'
@@ -389,6 +390,25 @@ function registerIpc(): void {
   ipcMain.handle('updates:status', () => updateStatus())
   ipcMain.handle('updates:check', () => checkForUpdatesNow())
   ipcMain.handle('updates:install', () => installUpdateNow())
+
+  // Runtime installs for MCP servers. The id is validated here rather than trusted: the renderer
+  // is a page loaded over HTTP, and the whole safety of this path is that only the six hardcoded
+  // commands in runtime-install.ts can ever run.
+  ipcMain.handle('runtimes:plan', (_event, runtime: unknown) => {
+    if (!isRuntimeId(runtime)) return { runtime, command: null, reason: 'Unknown runtime.' }
+    return runtimeInstallPlan(runtime)
+  })
+
+  ipcMain.handle('runtimes:install', async (event, runtime: unknown) => {
+    if (!isRuntimeId(runtime)) {
+      log.warn(`Refused a runtime install for an unknown id: ${String(runtime)}`)
+      return { ok: false, detail: 'Unknown runtime.' }
+    }
+    return installRuntime(runtime, (line) => {
+      // Streamed to the window that asked, so a long install shows progress rather than freezing.
+      if (!event.sender.isDestroyed()) event.sender.send('runtimes:install-output', line)
+    })
+  })
 
   ipcMain.on('failure:retry', () => {
     failureWindow?.close()

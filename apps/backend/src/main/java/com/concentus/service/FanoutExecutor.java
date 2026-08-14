@@ -208,6 +208,8 @@ public class FanoutExecutor {
             WorkVerdict verdict = runVerifier(run, verifier, cmd, userText, outcomes);
             if ("ERROR".equals(run.status) || "TERMINATED".equals(run.status)) return;
             surviving = applyVerdict(run, verdict, outcomes);
+            surviving = escalateRejected(run, verifier, cmd, userText, surviving);
+            if ("ERROR".equals(run.status) || "TERMINATED".equals(run.status)) return;
             if (surviving.stream().noneMatch(Outcome::ok)) {
                 fail(run, "The verifier rejected every worker's output — nothing survived to "
                         + "merge. Each rejection's reason is on its worker's box.");
@@ -969,6 +971,87 @@ public class FanoutExecutor {
             } else {
                 out.add(o);
             }
+        }
+        return out;
+    }
+
+    /**
+     * The cost router: an output the verifier refused gets one more attempt, on the stronger
+     * model its agent nominated.
+     *
+     * <p>The point is to make "cheap first" safe rather than hopeful. A cheap model doing the
+     * work is only a saving if someone checks it, so escalation is driven by the one signal that
+     * means "this answer is actually wrong" — a verifier REJECTION. A process failure is not that
+     * signal (it says nothing about the model) and neither is a worker nobody judged, which is why
+     * this runs only here, after a verdict.
+     *
+     * <p>Exactly once per worker, and the re-run is judged like any other output: the second
+     * verdict is what decides whether it merges. Nothing unverified reaches the merge, which is
+     * the invariant the verifier exists to hold.
+     */
+    private List<Outcome> escalateRejected(AgentRun run, AgentSpec verifier, String cmd,
+                                           String userText, List<Outcome> judged) {
+        List<Outcome> toEscalate = judged.stream()
+                .filter(o -> !o.ok() && !o.spec().fallbackModelId.isBlank())
+                .filter(o -> rejectedByVerifier(run, o))
+                .toList();
+        if (toEscalate.isEmpty()) return judged;
+
+        List<Outcome> retried = new ArrayList<>(toEscalate.size());
+        java.util.Map<String, String> notes = new java.util.LinkedHashMap<>();
+        for (Outcome o : toEscalate) {
+            AgentSpec spec = o.spec();
+            String cheap = spec.model.id;
+            NodeExec exec = run.nodeExec(spec.nodeId, "agent", spec.name);
+            run.emit(RunEvent.of("system", "Output rejected on " + cheap + " — retrying '"
+                    + spec.name + "' on " + spec.fallbackModelId + ".", spec.name, spec.nodeId));
+            notes.put(spec.nodeId,
+                    "Retried on " + spec.fallbackModelId + " after rejection on " + cheap + ".");
+            // The spec is this run's own compiled copy, so pointing it at the stronger model is
+            // contained to this run.
+            spec.model.id = spec.fallbackModelId;
+            if (exec != null) {
+                exec.retries++;
+                // Priced at the model that produced the output that ships. Both attempts' tokens
+                // land on this one node, so this OVERSTATES the first (cheap) attempt rather than
+                // understating the bill — the safe direction for a number about money. Said out
+                // loud because there is no per-attempt cost record to be exact with.
+                exec.model = spec.fallbackModelId;
+            }
+            retried.add(runWorker(run, spec, cmd, userText));
+            if ("TERMINATED".equals(run.status)) return judged;
+        }
+
+        List<Outcome> ok = retried.stream().filter(Outcome::ok).toList();
+        if (!ok.isEmpty()) {
+            WorkVerdict second = runVerifier(run, verifier, cmd, userText, ok);
+            if ("ERROR".equals(run.status) || "TERMINATED".equals(run.status)) return judged;
+            retried = applyVerdict(run, second, retried);
+        }
+        // After the second verdict, never before: an acceptance clears the box's reason, and the
+        // note is the trail of what actually happened to this worker.
+        notes.forEach((nodeId, note) -> {
+            NodeExec exec = run.nodeExec(nodeId, "agent", nodeId);
+            if (exec == null) return;
+            exec.verdictReason = exec.verdictReason == null || exec.verdictReason.isBlank()
+                    ? note : exec.verdictReason + " — " + note;
+        });
+        return replace(judged, retried);
+    }
+
+    /** Whether the verdict this run recorded on that worker's box was a rejection. */
+    private static boolean rejectedByVerifier(AgentRun run, Outcome o) {
+        NodeExec exec = run.nodeExec(o.spec().nodeId, "agent", o.spec().name);
+        return exec != null && "rejected".equals(exec.verdict);
+    }
+
+    /** The original list with each re-run worker's outcome swapped in, order preserved. */
+    private static List<Outcome> replace(List<Outcome> original, List<Outcome> updated) {
+        List<Outcome> out = new ArrayList<>(original.size());
+        for (Outcome o : original) {
+            out.add(updated.stream()
+                    .filter(u -> u.spec().nodeId.equals(o.spec().nodeId))
+                    .findFirst().orElse(o));
         }
         return out;
     }

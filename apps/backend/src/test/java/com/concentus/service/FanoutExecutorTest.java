@@ -633,6 +633,128 @@ class FanoutExecutorTest {
         assertThat(exec(run, "n1").verdict).isEqualTo("rejected");
     }
 
+    // ------------------------------------------------------------------ cost router
+
+    /** The model each spawned process was told to use, in spawn order. */
+    private static List<String> modelsOf(List<List<String>> spawned) {
+        return spawned.stream().map(args -> args.get(args.indexOf("--model") + 1)).toList();
+    }
+
+    @Test
+    void aRejectedWorkerIsRetriedOnItsEscalationModelAndJudgedAgain() {
+        // Cheap first, made safe: the saving is only real because something CHECKED the cheap
+        // answer, and the stronger model is paid for exactly when that check refused.
+        AgentSpec worker = spec("n1", "Worker A", "worker-a", "");
+        worker.model.id = "claude-haiku-4-5-20251001";
+        worker.fallbackModelId = "claude-opus-4-8";
+        AgentSpec verifier = spec("v1", "Verifier", "verifier", "");
+        AgentSpec merger = spec("m1", "Merge", "merge", "");
+        AgentRun run = runWith(merger, verifier, worker);
+
+        List<List<String>> spawned = new CopyOnWriteArrayList<>();
+        java.util.concurrent.atomic.AtomicInteger verdicts = new java.util.concurrent.atomic.AtomicInteger();
+        FanoutExecutor.ProcessStarter starter = (args, workdir) -> {
+            spawned.add(args);
+            if (workdir.toString().endsWith("verifier")) {
+                // Rejects the first output, accepts what the stronger model produced.
+                boolean first = verdicts.getAndIncrement() == 0;
+                run.submittedVerdict = new com.concentus.model.WorkVerdict(null, List.of(
+                        new com.concentus.model.WorkVerdict.Item("n1", first ? "reject" : "accept",
+                                first ? "invented numbers" : null)));
+                return new FakeProcess(okStream("Veredicto", "Veredicto"), 0);
+            }
+            if (workdir.toString().endsWith("merge")) {
+                return new FakeProcess(okStream("Resultado final", "Resultado final"), 0);
+            }
+            return new FakeProcess(okStream("Informe", "Informe"), 0);
+        };
+
+        executor(starter, 900, 0).runTurn(run, run.compiled, "go");
+
+        // worker (cheap) → verifier → worker (escalated) → verifier → merge.
+        assertThat(spawned).hasSize(5);
+        assertThat(modelsOf(spawned).get(0)).contains("haiku");
+        assertThat(modelsOf(spawned).get(2)).contains("opus");
+        // Judged again: an escalated output reaching the merge unverified would break the one
+        // invariant the verifier exists to hold.
+        assertThat(verdicts.get()).isEqualTo(2);
+        assertThat(exec(run, "n1").verdict).isEqualTo("accepted");
+        assertThat(exec(run, "n1").retries).isEqualTo(1);
+        assertThat(exec(run, "n1").verdictReason).contains("Retried on claude-opus-4-8");
+        assertThat(run.status).isEqualTo("IDLE");
+    }
+
+    @Test
+    void anEscalatedOutputTheVerifierRejectsAgainStaysRejected() {
+        // One escalation, not a loop: a second rejection is an answer, not an invitation to keep
+        // spending on bigger models.
+        AgentSpec worker = spec("n1", "Worker A", "worker-a", "");
+        worker.fallbackModelId = "claude-opus-4-8";
+        AgentSpec verifier = spec("v1", "Verifier", "verifier", "");
+        AgentRun run = runWith(null, verifier, worker);
+
+        List<List<String>> spawned = new CopyOnWriteArrayList<>();
+        FanoutExecutor.ProcessStarter starter = (args, workdir) -> {
+            spawned.add(args);
+            if (workdir.toString().endsWith("verifier")) {
+                run.submittedVerdict = new com.concentus.model.WorkVerdict(null, List.of(
+                        new com.concentus.model.WorkVerdict.Item("n1", "reject", "still wrong")));
+                return new FakeProcess(okStream("Veredicto", "Veredicto"), 0);
+            }
+            return new FakeProcess(okStream("Informe", "Informe"), 0);
+        };
+
+        executor(starter, 900, 0).runTurn(run, run.compiled, "go");
+
+        assertThat(spawned).hasSize(4); // worker, verifier, escalated worker, verifier
+        assertThat(run.status).isEqualTo("ERROR");
+        assertThat(run.error).contains("rejected every worker");
+        assertThat(exec(run, "n1").retries).isEqualTo(1);
+    }
+
+    @Test
+    void aWorkerWithoutAnEscalationModelIsNeverRetried() {
+        AgentSpec worker = spec("n1", "Worker A", "worker-a", "");
+        AgentSpec verifier = spec("v1", "Verifier", "verifier", "");
+        AgentRun run = runWith(null, verifier, worker);
+
+        List<List<String>> spawned = new CopyOnWriteArrayList<>();
+        FanoutExecutor.ProcessStarter starter = (args, workdir) -> {
+            spawned.add(args);
+            if (workdir.toString().endsWith("verifier")) {
+                run.submittedVerdict = new com.concentus.model.WorkVerdict(null, List.of(
+                        new com.concentus.model.WorkVerdict.Item("n1", "reject", "off-task")));
+                return new FakeProcess(okStream("Veredicto", "Veredicto"), 0);
+            }
+            return new FakeProcess(okStream("Informe", "Informe"), 0);
+        };
+
+        executor(starter, 900, 0).runTurn(run, run.compiled, "go");
+
+        assertThat(spawned).hasSize(2); // worker + verifier, nothing more
+        assertThat(exec(run, "n1").retries).isZero();
+    }
+
+    @Test
+    void withNoVerifierThereIsNothingToEscalateOn() {
+        // A worker nobody judged has no signal saying its answer was wrong. Re-running it "in
+        // case" would spend more, not less — which is the opposite of this feature.
+        AgentSpec worker = spec("n1", "Worker A", "worker-a", "");
+        worker.model.id = "claude-haiku-4-5-20251001";
+        worker.fallbackModelId = "claude-opus-4-8";
+        AgentRun run = run(worker);
+
+        List<List<String>> spawned = new CopyOnWriteArrayList<>();
+        executor((args, workdir) -> {
+            spawned.add(args);
+            return new FakeProcess(okStream("Informe", "Informe"), 0);
+        }, 900, 0).runTurn(run, run.compiled, "go");
+
+        assertThat(spawned).hasSize(1);
+        assertThat(modelsOf(spawned).get(0)).contains("haiku");
+        assertThat(exec(run, "n1").retries).isZero();
+    }
+
     @Test
     void graphMetricsExistOnlyForRunsThatFannedOut() {
         // A single-session flow has no graph to measure — the report must carry nothing, not

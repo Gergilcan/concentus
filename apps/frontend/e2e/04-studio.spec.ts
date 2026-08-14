@@ -48,6 +48,21 @@ test('selecting a node opens its inspector; the canvas state survives a reload',
   await expect(page.getByText(/No executions/)).toBeVisible()
 })
 
+test('the pre-run check reports on the saved flow', async ({ page }) => {
+  await openApp(page)
+  await flowCard(page, NAME).getByRole('button', { name: 'Open' }).click()
+
+  await page.getByRole('button', { name: '⚕ Check' }).click()
+
+  // Against the real backend: whether this machine has a signed-in CLI is not something to assert
+  // — what must hold is that the check RAN and answered, either all-clear or with findings that
+  // each name a fix.
+  const dialog = page.getByRole('dialog')
+  await expect(
+    dialog.getByText(/Nothing to fix/).or(dialog.getByRole('list', { name: 'Findings' })),
+  ).toBeVisible({ timeout: 20_000 })
+})
+
 test('every studio panel folds away and comes back', async ({ page }) => {
   await openApp(page)
   await flowCard(page, NAME).getByRole('button', { name: 'Open' }).click()

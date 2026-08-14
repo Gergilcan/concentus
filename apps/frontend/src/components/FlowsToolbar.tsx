@@ -10,6 +10,8 @@ export function FlowsToolbar({
   onSortChange,
   onImport,
   onNew,
+  onDescribe,
+  onRecipes,
 }: {
   query: string
   onQueryChange: (q: string) => void
@@ -17,6 +19,10 @@ export function FlowsToolbar({
   onSortChange: (s: Sort) => void
   onImport: (file: File) => void
   onNew: () => void
+  /** Opens the "describe what you want automated" dialog. */
+  onDescribe: () => void
+  /** Opens the outcome recipes — a configured flow in two or three questions. */
+  onRecipes: () => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -53,6 +59,20 @@ export function FlowsToolbar({
           e.target.value = ''
         }}
       />
+      <button
+        className={styles.ghost}
+        onClick={onRecipes}
+        title="Pick an outcome — triage my inbox, brief me every morning — answer the two or three things only you can know, and get a configured flow."
+      >
+        🍳 Recipes
+      </button>
+      <button
+        className={styles.ghost}
+        onClick={onDescribe}
+        title="Describe what you want automated in a sentence and get a first draft on the canvas. Nothing is saved until you press Save."
+      >
+        ✨ Describe a flow
+      </button>
       <button className={styles.primary} onClick={onNew}>
         + New flow
       </button>

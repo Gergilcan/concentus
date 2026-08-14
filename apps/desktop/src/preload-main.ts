@@ -18,4 +18,24 @@ contextBridge.exposeInMainWorld('concentusShell', {
     check: () => ipcRenderer.invoke('updates:check'),
     install: () => ipcRenderer.invoke('updates:install'),
   },
+  /**
+   * Installing a runtime an MCP server needs (Node, pnpm, Python, pipx, uv).
+   *
+   * The one place this bridge takes an argument, and it is deliberately not a command: the
+   * renderer sends a runtime IDENTIFIER, the main process looks it up in a fixed table of six
+   * hardcoded commands (runtime-install.ts) and rejects anything else. So the worst a compromised
+   * page can do here is install one of six official developer tools — bad, but not arbitrary
+   * execution, which is what passing a command line would have meant.
+   */
+  runtimes: {
+    plan: (runtime: string) => ipcRenderer.invoke('runtimes:plan', runtime),
+    install: (runtime: string) => ipcRenderer.invoke('runtimes:install', runtime),
+    onOutput: (handler: (line: string) => void) => {
+      const listener = (_event: unknown, line: string) => handler(line)
+      ipcRenderer.on('runtimes:install-output', listener)
+      // Returns its own removal: the panel that subscribes unmounts, and a listener left behind
+      // would keep writing into a dead component's state on the next install.
+      return () => ipcRenderer.removeListener('runtimes:install-output', listener)
+    },
+  },
 })

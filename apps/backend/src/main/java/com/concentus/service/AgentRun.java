@@ -26,6 +26,13 @@ public class AgentRun {
     public volatile long createdAt = System.currentTimeMillis();
     /** FlowGraph snapshot (JSON) used to recompile and continue this run after a restart. */
     public volatile String flowJson;
+    /**
+     * The flow's version number at launch — the human-readable anchor between an execution and the
+     * Versions list. 0 when the flow has no history (unsaved, or history unavailable). What the
+     * run actually executed is {@link #flowJson}, always: this number names that revision, it does
+     * not define it.
+     */
+    public volatile int flowVersion;
 
     // STARTING | RUNNING | IDLE (waiting for its first instruction) | AWAITING_APPROVAL |
     // AWAITING_ANSWER (the final answer asked the user something) | COMPLETED | ERROR | TERMINATED
@@ -178,6 +185,12 @@ public class AgentRun {
     public volatile String approvalTeamsWebhook;
     /** Set when the remote channels were told about this run's approval wait — told once. */
     public volatile boolean approvalRemoteNotified;
+    /**
+     * Set when this run's current QUESTION was posted remotely. Reset at the start of every turn,
+     * unlike the approval flag: a run can ask several questions in a row, and each new one is a
+     * new thing to ask — while a second message about the SAME question reads as two questions.
+     */
+    public volatile boolean answerRemoteNotified;
 
     private final CopyOnWriteArrayList<RunEvent> buffer = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<Consumer<RunEvent>> listeners = new CopyOnWriteArrayList<>();
@@ -317,7 +330,7 @@ public class AgentRun {
 
     public RunSummary toSummary() {
         return new RunSummary(id, flowId, flowName, mode, status, createdAt, sessionId, agentIds, error,
-                trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd(), golden);
+                trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd(), golden, flowVersion);
     }
 
     /**

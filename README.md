@@ -879,6 +879,45 @@ onto a valid delivery.
 
 Flows persist as JSON under `apps/backend/data/flows` (override with `APP_DATA_DIR`).
 
+## Headless: run a flow from a terminal
+
+A flow is a JSON file and the backend jar is self-contained, so a run needs neither the desktop app
+nor a browser:
+
+```bash
+pnpm desktop:build                                     # once — builds the jar
+node scripts/concentus-run.mjs my-flow.json --input "go"
+echo $?                                                # 0 completed · 1 failed · 2 needs a human
+```
+
+It boots the jar on a free port with a throwaway data directory, imports the flow, starts a run,
+prints the agents' messages on **stdout** and everything else (progress, errors, the outcome) on
+**stderr** — so `node scripts/concentus-run.mjs flow.json --input "go" --quiet > answer.txt` leaves
+you the answer and nothing else.
+
+| Option | |
+|---|---|
+| `--input "text"` | the run's first message. Without it a manual-trigger flow has nothing to do. |
+| `--url URL` | use a backend that is already running instead of booting one. |
+| `--jar PATH` | a different jar (default `apps/backend/target/concentus-backend.jar`). |
+| `--timeout SECS` | give up waiting (default 1800) and exit 3. |
+| `--quiet` | only the answer and the outcome line. |
+
+**Exit codes**, because a shell needs to tell three different situations apart:
+
+| | |
+|---|---|
+| `0` | the run completed |
+| `1` | it failed (errored, or was terminated) |
+| `2` | **it needs a human** — waiting for approval, asking a question, or with no instruction |
+| `3` | timed out; the run is still going in that backend |
+| `4` | usage or setup problem (no such file, jar missing, backend never came up) |
+
+Deliberate limits: it **never answers for you** — approval mode and questions exit 2 rather than
+guessing — and the flow travels in the request rather than being saved, so a headless run leaves no
+flow behind in whatever database it used. It polls the run rather than opening the UI's WebSocket:
+nobody watches a terminal for sub-second latency, and polling needs no client to keep alive.
+
 ## The YAML CLI (still here)
 
 The original single-agent CLI lives in the same backend module. See its usage in

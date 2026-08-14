@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { shellBridge, type ShellUpdateState } from '../api/shell.ts'
 import { clockTime } from '../utils/format.ts'
+import { Spinner } from './Spinner.tsx'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
 
@@ -67,13 +68,14 @@ export function UpdatesPanel() {
   }
 
   return (
-    <div className={`${styles.crudForm} ${styles.lone}`} style={{ maxWidth: '46rem' }}>
+    <div className={`${styles.crudForm} ${styles.lone}`}>
+      <h3 className={styles.h4}>Application updates</h3>
       <p className={styles.status}>
         Current version: <b>{st ? st.version : '…'}</b>
         {st?.available && st.phase !== 'up-to-date' && <> · found {st.available}</>}
       </p>
       <p className={panels.hint} role="status">
-        {st ? line(st) : 'Reading update state…'}
+        {st ? line(st) : <Spinner />}
       </p>
       <div className={styles.crudActions}>
         <button

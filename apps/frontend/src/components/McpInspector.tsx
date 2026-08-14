@@ -6,6 +6,7 @@ import { Field, FineTuning, SelectField, TextArea } from './fields.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import { McpOAuthConnect } from './McpOAuthConnect.tsx'
 import { McpToolPicker } from './McpToolPicker.tsx'
+import { RuntimeNotice } from './RuntimeNotice.tsx'
 import styles from './panels.module.scss'
 
 interface Props {
@@ -139,6 +140,10 @@ export function McpInspector({ data, set }: Props) {
               set({ env })
             }}
           />
+          {/* Whether this machine can actually launch it. Here rather than at run time because
+              here is where the command is chosen, and a missing pipx surfaces as an opaque
+              process failure once the run is already going. */}
+          <RuntimeNotice command={data.command ?? ''} />
           <p
             className={styles.hint}
             title="The run launches this command itself and talks to it over stdio. The tool picker and OAuth don't apply; the agent sees every tool the server exposes."

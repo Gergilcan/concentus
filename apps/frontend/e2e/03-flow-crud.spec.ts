@@ -28,8 +28,50 @@ test('creates a flow in the Studio and finds it on the dashboard', async ({ page
 
 test('duplicates the flow', async ({ page }) => {
   await openApp(page)
-  await flowCard(page, NAME).getByTitle('Duplicate').click()
+  // exact: "Duplicate as sandbox" is a second button on the same card, and title matching is
+  // substring-based.
+  await flowCard(page, NAME).getByTitle('Duplicate', { exact: true }).click()
   await expect(flowCard(page, `${NAME} (copy)`)).toHaveCount(1)
+})
+
+test('makes a sandbox copy that is paused, tagged, and in plan mode', async ({ page }) => {
+  // Its own flow, with a real coordinator: the shared one in this file is deliberately empty, and
+  // plan mode has to land on an agent to be worth asserting.
+  const SANDBOXED = 'E2E sandbox source'
+  await openApp(page)
+  page.on('dialog', (dialog) => {
+    // The confirmation must say what is NOT simulated — a sandbox that hides a gap buys
+    // confidence it has not earned.
+    if (dialog.message().includes('sandbox copy')) expect(dialog.message()).toContain('NOT covered')
+    void dialog.accept()
+  })
+
+  await page.getByRole('button', { name: '+ New flow' }).first().click()
+  await page.getByLabel('Flow name').fill(SANDBOXED)
+  await page.getByRole('button', { name: '▶ Input / trigger' }).click()
+  await page.getByRole('button', { name: '◆ Agent' }).click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByRole('button', { name: '← Flows' }).click()
+
+  await flowCard(page, SANDBOXED).getByTitle(/Duplicate as sandbox/).click()
+
+  const sandbox = flowCard(page, `${SANDBOXED} (sandbox)`)
+  await expect(sandbox).toHaveCount(1)
+  // The tag chip, not the name — both say "sandbox" on this card.
+  await expect(sandbox.getByRole('button', { name: 'sandbox', exact: true })).toBeVisible()
+
+  // Saved through the real API: the copy really carries plan mode on its coordinator, which is
+  // the value the backend actually honours.
+  await sandbox.getByRole('button', { name: 'Open' }).click()
+  await page.locator('.react-flow__node').filter({ hasText: 'Coordinator' }).first().click()
+  await page.getByText('Fine-tuning').click()
+  await expect(page.getByLabel(/Permissions for this flow/)).toHaveValue('plan')
+
+  await page.getByRole('button', { name: '← Flows' }).click()
+  for (const name of [`${SANDBOXED} (sandbox)`, SANDBOXED]) {
+    await flowCard(page, name).getByTitle('Delete').click()
+    await expect(flowCard(page, name)).toHaveCount(0)
+  }
 })
 
 test('opens a flow from its card and renames it', async ({ page }) => {
