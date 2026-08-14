@@ -86,6 +86,16 @@
   height: 26px;
   font-size: 11px;
 }
+
+/* Moving the chevron off the title only moved the problem: floating at mid-height it landed on
+   whatever row happened to be halfway down — a palette button, the inspector's "Choose skills…".
+   So the panel keeps a gutter on the edge the chevron sits on, and nothing is ever under it. */
+.sideWrapLeft > :first-child {
+  padding-right: 26px;
+}
+.sideWrapRight > :first-child {
+  padding-left: 26px;
+}
 .collapseAtRight {
   right: 4px;
 }

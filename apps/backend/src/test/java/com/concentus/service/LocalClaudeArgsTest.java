@@ -160,12 +160,53 @@ class LocalClaudeArgsTest {
     }
 
     @Test
-    void noPluginSelectionMeansNoSettingsFlagAtAll() {
-        // The CLI's own defaults (the user's globally enabled plugins) apply untouched.
+    void noPluginSelectionMeansEveryInstalledPluginIsDisabled() {
+        // Not "the CLI's own defaults": a flow that ticked nothing asked for nothing, and a
+        // globally enabled plugin riding along made the empty list a lie.
         List<String> a = executor(fixedPlugins())
                 .buildArgs("claude", run(), Path.of("."), true, "hola", List.of(), false);
 
+        int i = a.indexOf("--settings");
+        assertThat(i).isGreaterThanOrEqualTo(0);
+        assertThat(a.get(i + 1))
+                .contains("\"caveman@caveman\":false")
+                .contains("\"other@mkt\":false");
+    }
+
+    @Test
+    void withNoPluginsInstalledThereIsNothingToSayAndNoFlag() {
+        List<String> a = executor(null)
+                .buildArgs("claude", run(), Path.of("."), true, "hola", List.of(), false);
+
         assertThat(a).doesNotContain("--settings");
+    }
+
+    @Test
+    void aFlowThatAssignedNoSkillLosesTheSkillTool() {
+        // The workspace copy only covers the assigned ones; the machine's personal skills are
+        // found in the user's home, which the run shares. Taking the tool away is what makes
+        // "none assigned" mean none.
+        List<String> a = executor(null)
+                .buildArgs("claude", run(), Path.of("."), true, "hola", List.of(), false);
+
+        int i = a.indexOf("--disallowedTools");
+        assertThat(i).isGreaterThanOrEqualTo(0);
+        assertThat(a.get(i + 1)).isEqualTo("Skill");
+    }
+
+    @Test
+    void oneAssignedSkillAnywhereKeepsTheToolForTheSession() {
+        // Coordinator and sub-agents share one CLI process, so this is necessarily flow-wide.
+        AgentRun run = run();
+        AgentSpec.SkillSpec skill = new AgentSpec.SkillSpec();
+        skill.type = "custom";
+        skill.id = "skill_1";
+        run.compiled.coordinator().skills = List.of(skill);
+
+        List<String> a = executor(null)
+                .buildArgs("claude", run, Path.of("."), true, "hola", List.of(), false);
+
+        assertThat(a).doesNotContain("--disallowedTools");
     }
 
     @org.junit.jupiter.api.Test

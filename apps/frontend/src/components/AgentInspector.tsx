@@ -5,6 +5,7 @@ import type { AgentNodeData, LibraryAgent } from '../api/types.ts'
 import { EFFORT_OPTIONS } from '../constants.ts'
 import { Field, FineTuning, SelectField, TextArea } from './fields.tsx'
 import { ModelField } from './ModelField.tsx'
+import { PluginPicker } from './PluginPicker.tsx'
 import { SkillPicker } from './SkillPicker.tsx'
 import styles from './panels.module.scss'
 
@@ -31,11 +32,6 @@ export function AgentInspector({ data, set }: Props) {
       .then((v) => setPlugins(v.plugins))
       .catch(() => setPlugins([]))
   }, [])
-
-  const togglePlugin = (id: string) => {
-    const current = data.plugins ?? []
-    set({ plugins: current.includes(id) ? current.filter((p) => p !== id) : [...current, id] })
-  }
 
   const applyLibrary = (id: string) => {
     const a = library.find((x) => x.id === id)
@@ -86,23 +82,11 @@ export function AgentInspector({ data, set }: Props) {
         />
       )}
       {plugins.length > 0 && (
-        <div className={styles.pluginPick}>
-          <span
-            title="Claude Code plugins this agent's runs load. None selected = the CLI's own defaults; selecting any = exactly those, with the rest disabled for the run. Claude backend only."
-          >
-            Plugins ⓘ
-          </span>
-          {plugins.map((p) => (
-            <label key={p.id} className={styles.pluginRow}>
-              <input
-                type="checkbox"
-                checked={(data.plugins ?? []).includes(p.id)}
-                onChange={() => togglePlugin(p.id)}
-              />
-              <span>{p.id}</span>
-            </label>
-          ))}
-        </div>
+        <PluginPicker
+          plugins={plugins}
+          selectedIds={data.plugins ?? []}
+          onChange={(ids) => set({ plugins: ids })}
+        />
       )}
       <TextArea label="System prompt" rows={6} value={data.systemPrompt} onChange={(v) => set({ systemPrompt: v })} />
 

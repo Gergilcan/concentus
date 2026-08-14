@@ -121,16 +121,25 @@ public class PluginRegistry {
     /**
      * The {@code --settings} JSON that makes a run load exactly {@code selected}: the selection
      * is enabled and every other installed plugin disabled, so a flow behaves the same wherever
-     * its plugins are installed. Null when nothing is selected — the CLI's own defaults (the
-     * user's globally enabled plugins) then apply, which is the "I didn't ask for anything"
-     * contract rather than "strip my plugins".
+     * its plugins are installed.
+     *
+     * <p>Nothing selected means <em>no plugins</em>, not "the user's globally enabled ones". It
+     * used to mean the latter — the CLI's defaults applied untouched — and that made an unticked
+     * list a lie: a flow that had chosen nothing still ran with whatever the machine happened to
+     * enable, and behaved differently on the next machine. What a run loads is now only ever what
+     * the flow asked for.
+     *
+     * <p>Null only when there is nothing to say: no CLI, or no plugins installed at all.
      */
     public String settingsJsonFor(java.util.Collection<String> selected) {
-        if (selected == null || selected.stream().noneMatch(PluginRegistry::isSafeId)) return null;
+        List<PluginInfo> installed = list();
+        if (installed.isEmpty()) return null;
         var root = mapper.createObjectNode();
         var enabled = root.putObject("enabledPlugins");
-        for (PluginInfo p : list()) enabled.put(p.id(), false);
-        for (String id : selected) if (isSafeId(id)) enabled.put(id, true);
+        for (PluginInfo p : installed) enabled.put(p.id(), false);
+        if (selected != null) {
+            for (String id : selected) if (isSafeId(id)) enabled.put(id, true);
+        }
         return root.toString();
     }
 

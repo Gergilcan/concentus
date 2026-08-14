@@ -70,6 +70,9 @@ public class FanoutExecutor {
     private final ObjectMapper mapper;
     private final com.concentus.store.FacadeProfileStore profiles;
     private final PluginRegistry pluginRegistry;
+    /** Null in the arg-shape tests, which never build a workspace. */
+    private final com.concentus.store.SkillStore skillStore;
+    private final SkillService skillService;
     private final String dataDir;
     private final String permissionMode;
     private final int serverPort;
@@ -84,13 +87,15 @@ public class FanoutExecutor {
                           ContextFolderResolver contextFolders, ObjectMapper mapper,
                           com.concentus.store.FacadeProfileStore profiles,
                           PluginRegistry pluginRegistry,
+                          com.concentus.store.SkillStore skillStore, SkillService skillService,
                           @Value("${app.data-dir}") String dataDir,
                           @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                           @Value("${server.port:8734}") int serverPort,
                           @Value("${workers.max-concurrent:4}") int maxConcurrent,
                           @Value("${workers.timeout-seconds:900}") int timeoutSeconds,
                           @Value("${workers.retries:1}") int retries) {
-        this(support, ragInjector, contextFolders, mapper, profiles, pluginRegistry, dataDir,
+        this(support, ragInjector, contextFolders, mapper, profiles, pluginRegistry, skillStore,
+                skillService, dataDir,
                 permissionMode, serverPort, maxConcurrent, timeoutSeconds, retries, (args, workdir) ->
                         new ProcessBuilder(args).directory(workdir.toFile())
                                 .redirectErrorStream(true).start());
@@ -100,6 +105,7 @@ public class FanoutExecutor {
                    ContextFolderResolver contextFolders, ObjectMapper mapper,
                    com.concentus.store.FacadeProfileStore profiles,
                    PluginRegistry pluginRegistry,
+                   com.concentus.store.SkillStore skillStore, SkillService skillService,
                    String dataDir, String permissionMode, int serverPort, int maxConcurrent,
                    int timeoutSeconds, int retries, ProcessStarter starter) {
         this.support = support;
@@ -108,6 +114,8 @@ public class FanoutExecutor {
         this.mapper = mapper;
         this.profiles = profiles;
         this.pluginRegistry = pluginRegistry;
+        this.skillStore = skillStore;
+        this.skillService = skillService;
         this.dataDir = dataDir;
         this.permissionMode = permissionMode;
         this.serverPort = serverPort;
@@ -619,6 +627,8 @@ public class FanoutExecutor {
         LocalClaudeExecutor.appendContextFolderNote(spec, md);
         Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
 
+        materialiseSkills(run, spec, workdir);
+
         // With a facade: exactly one server — this backend, scoped to this worker, authenticated
         // by a token only this worker's process is given. Without one: empty and strict, which
         // states "no servers" in both places rather than leaving one to be inferred.
@@ -628,6 +638,36 @@ public class FanoutExecutor {
                     run.workerToolTokens.get(spec.nodeId));
         } else {
             writeEmptyMcpConfig(workdir);
+        }
+    }
+
+    /**
+     * This worker's own assigned skills, written into its own workspace.
+     *
+     * <p>Per worker, not per flow: a worker is its own process with its own directory, so unlike
+     * the shared session it can have exactly the skills its agent was given. Workers used to get
+     * none at all while the Skill tool stayed available — so an assigned skill did nothing and the
+     * machine's personal ones were reachable anyway, which is the opposite of what the picker says.
+     */
+    private void materialiseSkills(AgentRun run, AgentSpec spec, Path workdir) {
+        if (skillStore == null || skillService == null || spec.skills == null) return;
+        List<com.concentus.model.SkillDef> defs = spec.skills.stream()
+                .filter(sk -> "custom".equals(sk.type) && sk.id != null)
+                .map(sk -> sk.id)
+                .distinct()
+                .map(skillStore::get)
+                .flatMap(java.util.Optional::stream)
+                .toList();
+        if (defs.isEmpty()) return;
+        try {
+            skillService.materialise(workdir, defs);
+            run.emit(RunEvent.of("system", defs.size() + " skill(s) installed for this worker: "
+                    + defs.stream().map(com.concentus.model.SkillDef::name)
+                            .collect(java.util.stream.Collectors.joining(", ")) + ".",
+                    spec.name, spec.nodeId));
+        } catch (IOException e) {
+            run.emit(RunEvent.of("system", "Skills could not be installed: " + e.getMessage(),
+                    spec.name, spec.nodeId));
         }
     }
 
@@ -747,7 +787,8 @@ public class FanoutExecutor {
         a.add("--model");
         a.add(LocalClaudeExecutor.modelAlias(spec.model.id));
         // Workers are separate processes, so plugin selection here is truly per-agent — this
-        // worker's own list, not the flow-wide union the shared session gets.
+        // worker's own list, not the flow-wide union the shared session gets. An empty list is a
+        // selection too: it disables every installed plugin for this worker.
         String pluginSettings = pluginRegistry == null ? null : pluginRegistry.settingsJsonFor(spec.plugins);
         if (pluginSettings != null) {
             a.add("--settings");
@@ -758,8 +799,12 @@ public class FanoutExecutor {
         a.add("--strict-mcp-config");
         // Always at least Task: a worker that could open its own fan-out would turn a bounded N
         // processes into an unbounded tree. Workers also lose Bash; the merge step keeps it.
+        // Plus Skill for anyone who was assigned none — the tool reaches the machine's personal
+        // skills, so leaving it on would hand a worker skills its agent never chose.
         a.add("--disallowedTools");
-        a.add(disallowedTools);
+        a.add(spec.skills == null || spec.skills.isEmpty()
+                ? disallowedTools + "," + LocalClaudeExecutor.SKILL_TOOL
+                : disallowedTools);
         a.add("--session-id");
         a.add(sessionId);
         // Last and bare, exactly like the coordinator path: with nothing after it the CLI can

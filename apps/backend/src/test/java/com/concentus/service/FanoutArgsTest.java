@@ -21,7 +21,7 @@ class FanoutArgsTest {
     private static FanoutExecutor executor() {
         return new FanoutExecutor(new LocalClaudeSupport("claude"),
                 new RagContextInjector(null, null), new ContextFolderResolver(""),
-                new com.fasterxml.jackson.databind.ObjectMapper(), null, null,
+                new com.fasterxml.jackson.databind.ObjectMapper(), null, null, null, null,
                 "data", "bypassPermissions", 8734, 2, 900, 1, (args, dir) -> {
                     throw new UnsupportedOperationException("arg tests never spawn");
                 });
@@ -55,7 +55,22 @@ class FanoutArgsTest {
         // Task: a worker that could fan out again turns bounded N into an unbounded tree.
         // Bash: verification commands belong to the single merge step, not to N unattended
         // processes each with a shell.
-        assertThat(args("hola", false)).containsSequence("--disallowedTools", "Task,Bash");
+        // Skill: this worker was assigned none, and the tool would reach the machine's own.
+        assertThat(args("hola", false)).containsSequence("--disallowedTools", "Task,Bash,Skill");
+    }
+
+    @Test
+    void aWorkerWithAnAssignedSkillKeepsTheToolThatOpensIt() {
+        AgentSpec withSkill = spec();
+        AgentSpec.SkillSpec skill = new AgentSpec.SkillSpec();
+        skill.type = "custom";
+        skill.id = "skill_1";
+        withSkill.skills = List.of(skill);
+
+        List<String> a = executor().buildWorkerArgs("claude", run(), withSkill, Path.of("wd"),
+                List.of(), "s", "hola", false, "Task,Bash");
+
+        assertThat(a).containsSequence("--disallowedTools", "Task,Bash");
     }
 
     @Test
@@ -63,7 +78,7 @@ class FanoutArgsTest {
         List<String> a = executor().buildWorkerArgs("claude", run(), spec(), Path.of("wd"),
                 List.of(), "s", "merge it", false, "Task");
 
-        assertThat(a).containsSequence("--disallowedTools", "Task");
+        assertThat(a).containsSequence("--disallowedTools", "Task,Skill");
         assertThat(a).doesNotContain("Task,Bash");
     }
 

@@ -54,7 +54,7 @@ class FanoutExecutorTest {
                                     int retries) {
         return new FanoutExecutor(new LocalClaudeSupport("claude"),
                 new RagContextInjector(null, null), new ContextFolderResolver(""),
-                new com.fasterxml.jackson.databind.ObjectMapper(), profiles, null,
+                new com.fasterxml.jackson.databind.ObjectMapper(), profiles, null, null, null,
                 dataDir.toString(), "bypassPermissions", 8734, 4, timeoutSeconds, retries, starter);
     }
 
@@ -303,7 +303,8 @@ class FanoutExecutorTest {
         // A solo coordinator is the one doing the work, so under the auto rule it may act while
         // planning — but delegation stays denied whatever the node says: a planner that could
         // fan out again is an unbounded tree, not a configuration.
-        assertThat(spawned.get(0)).containsSequence("--disallowedTools", "Task");
+        // Skill too: this flow assigned none, so the tool that would reach the machine's own goes.
+        assertThat(spawned.get(0)).containsSequence("--disallowedTools", "Task,Skill");
         assertThat(String.join(" ", spawned.get(0))).doesNotContain("Bash");
         String planMcp = Files.readString(
                 dataDir.resolve(Path.of("local", "run-1", "coordinator", "mcp-config.json")));
@@ -362,7 +363,7 @@ class FanoutExecutorTest {
         executor(starter, 900, 0).runTurn(run, run.compiled, "go");
 
         assertThat(spawned.get(0)).containsSequence("--disallowedTools",
-                "Task,Bash,Write,Edit,NotebookEdit");
+                "Task,Bash,Write,Edit,NotebookEdit,Skill");
     }
 
     @Test
@@ -444,8 +445,8 @@ class FanoutExecutorTest {
 
         assertThat(spawned).hasSize(2);
         // The worker lost Bash; the merge kept it (its job is running the checks).
-        assertThat(spawned.get(0)).containsSequence("--disallowedTools", "Task,Bash");
-        assertThat(spawned.get(1)).containsSequence("--disallowedTools", "Task");
+        assertThat(spawned.get(0)).containsSequence("--disallowedTools", "Task,Bash,Skill");
+        assertThat(spawned.get(1)).containsSequence("--disallowedTools", "Task,Skill");
         // The merge's prompt carries the worker's report; its CLAUDE.md carries its instructions.
         String mergePrompt = String.join(" ", spawned.get(1));
         assertThat(mergePrompt).contains("Informe A").contains("Worker A");
@@ -553,7 +554,7 @@ class FanoutExecutorTest {
         assertThat(spawned).hasSize(4);
         // The verifier runs read-only — judging is its whole job.
         assertThat(spawned.get(2)).containsSequence("--disallowedTools",
-                "Task,Bash,Write,Edit,NotebookEdit");
+                "Task,Bash,Write,Edit,NotebookEdit,Skill");
         // Its only MCP server is the verdict endpoint, under the verifier's OWN token.
         String verifierMcp = Files.readString(
                 dataDir.resolve(Path.of("local", "run-1", "verifier", "mcp-config.json")));

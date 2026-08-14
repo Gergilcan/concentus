@@ -99,6 +99,13 @@ public class LocalClaudeExecutor {
      */
     static final int MAX_INLINE_PROMPT_CHARS = 4000;
 
+    /**
+     * The CLI's own name for the tool that invokes a skill. Taken away from a run that assigned
+     * none, which is the only way to keep the machine's personal skills out of a flow that did
+     * not ask for any — they are discovered from the user's home, not from the workspace.
+     */
+    static final String SKILL_TOOL = "Skill";
+
     public LocalClaudeExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
                                McpRegistry mcpRegistry, ContextFolderResolver contextFolders,
                                GitWorkspace gitWorkspace,
@@ -683,12 +690,22 @@ public class LocalClaudeExecutor {
         a.add(modelAlias(coord.model.id));
 
         // Plugins are session-wide: the coordinator and its Task sub-agents share one CLI
-        // process, so the session loads the union of every agent's selection. No selection
-        // anywhere → no flag → the CLI's own defaults apply.
+        // process, so the session loads the union of every agent's selection — and nothing else,
+        // including when that union is empty.
         String pluginSettings = pluginSettingsFor(run);
         if (pluginSettings != null) {
             a.add("--settings");
             a.add(pluginSettings);
+        }
+
+        // Skills are the same deal: what the flow assigned, or nothing. Assigned ones are written
+        // into the workspace (see materialiseSkills), but the CLI also finds the machine's own
+        // personal skills, so "none assigned" only means "none" if the tool that reaches them is
+        // gone. Session-wide again, so it takes the union: one agent with a skill keeps the tool
+        // for everyone, which is the price of a shared process.
+        if (noSkillsAnywhere(run)) {
+            a.add("--disallowedTools");
+            a.add(SKILL_TOOL);
         }
 
         // The run's own MCP configuration (see writeMcpConfig): only the flow's servers, with
@@ -715,9 +732,27 @@ public class LocalClaudeExecutor {
     }
 
     /**
+     * Whether this flow assigned no skill to any agent.
+     *
+     * <p>Only then is the Skill tool taken away — the enforcement behind "nothing selected means
+     * nothing used". With a skill assigned the tool has to exist, and the machine's own personal
+     * skills come with it: they live in the user's home, which the run shares. The workspace copy
+     * and the roster note steer towards the assigned ones; that part is guidance, not a fence.
+     */
+    static boolean noSkillsAnywhere(AgentRun run) {
+        if (run.compiled == null) return true;
+        for (AgentSpec agent : run.compiled.allAgents()) {
+            if (agent.skills != null && !agent.skills.isEmpty()) return false;
+        }
+        return true;
+    }
+
+    /**
      * The union of every agent's plugin selection, as a {@code --settings} JSON — or null when
-     * no agent selected any. Union because the coordinator and its sub-agents share one CLI
-     * process; only fan-out workers (separate processes) get truly per-agent plugin sets.
+     * there are no plugins installed to speak about. An empty union is not nothing to say: it
+     * disables the lot, because a flow that ticked nothing asked for nothing. Union because the
+     * coordinator and its sub-agents share one CLI process; only fan-out workers (separate
+     * processes) get truly per-agent plugin sets.
      */
     private String pluginSettingsFor(AgentRun run) {
         if (pluginRegistry == null || run.compiled == null) return null;

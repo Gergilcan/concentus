@@ -133,7 +133,7 @@ describe('AgentInspector', () => {
     expect(screen.queryByLabelText('Load from library')).not.toBeInTheDocument()
   })
 
-  it('offers installed plugins as per-agent checkboxes and toggles the selection', async () => {
+  it('picks installed plugins in a dialog and writes the whole selection at once', async () => {
     listPluginsMock.mockResolvedValue({
       plugins: [{ id: 'caveman@caveman', enabled: true }],
       marketplaces: [],
@@ -141,7 +141,10 @@ describe('AgentInspector', () => {
     const set = vi.fn()
     render(<AgentInspector data={coordinatorData()} set={set} />)
 
-    fireEvent.click(await screen.findByText('caveman@caveman'))
+    fireEvent.click(await screen.findByText('Choose plugins…'))
+    fireEvent.click(screen.getByText('☐ caveman@caveman'))
+    fireEvent.click(screen.getByText('Load these 1'))
+
     expect(set).toHaveBeenCalledWith({ plugins: ['caveman@caveman'] })
   })
 

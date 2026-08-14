@@ -143,7 +143,7 @@ function SidePanel({ side, label, railLabel, open, onToggle, startDrag, children
     )
   }
   return (
-    <div className={styles.sideWrap}>
+    <div className={cx(styles.sideWrap, onLeft ? styles.sideWrapLeft : styles.sideWrapRight)}>
       {children}
       <button
         className={cx(styles.collapseSide, onLeft ? styles.collapseAtRight : styles.collapseAtLeft)}
