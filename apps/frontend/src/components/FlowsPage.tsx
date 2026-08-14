@@ -21,6 +21,7 @@ import {
   visibleFlows,
 } from './flowsDashboard.ts'
 import { FlowsToolbar } from './FlowsToolbar.tsx'
+import { RecipesModal } from './RecipesModal.tsx'
 import { RecentRunsList } from './RecentRunsList.tsx'
 import { TagFilterBar } from './TagFilterBar.tsx'
 import styles from './flows.module.scss'
@@ -66,6 +67,7 @@ export function FlowsPage({
   const [versionsFor, setVersionsFor] = useState<BackendFlow | null>(null)
   const [describing, setDescribing] = useState(false)
   const [doctorFor, setDoctorFor] = useState<BackendFlow | null>(null)
+  const [pickingRecipe, setPickingRecipe] = useState(false)
   // Which flows have a golden reference and whether they drifted from it. Derived server-side, so
   // this is a read: re-fetched whenever the flow list changes, which is what a save produces.
   const [goldenStatuses, setGoldenStatuses] = useState<GoldenStatus[]>([])
@@ -265,6 +267,7 @@ export function FlowsPage({
             onImport={(f) => void importFlow(f)}
             onNew={onNew}
             onDescribe={() => setDescribing(true)}
+            onRecipes={() => setPickingRecipe(true)}
           />
         </header>
 
@@ -423,6 +426,16 @@ export function FlowsPage({
 
       {versionsFor && (
         <VersionsModal flow={versionsFor} onClose={() => setVersionsFor(null)} pushError={pushError} />
+      )}
+
+      {pickingRecipe && (
+        <RecipesModal
+          onClose={() => setPickingRecipe(false)}
+          // Straight onto the canvas: the point of a recipe is having something to run, and a
+          // flow that lands in a list still has to be found before it exists to you.
+          onSaved={(flow) => onGenerated(flow)}
+          pushError={pushError}
+        />
       )}
 
       {doctorFor?.id && (

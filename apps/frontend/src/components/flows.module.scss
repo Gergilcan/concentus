@@ -817,6 +817,44 @@
   margin: 0 0 var(--sp-2);
 }
 
+/* Recipes: outcomes to pick from, phrased as what you get. */
+
+.recipeList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recipeItem {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 11px;
+  border: 1px solid t.$border;
+  border-radius: 8px;
+  background: t.$panel-2;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$accent;
+  }
+}
+
+.recipeTitle {
+  color: t.$text;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.recipeBlurb {
+  color: t.$muted;
+  font-size: 11px;
+}
+
 /* The pre-run check. Findings are read top to bottom, so each row is a small block rather than a
    line: what is wrong, then what to do about it. */
 

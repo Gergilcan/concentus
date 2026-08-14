@@ -56,6 +56,8 @@ export async function openApp(page: Page): Promise<void> {
   if (flows.length === 0) {
     await expect(page.getByText('No flows yet')).toBeVisible()
   } else if (flows.some((f) => !(f.folder ?? '').trim())) {
+    // .first() on the CARDS alone: an install can legitimately have both root flows and folder
+    // tiles, and asserting on a locator that matches both trips strict mode the moment it does.
     await expect(page.getByRole('article').first()).toBeVisible()
   } else {
     // Every flow lives in a folder (a fresh install: the samples), so the root of the explorer

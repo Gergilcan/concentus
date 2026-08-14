@@ -247,7 +247,7 @@ helper for one integration test.
 **Accept:** `node scripts/concentus-run.mjs samples/docs-from-code.json --input "go"` works from
 a clean checkout with the jar built; exit codes honest.
 
-### 9. [ ] Outcome recipes (2-question wizard over Samples)
+### 9. [x] Outcome recipes (2-question wizard over Samples)
 
 **Goal:** The Samples gallery reframed by outcome, each with a tiny wizard that asks only for
 the missing pieces (mailbox credential, output channel…) and saves a ready flow.
