@@ -98,6 +98,37 @@ test('picking a local catalogue server opens setup: its runtime, then its variab
   await expect(page.getByLabel('Delete Mailchimp')).toBeVisible()
 })
 
+test('a local server opens on its own JSON, and its variables are edited there', async ({ page }) => {
+  await openApp(page)
+  await goTo(page, 'Resources')
+  await page.getByRole('button', { name: 'MCP Servers' }).click()
+  await page.getByText('Catalog — one click to add').click()
+  await page.getByRole('tab', { name: 'Email' }).click()
+  await page.getByText('Mailtrap').click()
+  const setup = page.getByRole('dialog')
+  await setup.getByRole('button', { name: 'Next' }).click()
+  await setup.getByRole('button', { name: 'Add Mailtrap' }).click()
+  await expect(page.getByLabel('Delete Mailtrap')).toBeVisible()
+
+  // Opening it is the part that used to throw: a local server has no URL, and reading one as a
+  // string took the whole panel down.
+  await page.getByRole('button', { name: 'Mailtrap Delete Mailtrap' }).click()
+  const json = page.getByLabel('This server as JSON')
+  await expect(json).toContainText('mcp-mailtrap')
+  // One server, not the registry — and the URL form is gone, because this one is a command.
+  await expect(json).not.toContainText('mcpServers')
+  await expect(page.getByLabel('URL')).toHaveCount(0)
+
+  await json.fill('{"command":"npx","args":["-y","mcp-mailtrap"],"env":{"MAILTRAP_API_TOKEN":"credential:x"}}')
+  await page.getByRole('button', { name: 'Save JSON' }).click()
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible()
+
+  // Saved for real: leaving the form and coming back shows what the backend kept.
+  await page.getByRole('button', { name: '+ New' }).click()
+  await page.getByRole('button', { name: 'Mailtrap Delete Mailtrap' }).click()
+  await expect(json).toContainText('MAILTRAP_API_TOKEN')
+})
+
 test('export downloads the whole configuration and import accepts it back', async ({ page }) => {
   await openApp(page)
   await goTo(page, 'Resources')

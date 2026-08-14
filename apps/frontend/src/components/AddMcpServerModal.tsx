@@ -14,9 +14,9 @@ import panels from './panels.module.scss'
  * Setting up a catalogue server that cannot just be added.
  *
  * It opens from the catalogue, for the entries that need something before they can run — never as
- * a way to invent a server from scratch. That is what the list below and "Edit as JSON" are for,
- * and a dialog asking someone to type a transport and a URL was answering a question the
- * catalogue had already answered.
+ * a way to invent a server from scratch. That is what the list below and each server's own JSON
+ * box are for, and a dialog asking someone to type a transport and a URL was answering a question
+ * the catalogue had already answered.
  *
  * So it asks only what is genuinely left:
  *

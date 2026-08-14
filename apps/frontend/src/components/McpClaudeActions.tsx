@@ -7,7 +7,12 @@ import styles from './panels.module.scss'
 
 interface Props {
   name: string
-  url: string
+  /**
+   * Optional because a stdio definition has none: the backend stores null for a server that is a
+   * command. Reading it as a string here is what made opening one of those (Google Ads, say) throw
+   * on `url.trim()` and take the whole panel down with it.
+   */
+  url?: string
   credentialId?: string
   authHeader?: string
 }
@@ -86,7 +91,11 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
   const listed = state !== 'absent'
   const failed = state === 'failed'
   const connected = state === 'connected'
-  const canAct = name.trim().length > 0 && url.trim().length > 0
+  // A stdio definition has no URL, and the CLI registration this panel drives is a URL one. Its
+  // status still means something — a server of that name may be in the CLI's list — but there is
+  // nothing here to add, so the buttons are replaced by the reason rather than shown dead.
+  const endpoint = (url ?? '').trim()
+  const canAct = name.trim().length > 0 && endpoint.length > 0
 
   // Every action here is the same shape: block the buttons, run one CLI call, show whatever it
   // says, and re-read the list only if it succeeded. The three used to be written out separately.
@@ -104,11 +113,11 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
     }
   }
 
-  const add = () => act(() => api.addMcpServer({ name, url, credentialId, authHeader }))
+  const add = () => act(() => api.addMcpServer({ name, url: endpoint, credentialId, authHeader }))
 
   const authorize = () =>
     act(async () => {
-      if (!listed) await api.addMcpServer({ name, url, credentialId, authHeader })
+      if (!listed) await api.addMcpServer({ name, url: endpoint, credentialId, authHeader })
       return api.loginMcpServer(name)
     }, 'Starting sign-in…')
 
@@ -124,16 +133,23 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
         {STATE_LABEL[state]}
       </div>
 
+      {!endpoint && (
+        <div className={styles.previewMeta}>
+          This server is a local command, not a URL — runs launch it themselves, so there is nothing
+          to register with the CLI here.
+        </div>
+      )}
+
       <div className={styles.mcpBtns}>
         {/* The OAuth button only exists where a sign-in can actually complete. In a container it
             would start something that never finishes, so the token route becomes the primary
             action instead of a fallback. */}
-        {!connected && caps?.interactiveLogin && (
+        {endpoint !== '' && !connected && caps?.interactiveLogin && (
           <button className={styles.previewBtn} onClick={() => void authorize()} disabled={busy || !canAct}>
             {busy ? 'Working…' : listed ? 'Authorize (OAuth)' : 'Add & authorize'}
           </button>
         )}
-        {!listed && (
+        {endpoint !== '' && !listed && (
           <button
             className={caps?.interactiveLogin ? styles.linkBtn : styles.previewBtn}
             onClick={() => void add()}

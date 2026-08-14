@@ -666,7 +666,12 @@ export type DatabaseDef = {
 export type McpDef = {
   id?: string
   name: string
-  url: string
+  /**
+   * Absent on a stdio server — the backend stores no URL for one, and a definition that came back
+   * from the registry document has it as null outright. Typed as present it read as a string
+   * everywhere and threw on the first `.trim()`.
+   */
+  url?: string
   credentialId: string
   authHeader?: string
   /** stdio transport — see McpNodeData: command/args/env instead of a url. */

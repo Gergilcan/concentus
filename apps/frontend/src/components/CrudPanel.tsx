@@ -22,6 +22,12 @@ interface FieldSpec {
    * render their own, and the wrapper would produce a second one.
    */
   render?: (value: unknown, onChange: (next: unknown) => void) => ReactNode
+  /**
+   * Leaves the field out for records it means nothing to — an MCP server launched by a command has
+   * no URL and no token header, and an empty box with a URL placeholder in it invited people to
+   * fill one in and wonder why nothing changed.
+   */
+  hidden?: (draft: Record<string, unknown>) => boolean
 }
 
 interface Props<T> {
@@ -33,7 +39,14 @@ interface Props<T> {
   load: () => Promise<T[]>
   save: (item: T) => Promise<T>
   remove: (id: string) => Promise<void>
-  extra?: (draft: T) => ReactNode
+  /**
+   * Extra controls under the form, for whatever this record needs that fields cannot express.
+   *
+   * `apply` exists for the ones that save on their own: it puts the saved record back in the form
+   * and refreshes the list, so the selection survives. Without it such a panel had to ask the page
+   * to remount this one, which reset the form and closed whatever was open.
+   */
+  extra?: (draft: T, apply: (saved: T) => void) => ReactNode
 }
 
 export function CrudPanel<T extends Record<string, unknown>>({
@@ -145,7 +158,9 @@ export function CrudPanel<T extends Record<string, unknown>>({
       </div>
 
       <div className={styles.crudForm}>
-        {fields.map((f) =>
+        {fields
+          .filter((f) => !f.hidden?.(draft))
+          .map((f) =>
           f.render ? (
             <div key={f.key}>{f.render(draft[f.key], (v) => set(f.key, v))}</div>
           ) : (
@@ -187,7 +202,11 @@ export function CrudPanel<T extends Record<string, unknown>>({
           {status && <span className={styles.status}>{status}</span>}
         </div>
 
-        {extra && extra(draft)}
+        {extra &&
+          extra(draft, (saved) => {
+            setDraft(saved)
+            void refresh()
+          })}
       </div>
     </div>
   )

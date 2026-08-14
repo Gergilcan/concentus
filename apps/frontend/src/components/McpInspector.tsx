@@ -90,7 +90,7 @@ export function McpInspector({ data, set }: Props) {
 
       <SelectField
         label={
-          <span title="Remote: an HTTP/SSE server reached by URL — most hosted MCPs. Command: a local process the run launches itself (npx, python…), speaking MCP over stdio — the kind whose README says 'add this to your mcp.json', like Google Ads. You can also paste that snippet under Resources → MCP Servers → Edit as JSON.">
+          <span title="Remote: an HTTP/SSE server reached by URL — most hosted MCPs. Command: a local process the run launches itself (npx, python…), speaking MCP over stdio — the kind whose README says 'add this to your mcp.json', like Google Ads. You can also paste that snippet under Resources → MCP Servers, into the selected server's own JSON box.">
             Transport ⓘ
           </span>
         }

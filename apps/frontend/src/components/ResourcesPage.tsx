@@ -8,7 +8,7 @@ import { CrudPanel } from './CrudPanel.tsx'
 import { KnowledgePanel } from './KnowledgePanel.tsx'
 import { McpCatalog, type CatalogSetup } from './McpCatalog.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
-import { McpJsonEditor } from './McpJsonEditor.tsx'
+import { McpServerJson } from './McpServerJson.tsx'
 import { ModelField } from './ModelField.tsx'
 import { PluginsPanel } from './PluginsPanel.tsx'
 import { SkillsPanel } from './SkillsPanel.tsx'
@@ -52,6 +52,9 @@ const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolea
   { id: 'updates', label: 'Updates', desktopOnly: true },
 ]
 
+/** A server launched here rather than reached over HTTP — the fields it has no use for hide. */
+const isLocalServer = (draft: Record<string, unknown>) => String(draft.command ?? '').trim() !== ''
+
 export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
   const [tab, setTab] = useState<Tab>('agents')
   // Remounts the MCP CrudPanel after a catalog add, so the new definition appears in its list —
@@ -59,7 +62,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
   const [mcpListVersion, setMcpListVersion] = useState(0)
   // Setup for a catalogue server that needs something before it can run. Null when closed; it is
   // only ever opened BY the catalogue — there is no blank state, because inventing a server from
-  // scratch is what the list below and "Edit as JSON" are for.
+  // scratch is what the list below and each server's own JSON box are for.
   const [wizard, setWizard] = useState<CatalogSetup | null>(null)
 
   return (
@@ -111,15 +114,14 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
 
         {tab === 'mcp' && (
           <>
-          {/* Padded wrapper: these render above the CRUD grid, and without it their collapse
-              headers sat glued to the window's left edge. */}
+          {/* Padded wrapper: this renders above the CRUD grid, and without it the collapse
+              header sat glued to the window's left edge. */}
           <div className={styles.tabExtras}>
             <McpCatalog
               onAdded={() => setMcpListVersion((v) => v + 1)}
               onConfigure={setWizard}
               reloadToken={mcpListVersion}
             />
-            <McpJsonEditor onSaved={() => setMcpListVersion((v) => v + 1)} />
           </div>
           {wizard && (
             <AddMcpServerModal
@@ -133,13 +135,16 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
             title="MCP Servers"
             fields={[
               { key: 'name', label: 'Name', placeholder: 'linear' },
-              { key: 'url', label: 'URL', placeholder: 'https://mcp.linear.app/mcp' },
-              { key: 'credentialId', label: 'Credential id (optional)', placeholder: 'from Resources -> Credentials' },
+              // The three below describe a remote server. A local one is a command, and its
+              // command, arguments and environment are edited in its JSON box under the form.
+              { key: 'url', label: 'URL', placeholder: 'https://mcp.linear.app/mcp', hidden: isLocalServer },
+              { key: 'credentialId', label: 'Credential id (optional)', placeholder: 'from Resources -> Credentials', hidden: isLocalServer },
               {
                 key: 'authHeader',
                 label: 'Send token in',
                 type: 'select',
                 options: ['', 'PRIVATE-TOKEN'],
+                hidden: isLocalServer,
               },
             ]}
             labelOf={(m) => m.name}
@@ -148,13 +153,19 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
             load={api.listMcpDefs}
             save={api.saveMcpDef}
             remove={api.deleteMcpDef}
-            extra={(m) => (
-              <McpClaudeActions
-                name={m.name}
-                url={m.url}
-                credentialId={m.credentialId}
-                authHeader={m.authHeader}
-              />
+            extra={(m, apply) => (
+              <>
+                {/* The rest of this one definition — a local server's command, args and env have
+                    no fields above, and this is also where a README snippet is pasted. Scoped to
+                    the selected server: the list beside it is how you choose which. */}
+                <McpServerJson def={m} onApplied={apply} />
+                <McpClaudeActions
+                  name={m.name}
+                  url={m.url}
+                  credentialId={m.credentialId}
+                  authHeader={m.authHeader}
+                />
+              </>
             )}
           />
           </>

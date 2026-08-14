@@ -336,12 +336,6 @@ export const api = {
     req<import('./types.ts').Variable>('/variables', { method: 'POST', body: JSON.stringify(v) }),
   deleteVariable: (id: string) => req<void>(`/variables/${id}`, { method: 'DELETE' }),
 
-  // The registry as one editable mcp.json-shaped document (paste a README snippet straight in).
-  mcpDefsJson: () => req<unknown>('/mcp-defs/json'),
-  saveMcpDefsJson: (doc: unknown) =>
-    req<{ saved: number; deleted: number; warnings: string[] }>(
-      '/mcp-defs/json', { method: 'PUT', body: JSON.stringify(doc) }),
-
   // facade profiles (what an independent worker may reach through its MCP facade)
   listFacadeProfiles: () => req<import('./types.ts').FacadeProfile[]>('/facade-profiles'),
   saveFacadeProfile: (p: import('./types.ts').FacadeProfile) =>

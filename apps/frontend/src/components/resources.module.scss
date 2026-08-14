@@ -615,7 +615,15 @@
   gap: 4px;
 }
 
-/* The MCP registry's raw-JSON editor. */
+/* The selected MCP server's raw JSON, inside its form. Separated from the fields above by a rule,
+   because it edits the same record from the other end and reads as its own step. */
+.serverJson {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid t.$border;
+}
+
+/* The raw-JSON textarea. */
 .jsonEditor {
   width: 100%;
   background: t.$panel-2;

@@ -258,7 +258,7 @@ export function McpCatalog({
           : entry.auth === 'token'
             ? `${entry.name} added. Create the token under Resources → Credentials and set its id on the definition.`
             : entry.auth === 'stdio'
-              ? `${entry.name} added. It runs on this machine: open "Edit as JSON" above to fill its env values (they can reference credential:<id>), and make sure "${entry.command}" is installed.`
+              ? `${entry.name} added. It runs on this machine: pick it in the list below and fill its env values in "This server as JSON" (they can reference credential:<id>), and make sure "${entry.command}" is installed.`
               : `${entry.name} added.`,
       )
       onAdded()
