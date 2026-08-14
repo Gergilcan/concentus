@@ -233,7 +233,7 @@ Tests: FanoutExecutor unit with stub starter — rejected → re-run with fallba
 **Accept:** a rejected worker re-runs on the fallback model exactly once; costs show both
 attempts; no escalation without a verifier.
 
-### 8. [ ] Headless CLI: `concentus run <flow.json>`
+### 8. [x] Headless CLI: `concentus run <flow.json>`
 
 **Goal:** Run a flow from a terminal/CI without the desktop app: start backend, run, stream
 events to stdout, exit with the run's status code.
