@@ -17,8 +17,14 @@ import { log } from './log'
 const POLL_MS = 15_000
 /** Statuses worth interrupting someone for. IDLE is a run waiting for input, not an ending. */
 const FINAL = new Set(['TERMINATED', 'ERROR'])
-/** Not final — the run is paused mid-flight waiting for a person, which is worth interrupting for. */
-const AWAITING_APPROVAL = 'AWAITING_APPROVAL'
+/**
+ * Not final — the run is stopped mid-flight waiting for a person, which is the case most worth
+ * interrupting for: it will wait indefinitely, and nothing else is going to move it.
+ *
+ * Two shapes of waiting, and they are told apart in the toast because the answer they need is
+ * different: an approval is yes/no on a plan, a question is a reply to type.
+ */
+const WAITING = new Set(['AWAITING_APPROVAL', 'AWAITING_ANSWER'])
 
 let timer: NodeJS.Timeout | null = null
 let known: Map<string, string> | null = null
@@ -47,6 +53,39 @@ export function resetRunNotifications(): void {
   known = null
 }
 
+/** One run's status, as a toast. Kept apart from the poll so the wording is readable in one place. */
+export function toastFor(run: { status: string; flowName?: string | null; error?: string | null }) {
+  const flow = run.flowName ?? 'A flow'
+  switch (run.status) {
+    case 'AWAITING_ANSWER':
+      // Deliberately not "Approval needed": this one wants words back, not a yes or a no, and a
+      // toast that names the wrong action sends people to look for a button that isn't there.
+      return {
+        title: 'The agent asked you something',
+        body: `${flow} is waiting for your reply.`,
+        urgency: 'critical' as const,
+      }
+    case 'AWAITING_APPROVAL':
+      return {
+        title: 'Approval needed',
+        body: `${flow} has a plan waiting for you. Nothing has changed yet.`,
+        urgency: 'critical' as const,
+      }
+    case 'ERROR':
+      return {
+        title: 'Execution failed',
+        body: `${run.flowName ?? 'Flow'}${run.error ? ` — ${run.error}` : ''}`.slice(0, 200),
+        urgency: 'critical' as const,
+      }
+    default:
+      return {
+        title: 'Execution finished',
+        body: `${run.flowName ?? 'Flow'}`.slice(0, 200),
+        urgency: 'normal' as const,
+      }
+  }
+}
+
 async function poll(options: NotifierOptions): Promise<void> {
   const port = options.port()
   if (port == null) return
@@ -67,30 +106,22 @@ async function poll(options: NotifierOptions): Promise<void> {
   for (const run of runs) {
     const before = known.get(run.id)
     known.set(run.id, run.status)
-    const waiting = run.status === AWAITING_APPROVAL
+    const waiting = WAITING.has(run.status)
     if (!FINAL.has(run.status) && !waiting) continue
+    // Only on the transition INTO the status, which is also what stops a run that sits waiting
+    // from re-announcing the same question every fifteen seconds. A second question in the same
+    // run passes through RUNNING first, so it is a transition again — and it IS a new question.
     if (before === run.status) continue
     // A run first seen already-final was missed while the poller was down; still worth a toast in
     // background mode, which is exactly when it happens.
     //
-    // An approval request is the exception to the focused-window rule: a run that stops to ask is
-    // waiting indefinitely, and the whole feature fails quietly if the ask is only visible to
-    // someone already looking at the right tab.
+    // Waiting is the exception to the focused-window rule: a run that stops to ask waits
+    // indefinitely, and the whole feature fails quietly if the ask is only visible to someone
+    // already looking at the right tab.
     if (options.isWindowFocused() && !waiting) continue
 
     try {
-      const failed = run.status === 'ERROR'
-      const notification = new Notification({
-        title: waiting
-          ? 'Approval needed'
-          : failed
-            ? 'Execution failed'
-            : 'Execution finished',
-        body: waiting
-          ? `${run.flowName ?? 'A flow'} has a plan waiting for you. Nothing has changed yet.`
-          : `${run.flowName ?? 'Flow'}${failed && run.error ? ` — ${run.error}` : ''}`.slice(0, 200),
-        urgency: failed || waiting ? 'critical' : 'normal',
-      })
+      const notification = new Notification(toastFor(run))
       notification.on('click', options.onClick)
       notification.show()
     } catch (err) {

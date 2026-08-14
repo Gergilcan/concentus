@@ -265,7 +265,7 @@ fuzzy filter; keyboard navigation; `Ctrl+K`/`Cmd+K`. Respect focus (not inside i
 Ctrl+K in inputs is fine, it's not a typing key). Tests: opens, filters, invokes action.
 **Accept:** everything reachable in ≤3 keystrokes + Enter; focus returns where it was on close.
 
-### 11. [ ] Native notification for AWAITING_ANSWER
+### 11. [x] Native notification for AWAITING_ANSWER
 
 **Goal:** The desktop shell notifies "The agent asked you something" when a run enters
 `AWAITING_ANSWER` (clicking opens the app on that run).
