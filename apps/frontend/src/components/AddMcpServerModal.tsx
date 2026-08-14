@@ -3,24 +3,28 @@ import { api } from '../api/client.ts'
 import type { McpDef } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { CredentialField } from './CredentialField.tsx'
-import { Field, SelectField, TextArea } from './fields.tsx'
+import { Field } from './fields.tsx'
+import type { CatalogSetup } from './McpCatalog.tsx'
 import { Modal } from './Modal.tsx'
 import { RuntimeNotice } from './RuntimeNotice.tsx'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
 
 /**
- * Adding an MCP server as a few answered questions instead of a form to be decoded.
+ * Setting up a catalogue server that cannot just be added.
  *
- * The raw form still exists and still works — this is the path for the case it handles badly: a
- * local (stdio) server, whose README gives you a command, a list of arguments and a handful of
- * environment variables, one of which is a secret. Filling that in a JSON editor means knowing
- * that `credential:<id>` is a thing, and finding out that `uvx` is not installed only when a run
- * fails hours later.
+ * It opens from the catalogue, for the entries that need something before they can run — never as
+ * a way to invent a server from scratch. That is what the list below and "Edit as JSON" are for,
+ * and a dialog asking someone to type a transport and a URL was answering a question the
+ * catalogue had already answered.
  *
- * So the wizard asks in the order the answers matter: what the server is, whether this machine
- * can launch it (with the install button right there), and then each value it needs — with the
- * secret ones going through the credential store rather than into the definition.
+ * So it asks only what is genuinely left:
+ *
+ * - **Can this machine launch it?** A local server is a command, and the command comes from a
+ *   runtime — npx from npm, uvx from uv. If it is missing, the install button is right there and
+ *   the exact command it runs is shown next to it.
+ * - **What does it need to know?** The environment variables the server reads, with the secret
+ *   ones going through the credential store rather than into the definition.
  */
 
 /** One environment variable the server expects. */
@@ -52,58 +56,51 @@ function envFrom(rows: EnvRow[]): Record<string, string> {
   return env
 }
 
-type Step = 'server' | 'requirements' | 'values'
+type Step = 'requirements' | 'values'
 
 export function AddMcpServerModal({
-  initial,
+  entry,
   onClose,
   onSaved,
 }: {
-  /** Pre-filled from a catalogue entry, or empty for a server the user describes themselves. */
-  initial?: Partial<McpDef>
+  /** The catalogue entry being set up. There is no blank state: this always configures one. */
+  entry: CatalogSetup
   onClose: () => void
   onSaved: (saved: McpDef) => void
 }) {
-  const [step, setStep] = useState<Step>('server')
-  const [name, setName] = useState(initial?.name ?? '')
-  const [stdio, setStdio] = useState((initial?.command ?? '') !== '')
-  const [url, setUrl] = useState(initial?.url ?? '')
-  const [command, setCommand] = useState(initial?.command ?? '')
-  const [argsText, setArgsText] = useState((initial?.args ?? []).join('\n'))
-  const [rows, setRows] = useState<EnvRow[]>(rowsFrom(initial?.env))
-  const [credentialId, setCredentialId] = useState(initial?.credentialId ?? '')
-  const [authHeader, setAuthHeader] = useState(initial?.authHeader ?? '')
+  const local = entry.auth === 'stdio'
+  // A local server has both questions; a remote one launches nothing, so it has only the second.
+  const steps: Step[] = local ? ['requirements', 'values'] : ['values']
+  const [step, setStep] = useState<Step>(steps[0])
+  const [rows, setRows] = useState<EnvRow[]>(rowsFrom(entry.env))
+  const [credentialId, setCredentialId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Only the identity of the server is required. Everything after it can legitimately be empty —
-  // a server with no env, a command with no arguments — and demanding it would be theatre.
-  const describedEnough = name.trim() !== '' && (stdio ? command.trim() !== '' : url.trim() !== '')
-  // stdio servers get the requirements step; a remote one launches no process, so it has none.
-  const steps: Step[] = stdio ? ['server', 'requirements', 'values'] : ['server', 'values']
   const index = Math.max(0, steps.indexOf(step))
+  const last = index === steps.length - 1
 
   const save = async () => {
     setSaving(true)
     setError(null)
     try {
-      const def = stdio
+      const def = local
         ? {
-            name: name.trim(),
+            name: entry.name,
             url: '',
             credentialId: '',
             authHeader: '',
-            command: command.trim(),
-            args: argsText.split('\n').map((s) => s.trim()).filter(Boolean),
+            command: entry.command,
+            args: entry.args,
             env: envFrom(rows),
           }
         : {
-            name: name.trim(),
-            url: url.trim(),
+            name: entry.name,
+            url: entry.url ?? '',
             credentialId,
-            authHeader,
+            authHeader: entry.authHeader ?? '',
           }
-      onSaved(await api.saveMcpDef({ ...initial, ...def } as McpDef))
+      onSaved(await api.saveMcpDef(def as McpDef))
       onClose()
     } catch (e) {
       setError(errMessage(e))
@@ -113,50 +110,22 @@ export function AddMcpServerModal({
   }
 
   return (
-    <Modal title={initial?.name ? `Add ${initial.name}` : 'Add an MCP server'} onClose={onClose}>
-      <p className={panels.hint}>
-        Step {index + 1} of {steps.length}
-        {step === 'server' && ' — what the server is'}
-        {step === 'requirements' && ' — what this machine needs to launch it'}
-        {step === 'values' && ' — the values it needs'}
-      </p>
-
-      {step === 'server' && (
-        <>
-          <Field label="Name" placeholder="google-ads" value={name} onChange={setName} />
-          <SelectField
-            label="Transport"
-            value={stdio ? 'stdio' : 'http'}
-            onChange={(v) => setStdio(v === 'stdio')}
-          >
-            <option value="http">Remote server (URL)</option>
-            <option value="stdio">Command (stdio) — launched on this machine</option>
-          </SelectField>
-          {stdio ? (
-            <>
-              <Field label="Command" placeholder="uvx" value={command} onChange={setCommand} />
-              <TextArea
-                label="Arguments (one per line)"
-                rows={3}
-                placeholder={'-y\n@googleads/google-ads-mcp'}
-                value={argsText}
-                onChange={setArgsText}
-              />
-            </>
-          ) : (
-            <Field
-              label="URL"
-              placeholder="https://mcp.linear.app/mcp"
-              value={url}
-              onChange={setUrl}
-            />
-          )}
-        </>
+    <Modal title={`Set up ${entry.name}`} onClose={onClose}>
+      <p className={panels.hint}>{entry.note}</p>
+      {steps.length > 1 && (
+        <p className={panels.hint}>
+          Step {index + 1} of {steps.length} —{' '}
+          {step === 'requirements' ? 'what this machine needs to launch it' : 'what the server needs to know'}
+        </p>
       )}
 
       {step === 'requirements' && (
         <>
-          <RuntimeNotice command={command} />
+          <p className={panels.hint}>
+            It runs on this machine as <code>{[entry.command, ...(entry.args ?? [])].join(' ')}</code>
+          </p>
+          {/* The install button lives here: one click, the exact command shown before it runs. */}
+          <RuntimeNotice command={entry.command ?? ''} />
           <p className={panels.hint}>
             You can continue either way — this never blocks adding the server. It just means the
             first run would fail to start it.
@@ -164,7 +133,7 @@ export function AddMcpServerModal({
         </>
       )}
 
-      {step === 'values' && stdio && (
+      {step === 'values' && local && (
         <>
           <p className={panels.hint}>
             Environment variables this server reads. Mark the secret ones — those are stored in
@@ -175,18 +144,28 @@ export function AddMcpServerModal({
             <p className={panels.hint}>This server declares no environment variables.</p>
           )}
           {rows.map((row, i) => (
-            <div key={i} className={styles.crudForm}>
-              <Field
-                label="Variable"
-                placeholder="GOOGLE_ADS_DEVELOPER_TOKEN"
-                value={row.key}
-                onChange={(v) =>
-                  setRows((prev) => prev.map((r, j) => (j === i ? { ...r, key: v } : r)))
-                }
-              />
+            <div key={i}>
+              {row.secret ? (
+                <CredentialField
+                  label={row.key}
+                  value={row.value}
+                  onChange={(v) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, value: v } : r)))}
+                  what="this MCP server"
+                />
+              ) : (
+                <Field
+                  label={row.key}
+                  value={row.value}
+                  onChange={(v) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, value: v } : r)))}
+                />
+              )}
+              {/* Under its field, and short: the variable's name is already the label above, and
+                  repeating it made every row say the same word twice in a row. The accessible
+                  name still carries it, because several rows each have one of these. */}
               <label className={panels.hint}>
                 <input
                   type="checkbox"
+                  aria-label={`${row.key} — store as a credential`}
                   checked={row.secret}
                   onChange={(e) =>
                     setRows((prev) =>
@@ -197,54 +176,25 @@ export function AddMcpServerModal({
                     )
                   }
                 />{' '}
-                This is a secret
+                Store as a credential
               </label>
-              {row.secret ? (
-                <CredentialField
-                  label="Credential"
-                  value={row.value}
-                  onChange={(v) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, value: v } : r)))}
-                  what="this MCP server"
-                />
-              ) : (
-                <Field
-                  label="Value"
-                  value={row.value}
-                  onChange={(v) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, value: v } : r)))}
-                />
-              )}
-              <button
-                className={styles.newBtn}
-                onClick={() => setRows((prev) => prev.filter((_, j) => j !== i))}
-              >
-                Remove {row.key || 'this variable'}
-              </button>
             </div>
           ))}
-          <button
-            className={styles.newBtn}
-            onClick={() => setRows((prev) => [...prev, { key: '', value: '', secret: false }])}
-          >
-            + Add a variable
-          </button>
         </>
       )}
 
-      {step === 'values' && !stdio && (
+      {step === 'values' && !local && (
         <>
           <CredentialField
-            label="Access token (optional)"
+            label="Access token"
             value={credentialId}
             onChange={setCredentialId}
             what="this MCP server"
           />
-          <SelectField label="Send token in" value={authHeader} onChange={setAuthHeader}>
-            <option value="">Authorization: Bearer</option>
-            <option value="PRIVATE-TOKEN">PRIVATE-TOKEN</option>
-          </SelectField>
           <p className={panels.hint}>
-            Servers that sign in with OAuth need neither: add it, then press “Sign in to this
-            server” on the MCP node.
+            {entry.authHeader
+              ? `Sent in the ${entry.authHeader} header, as this server expects.`
+              : 'Sent as an Authorization: Bearer header.'}
           </p>
         </>
       )}
@@ -257,18 +207,13 @@ export function AddMcpServerModal({
             Back
           </button>
         )}
-        {index < steps.length - 1 ? (
-          <button
-            className={styles.saveBtn}
-            disabled={!describedEnough}
-            title={describedEnough ? undefined : 'A name and a URL or command first'}
-            onClick={() => setStep(steps[index + 1])}
-          >
-            Next
+        {last ? (
+          <button className={styles.saveBtn} disabled={saving} onClick={() => void save()}>
+            {saving ? 'Adding…' : `Add ${entry.name}`}
           </button>
         ) : (
-          <button className={styles.saveBtn} disabled={!describedEnough || saving} onClick={() => void save()}>
-            {saving ? 'Saving…' : 'Add server'}
+          <button className={styles.saveBtn} onClick={() => setStep(steps[index + 1])}>
+            Next
           </button>
         )}
       </div>

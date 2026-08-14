@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AddMcpServerModal } from './AddMcpServerModal.tsx'
+import type { CatalogSetup } from './McpCatalog.tsx'
 
 const saveMcpDefMock = vi.fn()
 const checkRuntimeMock = vi.fn()
@@ -9,11 +10,30 @@ vi.mock('../api/client.ts', () => ({
   api: {
     saveMcpDef: (d: unknown) => saveMcpDefMock(d),
     checkRuntime: (c: string, r: boolean) => checkRuntimeMock(c, r),
-    // The credential picker loads this; an empty list is the "nothing stored yet" case.
+    // The runtime notice asks what installing would run, once something is missing.
+    runtimeInstallPlan: () =>
+      Promise.resolve({ runtime: 'uv', command: 'curl -LsSf https://astral.sh/uv/install.sh | sh' }),
+    // The credential picker loads this; one stored credential is the interesting case.
     listCredentials: () => Promise.resolve([{ id: 'cred_1', label: 'Mailchimp key', hint: '••1234' }]),
   },
 }))
-vi.mock('../api/shell.ts', () => ({ shellBridge: () => null }))
+
+const mailchimp: CatalogSetup = {
+  name: 'Mailchimp',
+  auth: 'stdio',
+  note: 'Community server — runs via uvx.',
+  command: 'uvx',
+  args: ['mailchimp-mcp'],
+  env: { MAILCHIMP_API_KEY: '', MAILCHIMP_READ_ONLY: 'true' },
+}
+
+const gitlab: CatalogSetup = {
+  name: 'GitLab',
+  auth: 'token',
+  note: 'Needs a personal access token.',
+  url: 'https://gitlab.com/api/v4/mcp',
+  authHeader: 'PRIVATE-TOKEN',
+}
 
 afterEach(() => {
   vi.clearAllMocks()
@@ -22,87 +42,74 @@ afterEach(() => {
 const next = () => fireEvent.click(screen.getByText('Next'))
 
 describe('AddMcpServerModal', () => {
-  it('walks a local server through its runtime check before asking for values', async () => {
+  it('asks a local server’s runtime first, with the command it will run', async () => {
     checkRuntimeMock.mockResolvedValue({
-      command: 'uvx mailchimp-mcp',
+      command: 'uvx',
       runtime: { id: 'uv', label: 'uv', found: false, version: '', neededFor: 'uvx servers', docsUrl: 'x' },
       satisfied: false,
     })
-    saveMcpDefMock.mockResolvedValue({ id: 'mcp_1', name: 'mailchimp' })
+    render(<AddMcpServerModal entry={mailchimp} onClose={vi.fn()} onSaved={vi.fn()} />)
 
-    render(
-      <AddMcpServerModal
-        initial={{ name: 'mailchimp', command: 'uvx', args: ['mailchimp-mcp'], env: { MAILCHIMP_READ_ONLY: 'true' } }}
-        onClose={vi.fn()}
-        onSaved={vi.fn()}
-      />,
-    )
-
-    expect(screen.getByText(/Step 1 of 3/)).toBeInTheDocument()
-    next()
-
-    // The requirements step is where a missing runtime surfaces — before the run, not during it.
+    expect(screen.getByText(/Step 1 of 2/)).toBeInTheDocument()
+    expect(screen.getByText('uvx mailchimp-mcp')).toBeInTheDocument()
+    // The missing runtime surfaces here — before the run, not four minutes into it.
     expect(await screen.findByText(/uv is not installed/)).toBeInTheDocument()
-    // …and it never blocks: adding a server the machine cannot launch yet is allowed, and said so.
+    // …and it never blocks: a server can be added on a machine that cannot launch it yet.
     expect(screen.getByText(/never blocks adding the server/)).toBeInTheDocument()
-    next()
-
-    expect(screen.getByDisplayValue('MAILCHIMP_READ_ONLY')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('true')).toBeInTheDocument()
   })
 
-  it('stores a secret variable as a credential reference, never as its value', async () => {
-    checkRuntimeMock.mockResolvedValue({ command: 'uvx x', runtime: null, satisfied: true })
-    saveMcpDefMock.mockResolvedValue({ id: 'mcp_1', name: 'mailchimp' })
+  it('fills the server’s own variables and stores the secret one by reference', async () => {
+    checkRuntimeMock.mockResolvedValue({ command: 'uvx', runtime: null, satisfied: true })
+    saveMcpDefMock.mockResolvedValue({ id: 'mcp_1', name: 'Mailchimp' })
     const onSaved = vi.fn()
+    const onClose = vi.fn()
+    render(<AddMcpServerModal entry={mailchimp} onClose={onClose} onSaved={onSaved} />)
 
-    render(
-      <AddMcpServerModal
-        initial={{ name: 'mailchimp', command: 'uvx', args: ['mailchimp-mcp'], env: { MAILCHIMP_API_KEY: '' } }}
-        onClose={vi.fn()}
-        onSaved={onSaved}
-      />,
-    )
     next()
-    next()
+    // The variables come from the catalogue entry, already named — nothing to type but the values.
+    expect(screen.getByLabelText('MAILCHIMP_READ_ONLY')).toHaveValue('true')
 
-    fireEvent.click(screen.getByLabelText(/This is a secret/))
-    fireEvent.change(await screen.findByLabelText('Credential'), { target: { value: 'cred_1' } })
-    fireEvent.click(screen.getByText('Add server'))
+    fireEvent.click(screen.getByLabelText('MAILCHIMP_API_KEY — store as a credential'))
+    fireEvent.change(await screen.findByLabelText('MAILCHIMP_API_KEY'), { target: { value: 'cred_1' } })
+    fireEvent.click(screen.getByText('Add Mailchimp'))
 
     await waitFor(() => expect(saveMcpDefMock).toHaveBeenCalled())
     const saved = saveMcpDefMock.mock.calls[0][0]
-    expect(saved.env).toEqual({ MAILCHIMP_API_KEY: 'credential:cred_1' })
+    expect(saved.env).toEqual({ MAILCHIMP_API_KEY: 'credential:cred_1', MAILCHIMP_READ_ONLY: 'true' })
     expect(saved.command).toBe('uvx')
     expect(saved.args).toEqual(['mailchimp-mcp'])
     expect(onSaved).toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalled()
   })
 
-  it('skips the runtime step for a remote server, which launches nothing', async () => {
-    saveMcpDefMock.mockResolvedValue({ id: 'mcp_2', name: 'linear' })
+  it('asks a remote token server for its credential and nothing else', async () => {
+    saveMcpDefMock.mockResolvedValue({ id: 'mcp_2', name: 'GitLab' })
+    render(<AddMcpServerModal entry={gitlab} onClose={vi.fn()} onSaved={vi.fn()} />)
 
-    render(<AddMcpServerModal onClose={vi.fn()} onSaved={vi.fn()} />)
-
-    expect(screen.getByText(/Step 1 of 2/)).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'linear' } })
-    fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://mcp.linear.app/mcp' } })
-    next()
-
-    expect(screen.getByText(/the values it needs/)).toBeInTheDocument()
-    fireEvent.click(screen.getByText('Add server'))
+    // One question: a remote server launches nothing, so it has no runtime step.
+    expect(screen.queryByText(/Step 1 of/)).not.toBeInTheDocument()
+    expect(screen.getByText(/PRIVATE-TOKEN header/)).toBeInTheDocument()
+    // The stored credentials arrive a tick later; selecting a value the <select> has no option for
+    // yet is silently a no-op.
+    await screen.findByRole('option', { name: /Mailchimp key/ })
+    fireEvent.change(screen.getByLabelText('Access token'), { target: { value: 'cred_1' } })
+    fireEvent.click(screen.getByText('Add GitLab'))
 
     await waitFor(() => expect(saveMcpDefMock).toHaveBeenCalled())
-    expect(saveMcpDefMock.mock.calls[0][0].url).toBe('https://mcp.linear.app/mcp')
+    const saved = saveMcpDefMock.mock.calls[0][0]
+    expect(saved).toMatchObject({
+      name: 'GitLab',
+      url: 'https://gitlab.com/api/v4/mcp',
+      credentialId: 'cred_1',
+      authHeader: 'PRIVATE-TOKEN',
+    })
     expect(checkRuntimeMock).not.toHaveBeenCalled()
   })
 
-  it('will not move on until the server has a name and somewhere to reach it', () => {
-    render(<AddMcpServerModal onClose={vi.fn()} onSaved={vi.fn()} />)
+  it('carries the catalogue’s own note, so the dialog says what the server is', () => {
+    checkRuntimeMock.mockResolvedValue({ command: 'uvx', runtime: null, satisfied: true })
+    render(<AddMcpServerModal entry={mailchimp} onClose={vi.fn()} onSaved={vi.fn()} />)
 
-    expect(screen.getByText('Next')).toBeDisabled()
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'linear' } })
-    expect(screen.getByText('Next')).toBeDisabled()
-    fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://mcp.linear.app/mcp' } })
-    expect(screen.getByText('Next')).toBeEnabled()
+    expect(screen.getByText('Community server — runs via uvx.')).toBeInTheDocument()
   })
 })

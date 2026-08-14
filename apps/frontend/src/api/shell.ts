@@ -1,14 +1,14 @@
 /**
  * The desktop shell's bridge, when the UI runs inside it.
  *
- * The Electron main window exposes a deliberately short list (see apps/desktop/src/
- * preload-main.ts): the auto-updater — status, a manual check, restart-and-install — and
- * installing one of six fixed developer runtimes an MCP server may need. In a plain browser the
- * global is absent and `shellBridge()` returns null, which is how update UI knows not to render.
+ * The Electron main window exposes exactly one thing (see apps/desktop/src/preload-main.ts): the
+ * auto-updater — status, a manual check, and restart-and-install. In a plain browser the global is
+ * absent and `shellBridge()` returns null, which is how update UI knows not to render.
  *
- * A bridge from an older shell may not have every section, so each optional one is checked at the
- * call site rather than assumed: the UI is served by the backend and can be newer than the shell
- * around it (a browser tab, or an app that has not restarted into its update yet).
+ * Anything else the UI needs from the machine goes through the backend's HTTP API instead, which
+ * is why installing an MCP runtime is not here: the UI is served by the backend and can be newer
+ * than the shell around it, and a capability that only exists in a shell that has not restarted
+ * into its update yet is a capability that silently is not there.
  */
 
 export type UpdatePhase = 'idle' | 'checking' | 'up-to-date' | 'downloading' | 'downloaded' | 'error'
@@ -29,30 +29,11 @@ export interface ShellUpdateState {
   checkedAt?: number
 }
 
-/** What the shell would run to install a runtime here. `command` is null when there is no safe one. */
-export interface RuntimeInstallPlan {
-  runtime: string
-  command: string | null
-  reason?: string
-}
-
 export interface ShellBridge {
   updates: {
     status: () => Promise<ShellUpdateState>
     check: () => Promise<ShellUpdateState>
     install: () => Promise<{ ok: boolean; error?: string }>
-  }
-  /**
-   * Installing a runtime an MCP server needs. Present only inside the shell — in a browser there
-   * is no process to install anything with, and the UI offers the official instructions instead.
-   *
-   * `install` takes a runtime IDENTIFIER, never a command: the shell owns the fixed table of
-   * commands and rejects anything not in it. `onOutput` returns its own unsubscribe.
-   */
-  runtimes?: {
-    plan: (runtime: string) => Promise<RuntimeInstallPlan>
-    install: (runtime: string) => Promise<{ ok: boolean; detail: string }>
-    onOutput: (handler: (line: string) => void) => () => void
   }
 }
 

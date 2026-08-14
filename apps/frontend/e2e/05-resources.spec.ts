@@ -68,46 +68,34 @@ test('the MCP catalog expands into category tabs with one-click entries', async 
   await expect(page.getByText('Official Microsoft/Azure docs search')).toBeVisible()
 })
 
-test('the guided add walks an MCP server in and it lands in the list', async ({ page }) => {
+test('picking a local catalogue server opens setup: its runtime, then its variables', async ({ page }) => {
   await openApp(page)
   await goTo(page, 'Resources')
   await page.getByRole('button', { name: 'MCP Servers' }).click()
+  await page.getByText('Catalog — one click to add').click()
+  await page.getByRole('tab', { name: 'Email' }).click()
 
-  await page.getByRole('button', { name: '+ Add a server (guided)' }).click()
-  // Scoped to the dialog: the CRUD form behind it has a "Name" field of its own.
-  const wizard = page.getByRole('dialog')
-
-  // A remote server has nothing to launch, so it skips the runtime step: two steps, not three.
-  await expect(wizard.getByText('Step 1 of 2')).toBeVisible()
-  await wizard.getByLabel('Name').fill('e2e-guided')
-  // exact: the Transport select's accessible name contains its options, one of which says "URL".
-  await wizard.getByLabel('URL', { exact: true }).fill('https://mcp.example.test/mcp')
-  await wizard.getByRole('button', { name: 'Next' }).click()
-  await expect(wizard.getByText(/the values it needs/)).toBeVisible()
-  await wizard.getByRole('button', { name: 'Add server' }).click()
-
-  // Saved through the real API and picked up by the list below.
-  await expect(page.getByText('e2e-guided')).toBeVisible()
-})
-
-test('a local server asks about the runtime it needs before anything runs', async ({ page }) => {
-  await openApp(page)
-  await goTo(page, 'Resources')
-  await page.getByRole('button', { name: 'MCP Servers' }).click()
-  await page.getByRole('button', { name: '+ Add a server (guided)' }).click()
-  const wizard = page.getByRole('dialog')
-
-  await wizard.getByLabel('Name').fill('e2e-local')
-  await wizard.getByLabel('Transport').selectOption('stdio')
-  await wizard.getByLabel('Command', { exact: true }).fill('uvx')
-  await wizard.getByRole('button', { name: 'Next' }).click()
+  // Mailchimp runs locally (uvx) and reads two variables — it cannot just be added.
+  await page.getByText('Mailchimp').click()
+  const setup = page.getByRole('dialog')
+  await expect(setup.getByText('Step 1 of 2')).toBeVisible()
+  await expect(setup.getByText('uvx mailchimp-mcp')).toBeVisible()
 
   // Whether uv exists on the machine running these tests is not something to assert — CI runners
-  // differ. What must hold is that the step EXISTS and the backend answered about it, either way.
-  await expect(wizard.getByText('Step 2 of 3')).toBeVisible()
+  // differ. What must hold is that the machine was asked, and answered.
   await expect(
-    wizard.getByText(/uv is not installed/).or(wizard.getByText(/uv .* found/)),
+    setup.getByText(/uv is not installed/).or(setup.getByText(/uv .* found/)),
   ).toBeVisible({ timeout: 15_000 })
+
+  await setup.getByRole('button', { name: 'Next' }).click()
+  // The variables come named from the catalogue: nothing to type but the values. exact, because
+  // the "is a secret" checkbox next to each one carries the variable's name too.
+  await expect(setup.getByLabel('MAILCHIMP_READ_ONLY', { exact: true })).toHaveValue('true')
+  await setup.getByRole('button', { name: 'Add Mailchimp' }).click()
+
+  // Saved through the real API and picked up by the list below. Found by the row's own delete
+  // control: the name alone also matches the catalogue card it was added from.
+  await expect(page.getByLabel('Delete Mailchimp')).toBeVisible()
 })
 
 test('export downloads the whole configuration and import accepts it back', async ({ page }) => {

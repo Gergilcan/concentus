@@ -27,6 +27,7 @@ import type {
   ModelCatalog,
   RemoteRepoList,
   RuntimeCheck,
+  RuntimeInstallPlan,
   RuntimeStatus,
   RunComparison,
   RunEvent,
@@ -170,6 +171,18 @@ export const api = {
   checkRuntime: (command: string, refresh = false) =>
     req<RuntimeCheck>(
       `/runtimes/check?command=${encodeURIComponent(command)}${refresh ? '&refresh=true' : ''}`,
+    ),
+  /** What installing a runtime would run here — shown next to the button that runs it. */
+  runtimeInstallPlan: (runtime: string) =>
+    req<RuntimeInstallPlan>(`/runtimes/${encodeURIComponent(runtime)}/install-plan`),
+  /**
+   * Installs a runtime and answers with the installer's own output. Desktop installs only; on a
+   * server the backend refuses rather than touching the host.
+   */
+  installRuntime: (runtime: string) =>
+    req<{ ok: boolean; command: string | null; output: string }>(
+      `/runtimes/${encodeURIComponent(runtime)}/install`,
+      { method: 'POST' },
     ),
 
   /** Notes this flow's agents left for future runs (memory_append), newest first. */

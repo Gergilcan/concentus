@@ -578,6 +578,16 @@ export interface RuntimeCheck {
   satisfied: boolean
 }
 
+/**
+ * What installing a runtime would run on this machine. A null `command` is not a failure: it means
+ * there is no unattended installer worth running here, and `reason` says why.
+ */
+export interface RuntimeInstallPlan {
+  runtime: string
+  command: string | null
+  reason?: string | null
+}
+
 // --- Flow memory ------------------------------------------------------------
 
 /** One note an agent left for future runs of its flow (memory_append). */

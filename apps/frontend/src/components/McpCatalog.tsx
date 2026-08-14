@@ -160,13 +160,29 @@ const AUTH_LABEL: Record<CatalogEntry['auth'], string> = {
 }
 
 /**
- * Entries whose one click leaves work behind: a stdio server with environment variables to fill,
- * or a token server needing a credential. Those are the ones worth handing to the wizard — the
- * rest (OAuth, no auth) really are done in one click, and routing them through three steps would
- * take away the thing this catalogue is for.
+ * Entries whose one click leaves work behind — the ones worth handing to the setup dialog.
+ *
+ * Every LOCAL server does: it is launched by a command, so the machine needs the runtime that
+ * command comes from (npx needs npm, uvx ships with uv), and adding one without that just moves
+ * the failure to the first run. Token servers do too: they need a credential picked. OAuth and
+ * open servers genuinely are one click, and routing those through a dialog would take away the
+ * thing this catalogue is for.
  */
-function needsAnswers(entry: CatalogEntry): boolean {
-  return Object.keys(entry.env ?? {}).length > 0 || entry.auth === 'token'
+/** A catalogue entry handed to the setup dialog: what it is, and what it still needs answered. */
+export interface CatalogSetup {
+  name: string
+  /** "stdio" (a command this machine runs) or "token" (a remote server needing a credential). */
+  auth: 'stdio' | 'token'
+  note: string
+  url?: string
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  authHeader?: string
+}
+
+function needsSetup(entry: CatalogEntry): boolean {
+  return entry.auth === 'stdio' || entry.auth === 'token'
 }
 
 export function McpCatalog({
@@ -182,17 +198,11 @@ export function McpCatalog({
    */
   reloadToken?: number
   /**
-   * Opens the guided add for an entry that needs values. Optional: without it every entry is
-   * added directly, which is what the catalogue did before the wizard existed.
+   * Opens the setup dialog for an entry that cannot just be added — a local server needing its
+   * runtime installed, or one needing a token. Optional: without it every entry is added
+   * directly, which is what the catalogue did before the dialog existed.
    */
-  onConfigure?: (entry: {
-    name: string
-    url?: string
-    command?: string
-    args?: string[]
-    env?: Record<string, string>
-    authHeader?: string
-  }) => void
+  onConfigure?: (entry: CatalogSetup) => void
 }) {
   const [note, setNote] = useState<string | null>(null)
   // Names already in the user's server list, lowercased. What turns a card into a ✓: adding the
@@ -217,9 +227,11 @@ export function McpCatalog({
 
   const add = async (entry: CatalogEntry) => {
     setNote(null)
-    if (onConfigure && needsAnswers(entry)) {
+    if (onConfigure && needsSetup(entry)) {
       onConfigure({
         name: entry.name,
+        auth: entry.auth === 'stdio' ? 'stdio' : 'token',
+        note: entry.note,
         url: entry.url,
         command: entry.command,
         args: entry.args,
@@ -295,8 +307,8 @@ export function McpCatalog({
                   title={
                     isAdded
                       ? 'Already in your server list below.'
-                      : onConfigure && needsAnswers(entry)
-                        ? `${entry.note} — opens a short setup, because this one needs values before it can run.`
+                      : onConfigure && needsSetup(entry)
+                        ? `${entry.note} — opens setup: it needs something installed or filled in before it can run.`
                         : entry.note
                   }
                   disabled={isAdded || busy === entry.name}

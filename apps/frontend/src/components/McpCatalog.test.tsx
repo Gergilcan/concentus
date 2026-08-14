@@ -152,6 +152,37 @@ describe('McpCatalog', () => {
       )
     })
 
+    it('hands over a local entry with no variables at all, because it still needs its runtime', () => {
+      // Google Tag Manager declares no env. It is still launched by npx, and adding it on a
+      // machine without node just moves the failure to the first run.
+      listMcpDefsMock.mockResolvedValue([])
+      const onConfigure = vi.fn()
+      render(<McpCatalog onAdded={vi.fn()} onConfigure={onConfigure} />)
+      expandCatalog()
+      openCategory('Google')
+
+      fireEvent.click(screen.getByText('Google Tag Manager').closest('button')!)
+
+      expect(saveMcpDefMock).not.toHaveBeenCalled()
+      expect(onConfigure).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Google Tag Manager', auth: 'stdio', command: 'npx' }),
+      )
+    })
+
+    it('hands over a token server, which needs a credential picked', () => {
+      listMcpDefsMock.mockResolvedValue([])
+      const onConfigure = vi.fn()
+      render(<McpCatalog onAdded={vi.fn()} onConfigure={onConfigure} />)
+      expandCatalog()
+
+      fireEvent.click(screen.getByText('GitLab').closest('button')!)
+
+      expect(saveMcpDefMock).not.toHaveBeenCalled()
+      expect(onConfigure).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'GitLab', auth: 'token', authHeader: 'PRIVATE-TOKEN' }),
+      )
+    })
+
     it('still adds an entry with nothing to fill in one click', async () => {
       listMcpDefsMock.mockResolvedValue([])
       saveMcpDefMock.mockResolvedValue({})
