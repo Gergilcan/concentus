@@ -52,7 +52,8 @@ class LocalClaudeArgsTest {
     }
 
     private static List<String> args(String prompt, boolean promptOnStdin) {
-        return executor().buildArgs("claude", run(), Path.of("."), true, prompt, List.of(), promptOnStdin);
+        return executor().buildArgs("claude", run(), Path.of("."), true, prompt, List.of(),
+                promptOnStdin, null);
     }
 
     @Test
@@ -91,7 +92,7 @@ class LocalClaudeArgsTest {
 
     @Test
     void aResumedTurnResumesRatherThanStartingANewSession() {
-        List<String> args = executor().buildArgs("claude", run(), Path.of("."), false, "hi", List.of(), false);
+        List<String> args = executor().buildArgs("claude", run(), Path.of("."), false, "hi", List.of(), false, null);
 
         assertThat(args).containsSequence("--resume", "session-1")
                 .doesNotContain("--session-id");
@@ -100,7 +101,7 @@ class LocalClaudeArgsTest {
     @Test
     void contextDirectoriesAreGrantedIndividually() {
         List<String> args = executor().buildArgs("claude", run(), Path.of("."), true, "hi",
-                List.of(Path.of("/a"), Path.of("/b")), false);
+                List.of(Path.of("/a"), Path.of("/b")), false, null);
 
         assertThat(args).filteredOn("--add-dir"::equals).hasSize(2);
     }
@@ -122,7 +123,7 @@ class LocalClaudeArgsTest {
         AgentRun run = run();
         run.permissionMode = LocalClaudeExecutor.APPROVAL_MODE;
 
-        List<String> a = executor().buildArgs("claude", run, Path.of("."), true, "hola", List.of(), false);
+        List<String> a = executor().buildArgs("claude", run, Path.of("."), true, "hola", List.of(), false, null);
 
         // 'approval' is ours, not the CLI's — passing it through verbatim would be rejected as an
         // unknown mode, and passing bypassPermissions would let the agent act before anyone agreed.
@@ -136,47 +137,32 @@ class LocalClaudeArgsTest {
         run.permissionMode = LocalClaudeExecutor.APPROVAL_MODE;
         run.approved = true;
 
-        List<String> a = executor().buildArgs("claude", run, Path.of("."), false, "go", List.of(), false);
+        List<String> a = executor().buildArgs("claude", run, Path.of("."), false, "go", List.of(), false, null);
 
         int i = a.indexOf("--permission-mode");
         org.assertj.core.api.Assertions.assertThat(a.get(i + 1)).isEqualTo("bypassPermissions");
     }
 
     @Test
-    void selectedPluginsBecomeSessionSettingsThatDisableTheRest() {
-        AgentRun run = run();
-        run.compiled.coordinator().plugins = List.of("caveman@caveman");
+    void theSettingsFlagCarriesAPathAndNeverTheJsonItself() {
+        Path settings = Path.of("wd", "settings.json");
 
         List<String> a = executor(fixedPlugins())
-                .buildArgs("claude", run, Path.of("."), true, "hola", List.of(), false);
+                .buildArgs("claude", run(), Path.of("."), true, "hola", List.of(), false, settings);
 
         int i = a.indexOf("--settings");
         assertThat(i).isGreaterThanOrEqualTo(0);
-        // Exactly the selection: enabled, and every other installed plugin explicitly disabled —
-        // a leftover globally-enabled plugin must not ride along into a flow that chose its set.
-        assertThat(a.get(i + 1))
-                .contains("\"caveman@caveman\":true")
-                .contains("\"other@mkt\":false");
+        assertThat(a.get(i + 1)).isEqualTo(settings.toString());
+        // The regression this replaced: a JSON argument does not survive ProcessBuilder on
+        // Windows. The CLI answered "Invalid JSON provided to --settings" and exited 1 before the
+        // run began — every turn, once an empty selection started producing settings too.
+        assertThat(a).noneSatisfy(arg -> assertThat(arg).contains("enabledPlugins"));
     }
 
     @Test
-    void noPluginSelectionMeansEveryInstalledPluginIsDisabled() {
-        // Not "the CLI's own defaults": a flow that ticked nothing asked for nothing, and a
-        // globally enabled plugin riding along made the empty list a lie.
+    void withNoSettingsFileThereIsNoFlag() {
         List<String> a = executor(fixedPlugins())
-                .buildArgs("claude", run(), Path.of("."), true, "hola", List.of(), false);
-
-        int i = a.indexOf("--settings");
-        assertThat(i).isGreaterThanOrEqualTo(0);
-        assertThat(a.get(i + 1))
-                .contains("\"caveman@caveman\":false")
-                .contains("\"other@mkt\":false");
-    }
-
-    @Test
-    void withNoPluginsInstalledThereIsNothingToSayAndNoFlag() {
-        List<String> a = executor(null)
-                .buildArgs("claude", run(), Path.of("."), true, "hola", List.of(), false);
+                .buildArgs("claude", run(), Path.of("."), true, "hola", List.of(), false, null);
 
         assertThat(a).doesNotContain("--settings");
     }
@@ -187,7 +173,7 @@ class LocalClaudeArgsTest {
         // found in the user's home, which the run shares. Taking the tool away is what makes
         // "none assigned" mean none.
         List<String> a = executor(null)
-                .buildArgs("claude", run(), Path.of("."), true, "hola", List.of(), false);
+                .buildArgs("claude", run(), Path.of("."), true, "hola", List.of(), false, null);
 
         int i = a.indexOf("--disallowedTools");
         assertThat(i).isGreaterThanOrEqualTo(0);
@@ -204,7 +190,7 @@ class LocalClaudeArgsTest {
         run.compiled.coordinator().skills = List.of(skill);
 
         List<String> a = executor(null)
-                .buildArgs("claude", run, Path.of("."), true, "hola", List.of(), false);
+                .buildArgs("claude", run, Path.of("."), true, "hola", List.of(), false, null);
 
         assertThat(a).doesNotContain("--disallowedTools");
     }

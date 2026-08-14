@@ -47,7 +47,7 @@ class FanoutArgsTest {
 
     private static List<String> args(String prompt, boolean promptOnStdin) {
         return executor().buildWorkerArgs("claude", run(), spec(), Path.of("wd"), List.of(),
-                "session-9", prompt, promptOnStdin, "Task,Bash");
+                "session-9", prompt, promptOnStdin, "Task,Bash", null);
     }
 
     @Test
@@ -68,7 +68,7 @@ class FanoutArgsTest {
         withSkill.skills = List.of(skill);
 
         List<String> a = executor().buildWorkerArgs("claude", run(), withSkill, Path.of("wd"),
-                List.of(), "s", "hola", false, "Task,Bash");
+                List.of(), "s", "hola", false, "Task,Bash", null);
 
         assertThat(a).containsSequence("--disallowedTools", "Task,Bash");
     }
@@ -76,10 +76,23 @@ class FanoutArgsTest {
     @Test
     void theMergeStepKeepsBashButStillCannotDelegate() {
         List<String> a = executor().buildWorkerArgs("claude", run(), spec(), Path.of("wd"),
-                List.of(), "s", "merge it", false, "Task");
+                List.of(), "s", "merge it", false, "Task", null);
 
         assertThat(a).containsSequence("--disallowedTools", "Task,Skill");
         assertThat(a).doesNotContain("Task,Bash");
+    }
+
+    @Test
+    void aWorkersPluginSettingsTravelAsAPathNotAsJson() {
+        // Inline JSON does not survive ProcessBuilder on Windows: the CLI answers "Invalid JSON
+        // provided to --settings" and exits 1 before the worker does anything.
+        Path settings = Path.of("wd", "settings.json");
+
+        List<String> a = executor().buildWorkerArgs("claude", run(), spec(), Path.of("wd"),
+                List.of(), "s", "hola", false, "Task,Bash", settings);
+
+        assertThat(a).containsSequence("--settings", settings.toString());
+        assertThat(a).noneSatisfy(arg -> assertThat(arg).contains("enabledPlugins"));
     }
 
     @Test
@@ -112,7 +125,7 @@ class FanoutArgsTest {
         run.permissionMode = LocalClaudeExecutor.APPROVAL_MODE;
 
         List<String> a = executor().buildWorkerArgs("claude", run, spec(), Path.of("wd"),
-                List.of(), "s", "hola", false, "Task,Bash");
+                List.of(), "s", "hola", false, "Task,Bash", null);
 
         assertThat(a).containsSequence("--permission-mode", "plan");
     }
@@ -126,7 +139,7 @@ class FanoutArgsTest {
     @Test
     void contextDirectoriesAreGrantedPerWorker() {
         List<String> a = executor().buildWorkerArgs("claude", run(), spec(), Path.of("wd"),
-                List.of(Path.of("/a"), Path.of("/b")), "s", "hola", false, "Task,Bash");
+                List.of(Path.of("/a"), Path.of("/b")), "s", "hola", false, "Task,Bash", null);
 
         assertThat(a).filteredOn("--add-dir"::equals).hasSize(2);
     }

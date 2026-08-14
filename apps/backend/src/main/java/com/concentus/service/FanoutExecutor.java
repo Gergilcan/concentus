@@ -484,8 +484,13 @@ public class FanoutExecutor {
     private Attempt attempt(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
                             String userText, Path workdir, List<Path> dirs, String disallowedTools) {
         boolean promptOnStdin = userText.length() > LocalClaudeExecutor.MAX_INLINE_PROMPT_CHARS;
+        // Written next to the worker's own MCP config, and passed as a path — inline JSON does not
+        // survive ProcessBuilder on Windows. See LocalClaudeExecutor.writePluginSettings.
+        Path settingsFile = pluginRegistry == null ? null
+                : LocalClaudeExecutor.writeSettingsFile(run, workdir,
+                        pluginRegistry.settingsJsonFor(spec.plugins));
         List<String> args = buildWorkerArgs(cmd, run, spec, workdir, dirs,
-                UUID.randomUUID().toString(), userText, promptOnStdin, disallowedTools);
+                UUID.randomUUID().toString(), userText, promptOnStdin, disallowedTools, settingsFile);
 
         Process proc;
         try {
@@ -766,7 +771,7 @@ public class FanoutExecutor {
     // load-bearing and silent when wrong.
     List<String> buildWorkerArgs(String cmd, AgentRun run, AgentSpec spec, Path workdir,
                                  List<Path> contextDirs, String sessionId, String userText,
-                                 boolean promptOnStdin, String disallowedTools) {
+                                 boolean promptOnStdin, String disallowedTools, Path settingsFile) {
         List<String> a = new ArrayList<>();
         a.add(cmd);
         if (!promptOnStdin) {
@@ -789,10 +794,9 @@ public class FanoutExecutor {
         // Workers are separate processes, so plugin selection here is truly per-agent — this
         // worker's own list, not the flow-wide union the shared session gets. An empty list is a
         // selection too: it disables every installed plugin for this worker.
-        String pluginSettings = pluginRegistry == null ? null : pluginRegistry.settingsJsonFor(spec.plugins);
-        if (pluginSettings != null) {
+        if (settingsFile != null) {
             a.add("--settings");
-            a.add(pluginSettings);
+            a.add(settingsFile.toString());
         }
         a.add("--mcp-config");
         a.add(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE).toString());

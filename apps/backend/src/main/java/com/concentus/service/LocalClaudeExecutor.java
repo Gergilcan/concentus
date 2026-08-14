@@ -85,6 +85,9 @@ public class LocalClaudeExecutor {
     /** The per-run MCP config file, inside the run's workdir. */
     static final String MCP_CONFIG_FILE = "mcp-config.json";
 
+    /** Where the run's {@code --settings} document is written. See {@link #writeSettingsFile}. */
+    static final String SETTINGS_FILE = "settings.json";
+
     /**
      * Above this many characters the prompt goes in on stdin instead of as a {@code -p} argument.
      *
@@ -170,7 +173,8 @@ public class LocalClaudeExecutor {
         // Rejections are reported on the first turn only, so a resumed session doesn't repeat them.
         List<Path> contextDirs = resolveContextDirs(run, flow, first);
         boolean promptOnStdin = userText.length() > MAX_INLINE_PROMPT_CHARS;
-        List<String> args = buildArgs(cmd, run, workdir, first, userText, contextDirs, promptOnStdin);
+        List<String> args = buildArgs(cmd, run, workdir, first, userText, contextDirs, promptOnStdin,
+                writePluginSettings(run, workdir));
         run.status = "RUNNING";
         run.emit(RunEvent.of("system", "› " + userText));
 
@@ -669,7 +673,7 @@ public class LocalClaudeExecutor {
     // Package-private for the arg-shape test: the ordering here is load-bearing and silent when
     // wrong — a misplaced `-p` would take the next flag as the prompt.
     List<String> buildArgs(String cmd, AgentRun run, Path workdir, boolean first, String userText,
-                                   List<Path> contextDirs, boolean promptOnStdin) {
+                                   List<Path> contextDirs, boolean promptOnStdin, Path settingsFile) {
         AgentSpec coord = run.compiled.coordinator();
         List<String> a = new ArrayList<>();
         a.add(cmd);
@@ -691,11 +695,11 @@ public class LocalClaudeExecutor {
 
         // Plugins are session-wide: the coordinator and its Task sub-agents share one CLI
         // process, so the session loads the union of every agent's selection — and nothing else,
-        // including when that union is empty.
-        String pluginSettings = pluginSettingsFor(run);
-        if (pluginSettings != null) {
+        // including when that union is empty. Passed as a FILE, never as inline JSON: see
+        // writePluginSettings.
+        if (settingsFile != null) {
             a.add("--settings");
-            a.add(pluginSettings);
+            a.add(settingsFile.toString());
         }
 
         // Skills are the same deal: what the flow assigned, or nothing. Assigned ones are written
@@ -748,17 +752,44 @@ public class LocalClaudeExecutor {
     }
 
     /**
-     * The union of every agent's plugin selection, as a {@code --settings} JSON — or null when
-     * there are no plugins installed to speak about. An empty union is not nothing to say: it
-     * disables the lot, because a flow that ticked nothing asked for nothing. Union because the
-     * coordinator and its sub-agents share one CLI process; only fan-out workers (separate
-     * processes) get truly per-agent plugin sets.
+     * The union of every agent's plugin selection, written into the run's workdir as the file
+     * {@code --settings} will be pointed at. Null when there are no plugins installed to speak
+     * about — nothing to say, no flag.
+     *
+     * <p>A file, not the JSON itself. {@code --settings} accepts either, and the string form is
+     * what the CLI documents first, but a JSON argument does not survive the trip through
+     * ProcessBuilder on Windows: the quotes are lost and the CLI answers "Invalid JSON provided to
+     * --settings" and exits 1 before doing anything. A path has no quoting to lose.
+     *
+     * <p>An empty union still produces a file: it disables every installed plugin, because a flow
+     * that ticked nothing asked for nothing. Union because the coordinator and its sub-agents
+     * share one CLI process; only fan-out workers (separate processes) get truly per-agent sets.
      */
-    private String pluginSettingsFor(AgentRun run) {
+    private Path writePluginSettings(AgentRun run, Path workdir) {
         if (pluginRegistry == null || run.compiled == null) return null;
         LinkedHashSet<String> union = new LinkedHashSet<>(run.compiled.coordinator().plugins);
         for (AgentSpec s : run.compiled.subAgents()) union.addAll(s.plugins);
-        return pluginRegistry.settingsJsonFor(union);
+        return writeSettingsFile(run, workdir, pluginRegistry.settingsJsonFor(union));
+    }
+
+    /**
+     * Writes a settings document into a run directory and returns its path, or null when there is
+     * nothing to write. A failure is reported and treated as "no settings" rather than killing the
+     * turn — the run is still worth having without the plugin fence.
+     */
+    static Path writeSettingsFile(AgentRun run, Path workdir, String json) {
+        if (json == null) return null;
+        Path file = workdir.resolve(SETTINGS_FILE);
+        try {
+            Files.createDirectories(workdir);
+            Files.writeString(file, json);
+            return file;
+        } catch (IOException e) {
+            run.emit(RunEvent.of("system",
+                    "Plugin settings could not be written, so this run uses the CLI's own: "
+                            + e.getMessage()));
+            return null;
+        }
     }
 
     /**
