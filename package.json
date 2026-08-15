@@ -8,8 +8,8 @@
   "scripts": {
     "//dev": "--kill-others: closing either half must take the other with it — without it the survivor (usually Vite) lingers invisibly and squats its port for the next start.",
     "dev": "concurrently --kill-others -n backend,frontend -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\"",
-    "//dev:backend": "8734 on purpose — the port Vite's proxy targets AND the desktop shell prefers: a shell launched while this runs ADOPTS this backend instead of starting the jar, so devtools hot-restarts (triggered by the IDE compiling on save, or `mvn compile`) reach the real app. Java edits reload in seconds; only a dependency change still needs a restart.",
-    "dev:backend": "cd apps/backend && mvn -q spring-boot:run -Dspring-boot.run.arguments=--server.port=8734",
+    "//dev:backend": "8734 on purpose — the port Vite's proxy targets AND the desktop shell prefers: a shell launched while this runs ADOPTS this backend instead of starting the jar, so devtools hot-restarts (triggered by the IDE compiling on save, or `mvn compile`) reach the real app. Java edits reload in seconds; only a dependency change still needs a restart. --server.address matches what the desktop profile sets, and is not merely cosmetic: without it Tomcat binds every interface, which pops the Windows Firewall dialog on the first run after any JDK change AND leaves a dev backend — with authentication off — reachable from the network.",
+    "dev:backend": "cd apps/backend && mvn -q spring-boot:run \"-Dspring-boot.run.arguments=--server.port=8734 --server.address=127.0.0.1\"",
     "dev:frontend": "pnpm --filter frontend dev",
     "build": "pnpm --filter frontend build",
     "backend": "cd apps/backend && mvn spring-boot:run",
