@@ -36,6 +36,11 @@ import java.util.Map;
  *   <li>{@code /api/internal/**} — subscription renewal and delta sync, called by a scheduler or
  *       an external cron. Signed with a shared secret (see {@code InternalEndpointGuard}).</li>
  *   <li>{@code /actuator/health/**} — liveness/readiness probes.</li>
+ *   <li>{@code /api/mcp/studio} — the MCP server an outside agent drives this app through. An MCP
+ *       client has no cookie either; it presents a configured bearer token, and where
+ *       authentication is on that token stands for a named account whose organization the request
+ *       then runs in. With no token configured the endpoint refuses everyone — see
+ *       {@code McpStudioController}.</li>
  * </ul>
  *
  * <p>Everything else under {@code /api} and {@code /ws} requires an authenticated session, which
@@ -86,13 +91,17 @@ public class SecurityConfig {
                     // bearer token instead — per run for /tools, per WORKER for the fan-out's
                     // facade, the run's token again for the planner's /plan, and the verifier's
                     // own token for /verdict.
+                    // The studio endpoint is the same story pointed the other way: an outside MCP
+                    // client (Claude Code) driving this app, with a configured token instead of a
+                    // session. It refuses every request unless one is set — see McpStudioController.
                     .ignoringRequestMatchers("/api/webhooks/**", "/api/internal/**",
                             "/api/runs/*/tools", "/api/runs/*/workers/*/tools", "/api/runs/*/plan",
-                            "/api/runs/*/verdict"))
+                            "/api/runs/*/verdict", "/api/mcp/studio"))
             .authorizeHttpRequests(auth -> auth
                     .requestMatchers("/api/webhooks/**", "/api/internal/**").permitAll()
                     .requestMatchers("/api/runs/*/tools", "/api/runs/*/workers/*/tools",
                             "/api/runs/*/plan", "/api/runs/*/verdict").permitAll()
+                    .requestMatchers("/api/mcp/studio").permitAll()
                     // Signing in, and asking whether you are signed in, cannot themselves require
                     // a session.
                     .requestMatchers("/api/account/login", "/api/account/session").permitAll()

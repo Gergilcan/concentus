@@ -871,6 +871,7 @@ onto a valid delivery.
 > to the spawned console as a discrete argument (`%~1` on Windows, a data file on macOS) and never
 > interpolated into script text. `remove` is not charset-restricted — it goes straight to the CLI
 > as argv, so servers registered under any name stay removable.
+| POST | `/api/mcp/studio` | Concentus **as** an MCP server — design, validate, run and steer flows from an outside agent ([details](#concentus-as-an-mcp-server)) |
 | POST | `/api/webhooks/{flowId}` | inbound webhook that starts a run with the event payload ([auth](#webhook-authentication)) |
 | GET | `/api/rag/status` · POST `/api/rag/preview` | RAG capabilities / preview a SQL source's rows |
 | GET | `/api/account/session` | whether sign-in is required, and who is signed in |
@@ -917,6 +918,67 @@ Deliberate limits: it **never answers for you** — approval mode and questions 
 guessing — and the flow travels in the request rather than being saved, so a headless run leaves no
 flow behind in whatever database it used. It polls the run rather than opening the UI's WebSocket:
 nobody watches a terminal for sub-second latency, and polling needs no client to keep alive.
+
+## Concentus as an MCP server
+
+Concentus consumes MCP servers — an MCP node grants an agent someone else's tools. This is the same
+socket pointed the other way: **the backend is itself an MCP server**, so an outside agent can
+design, validate, run and steer flows exactly as a person does through the canvas. Point Claude
+Code at it and "write me a flow that reviews my pull requests, then run it on this repo" produces a
+real flow on the dashboard, checked before it is saved.
+
+```bash
+claude mcp add --transport http concentus http://127.0.0.1:8734/api/mcp/studio
+```
+
+8734 is the port the desktop app prefers and keeps across launches. If it was taken, the app took
+another one — the window title bar and the log say which.
+
+### What it can do
+
+| | |
+|---|---|
+| **Design** | `flow_schema` · `list_flows` · `get_flow` · `create_flow` · `update_flow` · `update_flow_node` · `delete_flow` |
+| **Check** | `validate_flow` — compiles the graph, then runs the same [pre-run doctor](#concepts) the canvas does |
+| **Run** | `run_flow` · `list_runs` · `get_run` · `get_run_nodes` · `get_run_flow` · `send_command` · `stop_run` · `approve_run` · `reject_run` · `retry_run` |
+| **History** | `list_flow_versions` · `get_flow_version` · `restore_flow_version` · `read_flow_memory` · `clear_flow_memory` |
+| **Library** | `list_resources` · `save_resource` · `delete_resource` over agents, MCP servers, databases, knowledge bases, skills, variables and credentials |
+
+Three details worth knowing before you use it:
+
+- **Nothing is saved unvalidated.** `create_flow` and `update_flow` compile the graph first and
+  refuse it with the compiler's own message, so a misunderstood request comes back as something to
+  fix rather than as a broken flow on your dashboard.
+- **`update_flow_node` merges.** A model asked to change one field sends back the fields it thought
+  about and forgets the rest; applied literally that would strip the tool allowlist that made a
+  reviewer read-only. Pass `replace: true` when removing a field *is* the edit.
+- **Runs are asynchronous.** `run_flow` returns a run id immediately with nothing done yet; the
+  agent polls `get_run` until it reaches `COMPLETED` or `ERROR`. Deletions and memory clears require
+  `confirm: true`.
+
+Credential **values** are never returned, here as nowhere else in the API. Writing one is allowed
+and it is unreadable the moment it lands.
+
+### Reachability, and the honest limits
+
+| | |
+|---|---|
+| **Desktop** (`app.auth.enabled=false`) | Works with no token. That is not a hole: the socket is bound to `127.0.0.1` and every other API endpoint is already open on it, so anything that could call this could call `/api/flows` directly. Set `CONCENTUS_MCP_TOKEN` anyway and it is enforced. |
+| **Server** (`app.auth.enabled=true`) | A token is **required** — the endpoint answers `401` to everyone until `CONCENTUS_MCP_TOKEN` is set. It is not a bypass of the account system: it stands for the account named in `CONCENTUS_MCP_ACCOUNT`, and the request runs in that account's organization exactly as that person's browser session would. A token whose account cannot be resolved is refused rather than falling back to the default organization. |
+
+There is **no public URL** for this, and that is a property of the product rather than an omission.
+The backend runs on your machine so that flows can use your Claude subscription, your repositories
+and your folders; a hostname on the internet cannot reach a loopback socket. Two ways to get one,
+both of which need this endpoint either way:
+
+- **Host a Concentus backend** with `AUTH_ENABLED=true` behind your own domain and proxy `/mcp` to
+  `/api/mcp/studio`. Its flows are a different database from the app on your desk, and its runs can
+  only use cloud mode (an API key), never your subscription or your local checkouts.
+- **Relay to the running app** — a public endpoint holding an outbound WebSocket from each desktop
+  install. This is the only shape that keeps your flows, your subscription and your repositories
+  while offering a URL; it needs a service that can hold sockets open (Fly, Railway, Cloudflare
+  Durable Objects — not the static Vercel site), a pairing step, and it only answers while the app
+  is open.
 
 ## The YAML CLI (still here)
 
