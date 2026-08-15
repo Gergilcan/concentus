@@ -586,7 +586,26 @@ class FanoutExecutorTest {
         assertThat(m.verdicts()).isEqualTo(2);
         assertThat(m.workersRejected()).isEqualTo(1);
         assertThat(m.workersFailed()).isZero();
-        assertThat(m.sumWorkerMs()).isGreaterThanOrEqualTo(m.wallMs());
+        // Timings, asserted only where they are genuinely invariant.
+        //
+        // `sumWorkerMs >= wallMs` reads like an invariant and is not. Wall spans the FIRST
+        // worker's start to the LAST one's end, so every gap between workers — pool ramp-up,
+        // scheduling, the launch of the second process — falls inside wall while belonging to no
+        // worker's own duration. It holds only while the work dominates those gaps, which is true
+        // of a real run and false here: these workers are fakes that return instantly, so the gaps
+        // ARE the window. It passed on Windows by luck and failed on a Linux runner with sum=2,
+        // wall=3, which is the assertion being wrong rather than the metric.
+        //
+        // What the window really contains is each individual worker's run, and the sum really does
+        // contain each worker's duration. Both hold no matter how the scheduler behaves.
+        long longestWorker = Math.max(elapsed(exec(run, "n1")), elapsed(exec(run, "n2")));
+        assertThat(m.wallMs()).isGreaterThanOrEqualTo(longestWorker);
+        assertThat(m.sumWorkerMs()).isGreaterThanOrEqualTo(longestWorker);
+    }
+
+    /** How long one block actually ran, from its own record. */
+    private static long elapsed(com.concentus.model.NodeExec node) {
+        return node.endedAt - node.startedAt;
     }
 
     @Test
