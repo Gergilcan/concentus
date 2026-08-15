@@ -5,7 +5,6 @@
  *   resources/jre/                       a Java runtime built with jlink
  *   resources/backend/concentus-backend.jar   the backend, CDS-extracted (thin jar + lib/)
  *   resources/backend/lib/               its dependencies, unpacked from the fat jar
- *   resources/backend/concentus-backend.jsa   a class-data-sharing archive (best effort)
  *
  * All of it is what `paths.ts` looks for in a packaged build, and all of it is gitignored — this
  * script is how it comes to exist. Run it before `electron-builder`, on the platform being built
@@ -14,10 +13,14 @@
  *
  * Why extracted rather than the fat jar: Spring Boot's nested-jar loader reads classes through
  * the outer zip on every launch, and — the part that actually pays — CDS cannot archive classes
- * it loads that way. Extracting once at build time makes every launch skip the nested-jar tax,
- * and lets the training run below dump a class archive the user's machine can map in read-only.
- * Every step degrades: extraction failing falls back to staging the fat jar as before, training
- * failing just means no archive, and the shell only passes the CDS flag when the file exists.
+ * it loads that way. Extracting once at build time makes every launch skip the nested-jar tax and
+ * makes a class archive possible at all.
+ *
+ * The archive itself is NOT built here, and that is a correction rather than an omission. It used
+ * to be, and it never once loaded in an installed build: CDS records each class path entry's
+ * timestamp at dump time, packaging rewrites the jar's timestamp afterwards, and the mismatch made
+ * every launch reject 60 MB of shipped archive out loud. The shell trains it on the user's machine
+ * instead, where the timestamp is settled — see trainCdsArchive in apps/desktop/src/backend.ts.
  */
 import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs'
@@ -143,8 +146,13 @@ function stageJar() {
   pruneForeignNatives(pruned)
 
   try {
+    // Extraction only. The class archive is NOT trained here and is not shipped: CDS validates
+    // every class path entry against the timestamp recorded at dump time, and packaging rewrites
+    // this jar's timestamp afterwards — so an archive built now is rejected on every installed
+    // launch ("timestamp has changed"), costing 60 MB of installer to carry a file that can never
+    // load. The shell trains it once on the user's own machine instead, where the timestamp is
+    // final; see trainCdsArchive in apps/desktop/src/backend.ts.
     extractForCds(pruned, target)
-    trainCdsArchive(target)
   } catch (err) {
     // The fat jar ran for every release before this existed; losing CDS is a slower start, not a
     // broken build.
@@ -167,65 +175,6 @@ function extractForCds(fatJar, target) {
   run(java, ['-Djarmode=tools', '-jar', fatJar, 'extract', '--destination', target, '--force'])
   const thin = path.join(target, 'concentus-backend.jar')
   if (!fs.existsSync(thin)) throw new Error(`extraction produced no ${thin}`)
-}
-
-/**
- * A training run that dumps the class-data-sharing archive the real launches will map in.
- *
- * Everything about the invocation is mirrored by backend.ts: the SAME bundled runtime (a CDS
- * archive is only valid for the JVM that wrote it), the same relative `-jar concentus-backend.jar`
- * from the same directory (the archive records the class path as given, and relative is what
- * survives the payload moving from this checkout to Program Files — or an AppImage mount that
- * changes address every launch), and the same native-access flag.
- *
- * The run itself starts the real application and exits at the end of context refresh
- * (spring.context.exit=onRefresh), which instantiates — and therefore loads — the beans without
- * ever serving. It runs WITHOUT the desktop profile, deliberately: the desktop profile starts
- * embedded PostgreSQL, which refuses to run under the administrative account GitHub's Windows
- * runners use — the exact platform difference that once failed a release. The default profile
- * tolerates an absent database by design, so training needs nothing the runner does not have.
- * Desktop-only beans go unarchived and simply load the ordinary way at runtime.
- */
-function trainCdsArchive(backendDir) {
-  const java = stagedJava()
-  const archive = 'concentus-backend.jsa'
-  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'cds-train-'))
-  try {
-    execFileSync(java, [
-      `-XX:ArchiveClassesAtExit=${archive}`,
-      '--enable-native-access=ALL-UNNAMED',
-      '-Dspring.context.exit=onRefresh',
-      '-jar', 'concentus-backend.jar',
-      '--server.port=0',
-      '--spring.main.banner-mode=off',
-      // There is no database here and none is wanted; the stores probe one at startup and Hikari
-      // otherwise spends its full 10s timeout per probe retrying a connection that refuses
-      // instantly. Failing fast keeps the training run to seconds. Runtime is unaffected — this
-      // is a training-only argument, and the desktop profile supplies its own DataSource anyway.
-      '--spring.datasource.hikari.connection-timeout=250',
-    ], {
-      cwd: backendDir,
-      stdio: ['ignore', 'inherit', 'inherit'],
-      timeout: 180_000,
-      env: {
-        ...process.env,
-        APP_DATA_DIR: scratch,
-        // Satisfies the "refuses to start without a key" check; nothing encrypted in the scratch
-        // data dir survives this function.
-        CONCENTUS_SECRET_KEY: Buffer.from(
-          Array.from({ length: 32 }, () => Math.floor(Math.random() * 256)),
-        ).toString('base64'),
-      },
-    })
-    const dumped = path.join(backendDir, archive)
-    if (!fs.existsSync(dumped)) throw new Error('the training run exited without dumping an archive')
-    console.log(`CDS archive dumped (${(fs.statSync(dumped).size / 1048576).toFixed(1)} MB)`)
-  } catch (err) {
-    console.warn(`WARNING: CDS training failed (${err.message}); the app will start without an archive.`)
-    fs.rmSync(path.join(backendDir, archive), { force: true })
-  } finally {
-    fs.rmSync(scratch, { recursive: true, force: true })
-  }
 }
 
 /** The java of the staged runtime — the one the installer ships and the CDS archive must match. */

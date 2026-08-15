@@ -3,6 +3,7 @@ import { ChildProcess, spawn } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as http from 'node:http'
 import * as net from 'node:net'
+import * as os from 'node:os'
 import * as path from 'node:path'
 import { backendJar, backendLogFile, dataDir, isPackaged, javaBinary } from './paths'
 import { resolveClaudeCli } from './claude-cli'
@@ -96,19 +97,46 @@ function ephemeralPort(): Promise<number> {
   })
 }
 
+/**
+ * The port to bind, preferring the fixed one and falling back only while it is genuinely taken.
+ *
+ * The remembered port is a fallback, NOT a new preference — that distinction is the whole bug it
+ * fixes. Remembering it as the preference meant one transient collision (a leftover backend the
+ * sweep missed, another app holding 8734 for a moment) moved the app to a random high port
+ * permanently: every later launch preferred the remembered one, 8734 was never tried again, and
+ * every MCP OAuth redirect from then on pointed at an ephemeral port that looks exactly like the
+ * "wrong port" it is. Trying DEFAULT_PORT first means the move lasts only as long as the collision.
+ */
 async function choosePort(): Promise<number> {
   const settings = loadSettings()
-  const preferred = settings.port ?? DEFAULT_PORT
 
-  if (await isPortFree(preferred)) return preferred
+  if (await isPortFree(DEFAULT_PORT)) {
+    // Drop a stale remembered port, so the next launch does not reconsider a collision that is over.
+    if (settings.port !== undefined) {
+      log.info(`Port ${DEFAULT_PORT} is free again; forgetting the remembered port ${settings.port}.`)
+      const { port: _forgotten, ...rest } = settings
+      saveSettings(rest)
+    }
+    return DEFAULT_PORT
+  }
+
+  // Still taken: reuse the port we moved to last time if it is free, so the app at least stays put
+  // between launches rather than landing somewhere new on each one.
+  const remembered = settings.port
+  if (remembered !== undefined && remembered !== DEFAULT_PORT && await isPortFree(remembered)) {
+    log.warn(`Port ${DEFAULT_PORT} is in use; staying on the remembered port ${remembered}.`)
+    return remembered
+  }
 
   const fallback = await ephemeralPort()
   // Existing MCP authorizations are NOT affected, despite the OAuth redirect carrying the port:
   // grants are stored per MCP url and renewed with a refresh_token grant, which by RFC 6749 §6
   // carries no redirect_uri. A fresh sign-in re-registers the client with the current port. The
   // earlier warning here claimed sign-ins would need redoing, which was never true.
-  log.warn(`Port ${preferred} is in use; moving to ${fallback} and remembering it.`)
-  // Persisted so the move happens once rather than every launch — the whole point of a stable port.
+  log.warn(`Port ${DEFAULT_PORT} is in use; moving to ${fallback} and remembering it.`)
+  // Persisted so repeated launches under the same collision land on the same port rather than a new
+  // one each time. It is only ever a fallback — the block at the top of this function returns to
+  // DEFAULT_PORT and forgets this the moment the collision clears.
   saveSettings({ ...settings, port: fallback })
   return fallback
 }
@@ -246,22 +274,22 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
     CONCENTUS_APP_VERSION: isPackaged() ? app.getVersion() : '',
   }
 
-  // onnxruntime loads its native library with System.load, which Java 24+ warns about at startup
-  // unless native access is granted. Granted everywhere the backend is launched from.
-  const args = ['--enable-native-access=ALL-UNNAMED']
+  // Native access for onnxruntime's System.load is granted by the jar's own manifest
+  // (`Enable-Native-Access: ALL-UNNAMED`, set in apps/backend/pom.xml), NOT by a command-line flag.
+  // Both grant the same thing, but the flag also sets the jdk.module.enable.native.access system
+  // property, which the runtime's baked-in CDS archive was dumped without — so every launch printed
+  // "Mismatched values for property jdk.module.enable.native.access" and "Disabling optimized
+  // module handling". The manifest route grants access with no property to disagree about.
+  const args: string[] = []
 
-  // A packaged build runs the CDS-extracted layout the payload script staged, and it must mirror
-  // the training run exactly: same relative `-jar concentus-backend.jar`, same working directory,
-  // same bundled JVM — the archive records the class path as given, and relative paths are what
-  // let it validate wherever the app was installed (or wherever the AppImage mounted today).
-  // The archive is best effort at build time, so its flag is only passed when the file exists;
-  // without it the same layout still runs, just without the mapped classes.
+  // A packaged build runs the CDS-extracted layout the payload script staged: a thin
+  // `concentus-backend.jar` plus `lib/`, launched relatively from its own directory because that is
+  // the class path the archive records.
   const packagedRun = isPackaged()
   const backendDir = path.dirname(jar)
+  const archive = cdsArchive()
   if (packagedRun) {
-    if (fs.existsSync(path.join(backendDir, 'concentus-backend.jsa'))) {
-      args.push('-XX:SharedArchiveFile=concentus-backend.jsa')
-    }
+    if (fs.existsSync(archive)) args.push(`-XX:SharedArchiveFile=${archive}`)
     args.push('-jar', path.basename(jar))
   } else {
     args.push('-jar', jar)
@@ -296,7 +324,125 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
   await waitForReady(port, child)
   advance(85, 'Backend ready')
   log.info(`Backend ready on 127.0.0.1:${port}`)
+  // Once the app is up and the user is being served, not before: training is a whole second
+  // application start of its own, and it must never sit between the click and the window.
+  if (packagedRun && !fs.existsSync(archive)) trainCdsArchive(java, backendDir, archive, env)
   return { port, process: child }
+}
+
+// --------------------------------------------------------------------- class-data sharing
+
+/**
+ * Where this build's class archive lives.
+ *
+ * In the data directory rather than beside the jar, for two reasons. A machine-wide install puts
+ * the payload under Program Files, which a normal user cannot write to. And the file is derived
+ * data — losing it costs a slower start and nothing else, so it belongs with the data the user can
+ * safely delete.
+ *
+ * Keyed by version because an archive is only valid for the exact jar it was trained against: an
+ * update changes the jar, and a name that changes with it retires the old archive automatically
+ * instead of leaving a silently-rejected one behind.
+ */
+function cdsArchive(): string {
+  return path.join(dataDir(), 'cds', `backend-${app.getVersion()}.jsa`)
+}
+
+/**
+ * Dumps the archive the NEXT launch will map in, in the background, once per installed version.
+ *
+ * <p>Why here and not in the installer, which is where it used to be: CDS validates every class
+ * path entry against the timestamp recorded at dump time, and packaging rewrites the jar's
+ * timestamp after the build-time training run. The shipped archive was therefore rejected on every
+ * installed launch — "This file is not the one used while building the shared archive file:
+ * 'concentus-backend.jar', timestamp has changed" — so the installer carried 60 MB that could never
+ * be used, and printed two warnings on every start to say so. Training on the machine that will use
+ * it is the only place the jar's timestamp is the final one.
+ *
+ * <p>The run must mirror the real launch exactly — same JVM, same working directory, same relative
+ * `-jar` — because those are what the archive records. It deliberately does NOT use the desktop
+ * profile: that starts embedded PostgreSQL against the data directory, which the backend now
+ * serving the user already holds. The default profile tolerates an absent database by design, so a
+ * scratch data directory and a fast connection timeout are enough.
+ *
+ * <p>Best effort throughout. Every failure path leaves the app exactly as it is today — starting
+ * without an archive — so nothing here can turn a slow start into a broken one.
+ */
+function trainCdsArchive(java: string, backendDir: string, archive: string, env: NodeJS.ProcessEnv): void {
+  let scratch: string
+  try {
+    fs.mkdirSync(path.dirname(archive), { recursive: true })
+    retireOldArchives(archive)
+    scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'concentus-cds-'))
+  } catch (err) {
+    log.warn(`Could not prepare the class archive directory: ${message(err)}`)
+    return
+  }
+
+  // Dumped to a temporary name and renamed on success: a training run killed by the user quitting
+  // must not leave a half-written archive that the next launch would try to map.
+  const partial = `${archive}.partial`
+  log.info('Training the class-data-sharing archive in the background (once for this version).')
+  const child = spawn(java, [
+    `-XX:ArchiveClassesAtExit=${partial}`,
+    '-Dspring.context.exit=onRefresh',
+    '-jar', 'concentus-backend.jar',
+    '--server.port=0',
+    '--spring.main.banner-mode=off',
+    // No database here and none wanted: the stores probe one at startup and would otherwise spend
+    // their full timeout each. Training-only — the desktop profile supplies its own DataSource.
+    '--spring.datasource.hikari.connection-timeout=250',
+  ], {
+    cwd: backendDir,
+    env: { ...env, APP_DATA_DIR: scratch },
+    stdio: 'ignore',
+    windowsHide: true,
+  })
+
+  child.on('error', (err) => {
+    log.warn(`Class archive training could not start: ${message(err)}`)
+    cleanUp(scratch, partial)
+  })
+
+  child.on('exit', () => {
+    // The exit code is deliberately not consulted: `spring.context.exit=onRefresh` stops the
+    // application by design and does not promise a zero. Whether an archive exists is the only
+    // fact that matters.
+    try {
+      if (fs.existsSync(partial)) {
+        fs.renameSync(partial, archive)
+        log.info(`Class archive ready; the next launch will start faster (${archive}).`)
+      } else {
+        log.warn('Class archive training produced nothing; starts stay as they are.')
+      }
+    } catch (err) {
+      log.warn(`Could not store the class archive: ${message(err)}`)
+    } finally {
+      cleanUp(scratch, partial)
+    }
+  })
+}
+
+/** Archives from other versions of the app, which can never validate against this jar. */
+function retireOldArchives(current: string): void {
+  const dir = path.dirname(current)
+  if (!fs.existsSync(dir)) return
+  for (const name of fs.readdirSync(dir)) {
+    const file = path.join(dir, name)
+    if (file === current) continue
+    try {
+      fs.rmSync(file, { force: true })
+    } catch { /* a leftover archive wastes disk; it cannot break a start */ }
+  }
+}
+
+function cleanUp(scratch: string, partial: string): void {
+  try { fs.rmSync(scratch, { recursive: true, force: true }) } catch { /* temp dir */ }
+  try { fs.rmSync(partial, { force: true }) } catch { /* already renamed */ }
+}
+
+function message(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
 /** POST /actuator/shutdown and resolve once it has been accepted. */
