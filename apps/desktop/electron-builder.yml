@@ -47,6 +47,13 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  # Hyphens, not the default "Concentus Setup 1.0.0.exe", and this is load-bearing rather than
+  # cosmetic. GitHub replaces spaces with dots in an uploaded asset's name, so the release ended up
+  # holding "Concentus.Setup.0.1.0-rc16.exe" while latest.yml — written by electron-builder, which
+  # sanitises spaces to hyphens — pointed at "Concentus-Setup-0.1.0-rc16.exe". The updater found
+  # the release, then downloaded a 404. A name with nothing for either side to rewrite is what
+  # keeps the feed and the asset the same file. Linux already does this, three lines down.
+  artifactName: ${productName}-Setup-${version}.${ext}
 
 linux:
   category: Development

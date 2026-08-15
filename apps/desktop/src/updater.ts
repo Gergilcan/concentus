@@ -117,6 +117,31 @@ export function startAutoUpdates(): void {
   // Install silently when the app exits; nothing interrupts a session.
   autoUpdater.autoInstallOnAppQuit = true
 
+  // Say the channel out loud instead of letting it be derived from how the version string happens
+  // to tokenise. That derivation is what silently broke updates for every prerelease shipped so
+  // far, and it is worth spelling out because nothing about it is visible from the outside:
+  //
+  // electron-updater takes the channel from `semver.prerelease(version)[0]`. For `0.1.0-rc15` that
+  // is the whole glued token `"rc15"`, so the release AFTER it, `0.1.0-rc16`, reads as channel
+  // `"rc16"` — a DIFFERENT channel — and the matching loop skips it. It then keeps walking the feed
+  // until it finds a tag in channel `"rc15"`, which is the running version itself, and reports
+  // "you are on the latest version". Every rc was its own channel; auto-update never moved anyone
+  // between two of them.
+  //
+  // Pinning it here means the running build's channel no longer depends on its own version string.
+  // Tags must still carry a DOTTED prerelease (`v0.1.1-rc.1`, not `v0.1.1-rc1`) so the feed side
+  // resolves to "rc" too — release.yml refuses the glued form.
+  //
+  // One consequence to remember when 1.0.0 comes: "rc" is a custom channel, so a stable release
+  // (no prerelease component) will not be offered to a build pinned here. Drop this line in the
+  // release that graduates.
+  autoUpdater.channel = 'rc'
+  // Stated for the same reason, rather than inherited: it otherwise defaults to true only because
+  // the running version happens to carry a prerelease component, and following an "rc" channel
+  // without it is a contradiction that would surface as a 404 on /releases/latest — there is no
+  // stable release for that endpoint to return.
+  autoUpdater.allowPrerelease = true
+
   // Every phase lands in `state`, which is all the Updates panel sees. The updater's own events
   // are the single source of truth — the manual check sets no phase beyond 'checking' itself.
   autoUpdater.on('checking-for-update', () => {

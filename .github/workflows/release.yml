@@ -4,6 +4,16 @@ name: Release
 #
 #   git tag v1.0.0 && git push origin v1.0.0
 #
+# A prerelease MUST be dotted — v0.1.1-rc.1, never v0.1.1-rc1 — and the job below refuses the
+# glued form rather than shipping it. electron-updater derives the update channel from
+# `semver.prerelease(version)[0]`: dotted gives "rc" for every release in the train, glued gives
+# "rc1", "rc2", … so each release becomes its own channel and no install is ever offered the next
+# one. That is not theoretical — it is why v0.1.0-rc2 through rc16 never updated anyone.
+#
+# Mind the ordering when changing the shape: prerelease identifiers compare as strings, and
+# "rc" < "rc16", so 0.1.0-rc.17 is OLDER than 0.1.0-rc16. Moving from the glued form to the dotted
+# one has to bump the base version too (0.1.0-rc16 -> 0.1.1-rc.1).
+#
 # Manual runs build the installers and leave them as artifacts without publishing anything, which
 # is how to check a packaging change without spending a version number on it.
 on:
@@ -56,6 +66,21 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+
+      # Fails the release before anything is built, because the alternative is an installer that
+      # looks fine and updates nobody — a defect only visible months later, in other people's
+      # installs. See the note at the top of this file.
+      - name: Refuse a glued prerelease tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "$tag" =~ -[A-Za-z]+[0-9]+$ ]]; then
+            echo "::error::Tag $tag glues its prerelease to a number, which gives every release its"
+            echo "::error::own electron-updater channel and breaks auto-update. Use a dot:"
+            echo "::error::  ${tag%%-*}-rc.N"
+            exit 1
+          fi
 
       # Zulu rather than Temurin, for one specific reason: the payload script builds the bundled
       # runtime with jlink, and jlink needs the JDK's `jmods` directory. The Temurin 25 build this
