@@ -1,7 +1,8 @@
+import { useState } from 'react'
 import type { NodeExec, NodeExecStatus } from '../api/types.ts'
 import { money } from '../utils/format.ts'
 import { cx } from '../utils/cx.ts'
-import { contextParts, ctxColor, freeContext } from './contextParts.ts'
+import { ContextDialog } from './ContextDialog.tsx'
 import styles from './panels.module.scss'
 
 const STATUS_LABEL: Record<NodeExecStatus, string> = {
@@ -20,7 +21,7 @@ function fmt(n: number): string {
   return (n ?? 0).toLocaleString()
 }
 
-function TokenLine({ exec }: { exec?: NodeExec }) {
+function TokenLine({ exec, onOpenContext }: { exec?: NodeExec; onOpenContext: () => void }) {
   if (!exec) return null
   // Cached tokens are shown apart from fresh input rather than added into it: resuming a session
   // re-reads the whole history from cache each turn, so cache reads dwarf everything else while
@@ -41,20 +42,27 @@ function TokenLine({ exec }: { exec?: NodeExec }) {
         </span>
       )}
       {ctx > 0 && (
-        <span
-          title={
-            `Context window in use after this block's latest message — its whole prompt plus ` +
-            `what it wrote, like /context in Claude Code.` +
-            (win > 0 ? ` ${fmt(ctx)} of ${fmt(win)} tokens.` : '') +
-            (grew > 0
-              ? ` It started at ${fmt(exec.contextStartTokens ?? 0)} (system prompt, tools, its task) and its work added ${fmt(grew)}.`
-              : '')
-          }
-        >
-          {' '}· ctx {fmt(ctx)}
-          {win > 0 && ` (${Math.round((ctx / win) * 100)}%)`}
-          {grew > 0 && ` ↑${fmt(grew)}`}
-        </span>
+        <>
+          {' '}·{' '}
+          <button
+            type="button"
+            className={styles.ctxOpen}
+            onClick={onOpenContext}
+            title={
+              `Context window in use after this block's latest message — its whole prompt plus ` +
+              `what it wrote, like /context in Claude Code.` +
+              (win > 0 ? ` ${fmt(ctx)} of ${fmt(win)} tokens.` : '') +
+              (grew > 0
+                ? ` It started at ${fmt(exec.contextStartTokens ?? 0)} (system prompt, tools, its task) and its work added ${fmt(grew)}.`
+                : '') +
+              ' Click for the full breakdown.'
+            }
+          >
+            ctx {fmt(ctx)}
+            {win > 0 && ` (${Math.round((ctx / win) * 100)}%)`}
+            {grew > 0 && ` ↑${fmt(grew)}`}
+          </button>
+        </>
       )}
       {cost !== undefined && cost !== null && (
         <span
@@ -66,44 +74,6 @@ function TokenLine({ exec }: { exec?: NodeExec }) {
           {' '}· ≈{money(cost)}
         </span>
       )}
-    </div>
-  )
-}
-
-/**
- * A /context-style split of the block's window — bar plus legend. The parts (and their colors)
- * come from contextParts.ts, shared with the golden comparison so the two never disagree.
- */
-function CtxBreakdown({ exec }: { exec: NodeExec }) {
-  const parts = contextParts(exec)
-  if (parts.length === 0) return null
-  const win = exec.contextWindow ?? 0
-  const free = freeContext(exec)
-  const total = win > 0 ? win : (exec.contextTokens ?? 0)
-  return (
-    <div className={styles.ctxBox}>
-      <div className={styles.ctxBar} aria-hidden>
-        {parts.map((p) => (
-          <span
-            key={p.key}
-            style={{ width: `${(p.value / total) * 100}%`, background: ctxColor(p.hue) }}
-          />
-        ))}
-      </div>
-      <div className={styles.ctxLegend}>
-        {parts.map((p) => (
-          <span key={p.key} title={p.hint}>
-            <span className={styles.ctxSwatch} style={{ background: ctxColor(p.hue) }} />
-            {p.label} {p.approx && '~'}
-            {fmt(p.value)}
-          </span>
-        ))}
-        {free > 0 && (
-          <span title="What is left of the model's context window.">
-            free {fmt(free)} ({Math.round((free / win) * 100)}%)
-          </span>
-        )}
-      </div>
     </div>
   )
 }
@@ -156,6 +126,8 @@ export function InputView({ exec }: { exec?: NodeExec }) {
 }
 
 export function OutputView({ exec }: { exec?: NodeExec }) {
+  // Declared before the early return: hooks cannot live behind a condition.
+  const [ctxOpen, setCtxOpen] = useState(false)
   if (!exec) {
     return <div className={styles.empty}>No output yet. Run this flow and it appears live.</div>
   }
@@ -163,14 +135,14 @@ export function OutputView({ exec }: { exec?: NodeExec }) {
     <div>
       <div className={styles.execHead}>
         <StatusBadge status={exec.status} />
-        <TokenLine exec={exec} />
+        <TokenLine exec={exec} onOpenContext={() => setCtxOpen(true)} />
       </div>
-
-      <CtxBreakdown exec={exec} />
 
       {exec.error && <div className={styles.execError}>{exec.error}</div>}
 
       <OutputBody exec={exec} />
+
+      {ctxOpen && <ContextDialog exec={exec} onClose={() => setCtxOpen(false)} />}
     </div>
   )
 }

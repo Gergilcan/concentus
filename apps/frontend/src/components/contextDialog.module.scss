@@ -1,0 +1,86 @@
+@use '../styles/theme' as t;
+
+/* The /context-style breakdown, shared by the node inspector and the golden comparison. */
+.dialog {
+  font-size: 12px;
+}
+
+.model {
+  font-family: monospace;
+  font-size: 11px;
+  color: t.$muted;
+}
+
+.headline {
+  font-size: 15px;
+  margin: 3px 0 10px;
+}
+
+.bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: t.$bg;
+  border: 1px solid t.$border;
+
+  span {
+    display: block;
+    height: 100%;
+  }
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+  font-size: 12px;
+
+  th {
+    text-align: left;
+    padding: 0 6px 5px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: t.$muted;
+    border-bottom: 1px solid t.$border;
+  }
+
+  td {
+    padding: 5px 6px;
+    border-top: 1px solid t.$border;
+  }
+
+  th + th,
+  td + td {
+    text-align: right;
+  }
+}
+
+/* Counts and shares line up column-wise only in a fixed-width face. */
+.num {
+  font-family: monospace;
+  white-space: nowrap;
+  color: t.$muted;
+}
+
+.swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 8px;
+}
+
+.swatchFree {
+  background: t.$bg;
+  border: 1px solid t.$border;
+}
+
+.note {
+  margin: 12px 0 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: t.$muted;
+}

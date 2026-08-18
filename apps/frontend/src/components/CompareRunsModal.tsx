@@ -6,6 +6,7 @@ import { money } from '../utils/format.ts'
 import { cx } from '../utils/cx.ts'
 import { pctDelta, peakContext, stepSummary } from './compareRuns.ts'
 import { contextParts, ctxColor } from './contextParts.ts'
+import { ContextDialog } from './ContextDialog.tsx'
 import { compact, timeAgo } from './flowFormat.ts'
 import { Modal } from './Modal.tsx'
 import { Spinner } from './Spinner.tsx'
@@ -27,6 +28,9 @@ export function CompareRunsModal({
 }) {
   const [cmp, setCmp] = useState<RunComparison | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  // The step whose /context breakdown is open, over this dialog. Both columns feed the same
+  // slot: two breakdowns at once would be a comparison nobody asked for, stacked on a comparison.
+  const [ctxNode, setCtxNode] = useState<NodeExec | null>(null)
 
   useEffect(() => {
     api
@@ -44,11 +48,12 @@ export function CompareRunsModal({
           <MetricsTable reference={cmp.reference} candidate={cmp.candidate} />
           <CtxKey sides={[cmp.reference, cmp.candidate]} />
           <div className={styles.compareGrid}>
-            <SideColumn side={cmp.reference} label="⭐ Golden" />
-            <SideColumn side={cmp.candidate} label="Candidate" />
+            <SideColumn side={cmp.reference} label="⭐ Golden" onOpenContext={setCtxNode} />
+            <SideColumn side={cmp.candidate} label="Candidate" onOpenContext={setCtxNode} />
           </div>
         </div>
       )}
+      {ctxNode && <ContextDialog exec={ctxNode} onClose={() => setCtxNode(null)} />}
     </Modal>
   )
 }
@@ -124,7 +129,15 @@ function MetricsTable({
   )
 }
 
-function SideColumn({ side, label }: { side: RunComparisonSide; label: string }) {
+function SideColumn({
+  side,
+  label,
+  onOpenContext,
+}: {
+  side: RunComparisonSide
+  label: string
+  onOpenContext: (node: NodeExec) => void
+}) {
   return (
     <section className={styles.compareSide}>
       <header className={styles.compareHead}>
@@ -136,7 +149,7 @@ function SideColumn({ side, label }: { side: RunComparisonSide; label: string })
       </header>
       <ul className={styles.compareSteps}>
         {side.nodes.map((n) => (
-          <NodeStep key={n.nodeId} node={n} />
+          <NodeStep key={n.nodeId} node={n} onOpenContext={onOpenContext} />
         ))}
         {side.nodes.length === 0 && <li className={styles.muted}>No recorded steps.</li>}
       </ul>
@@ -176,23 +189,39 @@ function CtxKey({ sides }: { sides: { nodes: NodeExec[] }[] }) {
   )
 }
 
-function NodeStep({ node }: { node: NodeExec }) {
+function NodeStep({
+  node,
+  onOpenContext,
+}: {
+  node: NodeExec
+  onOpenContext: (node: NodeExec) => void
+}) {
   const tokens = (node.inputTokens ?? 0) + (node.outputTokens ?? 0)
   const ctx = node.contextTokens ?? 0
   const win = node.contextWindow ?? 0
   const parts = contextParts(node)
   const total = win > 0 ? win : ctx
+  // The bar and the figure open the same dialog: whichever a reader aims at, the breakdown is
+  // one click away, and neither is a dead decoration.
+  const open = () => onOpenContext(node)
+  const openLabel = `Context breakdown for ${node.label}`
   return (
     <li className={styles.compareStep} title={node.error ?? undefined}>
       <span className={cx(styles.stepDot, styles['n_' + node.status])} />
       <span className={styles.stepLabel}>{node.label}</span>
       <span className={styles.stepMeta}>
         {tokens > 0 && `${compact(tokens)} tok`}
-        {ctx > 0 && ` · ctx ${compact(ctx)}${win > 0 ? ` (${Math.round((ctx / win) * 100)}%)` : ''}`}
+        {ctx > 0 && ' · '}
+        {ctx > 0 && (
+          <button type="button" className={styles.ctxOpen} onClick={open} title={openLabel}>
+            ctx {compact(ctx)}
+            {win > 0 && ` (${Math.round((ctx / win) * 100)}%)`}
+          </button>
+        )}
         {node.estimatedCostUsd ? ` · ${money(node.estimatedCostUsd)}` : ''}
       </span>
       {parts.length > 0 && (
-        <span className={styles.ctxMini} aria-label={`Context breakdown for ${node.label}`}>
+        <button type="button" className={styles.ctxMini} onClick={open} aria-label={openLabel}>
           {parts.map((p) => (
             <span
               key={p.key}
@@ -200,7 +229,7 @@ function NodeStep({ node }: { node: NodeExec }) {
               style={{ width: `${(p.value / total) * 100}%`, background: ctxColor(p.hue) }}
             />
           ))}
-        </span>
+        </button>
       )}
     </li>
   )

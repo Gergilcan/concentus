@@ -337,38 +337,21 @@
   color: t.$muted;
 }
 
-/* /context-style breakdown of a block's window: stacked bar + legend. */
-.ctxBox {
-  margin: 0 0 10px;
-}
-.ctxBar {
-  display: flex;
-  height: 6px;
-  border-radius: 3px;
-  overflow: hidden;
-  background: t.$bg;
-  border: 1px solid t.$border;
+/* The ctx figure on the token line, which opens the /context-style breakdown dialog. */
+.ctxOpen {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
 
-  span {
-    display: block;
-    height: 100%;
+  &:hover,
+  &:focus-visible {
+    color: t.$text;
   }
-}
-.ctxLegend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  margin-top: 5px;
-  font-family: monospace;
-  font-size: 10.5px;
-  color: t.$muted;
-}
-.ctxSwatch {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-  margin-right: 4px;
 }
 
 .execText {
