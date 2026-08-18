@@ -103,7 +103,20 @@ const CATALOG: CatalogEntry[] = [
     note: "Google's own server (PyPI analytics-mcp) — needs pipx installed. Point GOOGLE_APPLICATION_CREDENTIALS at a service-account key with Analytics access, or leave it empty to use gcloud's application-default login." },
   { name: 'Google Ads', command: 'pipx', args: ['run', 'google-ads-mcp'], auth: 'stdio', category: 'Google',
     blurb: 'Campaigns and reporting (official)',
-    note: "Google's own server (PyPI google-ads-mcp) — needs pipx installed, plus Google Ads API credentials configured as its README describes (github.com/googleads/google-ads-mcp)." },
+    note: "Google's own server (PyPI google-ads-mcp) — needs pipx installed, plus Google Ads API credentials configured as its README describes (github.com/googleads/google-ads-mcp). Read-only: it cannot change a bid, a budget or a campaign's status." },
+  // Google's own server reads and never writes, so an agent that is supposed to MANAGE an account
+  // needs a second one. These two are the same npm package pointed at the same account, split by
+  // one env var, and that split is the point: the write tools are hidden from the tool list unless
+  // GOOGLE_ADS_MCP_WRITE is set, so an analyst node physically cannot spend money, and the flow
+  // that can is the one you deliberately gave the flag to. Verified 18 Aug 2026.
+  { name: 'Google Ads (read)', command: 'npx', args: ['-y', 'mcp-google-ads'], auth: 'stdio', category: 'Google',
+    env: { GOOGLE_ADS_CUSTOMER_ID: '', GOOGLE_ADS_MCC_CUSTOMER_ID: '' },
+    blurb: 'Reports, search terms, keyword ideas',
+    note: 'Community server (npm mcp-google-ads) — runs via npx, so no Python needed, unlike the official one above. Run `npx mcp-google-ads-auth` once to sign in and store the refresh token; fill the customer id (123-456-7890) and, for a manager account, the MCC id. Read-only: mutating tools stay hidden without the write flag.' },
+  { name: 'Google Ads (write)', command: 'npx', args: ['-y', 'mcp-google-ads'], auth: 'stdio', category: 'Google',
+    env: { GOOGLE_ADS_CUSTOMER_ID: '', GOOGLE_ADS_MCC_CUSTOMER_ID: '', GOOGLE_ADS_MCP_WRITE: 'true' },
+    blurb: 'Create, pause, budgets, bids, keywords',
+    note: 'The same server as above with GOOGLE_ADS_MCP_WRITE=true, which exposes the mutating tools — this one moves live ad spend. Everything it creates lands PAUSED and enabling is a separate, explicit call. Clear the flag to put it back in read-only mode.' },
   { name: 'Google Search Console', command: 'npx', args: ['-y', 'mcp-server-gsc'], auth: 'stdio', category: 'Google',
     env: { GOOGLE_APPLICATION_CREDENTIALS: '' },
     blurb: 'Search performance and sitemaps',
