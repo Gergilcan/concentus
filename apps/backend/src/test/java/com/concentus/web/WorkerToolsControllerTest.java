@@ -36,7 +36,7 @@ class WorkerToolsControllerTest {
         final AtomicReference<String> called = new AtomicReference<>();
 
         FakeMcpClient() {
-            super("holded", "https://mcp.example.com/mcp", null, MAPPER);
+            super("holded", "https://mcp.example.com/mcp", McpClient.TokenSource.fixed(null), MAPPER);
         }
 
         @Override

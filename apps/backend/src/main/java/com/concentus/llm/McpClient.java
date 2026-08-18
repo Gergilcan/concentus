@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -39,7 +40,7 @@ public class McpClient implements AutoCloseable {
 
     private final String serverName;
     private final URI endpoint;
-    private final String bearerToken;
+    private final TokenSource auth;
     private final ObjectMapper mapper;
     private final HttpClient http;
     private final AtomicInteger nextId = new AtomicInteger(1);
@@ -48,10 +49,52 @@ public class McpClient implements AutoCloseable {
     private volatile String protocolVersion;
     private volatile boolean initialized;
 
-    public McpClient(String serverName, String url, String bearerToken, ObjectMapper mapper) {
+    /**
+     * Where the bearer token comes from, asked again when the server rejects it.
+     *
+     * <p>A token captured once is the bug this exists to remove: OAuth servers issue short-lived
+     * access tokens — fifteen minutes is common — and a client built at the start of a run holds a
+     * dead one long before the run ends. Asking a source rather than holding a string means the
+     * renewal happens where the rejection is seen, instead of nowhere.
+     */
+    public interface TokenSource {
+
+        /** The token to present now, or null for an unauthenticated server. */
+        String current();
+
+        /**
+         * A newly minted token, after the server refused the current one.
+         *
+         * @return the new token, or null when it cannot be renewed without a person — a revoked
+         *         grant or an expired refresh token, both of which need a browser
+         */
+        String renew();
+
+        /** A token that never changes: servers authenticated by a stored credential, or none. */
+        static TokenSource fixed(String token) {
+            return new TokenSource() {
+                @Override
+                public String current() {
+                    return token;
+                }
+
+                @Override
+                public String renew() {
+                    return null;
+                }
+            };
+        }
+    }
+
+    /**
+     * One constructor, taking a source rather than a token, on purpose: an overload accepting a
+     * bare string is the shape that let three call sites capture a token for the length of a run.
+     * {@link TokenSource#fixed} spells out that a token really cannot be renewed.
+     */
+    public McpClient(String serverName, String url, TokenSource auth, ObjectMapper mapper) {
         this.serverName = serverName;
         this.endpoint = URI.create(url);
-        this.bearerToken = bearerToken;
+        this.auth = auth == null ? TokenSource.fixed(null) : auth;
         this.mapper = mapper;
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
     }
@@ -172,20 +215,26 @@ public class McpClient implements AutoCloseable {
         if (params != null) request.set("params", params);
 
         try {
-            HttpRequest.Builder b = HttpRequest.newBuilder(endpoint)
-                    .timeout(TIMEOUT)
-                    .header("Content-Type", "application/json")
-                    // Both are required: the server chooses which to answer with.
-                    .header("Accept", "application/json, text/event-stream")
-                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(request)));
-            if (bearerToken != null && !bearerToken.isBlank()) {
-                b.header("Authorization", "Bearer " + bearerToken);
-            }
-            if (sessionId != null) b.header("MCP-Session-Id", sessionId);
-            // Only after initialize — the negotiated version isn't known before then.
-            if (protocolVersion != null) b.header("MCP-Protocol-Version", protocolVersion);
+            String payload = mapper.writeValueAsString(request);
+            HttpResponse<String> res = dispatch(payload, auth.current());
 
-            HttpResponse<String> res = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
+            // An expired access token: renew it and repeat the very same request. Once only —
+            // a second rejection is a grant that is wrong rather than merely old, and retrying
+            // that in a loop turns one honest error into a hammering of someone's server.
+            if (isAuthRejection(res.statusCode())) {
+                String renewed = auth.renew();
+                if (renewed == null || renewed.isBlank()) {
+                    throw new LlmException(serverName, serverName
+                            + " rejected the access token and it could not be renewed — "
+                            + "the server needs authorizing again from Resources → MCP.");
+                }
+                res = dispatch(payload, renewed);
+                if (isAuthRejection(res.statusCode())) {
+                    throw new LlmException(serverName, serverName
+                            + " rejected the renewed access token too — the server needs "
+                            + "authorizing again from Resources → MCP.");
+                }
+            }
 
             if (res.statusCode() == 404 && sessionId != null) {
                 // The server dropped our session; a fresh initialize is the prescribed recovery.
@@ -215,6 +264,27 @@ public class McpClient implements AutoCloseable {
         } catch (Exception e) {
             throw new LlmException(serverName, "MCP call to " + serverName + " failed: " + e.getMessage(), e);
         }
+    }
+
+    /** One POST of an already-serialised payload, with the token to present on this attempt. */
+    private HttpResponse<String> dispatch(String payload, String token)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder b = HttpRequest.newBuilder(endpoint)
+                .timeout(TIMEOUT)
+                .header("Content-Type", "application/json")
+                // Both are required: the server chooses which to answer with.
+                .header("Accept", "application/json, text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofString(payload));
+        if (token != null && !token.isBlank()) b.header("Authorization", "Bearer " + token);
+        if (sessionId != null) b.header("MCP-Session-Id", sessionId);
+        // Only after initialize — the negotiated version isn't known before then.
+        if (protocolVersion != null) b.header("MCP-Protocol-Version", protocolVersion);
+        return http.send(b.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    /** 401 is the spec's answer; 403 is what several servers send for the same thing. */
+    private static boolean isAuthRejection(int status) {
+        return status == 401 || status == 403;
     }
 
     /**
@@ -253,9 +323,8 @@ public class McpClient implements AutoCloseable {
                     .timeout(Duration.ofSeconds(10))
                     .header("MCP-Session-Id", sessionId)
                     .DELETE();
-            if (bearerToken != null && !bearerToken.isBlank()) {
-                b.header("Authorization", "Bearer " + bearerToken);
-            }
+            String token = auth.current();
+            if (token != null && !token.isBlank()) b.header("Authorization", "Bearer " + token);
             http.send(b.build(), HttpResponse.BodyHandlers.discarding());
         } catch (Exception ignored) {
             // 405 is a valid answer here, and a failed cleanup must never fail a run.

@@ -10,6 +10,7 @@ import com.concentus.model.FacadeProfile;
 import com.concentus.model.RunEvent;
 import com.concentus.service.AgentRun;
 import com.concentus.service.FacadeToolGate;
+import com.concentus.service.McpAuthSources;
 import com.concentus.service.RunService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -118,14 +119,13 @@ public class WorkerToolsController {
      * sessions on the server exactly the way the local-model path already learned not to.
      */
     private McpClient clientFor(AgentRun run, McpServerSpec server) {
-        String token = server.resolveToken();
-        if (token == null || token.isBlank()) {
-            token = mcpOAuth.accessToken(orgContext.defaultOrganizationId(), server.url)
-                    .orElse(null);
-        }
-        String bearer = token;
+        // A source rather than a token: the client is cached for the whole run, and an OAuth
+        // access token does not last that long — fifteen minutes is a common lifetime, and the
+        // worker that sends the mail at the end of a long run is exactly who paid for that.
+        McpClient.TokenSource auth = McpAuthSources.forServer(server, mcpOAuth,
+                orgContext.defaultOrganizationId());
         return run.mcpClients.computeIfAbsent(server.name,
-                k -> new McpClient(server.name, server.url, bearer, mapper));
+                k -> new McpClient(server.name, server.url, auth, mapper));
     }
 
     private ObjectNode toolsList(AgentRun run, AgentSpec worker, FacadeProfile profile) {

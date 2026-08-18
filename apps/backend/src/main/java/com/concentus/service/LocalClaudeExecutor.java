@@ -62,6 +62,8 @@ public class LocalClaudeExecutor {
     private final boolean autoRegisterMcp;
     private final ObjectMapper mapper;
     private final McpOAuthStore mcpOAuthStore;
+    /** Decides, per server, whether the CLI talks to it directly or through this backend. */
+    private final CliMcpServers cliMcpServers;
     private final SkillStore skillStore;
     private final SkillService skillService;
     private final OrgContext orgContext;
@@ -114,6 +116,7 @@ public class LocalClaudeExecutor {
                                GitWorkspace gitWorkspace,
                                ObjectMapper mapper,
                                McpOAuthStore mcpOAuthStore,
+                               CliMcpServers cliMcpServers,
                                SkillStore skillStore,
                                SkillService skillService,
                                OrgContext orgContext,
@@ -131,6 +134,7 @@ public class LocalClaudeExecutor {
         this.streamHandler = new LocalStreamEventHandler(mapper);
         this.mapper = mapper;
         this.mcpOAuthStore = mcpOAuthStore;
+        this.cliMcpServers = cliMcpServers;
         this.skillStore = skillStore;
         this.skillService = skillService;
         this.orgContext = orgContext;
@@ -431,9 +435,13 @@ public class LocalClaudeExecutor {
             }
         }
 
+        // Minted before the servers are written, not after: a server whose authorization is an
+        // OAuth grant is pointed at this backend's proxy, and that route is what the token opens.
+        if (run.toolToken == null) run.toolToken = UUID.randomUUID().toString();
+
         var servers = mapper.createObjectNode();
         for (McpServerSpec m : byName.values()) {
-            servers.set(m.name, mcpServerNode(m));
+            servers.set(m.name, cliMcpServers.node(m, run.id, run.toolToken));
         }
 
         // API nodes become tools served by this very backend, per run. The CLI reaches them like
@@ -478,59 +486,6 @@ public class LocalClaudeExecutor {
                 ? "MCP: this flow has no MCP nodes, so the run sees no MCP servers."
                 : "MCP: this run sees only the flow's server(s): "
                         + String.join(", ", byName.keySet()) + "."));
-    }
-
-    /**
-     * One MCP server as the CLI's config file wants it.
-     *
-     * <p>Auth, in the order documented on {@link #writeMcpConfig}: the node's stored credential;
-     * else an OAuth grant Concentus holds for that URL; else no header at all, which leaves room
-     * for a grant the CLI itself holds from {@code claude mcp login}.
-     */
-    private ObjectNode mcpServerNode(McpServerSpec m) {
-        var server = mapper.createObjectNode();
-        // The stdio transport: the CLI launches the process itself, per run — the same
-        // command/args/env shape the server's README says to put in mcp.json. Env values of
-        // the form credential:<id> were resolved just now, so tokens live encrypted in the
-        // credential store rather than in the flow.
-        if (m.isStdio()) {
-            server.put("type", "stdio");
-            server.put("command", m.command);
-            var args = server.putArray("args");
-            for (String arg : m.args) args.add(arg);
-            Map<String, String> env = m.resolveEnv();
-            if (!env.isEmpty()) {
-                var envNode = server.putObject("env");
-                env.forEach(envNode::put);
-            }
-            return server;
-        }
-
-        server.put("type", "http");
-        server.put("url", m.url);
-        String token = m.resolveToken();
-        String header = null;
-        String value = null;
-        if (token != null && !token.isBlank()) {
-            header = m.authHeader == null || m.authHeader.isBlank()
-                    ? McpRegistry.DEFAULT_AUTH_HEADER : m.authHeader.trim();
-            value = McpRegistry.DEFAULT_AUTH_HEADER.equalsIgnoreCase(header)
-                    ? "Bearer " + token : token;
-        } else {
-            String granted = mcpOAuthStore
-                    .accessToken(orgContext.defaultOrganizationId(), m.url)
-                    .orElse(null);
-            if (granted != null) {
-                header = McpRegistry.DEFAULT_AUTH_HEADER;
-                value = "Bearer " + granted;
-            }
-        }
-        if (header != null) {
-            var headers = mapper.createObjectNode();
-            headers.put(header, value);
-            server.set("headers", headers);
-        }
-        return server;
     }
 
     /** Inlines the agent's referenced CLAUDE.md, if it names one and it passes the allowlist. */

@@ -167,6 +167,41 @@ public class McpOAuthStore {
         }
     }
 
+    /**
+     * A token minted right now, for a server that has just refused the one we were using.
+     *
+     * <p>Unlike {@link #accessToken}, this ignores both the cache and the stored expiry. Those
+     * answer "should this still work?", and a 401 has already answered it: the grant may have been
+     * revoked, the provider may have retired the token early, or the clocks may simply disagree.
+     * The rejection is evidence; {@code expiresAt} is a guess.
+     *
+     * @return empty when nothing can be done without a person — no refresh token, or a provider
+     *         that refuses the refresh — which is the signal to say which server needs authorizing
+     *         again rather than to retry forever
+     */
+    public Optional<String> renewedAccessToken(String organizationId, String mcpUrl) {
+        cache.remove(normalize(mcpUrl));
+
+        Optional<Session> stored = load(organizationId, mcpUrl);
+        if (stored.isEmpty()) return Optional.empty();
+        Session session = stored.get();
+
+        String refreshToken = session.tokens().refreshToken();
+        if (refreshToken == null || refreshToken.isBlank()) return Optional.empty();
+
+        try {
+            McpOAuth.Tokens fresh = oauth.refresh(session.endpoints(), session.registration(),
+                    refreshToken);
+            save(organizationId, mcpUrl, new Session(session.endpoints(), session.registration(), fresh));
+            log.info("Renewed the authorization for {} after the server rejected the old token.",
+                    mcpUrl);
+            return Optional.of(fresh.accessToken());
+        } catch (RuntimeException e) {
+            log.warn("Could not renew the authorization for {}: {}", mcpUrl, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
     /** Drops a stored authorization, so the server has to be signed in to again. */
     public void forget(String organizationId, String mcpUrl) {
         cache.remove(normalize(mcpUrl));

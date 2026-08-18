@@ -311,19 +311,14 @@ public class LocalModelAgentExecutor {
             }
             if (server.url == null || server.url.isBlank()) continue;
             try {
-                // The OAuth grant first: it exists only because someone deliberately signed this
-                // server in, and the store vouches for it (a stale one comes back empty). The
-                // node's static token is the fallback — the old order let a leftover credential
-                // shadow a working grant, so an OAuth-only server 401'd every run while the UI
-                // said "Authorized". Same order as the tool picker, so both see the same server.
-                String token = mcpOAuth.accessToken(orgContext.defaultOrganizationId(), server.url)
-                        .orElse(null);
-                boolean usedGrant = token != null;
-                if (token == null || token.isBlank()) token = server.resolveToken();
-                authenticated.put(server.name, usedGrant || token != null);
-                String bearer = token;
+                // The grant first, the node's static token second — see McpAuthSources, which is
+                // also what the facade and the tool picker use, so all three see one server the
+                // same way and a rejected token is renewed rather than merely reported.
+                McpClient.TokenSource auth = McpAuthSources.forServer(server, mcpOAuth,
+                        orgContext.defaultOrganizationId());
+                authenticated.put(server.name, auth.current() != null);
                 McpClient client = run.mcpClients.computeIfAbsent(server.name,
-                        k -> new McpClient(server.name, server.url, bearer, mapper));
+                        k -> new McpClient(server.name, server.url, auth, mapper));
                 List<ChatTypes.ToolSpec> offered = client.listTools();
                 List<ChatTypes.ToolSpec> selected = selectTools(offered, server.tools);
 

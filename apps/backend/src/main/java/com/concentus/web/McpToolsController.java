@@ -56,16 +56,16 @@ public class McpToolsController {
             return out;
         }
 
-        // The OAuth grant first: it exists only because someone deliberately signed this server in,
-        // and the store vouches for it (a stale one comes back empty). The node's static token is
-        // the fallback — the old order let a leftover credential shadow a working grant, and an
-        // OAuth-only server (Holded) answered the pasted token with a 401 nobody could explain.
-        String token = oauthStore.accessToken(orgContext.defaultOrganizationId(), mcpUrl).orElse(null);
-        if ((token == null || token.isBlank()) && credentialId != null && !credentialId.isBlank()) {
-            token = com.concentus.config.AgentSpec.resolveCredentialForLookup(credentialId);
-        }
+        // The grant first, the node's static token second — the shared rule in McpAuthSources,
+        // used here so the picker authenticates exactly as a run does. Showing a list the run
+        // cannot reproduce is worse than showing nothing.
+        var spec = new com.concentus.config.AgentSpec.McpServerSpec();
+        spec.url = mcpUrl;
+        spec.credentialId = credentialId;
+        McpClient.TokenSource auth = com.concentus.service.McpAuthSources.forServer(
+                spec, oauthStore, orgContext.defaultOrganizationId());
 
-        try (McpClient client = new McpClient("picker", mcpUrl, token, mapper)) {
+        try (McpClient client = new McpClient("picker", mcpUrl, auth, mapper)) {
             List<ToolInfo> tools = new ArrayList<>();
             for (ChatTypes.ToolSpec t : client.listTools()) {
                 tools.add(new ToolInfo(t.name(), shorten(t.description())));
@@ -82,7 +82,7 @@ public class McpToolsController {
             // keeps its authorizations to itself; this endpoint connects directly.
             if (msg.contains(" 401") || msg.toLowerCase(java.util.Locale.ROOT).contains("unauthorized")) {
                 out.put("needsAuth", true);
-                out.put("error", token == null
+                out.put("error", auth.current() == null
                         ? "This server requires a sign-in."
                         : "The server rejected the stored authorization — sign in again.");
             } else {
