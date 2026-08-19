@@ -63,7 +63,8 @@ class RunToolsControllerTest {
         when(runs.get(anyString())).thenReturn(Optional.of(run));
         when(memory.isAvailable()).thenReturn(true);
         return new RunToolsController(runs, new OpenApiCatalog(MAPPER),
-                new ApiCaller(MAPPER), MAPPER, memory);
+                new ApiCaller(MAPPER), MAPPER, memory,
+                mock(com.concentus.service.SubflowService.class));
     }
 
     private static JsonNode rpc(String method, String params) {

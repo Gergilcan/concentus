@@ -51,6 +51,7 @@ export function InputInspector({ data, set }: Props) {
         <option value="cron">Automatic — run on a cron schedule</option>
         <option value="webhook">Webhook — start on an external event</option>
         <option value="mail">Mail — start when a matching email arrives (IMAP)</option>
+        <option value="subflow">Another flow — this flow runs when another one calls it</option>
       </SelectField>
 
       {data.mode !== 'manual' && (
@@ -326,6 +327,13 @@ export function InputInspector({ data, set }: Props) {
           {data.mode === 'prompt' && 'Pressing Run auto-sends this prompt as the first turn.'}
           {data.mode === 'cron' && (
             <>Runs automatically on this schedule with the prompt above (saved flows only).</>
+          )}
+          {data.mode === 'subflow' && (
+            <>
+              Started by another flow — through a Run-another-flow node there, which hands over the
+              text this run begins with. Nothing schedules it, and pressing Run still works for
+              testing it by hand.
+            </>
           )}
         </p>
       )}

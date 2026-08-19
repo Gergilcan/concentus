@@ -99,6 +99,8 @@ public class AgentSpec {
     public List<SqlSourceSpec> ragSources = new ArrayList<>();
     /** REST APIs this agent may call as typed tools, from OpenAPI specs on API nodes. */
     public List<ApiSourceSpec> apiSources = new ArrayList<>();
+    /** Other flows this agent may run as a tool, from the flow nodes wired to it. */
+    public List<SubflowSpec> subflows = new ArrayList<>();
     public List<KnowledgeSourceSpec> knowledgeSources = new ArrayList<>();
     /**
      * Local host folders this agent should read as context, passed to the CLI as {@code --add-dir}.
@@ -231,6 +233,32 @@ public class AgentSpec {
         public long maxTokens = 16000;
         /** low | medium | high | xhigh | max */
         public String effort = "high";
+    }
+
+    /**
+     * Another flow, run from this one.
+     *
+     * <p>The same shape serves both drawings, because they differ only in who decides. Wired to an
+     * agent it is a tool the agent may call; left terminal it fires when the run finishes. What
+     * both need is which flow and whether to wait for its answer.
+     *
+     * <p>Note what is deliberately absent: a permission mode. The child runs under its own, so a
+     * parent in plan mode cannot act through a child that has bypass — the loophole a well-meaning
+     * "inherit the parent's" would open.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class SubflowSpec {
+        public String nodeId;
+        public String label = "flow";
+        /** Id of the flow to run. Never blank — the compiler refuses a node without one. */
+        public String flowId = "";
+        /**
+         * Whether the caller waits for the child's answer.
+         *
+         * <p>True by default: the common case is "summarise this", "check that", where the answer
+         * IS the reason for the call. False turns it into a hand-off for work nobody is waiting on.
+         */
+        public boolean waitForResult = true;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

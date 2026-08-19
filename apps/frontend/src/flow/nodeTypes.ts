@@ -15,6 +15,7 @@ import { MergeNode } from './nodes/MergeNode.tsx'
 import { RepoNode } from './nodes/RepoNode.tsx'
 import { ApiNode } from './nodes/ApiNode.tsx'
 import { KnowledgeNode } from './nodes/KnowledgeNode.tsx'
+import { FlowRunNode } from './nodes/FlowRunNode.tsx'
 import { SqlNode } from './nodes/SqlNode.tsx'
 import { VerifierNode } from './nodes/VerifierNode.tsx'
 import { WorkerNode } from './nodes/WorkerNode.tsx'
@@ -25,6 +26,7 @@ export type RepoRFNode = Node<RepoNodeData, 'repo'>
 export type SqlRFNode = Node<SqlNodeData, 'sql'>
 export type KnowledgeRFNode = Node<KnowledgeNodeData, 'knowledge'>
 export type ApiRFNode = Node<import('../api/types.ts').ApiNodeData, 'api'>
+export type FlowRunRFNode = Node<import('../api/types.ts').FlowRunNodeData, 'flow'>
 export type MergeRFNode = Node<MergeNodeData, 'merge'>
 export type VerifierRFNode = Node<VerifierNodeData, 'verifier'>
 
@@ -36,6 +38,7 @@ export const nodeTypes = {
   sql: SqlNode,
   knowledge: KnowledgeNode,
   api: ApiNode,
+  flow: FlowRunNode,
   merge: MergeNode,
   verifier: VerifierNode,
   // Not a palette kind: worker boxes are synthesized from the run report (plan-born workers).

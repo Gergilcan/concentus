@@ -13,12 +13,16 @@ const LABEL: Record<InputNodeData['mode'], string> = {
   cron: 'Automatic (cron)',
   webhook: 'Webhook',
   mail: 'Mail (IMAP)',
+  subflow: 'Another flow',
 }
 
 /** What this input will do when the flow runs — the line under the mode badge. */
 function summary(data: InputNodeData): ReactElement {
   if (data.mode === 'webhook') {
     return <div className={styles.snippetMuted}>starts on an external event</div>
+  }
+  if (data.mode === 'subflow') {
+    return <div className={styles.snippetMuted}>another flow starts this one</div>
   }
   if (data.mode === 'manual') {
     return <div className={styles.snippetMuted}>you type the first message</div>

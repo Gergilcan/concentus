@@ -67,7 +67,9 @@ concentus/
 - A **flow** is a multi-agent orchestration graph. **Agent** nodes (one marked *coordinator*),
   plus **MCP**, **Repository**, **SQL**, **Knowledge** and **API (OpenAPI)** capability nodes — an
   API node turns any REST API into typed tools from its OpenAPI spec, with each operation
-  allowed explicitly — and, for fan-out flows, a **Merge** node. Connect a capability to
+  allowed explicitly — a **Run another flow** node, which is either a tool an agent may call and
+  wait on (wire it to the agent) or a hand-off that fires when the run completes (leave it
+  unconnected) — and, for fan-out flows, a **Merge** node. Connect a capability to
   an agent to grant access — and drag a node from the palette to place it wherever you want. Each sub-agent's *Delegate when…* description is what its delegator uses to route,
   and it receives only its own slice of the plan.
 - **Delegation chains** — an agent delegates to the agents wired *behind* it, so hierarchies work,
@@ -100,6 +102,9 @@ concentus/
     payload as input. Authentication is provider-agnostic: you name the **validation parameter**
     the provider sends its proof in, and paste the **secret** the provider issued (we never mint
     one). See [Webhook authentication](#webhook-authentication).
+  - **Another flow** — the flow only runs when another one calls it, through a *Run another flow*
+    node there. The child runs with its own budget and its own permission mode; a flow already
+    running further up the chain is refused, and chains stop at three deep.
   - **Mail (IMAP)** — a run starts for each message matching the node's conditions: folder, from,
     subject, body, unread, flagged, has-attachments. The message can then be moved, flagged or
     marked read. See [Mail-triggered flows](#mail-triggered-flows-imap).

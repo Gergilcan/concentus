@@ -46,6 +46,16 @@ public class AgentRun {
 
     /** How this execution was triggered: "manual" | "prompt" | "cron" | "webhook". */
     public volatile String trigger = "manual";
+    /**
+     * The flows that led here, oldest first, when this run was started by another flow.
+     *
+     * <p>Carried on the run rather than looked up, because the loop it prevents is not visible
+     * anywhere else: two flows pointing at each other each look like an ordinary graph, and only
+     * the chain shows that the second one is already running above the first.
+     */
+    public volatile java.util.List<String> flowChain = java.util.List.of();
+    /** The run that started this one, when a flow ran another. Null for everything else. */
+    public volatile String parentRunId;
     /** Initial input to fire automatically once the run is ready (null = wait for the user). */
     public volatile String pendingPrompt;
     /** The first input this run was given — replayed when the execution is retried. */

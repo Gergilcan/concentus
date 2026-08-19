@@ -4,6 +4,7 @@ import com.anthropic.client.AnthropicClient;
 import com.anthropic.models.beta.sessions.events.BetaManagedAgentsStreamSessionEvents;
 import com.anthropic.models.beta.sessions.events.BetaManagedAgentsUserMessageEventParams;
 import com.anthropic.models.beta.sessions.events.EventSendParams;
+import com.concentus.config.AgentSpec;
 import com.concentus.model.FlowNode;
 import com.concentus.model.NodeExec;
 import com.concentus.model.FlowGraph;
@@ -61,6 +62,8 @@ public class RunService {
     private final com.concentus.store.FlowVersionStore flowVersions;
     private final com.fasterxml.jackson.databind.ObjectMapper mapper;
     private final NotificationService notifier;
+    /** Starts the flows a finished run hands off to, and enforces the loop guards. */
+    private final SubflowService subflows;
     private final RemoteApprovalService remoteApprovals;
     private final com.concentus.store.VariableStore variableStore;
     private final ExecutorService exec;
@@ -76,6 +79,7 @@ public class RunService {
                       RunStore runStore, com.concentus.store.FlowVersionStore flowVersions,
                       com.fasterxml.jackson.databind.ObjectMapper mapper,
                       NotificationService notifier, RemoteApprovalService remoteApprovals,
+                      SubflowService subflows,
                       com.concentus.store.VariableStore variableStore,
                       @Value("${runs.max-concurrent:8}") int maxConcurrent,
                       @Value("${runs.queue-capacity:64}") int queueCapacity,
@@ -92,6 +96,7 @@ public class RunService {
         this.flowVersions = flowVersions;
         this.mapper = mapper;
         this.notifier = notifier;
+        this.subflows = subflows;
         this.remoteApprovals = remoteApprovals;
         this.variableStore = variableStore;
         this.maxRetainedRuns = maxRetainedRuns;
@@ -268,6 +273,31 @@ public class RunService {
      * (used by webhook triggers to inject the event payload); otherwise the Input node's own
      * prompt is used for prompt/cron modes.
      */
+    /**
+     * A run started by another flow.
+     *
+     * <p>Same launch as any other, with two differences that both exist to keep the loop guard
+     * honest: the run carries the chain of flows above it, and its trigger says so, which is what
+     * lets the executions list show a child as work rather than as something that started itself.
+     * Everything else — budget, permission mode, shadow — is the child flow's own, deliberately:
+     * a ceiling a parent could spend through would not be a ceiling.
+     *
+     * @param chain the flows already running above this one, oldest first
+     */
+    public RunSummary startSubflow(FlowGraph flow, String prompt, List<String> chain) {
+        RunSummary summary = start(flow, prompt);
+        AgentRun run = runs.get(summary.id());
+        if (run != null) {
+            run.flowChain = chain == null ? List.of() : List.copyOf(chain);
+            run.trigger = "subflow";
+            run.emit(RunEvent.of("system", "Started by another flow. Chain: "
+                    + String.join(" → ", run.flowChain) + "."));
+            runStore.persist(run);
+            return run.toSummary();
+        }
+        return summary;
+    }
+
     public RunSummary start(FlowGraph flow, String initialPromptOverride) {
         enforceBudget(flow);
         // Variables resolve at start time, not at save time: the flow's prompts keep their
@@ -478,6 +508,7 @@ public class RunService {
             if ("ERROR".equals(run.status)) {
                 notifier.runFailed(run);
             }
+            subflows.handOffAfter(run);
             // The turn ended with the run stopped, waiting for a human. Once per run: a second
             // command sent while waiting would end the same way, and a second Slack message for
             // the same question reads as two questions.

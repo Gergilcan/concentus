@@ -102,6 +102,10 @@
 .api {
   border-left: 3px solid t.$api;
 }
+/* A flow calling a flow: its own colour, because it is the one node whose target is the app itself. */
+.flow {
+  border-left: 3px solid t.$subflow;
+}
 
 .input {
   border-left: 3px solid t.$ok;

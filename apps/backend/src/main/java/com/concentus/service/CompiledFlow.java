@@ -13,16 +13,28 @@ import java.util.Map;
  * fan-out flows — an optional adversarial verifier and an optional merge step.
  */
 public record CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger,
-                           AgentSpec verifier) {
+                           AgentSpec verifier, List<AgentSpec.SubflowSpec> afterFlows) {
+
+    public CompiledFlow {
+        // Never null downstream: the hand-off list is walked at the end of every run, and a null
+        // there would turn "this flow chains nothing" into an exception at the worst moment.
+        afterFlows = afterFlows == null ? List.of() : List.copyOf(afterFlows);
+    }
 
     /** The shape every caller had before the merge node existed: no merger, no verifier. */
     public CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents) {
-        this(coordinator, subAgents, null, null);
+        this(coordinator, subAgents, null, null, List.of());
     }
 
     /** The shape every caller had before the verifier node existed: no verifier. */
     public CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger) {
-        this(coordinator, subAgents, merger, null);
+        this(coordinator, subAgents, merger, null, List.of());
+    }
+
+    /** The shape every caller had before flows could run other flows. */
+    public CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger,
+                        AgentSpec verifier) {
+        this(coordinator, subAgents, merger, verifier, List.of());
     }
 
     /**

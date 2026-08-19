@@ -43,6 +43,9 @@ export function Palette() {
       <button className={cx(styles.addBtn, styles.addApi)} title="Turn any REST API into typed tools: load its OpenAPI spec, tick the operations the agent may call." {...drag('api')} onClick={() => addNode('api')}>
         <span>🌐</span> API (OpenAPI)
       </button>
+      <button className={cx(styles.addBtn, styles.addFlow)} title="Runs another saved flow. Wired to an agent it is a tool the agent may call and wait on; left unconnected it fires when this flow finishes." {...drag('flow')} onClick={() => addNode('flow')}>
+        <span>🔗</span> Run another flow
+      </button>
       <button className={cx(styles.addBtn, styles.addKnowledge)} title="Injects the passages most relevant to the run's prompt from a document base (Resources → Knowledge)." {...drag('knowledge')} onClick={() => addNode('knowledge')}>
         <span>📚</span> Knowledge base
       </button>

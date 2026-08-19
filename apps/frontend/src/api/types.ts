@@ -191,11 +191,22 @@ export interface NodeExecReport {
 // `type` aliases (not interfaces) so they satisfy React Flow's
 // `Record<string, unknown>` node-data constraint.
 
-export type NodeKind = 'agent' | 'mcp' | 'repo' | 'sql' | 'knowledge' | 'api' | 'input' | 'merge' | 'verifier'
+export type NodeKind =
+  | 'agent'
+  | 'mcp'
+  | 'repo'
+  | 'sql'
+  | 'knowledge'
+  | 'api'
+  | 'flow'
+  | 'input'
+  | 'merge'
+  | 'verifier'
 
 export type InputNodeData = {
   kind: 'input'
-  mode: 'manual' | 'prompt' | 'cron' | 'webhook' | 'mail'
+  /** 'subflow' = this flow is started by another flow, never on its own. */
+  mode: 'manual' | 'prompt' | 'cron' | 'webhook' | 'mail' | 'subflow'
   /** Shadow: triggered runs plan and stop — watch what a trigger WOULD do before trusting it. */
   shadow?: boolean
   prompt: string
@@ -398,6 +409,28 @@ export type SqlNodeData = {
   maxRows: number
 }
 
+/**
+ * Another flow, run from this one.
+ *
+ * One kind, two drawings. Wired to an agent it is a capability the agent may call and wait on;
+ * left terminal it is a hand-off that fires when this run completes. Same fields either way —
+ * which flow, and whether the caller waits — because that is genuinely all they differ on.
+ */
+export type FlowRunNodeData = {
+  kind: 'flow'
+  label: string
+  /** Id of the flow to run. The inspector picks it from the saved flows. */
+  flowId: string
+  /** 'tool' = the agent decides when to call it; 'after' = it fires when this run completes. */
+  mode: 'tool' | 'after'
+  /**
+   * Whether the caller waits for the child's answer.
+   *
+   * Ignored for a hand-off: by then the run is over and there is nobody left to hand a result to.
+   */
+  waitForResult: boolean
+}
+
 export type KnowledgeNodeData = {
   kind: 'knowledge'
   label: string
@@ -452,7 +485,17 @@ export type VerifierNodeData = {
   effort: string
 }
 
-export type AppNodeData = AgentNodeData | McpNodeData | RepoNodeData | SqlNodeData | KnowledgeNodeData | ApiNodeData | InputNodeData | MergeNodeData | VerifierNodeData
+export type AppNodeData =
+  | AgentNodeData
+  | McpNodeData
+  | RepoNodeData
+  | SqlNodeData
+  | KnowledgeNodeData
+  | ApiNodeData
+  | FlowRunNodeData
+  | InputNodeData
+  | MergeNodeData
+  | VerifierNodeData
 
 export interface SqlPreview {
   columns: string[]

@@ -103,7 +103,45 @@ public class FlowCompiler {
         // most one, because a worker's output must get ONE verdict, not a committee's.
         AgentSpec verifier = singleAgentNode(flow, "verifier", resources);
 
-        return new CompiledFlow(coordinator, subAgents, merger, verifier);
+        return new CompiledFlow(coordinator, subAgents, merger, verifier, afterFlows(flow));
+    }
+
+    /**
+     * Flow nodes left terminal: hand-offs that fire when this run finishes.
+     *
+     * <p>Read from the whole graph rather than from an agent, because that is exactly what
+     * distinguishes them — a flow node wired to an agent is a tool the agent may decide to call,
+     * and one wired to nothing is a chain the run performs on its way out.
+     */
+    private static List<AgentSpec.SubflowSpec> afterFlows(FlowGraph flow) {
+        List<AgentSpec.SubflowSpec> out = new ArrayList<>();
+        for (FlowNode node : byType(flow, "flow")) {
+            if (!"after".equalsIgnoreCase(str(node.dataOrEmpty(), "mode", "tool"))) continue;
+            out.add(subflowSpec(node, flow));
+        }
+        return out;
+    }
+
+    /** One flow node as a spec, with the two mistakes that are worth refusing on sight. */
+    private static AgentSpec.SubflowSpec subflowSpec(FlowNode node, FlowGraph flow) {
+        Map<String, Object> data = node.dataOrEmpty();
+        AgentSpec.SubflowSpec spec = new AgentSpec.SubflowSpec();
+        spec.nodeId = node.id();
+        spec.label = str(data, "label", node.id());
+        spec.flowId = str(data, "flowId", "");
+        spec.waitForResult = bool(data, "waitForResult", true);
+
+        if (spec.flowId.isBlank()) {
+            throw new IllegalArgumentException("The flow node '" + spec.label
+                    + "' has no flow chosen yet.");
+        }
+        // The indirect case (A runs B runs A) is caught at run time, where the whole chain is
+        // known. This one is catchable while the person is still looking at the canvas.
+        if (spec.flowId.equals(flow.id())) {
+            throw new IllegalArgumentException("The flow node '" + spec.label
+                    + "' runs this same flow — a flow cannot run itself.");
+        }
+        return spec;
     }
 
     /**
@@ -124,11 +162,17 @@ public class FlowCompiler {
      * lists were threaded through every spec-building call site individually.
      */
     private record Resources(List<FlowNode> mcps, List<FlowNode> repos, List<FlowNode> sqls,
-                             List<FlowNode> knowledges, List<FlowNode> apis) {
+                             List<FlowNode> knowledges, List<FlowNode> apis, List<FlowNode> flows) {
 
         static Resources of(FlowGraph flow) {
             return new Resources(byType(flow, "mcp"), byType(flow, "repo"), byType(flow, "sql"),
-                    byType(flow, "knowledge"), byType(flow, "api"));
+                    byType(flow, "knowledge"), byType(flow, "api"),
+                    // Only the ones offered as tools: a terminal flow node is a hand-off the run
+                    // performs on its way out, not something an agent may reach for.
+                    byType(flow, "flow").stream()
+                            .filter(n -> !"after".equalsIgnoreCase(
+                                    str(n.dataOrEmpty(), "mode", "tool")))
+                            .toList());
         }
     }
 
@@ -324,6 +368,7 @@ public class FlowCompiler {
             spec.ops = strList(ad, "ops");
             return spec;
         });
+        collectConnected(flow, node, resources.flows(), s.subflows, sub -> subflowSpec(sub, flow));
 
         s.validate();
         return s;

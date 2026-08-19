@@ -40,7 +40,7 @@ const MAX_RUN_EVENTS = 4000
 /** The field each node kind uses as its human-facing identifier, if it has one. */
 function nameKey(kind: NodeKind): 'name' | 'label' | null {
   if (kind === 'agent' || kind === 'mcp' || kind === 'merge' || kind === 'verifier') return 'name'
-  if (kind === 'sql' || kind === 'knowledge') return 'label'
+  if (kind === 'sql' || kind === 'knowledge' || kind === 'flow') return 'label'
   return null
 }
 
@@ -162,6 +162,10 @@ function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
       return { kind: 'knowledge', label: 'knowledge', baseId: '', topK: 5 }
     case 'api':
       return { kind: 'api', label: 'api', specUrl: '', ops: [] }
+    case 'flow':
+      // A capability that waits, because that is what a caller almost always wants: the child's
+      // answer IS the reason for calling it. Dragging it off an agent turns it into a hand-off.
+      return { kind: 'flow', label: 'flow', flowId: '', mode: 'tool', waitForResult: true }
     case 'sql':
       return {
         kind: 'sql',

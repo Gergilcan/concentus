@@ -228,6 +228,7 @@ public class FlowStudioTools implements StudioToolset {
                                   "webhook" an external POST starts a run; data.secret is the secret
                                             the PROVIDER issued, data.authParam names the header it
                                             arrives in (default "Linear-Signature")
+                                  "subflow" this flow only runs when another flow calls it
                                   "mail"    a run per matching IMAP message (mailHost, mailPort,
                                             mailSsl, mailUsername, mailCredentialId, mailAuthMode,
                                             mailFolder, and conditions mailFrom, mailSubjectContains,
@@ -266,6 +267,16 @@ public class FlowStudioTools implements StudioToolset {
                   api       An OpenAPI spec turned into typed tools. data: label, specUrl or
                             specInline, baseUrl, credentialId, authHeader, and ops: ["GET /pets"] —
                             allowing operations is explicit, an empty ops grants nothing.
+
+                  flow      Another saved flow, run from this one. data: label, flowId, mode, and
+                            waitForResult.
+                            mode "tool"  connect it to an agent: the agent gets a run_flow tool
+                                          and calls it when it decides to.
+                            mode "after" leave it unconnected: it fires when this run COMPLETES,
+                                          with the run's final answer as its input.
+                            waitForResult (tool mode only) true = the agent waits for the child's
+                            answer, false = it starts it and moves on. The child runs with its OWN
+                            budget and permission mode; loops and chains deeper than 3 are refused.
 
                   merge     Fan-out only. Reconciles every worker's output into the final answer.
                             data: name, model, systemPrompt, maxTokens, effort.

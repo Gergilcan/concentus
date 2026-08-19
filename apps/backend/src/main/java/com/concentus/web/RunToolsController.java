@@ -6,6 +6,7 @@ import com.concentus.config.AgentSpec;
 import com.concentus.config.AgentSpec.ApiSourceSpec;
 import com.concentus.service.AgentRun;
 import com.concentus.service.RunService;
+import com.concentus.service.SubflowService;
 import com.concentus.store.FlowMemoryStore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -56,14 +57,17 @@ public class RunToolsController {
     private final ApiCaller caller;
     private final ObjectMapper mapper;
     private final FlowMemoryStore memory;
+    /** Runs another flow on request. Present even when the flow draws none — the tool is not. */
+    private final SubflowService subflows;
 
     public RunToolsController(RunService runs, OpenApiCatalog catalog, ApiCaller caller,
-                              ObjectMapper mapper, FlowMemoryStore memory) {
+                              ObjectMapper mapper, FlowMemoryStore memory, SubflowService subflows) {
         this.runs = runs;
         this.catalog = catalog;
         this.caller = caller;
         this.mapper = mapper;
         this.memory = memory;
+        this.subflows = subflows;
     }
 
     @PostMapping
@@ -136,7 +140,78 @@ public class RunToolsController {
             t.set("inputSchema", catalog.inputSchema(tool.op()));
         });
         if (hasMemory(run)) appendMemoryTools(tools);
+        appendRunFlowTool(tools, wiredSubflows(run));
         return result;
+    }
+
+    // -------------------------------------------------------------- sub-flows
+
+    /** The flows this run may start, by label. Empty when the graph draws none. */
+    private static Map<String, AgentSpec.SubflowSpec> wiredSubflows(AgentRun run) {
+        Map<String, AgentSpec.SubflowSpec> out = new LinkedHashMap<>();
+        if (run.compiled == null) return out;
+        for (AgentSpec agent : run.compiled.allAgents()) {
+            for (AgentSpec.SubflowSpec spec : agent.subflows) {
+                out.putIfAbsent(spec.label.toLowerCase(java.util.Locale.ROOT), spec);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * One tool for every flow node, with the flow named as an argument.
+     *
+     * <p>One rather than one per node, because a tool list that grows with the canvas costs a
+     * schema in the prompt each time. The argument is an allowlist, not free text: naming a flow
+     * that was not drawn into this graph is an error, so this tool can never become a way to run
+     * anything the deployment happens to hold.
+     */
+    private void appendRunFlowTool(ArrayNode tools, Map<String, AgentSpec.SubflowSpec> subflowsByLabel) {
+        if (subflowsByLabel.isEmpty()) return;
+
+        String names = subflowsByLabel.values().stream()
+                .map(s -> "\"" + s.label + "\"")
+                .collect(java.util.stream.Collectors.joining(", "));
+        ObjectNode tool = tools.addObject();
+        tool.put("name", "run_flow");
+        tool.put("description", "Run another flow and, unless it is a hand-off, wait for its "
+                + "answer. Available flows: " + names + ". The flow starts fresh — it sees only "
+                + "the prompt you give it, not this conversation — so say everything it needs.");
+        ObjectNode schema = tool.putObject("inputSchema");
+        schema.put("type", "object");
+        ObjectNode properties = schema.putObject("properties");
+        properties.putObject("flow").put("type", "string")
+                .put("description", "Which flow to run, by name: " + names + ".");
+        properties.putObject("prompt").put("type", "string")
+                .put("description", "The instruction to start that flow with.");
+        schema.putArray("required").add("flow").add("prompt");
+    }
+
+    private ObjectNode runFlow(AgentRun run, JsonNode arguments) {
+        Map<String, AgentSpec.SubflowSpec> byLabel = wiredSubflows(run);
+        String requested = arguments.path("flow").asText("").trim();
+        AgentSpec.SubflowSpec spec = byLabel.get(requested.toLowerCase(java.util.Locale.ROOT));
+        if (spec == null) {
+            return callResult(true, "This flow cannot run '" + requested + "'. It may run: "
+                    + String.join(", ", byLabel.values().stream().map(s -> s.label).toList()) + ".");
+        }
+
+        String prompt = arguments.path("prompt").asText("");
+        run.emit(com.concentus.model.RunEvent.of("tool_use",
+                "Sub-flow '" + spec.label + "': starting" + (spec.waitForResult ? " and waiting" : "")));
+        SubflowService.Result result = subflows.run(run, spec, prompt);
+
+        if (!result.started()) {
+            return callResult(true, "The flow '" + spec.label + "' was not started: " + result.error());
+        }
+        if (result.output() != null) {
+            return callResult(false, result.output());
+        }
+        // Either a hand-off or a wait that timed out — both are honest as "it is running", with the
+        // id to look it up. Reporting either as a finished job is how an agent ends up writing a
+        // confident summary of work that never happened.
+        return callResult(false, "The flow '" + spec.label + "' is running as " + result.runId()
+                + (result.error() == null ? "." : ". " + result.error()));
     }
 
     // ------------------------------------------------------------- flow memory
@@ -229,6 +304,7 @@ public class RunToolsController {
             if ("memory_read".equals(name)) return memoryRead(run);
             if ("memory_append".equals(name)) return memoryAppend(run, params);
         }
+        if ("run_flow".equals(name)) return runFlow(run, params.path("arguments"));
         ResolvedTool tool = resolve(run).get(name);
         if (tool == null) {
             return callResult(true, "Unknown tool '" + name + "'. Call tools/list for the current set.");
