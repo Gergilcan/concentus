@@ -118,14 +118,14 @@ export function AgentInspector({ data, set }: Props) {
             />
             <SelectField
               label={
-                <span title="Used when the flow runs as independent workers: everything this worker reaches over MCP goes through this profile — allowlist, read-only, dry-run — enforced by the backend on every call. Without one, a worker with MCP nodes gets NO MCP tools. Define profiles under Resources → Facades.">
+                <span title="Used when the flow runs as independent workers: everything this worker reaches over MCP goes through this profile — allowlist, read-only, dry-run — enforced by the backend on every call, not suggested in its instructions. Leave it empty and the worker reaches the servers wired to this node with nothing filtered, writes included, which is the same reach it has as a sub-agent. Define profiles under Resources → Facades.">
                   Facade profile (independent workers) ⓘ
                 </span>
               }
               value={data.facadeProfileId ?? ''}
               onChange={(v) => set({ facadeProfileId: v })}
             >
-              <option value="">— none: no MCP tools as a worker —</option>
+              <option value="">— none: everything wired to this node —</option>
               {facades.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -172,7 +172,7 @@ export function AgentInspector({ data, set }: Props) {
             </SelectField>
             <SelectField
               label={
-                <span title="Subagents: one claude process runs the whole flow; sub-agents share its session, its folders and its MCP list, and run one at a time. Independent workers: one claude process per worker — own workspace and instructions, own model, real parallelism; workers cannot delegate or run shell commands (a Merge node runs the checks). Drawn sub-agents are the plan; with none drawn, the coordinator runs read-only first and submits a plan (plan_submit), and each item becomes a worker. Workers reach MCP only through a facade profile. Repositories are not cloned into workers yet.">
+                <span title="Subagents: one claude process runs the whole flow; sub-agents share its session, its folders and its MCP list, and run one at a time. Independent workers: one claude process per worker — own workspace and instructions, own model, real parallelism; workers cannot delegate or run shell commands (a Merge node runs the checks). Drawn sub-agents are the plan; with none drawn, the coordinator runs read-only first and submits a plan (plan_submit), and each item becomes a worker. Workers reach MCP through the facade endpoint always; a profile narrows that to an allowlist, read-only or simulated writes, and without one nothing is filtered. Repositories are not cloned into workers yet.">
                   Execution ⓘ
                 </span>
               }

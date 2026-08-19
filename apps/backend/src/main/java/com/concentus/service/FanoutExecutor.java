@@ -371,7 +371,8 @@ public class FanoutExecutor {
                                 ? "" : " — " + p.description())
                         .append('\n');
             }
-            md.append("An item without a profile gets no MCP tools at all.\n");
+            md.append("An item without a profile reaches the servers wired to it with nothing "
+                    + "filtered; name one to narrow that.\n");
         }
         if (!coord.mcpServers.isEmpty()) {
             md.append("\nMCP servers wired on this canvas (workers reach them through their "
@@ -625,7 +626,10 @@ public class FanoutExecutor {
                 + "larger flow. Do only the task you are given, in your own workspace, and end "
                 + "with a plain report of what you found or produced — another step merges the "
                 + "workers' reports, so write yours to be read next to the others.\n");
-        if (facade) {
+        // Only when something is actually withheld. Telling a worker its writes might be
+        // simulated when they are not is the same defect in reverse: it reports a real change as
+        // a proposal, and the next run does it again.
+        if (facade && restricts(run.workerFacadeProfiles.get(spec.nodeId))) {
             md.append("""
 
                     Your MCP tools go through a controlled facade. Some write actions may be
@@ -700,25 +704,59 @@ public class FanoutExecutor {
      */
     private boolean resolveFacade(AgentRun run, AgentSpec spec) {
         if (spec.mcpServers.isEmpty()) return false;
-        var profile = spec.facadeProfileId == null || spec.facadeProfileId.isBlank()
+        var chosen = spec.facadeProfileId == null || spec.facadeProfileId.isBlank()
                 ? java.util.Optional.<com.concentus.model.FacadeProfile>empty()
                 : profiles.get(spec.facadeProfileId);
-        if (profile.isEmpty()) {
-            run.emit(RunEvent.of("system", "Worker '" + spec.name + "' has MCP server(s) wired "
-                    + "but no facade profile selected" + (spec.facadeProfileId == null
-                            || spec.facadeProfileId.isBlank() ? "" : " (the selected one no longer exists)")
-                    + " — it gets NO MCP tools this run. Pick a profile on the agent node "
-                    + "(Resources → Facades defines them).", spec.name, spec.nodeId));
-            return false;
+
+        com.concentus.model.FacadeProfile profile;
+        if (chosen.isEmpty()) {
+            // No profile means the servers this agent is wired to, unfiltered — the same reach it
+            // has as a sub-agent of a shared session. It used to mean NO tools at all, which
+            // protected nothing the wiring did not already protect: a worker is only ever offered
+            // the servers drawn into ITS node, so "nothing" and "what is wired" differ by the
+            // whole feature, not by a safety margin. What it did buy was a run that reads no data,
+            // reports the account as unreachable, and bills for the attempt.
+            profile = PASS_THROUGH;
+            String missing = spec.facadeProfileId == null || spec.facadeProfileId.isBlank()
+                    ? "no facade profile"
+                    : "a facade profile that no longer exists";
+            run.emit(RunEvent.of("system", "Worker '" + spec.name + "' has " + missing
+                    + ", so it reaches the " + spec.mcpServers.size() + " MCP server(s) wired to "
+                    + "it with nothing filtered, writes included. Assign a profile "
+                    + "(Resources → Facades) to narrow that to an allowlist, read-only, or "
+                    + "simulated writes.", spec.name, spec.nodeId));
+        } else {
+            profile = chosen.get();
+            run.emit(RunEvent.of("system", "Worker '" + spec.name + "' runs behind facade profile '"
+                    + profile.name() + "'" + (profile.readOnly() ? " (read-only)" : "")
+                    + (profile.dryRunEnabled() && !profile.readOnly()
+                            ? " (writes are dry-run)" : "") + ".", spec.name, spec.nodeId));
         }
-        run.workerFacadeProfiles.put(spec.nodeId, profile.get());
+        run.workerFacadeProfiles.put(spec.nodeId, profile);
         run.workerToolTokens.put(spec.nodeId, UUID.randomUUID().toString());
-        run.emit(RunEvent.of("system", "Worker '" + spec.name + "' runs behind facade profile '"
-                + profile.get().name() + "'" + (profile.get().readOnly() ? " (read-only)" : "")
-                + (profile.get().dryRunEnabled() && !profile.get().readOnly()
-                        ? " (writes are dry-run)" : "") + ".", spec.name, spec.nodeId));
         return true;
     }
+
+    /** Whether a profile withholds anything at all — an allowlist, read-only, or simulated writes. */
+    private static boolean restricts(com.concentus.model.FacadeProfile profile) {
+        return profile != null && (profile.readOnly() || profile.dryRunEnabled()
+                || !profile.toolsOrEmpty().isEmpty());
+    }
+
+    /**
+     * The profile a worker gets when its node names none: everything its own MCP nodes offer.
+     *
+     * <p>Every field is the widest reading, and {@code dryRun} is false <b>explicitly</b> — the
+     * record treats null as true, and a silent dry run would be the same failure as an empty tool
+     * list wearing a different hat: the worker reports work it never did.
+     *
+     * <p>Calls still go through the facade endpoint, so the enforcement point is unchanged and
+     * assigning a profile later narrows a worker that is already running the right way.
+     */
+    private static final com.concentus.model.FacadeProfile PASS_THROUGH =
+            new com.concentus.model.FacadeProfile(null, "unrestricted",
+                    "No profile assigned: the servers wired to this worker, unfiltered.",
+                    List.of(), false, Boolean.FALSE);
 
     /** Folder-safe, unique per agent: the compiler already made {@code cliName} both. */
     private static String workerFolder(AgentSpec spec) {

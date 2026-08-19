@@ -407,8 +407,11 @@ class FanoutExecutorTest {
         assertThat(claudeMd).contains("DRY RUN");
     }
 
+    // No profile is not a lock: a worker is only ever offered the servers drawn into its own node,
+    // so withholding them protected nothing the wiring did not already protect — while producing
+    // runs that read no data, reported the source as unreachable, and billed for the attempt.
     @Test
-    void aWorkerWithMcpButNoProfileGetsNoMcpAtAllAndIsToldWhy() throws Exception {
+    void aWorkerWithMcpButNoProfileReachesWhatIsWiredToIt() throws Exception {
         AgentSpec a = spec("n1", "Worker A", "worker-a", "");
         AgentSpec.McpServerSpec mcp = new AgentSpec.McpServerSpec();
         mcp.name = "holded";
@@ -419,11 +422,50 @@ class FanoutExecutorTest {
         executor((args, dir) -> new FakeProcess(okStream("hola", "Informe"), 0), 900, 0)
                 .runTurn(run, run.compiled, "go");
 
+        // Still the facade endpoint and never the real MCP URL: the enforcement point does not
+        // move, so assigning a profile later narrows a worker already running the right way.
+        String mcpConfig = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "workers", "worker-a", "mcp-config.json")));
+        assertThat(mcpConfig).contains("concentus-facade").contains("/workers/n1/tools");
+        assertThat(mcpConfig).doesNotContain("mcp.example.com");
+        assertThat(run.workerFacadeProfiles.get("n1").readOnly()).isFalse();
+        assertThat(run.workerFacadeProfiles.get("n1").dryRunEnabled()).isFalse();
+        assertThat(run.bufferedEvents()).anySatisfy(e ->
+                assertThat(e.text()).contains("no facade profile")
+                        .contains("nothing filtered"));
+    }
+
+    // The mirror of the bug above: a worker told its writes might be simulated, when nothing
+    // simulates them, reports a change it really made as a proposal — and the next run repeats it.
+    @Test
+    void aWorkerWithNoProfileIsNotToldItsWritesMayBeSimulated() throws Exception {
+        AgentSpec a = spec("n1", "Worker A", "worker-a", "");
+        AgentSpec.McpServerSpec mcp = new AgentSpec.McpServerSpec();
+        mcp.name = "holded";
+        mcp.url = "https://mcp.example.com/mcp";
+        a.mcpServers.add(mcp);
+        AgentRun run = run(a);
+
+        executor((args, dir) -> new FakeProcess(okStream("hola", "Informe"), 0), 900, 0)
+                .runTurn(run, run.compiled, "go");
+
+        String claudeMd = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "workers", "worker-a", "CLAUDE.md")));
+        assertThat(claudeMd).doesNotContain("DRY RUN");
+    }
+
+    @Test
+    void aWorkerWithNoMcpWiredGetsNoFacadeAtAll() throws Exception {
+        AgentSpec a = spec("n1", "Worker A", "worker-a", "");
+        AgentRun run = run(a);
+
+        executor((args, dir) -> new FakeProcess(okStream("hola", "Informe"), 0), 900, 0)
+                .runTurn(run, run.compiled, "go");
+
         String mcpConfig = Files.readString(
                 dataDir.resolve(Path.of("local", "run-1", "workers", "worker-a", "mcp-config.json")));
         assertThat(mcpConfig).isEqualTo("{\"mcpServers\":{}}");
-        assertThat(run.bufferedEvents()).anySatisfy(e ->
-                assertThat(e.text()).contains("no facade profile"));
+        assertThat(run.workerFacadeProfiles).isEmpty();
     }
 
     @Test

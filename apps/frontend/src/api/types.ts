@@ -336,8 +336,9 @@ export type AgentNodeData = {
   execution?: 'subagents' | 'fanout' | ''
   /**
    * Facade profile this agent runs behind as an independent worker (Resources → Facades).
-   * Sub-agents only. Without one, a worker with MCP nodes gets NO MCP tools — an absent profile
-   * fails closed rather than exposing the full tool set.
+   * Sub-agents only. Without one, a worker reaches the servers wired to its node with nothing
+   * filtered — the same reach it has as a sub-agent of a shared session. Calls still go through
+   * the facade endpoint, so assigning a profile later narrows a worker already running.
    */
   facadeProfileId?: string
   /**

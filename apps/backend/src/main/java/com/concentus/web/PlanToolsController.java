@@ -130,7 +130,8 @@ public class PlanToolsController {
                 .put("description", "Model for this worker; empty inherits the coordinator's.");
         ip.putObject("profile").put("type", "string")
                 .put("description", "Facade profile NAME for this worker's MCP access; empty "
-                        + "means the worker gets no MCP tools.");
+                        + "means nothing is filtered — the worker reaches the servers wired to "
+                        + "it, writes included.");
         item.putArray("required").add("id").add("prompt");
         schema.putArray("required").add("items");
         return schema;
