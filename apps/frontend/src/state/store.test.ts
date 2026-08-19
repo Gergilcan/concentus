@@ -18,14 +18,14 @@ describe('useFlowStore canvas <-> backend flow transform', () => {
     addNode('mcp')
 
     const [agentNode, mcpNode] = useFlowStore.getState().nodes
-    onConnect({ source: agentNode.id, target: mcpNode.id, sourceHandle: null, targetHandle: null })
+    onConnect({ source: mcpNode.id, target: agentNode.id, sourceHandle: null, targetHandle: null })
 
     const backendFlow = useFlowStore.getState().toBackendFlow()
 
     expect(backendFlow.name).toBe('My Flow')
     expect(backendFlow.nodes).toHaveLength(2)
     expect(backendFlow.edges).toHaveLength(1)
-    expect(backendFlow.edges[0]).toMatchObject({ source: agentNode.id, target: mcpNode.id })
+    expect(backendFlow.edges[0]).toMatchObject({ source: mcpNode.id, target: agentNode.id })
 
     const serializedAgent = backendFlow.nodes.find((n) => n.id === agentNode.id)!
     expect(serializedAgent.type).toBe('agent')
@@ -139,9 +139,9 @@ describe('useFlowStore copy / paste / duplicate', () => {
     addNode('mcp')
     addNode('sql')
     const [agent, mcp, sql] = useFlowStore.getState().nodes
-    onConnect({ source: agent.id, target: mcp.id, sourceHandle: null, targetHandle: null })
+    onConnect({ source: mcp.id, target: agent.id, sourceHandle: null, targetHandle: null })
     // an edge with only ONE endpoint in the copied set — must not be carried over
-    onConnect({ source: agent.id, target: sql.id, sourceHandle: null, targetHandle: null })
+    onConnect({ source: sql.id, target: agent.id, sourceHandle: null, targetHandle: null })
 
     // select agent + mcp only
     useFlowStore.setState((s) => ({
@@ -231,7 +231,7 @@ describe('useFlowStore node/edge mutations', () => {
     addNode('agent')
     addNode('mcp')
     const [agent, mcp] = useFlowStore.getState().nodes
-    onConnect({ source: agent.id, target: mcp.id, sourceHandle: null, targetHandle: null })
+    onConnect({ source: mcp.id, target: agent.id, sourceHandle: null, targetHandle: null })
     selectNode(agent.id)
 
     deleteNode(agent.id)
@@ -260,8 +260,8 @@ describe('useFlowStore node/edge mutations', () => {
     addNode('mcp')
     addNode('sql')
     const [agent, mcp, sql] = useFlowStore.getState().nodes
-    onConnect({ source: agent.id, target: mcp.id, sourceHandle: null, targetHandle: null })
-    onConnect({ source: agent.id, target: sql.id, sourceHandle: null, targetHandle: null })
+    onConnect({ source: mcp.id, target: agent.id, sourceHandle: null, targetHandle: null })
+    onConnect({ source: sql.id, target: agent.id, sourceHandle: null, targetHandle: null })
     const [edgeToRemove, keep] = useFlowStore.getState().edges
 
     deleteEdge(edgeToRemove.id)
@@ -277,7 +277,7 @@ describe('useFlowStore node/edge mutations', () => {
     addNode('mcp')
     const [agent, mcp] = useFlowStore.getState().nodes
 
-    onConnect({ source: agent.id, target: mcp.id, sourceHandle: null, targetHandle: null })
+    onConnect({ source: mcp.id, target: agent.id, sourceHandle: null, targetHandle: null })
 
     expect(useFlowStore.getState().edges[0].id).toMatch(/^e_/)
   })
@@ -335,7 +335,7 @@ describe('useFlowStore selection targeting for copy/duplicate', () => {
     addNode('agent')
     addNode('mcp')
     const [agent, mcp] = useFlowStore.getState().nodes
-    onConnect({ source: agent.id, target: mcp.id, sourceHandle: null, targetHandle: null })
+    onConnect({ source: mcp.id, target: agent.id, sourceHandle: null, targetHandle: null })
     useFlowStore.setState((s) => ({ nodes: s.nodes.map((n) => ({ ...n, selected: true })) }))
 
     duplicateSelection()

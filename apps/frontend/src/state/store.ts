@@ -20,6 +20,7 @@ import type {
   RunEvent,
 } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL } from '../constants.ts'
+import { canConnect } from '../flow/wiring.ts'
 
 export type AppNode = Node<AppNodeData>
 
@@ -163,9 +164,9 @@ function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
     case 'api':
       return { kind: 'api', label: 'api', specUrl: '', ops: [] }
     case 'flow':
-      // A capability that waits, because that is what a caller almost always wants: the child's
-      // answer IS the reason for calling it. Dragging it off an agent turns it into a hand-off.
-      return { kind: 'flow', label: 'flow', flowId: '', mode: 'tool', waitForResult: true }
+      // Waits by default, because that is what a caller almost always wants: the child's answer
+      // IS the reason for calling it. Where it is wired decides whether it runs before or after.
+      return { kind: 'flow', label: 'flow', flowId: '', waitForResult: true }
     case 'sql':
       return {
         kind: 'sql',
@@ -363,7 +364,16 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
   onNodesChange: (changes) => set((s) => ({ nodes: applyNodeChanges(changes, s.nodes) })),
   onEdgesChange: (changes) => set((s) => ({ edges: applyEdgeChanges(changes, s.edges) })),
-  onConnect: (conn) => set((s) => ({ edges: addEdge({ ...conn, id: uid('e') }, s.edges) })),
+  onConnect: (conn) =>
+    set((s) => {
+      // A wire that means nothing is not drawn. The canvas already greys the handle out, but a
+      // programmatic connect (paste, a generated flow) reaches here without ever touching a handle.
+      const kindOf = (id: string | null) => s.nodes.find((n) => n.id === id)?.data.kind
+      const source = kindOf(conn.source)
+      const target = kindOf(conn.target)
+      if (source && target && !canConnect(source, target)) return {}
+      return { edges: addEdge({ ...conn, id: uid('e') }, s.edges) }
+    }),
   deleteEdge: (id) => set((s) => ({ edges: s.edges.filter((e) => e.id !== id) })),
 
   addNode: (kind, at) =>

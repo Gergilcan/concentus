@@ -52,6 +52,8 @@ public class LocalClaudeExecutor {
 
     private final LocalClaudeSupport support;
     private final RagContextInjector ragInjector;
+    /** Flows wired INTO an agent: they run before it and their answers become its context. */
+    private final PreRunSubflows preRunSubflows;
     private final McpRegistry mcpRegistry;
     private final PluginRegistry pluginRegistry;
     private final LocalStreamEventHandler streamHandler;
@@ -112,6 +114,7 @@ public class LocalClaudeExecutor {
     static final String SKILL_TOOL = "Skill";
 
     public LocalClaudeExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
+                               PreRunSubflows preRunSubflows,
                                McpRegistry mcpRegistry, ContextFolderResolver contextFolders,
                                GitWorkspace gitWorkspace,
                                ObjectMapper mapper,
@@ -128,6 +131,7 @@ public class LocalClaudeExecutor {
                                @Value("${server.port:8734}") int serverPort) {
         this.support = support;
         this.ragInjector = ragInjector;
+        this.preRunSubflows = preRunSubflows;
         this.mcpRegistry = mcpRegistry;
         this.contextFolders = contextFolders;
         this.gitWorkspace = gitWorkspace;
@@ -322,6 +326,14 @@ public class LocalClaudeExecutor {
         ragInjector.inject(flow.coordinator(), run, m -> run.emit(RunEvent.of("system", m)));
         for (AgentSpec sub : flow.subAgents()) {
             ragInjector.inject(sub, run, m -> run.emit(RunEvent.of("system", m)));
+        }
+
+        // Flows wired into an agent run here, before its first turn, exactly as an input should.
+        // After the RAG injection because both append to the same briefing and this is the more
+        // expensive one: a failure in it should not cost the cheap context that already succeeded.
+        preRunSubflows.inject(flow.coordinator(), run, m -> run.emit(RunEvent.of("system", m)));
+        for (AgentSpec sub : flow.subAgents()) {
+            preRunSubflows.inject(sub, run, m -> run.emit(RunEvent.of("system", m)));
         }
 
         // Coordinator instructions -> CLAUDE.md (auto-loaded as project context). A referenced

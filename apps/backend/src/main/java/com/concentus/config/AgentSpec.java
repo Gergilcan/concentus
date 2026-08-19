@@ -259,6 +259,16 @@ public class AgentSpec {
          * IS the reason for the call. False turns it into a hand-off for work nobody is waiting on.
          */
         public boolean waitForResult = true;
+
+        /**
+         * Whether this flow runs before the agent does, with its answer handed over as context.
+         *
+         * <p>True for a node drawn feeding an agent — that is what feeding means. False only for a
+         * node saved back when the canvas had a "tool" mode: those were called when the agent
+         * decided to, and starting them on their own would run somebody's flow, and spend
+         * somebody's money, without being asked.
+         */
+        public boolean preRun = true;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

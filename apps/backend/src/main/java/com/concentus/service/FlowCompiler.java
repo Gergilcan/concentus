@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -89,21 +90,66 @@ public class FlowCompiler {
         // most one, because a worker's output must get ONE verdict, not a committee's.
         AgentSpec verifier = singleAgentNode(flow, "verifier", resources);
 
+        requireEveryFlowNodeIsWired(flow);
         return new CompiledFlow(coordinator, subAgents, merger, verifier, afterFlows(flow));
     }
 
     /**
-     * Flow nodes left terminal: hand-offs that fire when this run finishes.
+     * A flow node joined to no agent at all does nothing, so it is refused rather than ignored.
      *
-     * <p>Read from the whole graph rather than from an agent, because that is exactly what
-     * distinguishes them — a flow node wired to an agent is a tool the agent may decide to call,
-     * and one wired to nothing is a chain the run performs on its way out.
+     * <p>Ignoring it is the worst of the three options: the box sits on the canvas, so somebody
+     * believes their flow chains onward, and the only evidence otherwise is a run that quietly
+     * ends. Refusing says which box, while they are looking at it.
+     */
+    private static void requireEveryFlowNodeIsWired(FlowGraph flow) {
+        Set<String> agentIds = agentIds(flow);
+        for (FlowNode node : byType(flow, "flow")) {
+            // A node from before the direction rule said what it was in a field, and an "after"
+            // one was legitimately wired to nothing. Refusing those would break flows that ran
+            // yesterday — and a cron flow breaks at 07:00, with nobody reading the console.
+            if (!legacyMode(node).isBlank()) continue;
+            boolean joined = flow.edgesOrEmpty().stream().anyMatch(e ->
+                    (agentIds.contains(e.source()) && node.id().equals(e.target()))
+                            || (node.id().equals(e.source()) && agentIds.contains(e.target())))
+                    // A condition or for-each drawn in between is part of the same wire, not a
+                    // disconnection — see FlowGates.sourceThroughGates.
+                    || agentIds.contains(String.valueOf(FlowGates.sourceThroughGates(flow, node.id())));
+            if (!joined) {
+                throw new IllegalArgumentException("The flow node '"
+                        + str(node.dataOrEmpty(), "label", node.id())
+                        + "' is not connected to an agent, so it would never run. Wire it into an "
+                        + "agent to run it first, or out of one to run it afterwards.");
+            }
+        }
+    }
+
+    /**
+     * Flow nodes wired OUT of an agent: hand-offs that fire when this run finishes.
+     *
+     * <p>Direction is the whole rule, and it replaced a field on the node that asked the canvas to
+     * say twice what it already showed once. A box drawn feeding an agent runs before it, exactly
+     * as an input node does; a box the agent feeds runs after, exactly as its output would.
+     *
+     * <p>A node wired to nothing is refused rather than ignored — see {@link #subflowSpec}. It is
+     * on the canvas, so somebody believes it runs.
      */
     private static List<AgentSpec.SubflowSpec> afterFlows(FlowGraph flow) {
         List<AgentSpec.SubflowSpec> out = new ArrayList<>();
+        Set<String> agentIds = agentIds(flow);
         for (FlowNode node : byType(flow, "flow")) {
-            if (!"after".equalsIgnoreCase(str(node.dataOrEmpty(), "mode", "tool"))) continue;
-            out.add(subflowSpec(node, flow));
+            String legacy = legacyMode(node);
+            if (!legacy.isBlank()) {
+                // Saved when the node still carried the field: it keeps deciding, so a flow that
+                // ran yesterday runs the same today. Nodes drawn since have no field to read.
+                if ("after".equalsIgnoreCase(legacy)) out.add(subflowSpec(node, flow));
+                continue;
+            }
+            boolean fedByAnAgent = flow.edgesOrEmpty().stream()
+                    .anyMatch(e -> agentIds.contains(e.source()) && node.id().equals(e.target()))
+                    // Through the gates, if any: a hand-off with a condition in front of it is
+                    // still a hand-off, and drawing the rule must not change when it fires.
+                    || agentIds.contains(String.valueOf(FlowGates.sourceThroughGates(flow, node.id())));
+            if (fedByAnAgent) out.add(subflowSpec(node, flow));
         }
         return out;
     }
@@ -143,6 +189,29 @@ public class FlowCompiler {
             return Map.of();
         }
         return delegationTree(coordinatorNode, agents, flow.edgesOrEmpty()).delegatorOf();
+    }
+
+    /**
+     * The {@code mode} a flow node was saved with — "tool" or "after" — or blank on one drawn
+     * since the drawing itself started saying when a flow runs.
+     *
+     * <p>Kept because the field shipped: a released version wrote it onto every flow node people
+     * drew, and reading those nodes by direction instead would silently change what their flows
+     * do. A tool the agent chose to call would start running on its own, and an "after" node
+     * wired to nothing — which was the correct way to draw a hand-off — would stop the flow from
+     * compiling at all. New nodes carry no mode, so nothing here applies to them.
+     */
+    private static String legacyMode(FlowNode node) {
+        return str(node.dataOrEmpty(), "mode", "");
+    }
+
+    /** Every node that behaves as an agent, so an edge can be read as "to" or "from" one. */
+    private static Set<String> agentIds(FlowGraph flow) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (String type : List.of("agent", "merge", "verifier")) {
+            for (FlowNode n : byType(flow, type)) ids.add(n.id());
+        }
+        return ids;
     }
 
     /** One flow node as a spec, with the two mistakes that are worth refusing on sight. */
@@ -189,13 +258,7 @@ public class FlowCompiler {
 
         static Resources of(FlowGraph flow) {
             return new Resources(byType(flow, "mcp"), byType(flow, "repo"), byType(flow, "sql"),
-                    byType(flow, "knowledge"), byType(flow, "api"),
-                    // Only the ones offered as tools: a terminal flow node is a hand-off the run
-                    // performs on its way out, not something an agent may reach for.
-                    byType(flow, "flow").stream()
-                            .filter(n -> !"after".equalsIgnoreCase(
-                                    str(n.dataOrEmpty(), "mode", "tool")))
-                            .toList());
+                    byType(flow, "knowledge"), byType(flow, "api"), byType(flow, "flow"));
         }
     }
 
@@ -398,7 +461,29 @@ public class FlowCompiler {
             spec.sendsBody = bool(ad, "sendsBody", false);
             return spec;
         });
-        collectConnected(flow, node, resources.flows(), s.subflows, sub -> subflowSpec(sub, flow));
+        // Direction matters here, and only here: a flow node FEEDING this agent runs before it and
+        // becomes one of its capabilities, while one the agent feeds is a hand-off for afterwards.
+        // Every other capability is still matched in either direction — see collectConnected.
+        for (FlowNode sub : resources.flows()) {
+            String legacy = legacyMode(sub);
+            if (!legacy.isBlank()) {
+                // A node saved as a tool stays a tool, wired either way — and stays one the agent
+                // has to ASK for. Injecting it at the start instead would run somebody's flow, and
+                // spend somebody's money, on a graph they drew to mean the opposite.
+                boolean joined = flow.edgesOrEmpty().stream().anyMatch(e ->
+                        (sub.id().equals(e.source()) && node.id().equals(e.target()))
+                                || (node.id().equals(e.source()) && sub.id().equals(e.target())));
+                if (joined && !"after".equalsIgnoreCase(legacy)) {
+                    AgentSpec.SubflowSpec spec = subflowSpec(sub, flow);
+                    spec.preRun = false;
+                    s.subflows.add(spec);
+                }
+                continue;
+            }
+            boolean feedsThisAgent = flow.edgesOrEmpty().stream()
+                    .anyMatch(e -> sub.id().equals(e.source()) && node.id().equals(e.target()));
+            if (feedsThisAgent) s.subflows.add(subflowSpec(sub, flow));
+        }
 
         s.validate();
         return s;

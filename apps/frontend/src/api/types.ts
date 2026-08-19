@@ -423,14 +423,21 @@ export type FlowRunNodeData = {
   label: string
   /** Id of the flow to run. The inspector picks it from the saved flows. */
   flowId: string
-  /** 'tool' = the agent decides when to call it; 'after' = it fires when this run completes. */
-  mode: 'tool' | 'after'
   /**
    * Whether the caller waits for the child's answer.
    *
-   * Ignored for a hand-off: by then the run is over and there is nobody left to hand a result to.
+   * Ignored for a hand-off — by then the run is over and there is nobody left to hand a result to.
+   * WHEN it runs is not a field: a node wired into an agent runs before it, one wired out of an
+   * agent runs after. The drawing says it, so the node does not have to.
    */
   waitForResult: boolean
+  /**
+   * What a node saved by an older version says about when it runs. Never written any more, and
+   * never editable — it is here so the canvas can show the truth about those nodes, because the
+   * compiler still honours it rather than silently changing what somebody's flow does. Clearing
+   * it (the inspector offers that) hands the decision to the wiring.
+   */
+  mode?: 'tool' | 'after'
 }
 
 export type KnowledgeNodeData = {

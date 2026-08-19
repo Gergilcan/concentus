@@ -66,6 +66,8 @@ public class FanoutExecutor {
 
     private final LocalClaudeSupport support;
     private final RagContextInjector ragInjector;
+    /** Flows wired INTO an agent, run before it — the same rule the shared-session path follows. */
+    private final PreRunSubflows preRunSubflows;
     private final ContextFolderResolver contextFolders;
     private final ObjectMapper mapper;
     private final com.concentus.store.FacadeProfileStore profiles;
@@ -84,6 +86,7 @@ public class FanoutExecutor {
 
     @Autowired
     public FanoutExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
+                          PreRunSubflows preRunSubflows,
                           ContextFolderResolver contextFolders, ObjectMapper mapper,
                           com.concentus.store.FacadeProfileStore profiles,
                           PluginRegistry pluginRegistry,
@@ -94,14 +97,15 @@ public class FanoutExecutor {
                           @Value("${workers.max-concurrent:4}") int maxConcurrent,
                           @Value("${workers.timeout-seconds:900}") int timeoutSeconds,
                           @Value("${workers.retries:1}") int retries) {
-        this(support, ragInjector, contextFolders, mapper, profiles, pluginRegistry, skillStore,
-                skillService, dataDir,
+        this(support, ragInjector, preRunSubflows, contextFolders, mapper, profiles, pluginRegistry,
+                skillStore, skillService, dataDir,
                 permissionMode, serverPort, maxConcurrent, timeoutSeconds, retries, (args, workdir) ->
                         new ProcessBuilder(args).directory(workdir.toFile())
                                 .redirectErrorStream(true).start());
     }
 
     FanoutExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
+                   PreRunSubflows preRunSubflows,
                    ContextFolderResolver contextFolders, ObjectMapper mapper,
                    com.concentus.store.FacadeProfileStore profiles,
                    PluginRegistry pluginRegistry,
@@ -110,6 +114,7 @@ public class FanoutExecutor {
                    int timeoutSeconds, int retries, ProcessStarter starter) {
         this.support = support;
         this.ragInjector = ragInjector;
+        this.preRunSubflows = preRunSubflows;
         this.contextFolders = contextFolders;
         this.mapper = mapper;
         this.profiles = profiles;
@@ -612,6 +617,7 @@ public class FanoutExecutor {
         if (!run.workersPrepared.add(spec.nodeId)) return;
 
         ragInjector.inject(spec, run, m -> run.emit(RunEvent.of("system", m)));
+        preRunSubflows.inject(spec, run, m -> run.emit(RunEvent.of("system", m)));
         boolean facade = resolveFacade(run, spec);
 
         StringBuilder md = new StringBuilder();
@@ -1121,6 +1127,7 @@ public class FanoutExecutor {
         if (!run.workersPrepared.add("verifier:" + verifier.nodeId)) return;
 
         ragInjector.inject(verifier, run, m -> run.emit(RunEvent.of("system", m)));
+        preRunSubflows.inject(verifier, run, m -> run.emit(RunEvent.of("system", m)));
 
         StringBuilder md = new StringBuilder();
         md.append("""
@@ -1225,6 +1232,7 @@ public class FanoutExecutor {
         if (!run.workersPrepared.add("merge:" + merger.nodeId)) return;
 
         ragInjector.inject(merger, run, m -> run.emit(RunEvent.of("system", m)));
+        preRunSubflows.inject(merger, run, m -> run.emit(RunEvent.of("system", m)));
 
         StringBuilder md = new StringBuilder();
         md.append("""
