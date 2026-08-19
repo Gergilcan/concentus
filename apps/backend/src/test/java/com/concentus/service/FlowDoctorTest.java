@@ -43,9 +43,11 @@ class FlowDoctorTest {
     private final RuntimeProbe runtimes = mock(RuntimeProbe.class);
     private final RunStore runStore = mock(RunStore.class);
     private final VariableStore variables = mock(VariableStore.class);
+    private final com.concentus.store.FacadeProfileStore facades =
+            mock(com.concentus.store.FacadeProfileStore.class);
 
     private final FlowDoctor doctor = new FlowDoctor(claude, new FlowCompiler(), credentials,
-            mcpOAuth, plugins, runtimes, runStore, variables, new OrgContext("default", false));
+            mcpOAuth, plugins, runtimes, runStore, variables, new OrgContext("default", false), facades);
 
     @BeforeEach
     void healthyMachine() {
@@ -292,5 +294,105 @@ class FlowDoctorTest {
                 List.of(new FlowEdge("e1", "in-1", "a-1")), null, null, null, null, 25.0);
 
         assertThat(ofArea(doctor.check(budgeted), "budget")).isEmpty();
+    }
+// ------------------------------------------------- independent workers
+
+    /** A fan-out flow: coordinator on fanout, one worker, and whatever else is passed in. */
+    private static FlowGraph fanoutFlow(List<FlowNode> extra, List<FlowEdge> extraEdges) {
+        Map<String, Object> coord = new HashMap<>();
+        coord.put("name", "Coord");
+        coord.put("systemPrompt", "Do the thing.");
+        coord.put("execution", "fanout");
+        List<FlowNode> nodes = new java.util.ArrayList<>(List.of(
+                input("manual", ""), new FlowNode("a-1", "agent", "coordinator", coord)));
+        nodes.addAll(extra);
+        List<FlowEdge> edges = new java.util.ArrayList<>(List.of(new FlowEdge("e1", "in-1", "a-1")));
+        edges.addAll(extraEdges);
+        return new FlowGraph("f1", "Flow", "local", nodes, edges, null, null, null, null, null);
+    }
+
+    private static FlowNode worker(String id, String name, String facadeProfileId) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("name", name);
+        data.put("systemPrompt", "Work.");
+        if (facadeProfileId != null) data.put("facadeProfileId", facadeProfileId);
+        return new FlowNode(id, "agent", "subagent", data);
+    }
+
+    private static FlowNode localMcp(String id, String name) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("name", name);
+        data.put("command", "npx");
+        data.put("args", List.of("-y", "mcp-" + name));
+        return new FlowNode(id, "mcp", null, data);
+    }
+
+    // The expensive one, and the reason this check exists: the run says it halfway through, in a
+    // line nobody is watching for, after every worker has already been paid for.
+    @Test
+    void aWorkerWhoseProfileWithholdsItsLocalServersIsAnError() {
+        when(facades.get("fprof_1")).thenReturn(Optional.of(new com.concentus.model.FacadeProfile(
+                "fprof_1", "solo lectura", "", List.of(), true, Boolean.FALSE)));
+        FlowGraph flow = fanoutFlow(
+                List.of(worker("w-1", "Analista", "fprof_1"), localMcp("m-1", "google-ads")),
+                List.of(new FlowEdge("e2", "a-1", "w-1"), new FlowEdge("e3", "m-1", "w-1")));
+
+        List<DoctorFinding> found = ofArea(doctor.check(flow), "fanout");
+
+        assertThat(found).singleElement().satisfies(f -> {
+            assertThat(f.level()).isEqualTo("error");
+            assertThat(f.message()).contains("Analista").contains("solo lectura")
+                    .contains("1 local MCP server");
+            assertThat(f.where()).isEqualTo("w-1");
+        });
+    }
+
+    @Test
+    void aWorkerWithNoProfileIsFineBecauseItReachesWhatIsWired() {
+        FlowGraph flow = fanoutFlow(
+                List.of(worker("w-1", "Analista", null), localMcp("m-1", "google-ads")),
+                List.of(new FlowEdge("e2", "a-1", "w-1"), new FlowEdge("e3", "m-1", "w-1")));
+
+        assertThat(ofArea(doctor.check(flow), "fanout")).isEmpty();
+    }
+
+    // Same graph, ordinary execution: every wired server reaches every agent, so none of this
+    // applies and saying it anyway would be noise on the flows most people run.
+    @Test
+    void noneOfThisIsSaidAboutAFlowOfSubagents() {
+        when(facades.get("fprof_1")).thenReturn(Optional.of(new com.concentus.model.FacadeProfile(
+                "fprof_1", "solo lectura", "", List.of(), true, Boolean.FALSE)));
+        FlowGraph flow = flow(List.of(input("manual", ""), coordinator(),
+                worker("w-1", "Analista", "fprof_1"), localMcp("m-1", "google-ads")));
+
+        assertThat(ofArea(doctor.check(flow), "fanout")).isEmpty();
+    }
+
+    @Test
+    void aVerifierWiredToServersIsToldItWillNotGetThem() {
+        Map<String, Object> data = new HashMap<>();
+        data.put("name", "Verificador");
+        FlowGraph flow = fanoutFlow(
+                List.of(new FlowNode("v-1", "verifier", null, data), localMcp("m-1", "google-ads")),
+                List.of(new FlowEdge("e3", "m-1", "v-1")));
+
+        assertThat(ofArea(doctor.check(flow), "fanout")).singleElement().satisfies(f -> {
+            assertThat(f.level()).isEqualTo("warn");
+            assertThat(f.message()).contains("does not get");
+            assertThat(f.where()).isEqualTo("v-1");
+        });
+    }
+
+    @Test
+    void aRepositoryInAFanOutFlowIsNamedAsDoingNothing() {
+        Map<String, Object> repo = new HashMap<>();
+        repo.put("url", "https://github.com/example/thing");
+        repo.put("provider", "github");
+        FlowGraph flow = fanoutFlow(
+                List.of(worker("w-1", "Analista", null), new FlowNode("r-1", "repo", null, repo)),
+                List.of(new FlowEdge("e2", "a-1", "w-1"), new FlowEdge("e3", "r-1", "w-1")));
+
+        assertThat(ofArea(doctor.check(flow), "fanout")).anySatisfy(f ->
+                assertThat(f.message()).contains("not cloned into independent workers"));
     }
 }

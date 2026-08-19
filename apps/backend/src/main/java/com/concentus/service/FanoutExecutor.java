@@ -793,10 +793,10 @@ public class FanoutExecutor {
         return "Worker '" + spec.name + "'";
     }
 
-    /** Whether a profile withholds anything at all — an allowlist, read-only, or simulated writes. */
+    /** Whether a profile withholds anything at all. The rule lives on the profile, so the doctor
+     *  can predict this decision instead of describing it a second time. */
     private static boolean restricts(com.concentus.model.FacadeProfile profile) {
-        return profile != null && (profile.readOnly() || profile.dryRunEnabled()
-                || !profile.toolsOrEmpty().isEmpty());
+        return profile != null && profile.withholdsAnything();
     }
 
     /**

@@ -31,4 +31,17 @@ public record FacadeProfile(String id, String name, String description,
     public boolean dryRunEnabled() {
         return dryRun == null || dryRun;
     }
+
+    /**
+     * Whether this profile withholds anything at all — an allowlist, read-only, or simulated
+     * writes.
+     *
+     * <p>On the record rather than at either call site, because two of them have to agree: the
+     * executor decides whether a worker may launch its local servers by this answer, and the
+     * doctor predicts that decision before the run. A profile that withheld nothing while the
+     * doctor said it did would be a warning about a run that behaves fine.
+     */
+    public boolean withholdsAnything() {
+        return readOnly || dryRunEnabled() || !toolsOrEmpty().isEmpty();
+    }
 }

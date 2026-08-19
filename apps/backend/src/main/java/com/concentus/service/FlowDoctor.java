@@ -43,10 +43,13 @@ public class FlowDoctor {
     private final RunStore runStore;
     private final VariableStore variables;
     private final OrgContext orgContext;
+    /** Resolves the profile a worker names, to say what it will withhold. */
+    private final com.concentus.store.FacadeProfileStore facades;
 
     public FlowDoctor(LocalClaudeSupport claude, FlowCompiler compiler, CredentialResolver credentials,
                       McpOAuthStore mcpOAuth, PluginRegistry plugins, RuntimeProbe runtimes,
-                      RunStore runStore, VariableStore variables, OrgContext orgContext) {
+                      RunStore runStore, VariableStore variables, OrgContext orgContext,
+                      com.concentus.store.FacadeProfileStore facades) {
         this.claude = claude;
         this.compiler = compiler;
         this.credentials = credentials;
@@ -56,6 +59,7 @@ public class FlowDoctor {
         this.runStore = runStore;
         this.variables = variables;
         this.orgContext = orgContext;
+        this.facades = facades;
     }
 
     /** Everything worth knowing before pressing Run. An empty list means "nothing found". */
@@ -89,7 +93,8 @@ public class FlowDoctor {
     private void checkGraph(FlowGraph flow, List<DoctorFinding> findings) {
         Set<String> unresolved = new LinkedHashSet<>();
         try {
-            compiler.compile(flow, variables.merged(flow.variables()), unresolved);
+            checkFanout(compiler.compile(flow, variables.merged(flow.variables()), unresolved),
+                    findings);
         } catch (RuntimeException e) {
             findings.add(DoctorFinding.error("graph",
                     e.getMessage() == null ? "This flow does not compile." : e.getMessage(),
@@ -102,6 +107,77 @@ public class FlowDoctor {
                     "No value for {{" + name + "}} — prompts using it keep the placeholder.",
                     "Set it in the flow's settings, or under Resources → Variables.", null));
         }
+    }
+
+    // ------------------------------------------------------- independent workers
+
+    /**
+     * What a flow running as independent workers gets that a flow of sub-agents does not — and
+     * what it silently does without.
+     *
+     * <p>These are the facts a run only tells you halfway through, in a line nobody is watching
+     * for, and one of them is expensive: a worker that reaches none of its servers spends its
+     * whole turn discovering that, on every model in the flow, and reports the source as
+     * unreachable rather than as unconfigured.
+     *
+     * <p>Only for fan-out. On one shared session every wired server reaches every agent, so none
+     * of this applies and saying it anyway would be noise on the flows most people run.
+     */
+    private void checkFanout(CompiledFlow compiled, List<DoctorFinding> findings) {
+        if (!compiled.fanout()) return;
+
+        for (com.concentus.config.AgentSpec worker : compiled.subAgents()) {
+            checkWorkerReach(worker, findings);
+        }
+        if (compiled.merger() != null) checkWorkerReach(compiled.merger(), findings);
+
+        com.concentus.config.AgentSpec verifier = compiled.verifier();
+        if (verifier != null && !verifier.mcpServers.isEmpty()) {
+            findings.add(DoctorFinding.warn("fanout",
+                    "The verifier is wired to " + verifier.mcpServers.size() + " MCP server(s), "
+                            + "which it does not get: it judges what the workers produced and "
+                            + "submits verdicts, and nothing else.",
+                    "Wire those servers to the workers or to the merge step instead.",
+                    verifier.nodeId));
+        }
+
+        if (!compiled.allRepos().isEmpty()) {
+            findings.add(DoctorFinding.warn("fanout",
+                    "Repository nodes are not cloned into independent workers yet, so this flow's "
+                            + compiled.allRepos().size() + " repository node(s) do nothing here.",
+                    "A flow that must read or push code belongs on subagents execution for now.",
+                    null));
+        }
+    }
+
+    /** Whether this worker's profile leaves it able to reach the servers drawn onto its node. */
+    private void checkWorkerReach(com.concentus.config.AgentSpec spec, List<DoctorFinding> findings) {
+        if (spec.mcpServers.isEmpty()) return;
+        String profileId = spec.facadeProfileId;
+        if (profileId == null || profileId.isBlank()) return;
+
+        var profile = facades.get(profileId);
+        if (profile.isEmpty()) {
+            findings.add(DoctorFinding.warn("fanout",
+                    "\"" + spec.name + "\" names a facade profile that no longer exists, so "
+                            + "nothing filters what it reaches.",
+                    "Pick a profile under Resources → Facades, or clear the field.", spec.nodeId));
+            return;
+        }
+        if (!profile.get().withholdsAnything()) return;
+
+        long local = spec.mcpServers.stream()
+                .filter(com.concentus.config.AgentSpec.McpServerSpec::isStdio).count();
+        if (local == 0) return;
+        // The expensive one. A profile is enforced at the facade, and a local server never passes
+        // through it — so a restricted worker is given none of them, and finds out by looking for
+        // tools that are not there.
+        findings.add(DoctorFinding.error("fanout",
+                "\"" + spec.name + "\" runs behind the profile \"" + profile.get().name()
+                        + "\", which withholds its " + local + " local MCP server(s) entirely: a "
+                        + "facade cannot enforce a rule on a server it does not proxy.",
+                "Clear the profile on that node to let the worker launch them, or move that work "
+                        + "to a remote server.", spec.nodeId));
     }
 
     // ---------------------------------------------------------------- the nodes
