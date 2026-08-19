@@ -146,8 +146,27 @@ public class RunService {
      * calendar month in the machine's own timezone, which is the month the user's invoice thinks
      * in. Ad-hoc runs of an unsaved canvas have no flow id and no history to sum, so no ceiling.
      */
-    private void enforceBudget(FlowGraph flow) {
+    /**
+     * Refuses a run whose flow has spent its monthly ceiling — but only where a run is actually
+     * billed.
+     *
+     * <p>A ceiling exists to stop a flow running up an API bill nobody is watching. On the
+     * {@code claude} CLI there is no per-token bill at all: the work comes out of a subscription
+     * somebody already paid for, flat. Same for a model on your own hardware. Refusing those runs
+     * did not save anything — it stopped work over a number that describes what the same tokens
+     * WOULD have cost on the API, which is a useful figure to read and a nonsensical one to be
+     * blocked by. The estimate is still recorded either way; it just no longer decides.
+     *
+     * <p>Checked after the backend is chosen, which means after compiling. That reversed an
+     * earlier decision to refuse before compiling so a broken graph would still report its budget:
+     * being right about whether money is involved is worth more than which of two actionable
+     * messages arrives first, and a compile error names the box to fix.
+     */
+    private void enforceBudget(FlowGraph flow, String backend) {
         if (flow.id() == null || flow.budgetUsd() == null || flow.budgetUsd() <= 0) return;
+        // An unregistered backend is the hosted API path, which bills. Unknown means billed on
+        // purpose: forgetting to declare a new backend must not quietly disable everyone's ceiling.
+        if (!backends.byId(backend).map(ExecutionBackend::billsPerToken).orElse(true)) return;
         long monthStart = java.time.LocalDate.now().withDayOfMonth(1)
                 .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
         double spent = runStore.spendUsdSince(flow.id(), monthStart);
@@ -299,7 +318,6 @@ public class RunService {
     }
 
     public RunSummary start(FlowGraph flow, String initialPromptOverride) {
-        enforceBudget(flow);
         // Variables resolve at start time, not at save time: the flow's prompts keep their
         // {{NAME}} placeholders on disk, and each run stamps in whatever the organization and the
         // flow say TODAY — which is also what makes the values editable without touching prompts.
@@ -309,6 +327,7 @@ public class RunService {
         CompiledFlow compiled = compiler.compile(flow, variableValues, unresolvedVariables);
         TriggerSpec trigger = TriggerSpec.from(flow);
         String backend = chooseBackend(compiled);
+        enforceBudget(flow, backend);
 
         String runId = Ids.generate("run_", 12);
         AgentRun run = new AgentRun(runId, flow.id(), flow.name(), flow.modeOrDefault());

@@ -112,9 +112,9 @@ export function SettingsModal({
       </label>
       <label
         className={styles.field}
-        title="Sum of the estimated cost of this flow's runs in the current calendar month. At or past the ceiling, new runs are refused (a run already in flight finishes). On a Claude subscription this is equivalent usage, not a bill."
+        title="Sum of the estimated cost of this flow's runs in the current calendar month. Only ever refuses a run that would be billed — one on ANTHROPIC_API_KEY. Runs on your Claude subscription or on a self-hosted model cost the same whether the flow runs once or fifty times, so the ceiling never blocks them; their estimate is still recorded, as equivalent usage rather than a bill. A run already in flight always finishes."
       >
-        <span>Monthly budget in USD (blank = no limit) ⓘ</span>
+        <span>Monthly budget in USD, for API-key runs (blank = no limit) ⓘ</span>
         <input
           type="number"
           min="0"

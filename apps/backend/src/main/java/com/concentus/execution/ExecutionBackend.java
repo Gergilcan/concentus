@@ -74,6 +74,22 @@ public interface ExecutionBackend {
         return true;
     }
 
+    /**
+     * Whether running a turn here produces a bill per token.
+     *
+     * <p>Decides one thing: whether a flow's monthly ceiling can refuse a run. The CLI on a
+     * subscription and a model on your own hardware cost the same whether a flow runs once or
+     * fifty times, so a ceiling there blocks work over a number that only describes what the same
+     * tokens would have cost elsewhere. The cost estimate is still recorded for both — it is worth
+     * reading, and worthless as a gate.
+     *
+     * <p>Defaults to true, which is the direction a mistake should fall in: a new backend that
+     * forgets to answer is treated as billed rather than quietly disabling everyone's ceiling.
+     */
+    default boolean billsPerToken() {
+        return true;
+    }
+
     /** Runs one turn. Blocking — callers run it on a worker thread. */
     void runTurn(AgentRun run, CompiledFlow flow, String userText);
 

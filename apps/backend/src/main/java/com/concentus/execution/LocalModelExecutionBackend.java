@@ -38,6 +38,12 @@ public class LocalModelExecutionBackend implements ExecutionBackend {
         return LocalModelClient.ID;
     }
 
+    /** Your hardware, your electricity, nobody's invoice per token. */
+    @Override
+    public boolean billsPerToken() {
+        return false;
+    }
+
     @Override
     public String displayName() {
         return client.isConfigured()

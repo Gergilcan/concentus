@@ -904,8 +904,15 @@ class RunServiceTest {
                 .hasMessageContaining("ANTHROPIC_API_KEY");
     }
 
+    // The ceiling exists to stop a flow running up an API bill nobody is watching, so it is
+    // checked once it is known that a bill is involved — which means after the backend is chosen,
+    // and therefore after compiling. That reversed an earlier ordering (refuse first, so a broken
+    // graph still reported its budget): being right about whether money is at stake beats which
+    // of two actionable messages arrives first.
     @org.junit.jupiter.api.Test
-    void aFlowAtItsMonthlyBudgetIsRefusedBeforeCompiling() {
+    void aFlowAtItsMonthlyBudgetIsRefusedWhenItWouldRunOnTheApi() {
+        when(compiler.compile(any(), any(), any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(clientProvider.backend()).thenReturn("cloud");
         when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.eq("flow-b"),
                 org.mockito.ArgumentMatchers.anyLong())).thenReturn(25.10);
         com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
@@ -916,9 +923,23 @@ class RunServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Budget reached")
                 .hasMessageContaining("$25.10");
-        // Refused before compile: an over-budget flow with a broken graph still reports budget,
-        // which is the actionable half.
-        org.mockito.Mockito.verifyNoInteractions(compiler);
+    }
+
+    // A subscription costs the same whether a flow runs once or fifty times: refusing here saved
+    // nothing and blocked work over a number that only says what the same tokens WOULD have cost.
+    @org.junit.jupiter.api.Test
+    void theSameFlowOnTheSubscriptionIsNotRefusedAtAll() {
+        when(compiler.compile(any(), any(), any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(clientProvider.backend()).thenReturn("local");
+        when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong())).thenReturn(25.10);
+        com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
+                "flow-b", "Presupuestos", "local", List.of(), List.of(),
+                null, List.of(), null, null, 25.0);
+
+        RunSummary summary = newService(2, 4, 10).start(flow);
+
+        assertThat(summary.status()).isEqualTo("IDLE");
     }
 
     @org.junit.jupiter.api.Test

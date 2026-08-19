@@ -35,6 +35,12 @@ public class ClaudeCliExecutionBackend implements ExecutionBackend {
         return "local";
     }
 
+    /** A subscription costs the same whether a flow runs once or fifty times. */
+    @Override
+    public boolean billsPerToken() {
+        return false;
+    }
+
     @Override
     public String displayName() {
         return "Claude CLI (your subscription)";

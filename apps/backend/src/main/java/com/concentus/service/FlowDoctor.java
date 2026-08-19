@@ -242,9 +242,14 @@ public class FlowDoctor {
                 .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
         double spent = runStore.spendUsdSince(flow.id(), monthStart);
         if (spent < flow.budgetUsd()) return;
+        // Which runs it stops depends on where they execute, and that is decided per run — so the
+        // finding says both halves rather than promising a refusal this flow may never meet.
         findings.add(DoctorFinding.error("budget",
                 String.format(java.util.Locale.ROOT,
-                        "This month's spend ($%.2f) has reached the $%.2f ceiling, so new runs are refused.",
+                        "This month's spend ($%.2f) has reached the $%.2f ceiling, so new runs on "
+                                + "an API key are refused. Runs on your Claude subscription or on "
+                                + "a self-hosted model are not: there is no bill for the ceiling "
+                                + "to protect.",
                         spent, flow.budgetUsd()),
                 "Raise the budget in the flow's settings, or wait for next month.", null));
     }
