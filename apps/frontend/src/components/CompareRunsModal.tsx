@@ -12,10 +12,27 @@ import { Modal } from './Modal.tsx'
 import { Spinner } from './Spinner.tsx'
 import styles from './runs.module.scss'
 
+const GOLD = '⭐'
+
 /**
- * The golden reference and a candidate run, side by side: cost, tokens, per-node steps and each
- * run's final answer. Facts on both sides, deltas where a baseline exists — whether a difference
- * is a regression is the reader's call, so nothing here says pass or fail.
+ * What to call one side. The golden reference keeps its name because that is what makes it the
+ * baseline; anything else is identified the way a person picking it out of a list would — when it
+ * ran, and what started it. "Candidate" was accurate only while every comparison had a reference.
+ */
+function sideLabel(side: RunComparisonSide): string {
+  if (side.run.golden) return `${GOLD} Golden`
+  const trigger = side.run.trigger && side.run.trigger !== 'manual' ? ` · ${side.run.trigger}` : ''
+  return `${timeAgo(side.run.createdAt)}${trigger}`
+}
+
+/**
+ * Two runs side by side: cost, tokens, per-node steps and each run's final answer. Facts on both
+ * sides, deltas where a baseline exists — whether a difference is a regression is the reader's
+ * call, so nothing here says pass or fail.
+ *
+ * <p>The left side is whatever the reader chose to read the selected run against. It is usually
+ * the golden reference and it does not have to be: two runs of the same block on different models
+ * is a comparison with no known-good side at all.
  */
 export function CompareRunsModal({
   referenceId,
@@ -40,7 +57,9 @@ export function CompareRunsModal({
   }, [referenceId, candidateId])
 
   return (
-    <Modal title="Compared with the golden reference" onClose={onClose} wide>
+    <Modal title={cmp && sideLabel(cmp.reference).startsWith(GOLD)
+        ? "Compared with the golden reference"
+        : "Two executions, side by side"} onClose={onClose} wide>
       {err && <div className={styles.err}>{err}</div>}
       {!cmp && !err && <Spinner />}
       {cmp && (
@@ -48,8 +67,8 @@ export function CompareRunsModal({
           <MetricsTable reference={cmp.reference} candidate={cmp.candidate} />
           <CtxKey sides={[cmp.reference, cmp.candidate]} />
           <div className={styles.compareGrid}>
-            <SideColumn side={cmp.reference} label="⭐ Golden" onOpenContext={setCtxNode} />
-            <SideColumn side={cmp.candidate} label="Candidate" onOpenContext={setCtxNode} />
+            <SideColumn side={cmp.reference} label={sideLabel(cmp.reference)} onOpenContext={setCtxNode} />
+            <SideColumn side={cmp.candidate} label={sideLabel(cmp.candidate)} onOpenContext={setCtxNode} />
           </div>
         </div>
       )}
@@ -110,9 +129,9 @@ function MetricsTable({
       <thead>
         <tr>
           <th />
-          <th>⭐ Golden</th>
-          <th>Candidate</th>
-          <th title="Candidate relative to golden">Δ ⓘ</th>
+          <th>{sideLabel(reference)}</th>
+          <th>{sideLabel(candidate)}</th>
+          <th title="The right-hand run relative to the left-hand one">Δ ⓘ</th>
         </tr>
       </thead>
       <tbody>

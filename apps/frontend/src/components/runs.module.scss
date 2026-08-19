@@ -692,3 +692,42 @@
     color: t.$danger;
   }
 }
+
+/* Picking which execution to read the selected one against. */
+.pickList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.pickRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: t.$panel-2;
+  border: 1px solid t.$border;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: t.$text;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$accent;
+  }
+}
+
+.pickWhen {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.pickMeta {
+  color: t.$muted;
+  font-family: monospace;
+  font-size: 11px;
+}

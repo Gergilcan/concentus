@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RunSummary } from '../api/types.ts'
 import { RunsPanel } from './RunsPanel.tsx'
@@ -174,5 +174,55 @@ describe('RunsPanel golden runs', () => {
     renderPanel([run()], 'f1')
 
     expect(screen.queryByText(/Test current flow/)).not.toBeInTheDocument()
+  })
+// Comparing used to require a golden reference, which is the right default and was the wrong
+  // only option: two runs of the same block on different models have no known-good side at all.
+  it('compares two ordinary runs on a flow that has no reference', async () => {
+    compareRunsMock.mockResolvedValue({
+      reference: { run: run({ id: 'r1' }), nodes: [], finalOutput: 'the first answer' },
+      candidate: { run: run({ id: 'r2' }), nodes: [], finalOutput: 'the second answer' },
+    })
+    renderPanel([run({ id: 'r1' }), run({ id: 'r2' })], 'f1', { selected: 'r2' })
+
+    fireEvent.click(screen.getByText('⇄ Compare'))
+
+    // Exactly one other run: no dialog, because a choice of one teaches nothing.
+    await waitFor(() => expect(compareRunsMock).toHaveBeenCalledWith('r1', 'r2'))
+    expect(await screen.findByText('the first answer')).toBeInTheDocument()
+  })
+
+  it('asks which run to compare against once there is more than one', async () => {
+    renderPanel([run({ id: 'r1', golden: true }), run({ id: 'r2' }), run({ id: 'r3' })], 'f1',
+      { selected: 'r3' })
+
+    fireEvent.click(screen.getByText('⇄ Compare'))
+
+    expect(await screen.findByRole('dialog', { name: /Compare with which execution/ }))
+        .toBeInTheDocument()
+    expect(compareRunsMock).not.toHaveBeenCalled()
+  })
+
+  it('compares against the run picked in the dialog', async () => {
+    compareRunsMock.mockResolvedValue({
+      reference: { run: run({ id: 'r2' }), nodes: [], finalOutput: 'the picked answer' },
+      candidate: { run: run({ id: 'r3' }), nodes: [], finalOutput: 'the selected answer' },
+    })
+    renderPanel([run({ id: 'r1', golden: true }), run({ id: 'r2' }), run({ id: 'r3' })], 'f1',
+      { selected: 'r3' })
+
+    fireEvent.click(screen.getByText('⇄ Compare'))
+    const dialog = await screen.findByRole('dialog', { name: /Compare with which execution/ })
+    // Every row is a run; the first is the golden one, pinned there because it is still the
+    // answer more often than any other single row.
+    const rows = within(dialog).getAllByRole('button').filter((b) => b.textContent?.includes('IDLE'))
+    fireEvent.click(rows[rows.length - 1])
+
+    await waitFor(() => expect(compareRunsMock).toHaveBeenCalled())
+  })
+
+  it('keeps Compare disabled when the flow has a single run', () => {
+    renderPanel([run()], 'f1', { selected: 'r1' })
+
+    expect(screen.getByText('⇄ Compare')).toBeDisabled()
   })
 })

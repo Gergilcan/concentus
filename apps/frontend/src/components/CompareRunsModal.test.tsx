@@ -67,10 +67,19 @@ describe('CompareRunsModal context breakdown', () => {
       expect(screen.queryByRole('dialog', { name: 'Context usage' })).not.toBeInTheDocument(),
     )
     expect(onClose).not.toHaveBeenCalled()
-    expect(screen.getByRole('dialog', { name: /golden reference/i })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: /Two executions, side by side/ })).toBeInTheDocument()
 
     // With the breakdown gone, the next Escape belongs to the comparison again.
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
+  })
+
+  // The title names what the reader is actually looking at. "Compared with the golden reference"
+  // was true of every comparison there used to be, and is a lie about two ordinary runs.
+  it('says which kind of comparison this is', async () => {
+    render(<CompareRunsModal referenceId="r1" candidateId="r2" onClose={() => {}} />)
+
+    expect(await screen.findByRole('dialog', { name: 'Two executions, side by side' }))
+        .toBeInTheDocument()
   })
 })

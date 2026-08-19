@@ -4,6 +4,7 @@ import type { RunSummary } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { CompareRunsModal } from './CompareRunsModal.tsx'
+import { ComparePickerModal } from './ComparePickerModal.tsx'
 import { Console } from './Console.tsx'
 import { Spinner } from './Spinner.tsx'
 import styles from './runs.module.scss'
@@ -36,7 +37,9 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
   // The polled list is a few seconds behind a click; overriding locally keeps the star honest
   // until the next poll agrees. Keyed by run id, so the override survives list refreshes.
   const [goldenOverride, setGoldenOverride] = useState<Record<string, boolean>>({})
+  // The run the selected one is compared AGAINST. Null while nothing is being compared.
   const [compareWith, setCompareWith] = useState<string | null>(null)
+  const [picking, setPicking] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -73,7 +76,19 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
   }
 
   const selectedRun = mine.find((r) => r.id === selected) ?? null
-  const canCompare = goldenRun && selectedRun && selectedRun.id !== goldenRun.id
+  // Anything the selected run can be read against: this flow's other executions. Comparing used
+  // to be available only against the golden reference, which is the right default and the wrong
+  // only option — two runs of the same block on different models is the pair worth reading now.
+  const others = mine.filter((r) => selectedRun && r.id !== selectedRun.id)
+  const canCompare = selectedRun !== null && others.length > 0
+
+  const startCompare = () => {
+    if (!canCompare) return
+    // One other run means there is no choice to present, and a dialog offering a single option is
+    // a click that teaches nothing.
+    if (others.length === 1) setCompareWith(others[0].id)
+    else setPicking(true)
+  }
 
   return (
     <section className={styles.runs}>
@@ -89,20 +104,24 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
             >
               ⭐▶ Test current flow
             </button>
-            <button
-              className={styles.goldenAction}
-              disabled={!canCompare}
-              title={
-                canCompare
-                  ? 'Compare the selected execution with the golden reference'
-                  : 'Select another execution of this flow to compare it with the golden reference'
-              }
-              onClick={() => selectedRun && setCompareWith(selectedRun.id)}
-            >
-              ⇄ Compare
-            </button>
           </div>
         )}
+        {/* Outside the golden bar on purpose: comparing two ordinary runs is the common case, and
+            it used to be unreachable for a flow that had never marked a reference. */}
+        <div className={styles.goldenBar}>
+          <button
+            className={styles.goldenAction}
+            disabled={!canCompare}
+            title={
+              canCompare
+                ? 'Compare the selected execution with another one — the golden reference, or any other run of this flow'
+                : 'Select an execution, with at least one other to read it against'
+            }
+            onClick={startCompare}
+          >
+            ⇄ Compare
+          </button>
+        </div>
         {err && <div className={styles.err}>{err}</div>}
         {loading ? (
           <Spinner />
@@ -172,10 +191,21 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
           <div className={styles.runEmpty}>Select a run to see its output and send commands.</div>
         )}
       </div>
-      {compareWith && goldenRun && (
+      {picking && selectedRun && (
+        <ComparePickerModal
+          runs={others}
+          goldenId={goldenRun?.id ?? null}
+          onPick={(id) => {
+            setPicking(false)
+            setCompareWith(id)
+          }}
+          onClose={() => setPicking(false)}
+        />
+      )}
+      {compareWith && selectedRun && (
         <CompareRunsModal
-          referenceId={goldenRun.id}
-          candidateId={compareWith}
+          referenceId={compareWith}
+          candidateId={selectedRun.id}
           onClose={() => setCompareWith(null)}
         />
       )}
