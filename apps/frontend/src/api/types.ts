@@ -746,6 +746,46 @@ export interface Credential {
   lastUsedAt: number | null
 }
 
+/**
+ * A credential the app signs in to, rather than one somebody pastes.
+ *
+ * The endpoints and the client are typed in from the provider's console — Google and the rest
+ * support neither MCP-style discovery nor dynamic registration — and the tokens arrive from the
+ * sign-in itself.
+ */
+export interface OAuthCredentialConfig {
+  label: string
+  authorizationUrl: string
+  tokenUrl: string
+  clientId: string
+  clientSecret: string
+  scope: string
+  /** Provider quirks, appended to the authorization URL. Google needs access_type=offline. */
+  authParams: string
+}
+
+export interface OAuthCredentialStatus {
+  connected: boolean
+  /** The address to register in the provider's console; where every first attempt fails. */
+  redirectUri: string
+  clientId?: string
+  authorizationUrl?: string
+  tokenUrl?: string
+  scope?: string
+  authParams?: string
+  /** Separate from connected: without one, the grant dies when the access token expires. */
+  hasRefreshToken: boolean
+  expiresAt?: string | null
+  error?: string
+}
+
+export interface OAuthSignInStart {
+  ok: boolean
+  redirectUri: string
+  authorizationUrl?: string
+  error?: string
+}
+
 export interface CredentialStatus {
   /** False when CONCENTUS_SECRET_KEY is unset, so nothing can be stored. */
   available: boolean

@@ -2,6 +2,9 @@ import type {
   AuthStatus,
   Credential,
   CredentialStatus,
+  OAuthCredentialConfig,
+  OAuthCredentialStatus,
+  OAuthSignInStart,
   MailDeviceCode,
   MailOAuthDefaults,
   McpOAuthStart,
@@ -386,6 +389,24 @@ export const api = {
   updateCredential: (id: string, label: string, value: string) =>
     req<Credential>(`/credentials/${id}`, { method: 'PUT', body: JSON.stringify({ label, value }) }),
   deleteCredential: (id: string) => req<void>(`/credentials/${id}`, { method: 'DELETE' }),
+
+  // Credentials the app signs in to. The tokens never reach this side: the browser comes back to
+  // the backend, which stores the grant and hands its pieces to a run's MCP server. Status reports
+  // ABOUT the grant — connected, scope, whether a refresh token arrived — and none of its secrets.
+  createOAuthCredential: (body: OAuthCredentialConfig) =>
+    req<{ id: string; label: string }>('/credentials/oauth', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateOAuthCredential: (id: string, body: OAuthCredentialConfig) =>
+    req<{ ok: boolean; error?: string }>(`/credentials/${id}/oauth`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  oauthCredentialStatus: (id: string) => req<OAuthCredentialStatus>(`/credentials/${id}/oauth`),
+  /** Returns the provider's URL; the caller opens it in the SYSTEM browser, never a webview. */
+  startOAuthSignIn: (id: string) =>
+    req<OAuthSignInStart>(`/credentials/${id}/oauth/start`, { method: 'POST' }),
 
   // Mail trigger health. A poller succeeds by doing nothing most of the time, so it needs to be
   // asked rather than waited on.
