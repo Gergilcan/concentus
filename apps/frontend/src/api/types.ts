@@ -454,6 +454,18 @@ export type ApiNodeData = {
   authHeader?: string
   /** Operation keys ("GET /pets") the agent may call. Empty = none — allowing is explicit. */
   ops: string[]
+  /**
+   * `spec` reads an OpenAPI document; `endpoint` is one URL typed by hand and no document at all.
+   * Absent means spec, so every API node saved before this existed is unchanged.
+   */
+  mode?: 'spec' | 'endpoint'
+  /** endpoint mode: the URL to call, {placeholders} included — each becomes an argument. */
+  url?: string
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  /** endpoint mode: what this endpoint does. With no spec, it is all the model gets to read. */
+  description?: string
+  /** endpoint mode: whether the agent may send a JSON body. */
+  sendsBody?: boolean
 }
 
 /**

@@ -25,7 +25,7 @@ function title(data: AppNodeData): string {
   if (data.kind === 'mcp') return 'MCP server'
   if (data.kind === 'sql') return 'SQL source'
   if (data.kind === 'knowledge') return 'Knowledge base'
-  if (data.kind === 'api') return 'API (OpenAPI)'
+  if (data.kind === 'api') return data.mode === 'endpoint' ? 'API endpoint' : 'API (OpenAPI)'
   if (data.kind === 'flow') return 'Run another flow'
   if (data.kind === 'merge') return 'Merge'
   if (data.kind === 'verifier') return 'Verifier'

@@ -276,6 +276,27 @@ public class AgentSpec {
         /** Operation keys ("GET /pets") the agent may call. Empty = none — allow is explicit. */
         public List<String> ops = new ArrayList<>();
 
+        /**
+         * {@code spec} reads an OpenAPI document; {@code endpoint} is the four fields below and no
+         * document at all. Blank means spec, so every node saved before this existed is unchanged.
+         */
+        public String mode = "";
+        /** endpoint mode: the URL to call, {placeholders} included. */
+        public String url = "";
+        /** endpoint mode: GET, POST, PUT, PATCH or DELETE. */
+        public String method = "GET";
+        /**
+         * endpoint mode: what this endpoint does, in the agent's words. It is the only description
+         * the model gets — with no specification there is nothing else to read.
+         */
+        public String description = "";
+        /** endpoint mode: whether the agent may send a JSON body. */
+        public boolean sendsBody;
+
+        public boolean isEndpoint() {
+            return "endpoint".equalsIgnoreCase(mode);
+        }
+
         public String resolveToken() {
             return resolveCredential(credentialId, credentialLookup);
         }

@@ -2,6 +2,7 @@ package com.concentus.web;
 
 import com.concentus.api.ApiCaller;
 import com.concentus.api.OpenApiCatalog;
+import com.concentus.api.PlainEndpoint;
 import com.concentus.config.AgentSpec;
 import com.concentus.config.AgentSpec.ApiSourceSpec;
 import com.concentus.service.AgentRun;
@@ -108,6 +109,20 @@ public class RunToolsController {
         if (run.compiled == null) return out;
         for (AgentSpec agent : run.compiled.allAgents()) {
             for (ApiSourceSpec spec : agent.apiSources) {
+                if (spec.isEndpoint()) {
+                    // One endpoint typed by hand: no document to read, no allowlist to check
+                    // against — the URL IS the allowlist, and somebody wrote it on this node.
+                    try {
+                        PlainEndpoint.Resolved endpoint = PlainEndpoint.of(spec);
+                        String name = OpenApiCatalog.sanitize(spec.label) + "__"
+                                + endpoint.operation().id();
+                        out.putIfAbsent(name, new ResolvedTool(spec, endpoint.operation(),
+                                endpoint.baseUrl()));
+                    } catch (RuntimeException e) {
+                        log.warn("API node '{}': {}", spec.label, e.getMessage());
+                    }
+                    continue;
+                }
                 OpenApiCatalog.Parsed parsed;
                 try {
                     parsed = catalog.load(spec.specUrl, spec.specInline);

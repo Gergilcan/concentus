@@ -389,6 +389,13 @@ public class FlowCompiler {
             // Explicitly chosen operations only. An empty list exposes nothing — for the one node
             // type that reaches out and changes external systems, allow is opt-in per operation.
             spec.ops = strList(ad, "ops");
+            // One endpoint typed by hand instead of a document to read. Blank mode means spec, so
+            // every API node saved before this existed compiles exactly as it did.
+            spec.mode = str(ad, "mode", "");
+            spec.url = str(ad, "url", "");
+            spec.method = str(ad, "method", "GET");
+            spec.description = str(ad, "description", "");
+            spec.sendsBody = bool(ad, "sendsBody", false);
             return spec;
         });
         collectConnected(flow, node, resources.flows(), s.subflows, sub -> subflowSpec(sub, flow));

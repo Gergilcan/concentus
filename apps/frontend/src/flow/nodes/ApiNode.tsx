@@ -5,7 +5,11 @@ import styles from './nodes.module.scss'
 
 export function ApiNode({ id, data, selected }: NodeProps<ApiRFNode>) {
   let summary: string
-  if (data.ops.length > 0) summary = `${data.ops.length} operation(s) allowed`
+  // An endpoint node says which call it is, because that is the whole node — an ops count would
+  // be a number about a specification this node does not have.
+  if (data.mode === 'endpoint') {
+    summary = data.url ? `${data.method ?? 'GET'} ${data.url}` : 'no URL yet'
+  } else if (data.ops.length > 0) summary = `${data.ops.length} operation(s) allowed`
   else if (data.specUrl) summary = 'no operations allowed yet'
   else summary = 'no spec loaded'
   return (

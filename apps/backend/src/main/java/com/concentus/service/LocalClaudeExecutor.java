@@ -462,9 +462,13 @@ public class LocalClaudeExecutor {
             for (AgentSpec.ApiSourceSpec api : apis) {
                 NodeExec ne = run.nodeExec(api.nodeId, "api", api.label);
                 if (ne != null) {
-                    ne.input = api.specUrl.isBlank() ? "(pasted spec)" : api.specUrl;
+                    ne.input = api.isEndpoint()
+                            ? api.method + " " + api.url
+                            : (api.specUrl.isBlank() ? "(pasted spec)" : api.specUrl);
                     ne.status = "passed";
-                    ne.output = api.ops.size() + " operation(s) exposed";
+                    ne.output = api.isEndpoint()
+                            ? "1 endpoint exposed"
+                            : api.ops.size() + " operation(s) exposed";
                     ne.endedAt = System.currentTimeMillis();
                 }
             }

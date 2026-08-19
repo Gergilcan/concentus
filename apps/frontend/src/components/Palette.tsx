@@ -40,8 +40,8 @@ export function Palette() {
       <button className={cx(styles.addBtn, styles.addSql)} title="Runs a SQL query at run start and injects the rows into the connected agent." {...drag('sql')} onClick={() => addNode('sql')}>
         <span>🗄</span> SQL source (RAG)
       </button>
-      <button className={cx(styles.addBtn, styles.addApi)} title="Turn any REST API into typed tools: load its OpenAPI spec, tick the operations the agent may call." {...drag('api')} onClick={() => addNode('api')}>
-        <span>🌐</span> API (OpenAPI)
+      <button className={cx(styles.addBtn, styles.addApi)} title="Turn a REST API into typed tools. Either load an OpenAPI spec and tick the operations the agent may call, or type a single endpoint — a webhook, an internal service, one endpoint of an API whose document you do not have." {...drag('api')} onClick={() => addNode('api')}>
+        <span>🌐</span> API / endpoint
       </button>
       <button className={cx(styles.addBtn, styles.addFlow)} title="Runs another saved flow. Wired to an agent it is a tool the agent may call and wait on; left unconnected it fires when this flow finishes." {...drag('flow')} onClick={() => addNode('flow')}>
         <span>🔗</span> Run another flow
