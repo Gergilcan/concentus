@@ -137,12 +137,14 @@ public class SubflowService {
      */
     public void handOffAfter(AgentRun run) {
         if (run.compiled == null || run.compiled.afterFlows().isEmpty()) return;
+        if (run.handOffsFired) return;
         if (!"COMPLETED".equals(run.status)) {
             run.emit(com.concentus.model.RunEvent.of("system", "This run did not complete, so its "
                     + run.compiled.afterFlows().size() + " hand-off(s) were not started."));
             return;
         }
 
+        run.handOffsFired = true;
         String output = run.finalOutput();
         for (AgentSpec.SubflowSpec drawn : run.compiled.afterFlows()) {
             AgentSpec.SubflowSpec handOff = new AgentSpec.SubflowSpec();

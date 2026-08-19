@@ -56,6 +56,14 @@ public class AgentRun {
     public volatile java.util.List<String> flowChain = java.util.List.of();
     /** The run that started this one, when a flow ran another. Null for everything else. */
     public volatile String parentRunId;
+    /**
+     * Whether this run has already fired its hand-offs.
+     *
+     * <p>A finished run returns to RUNNING when somebody sends it another message, and reaches
+     * COMPLETED again at the end of that turn. Without this, the second turn would start the same
+     * chained flow a second time: the mail sent twice, the invoice raised twice.
+     */
+    public volatile boolean handOffsFired;
     /** Initial input to fire automatically once the run is ready (null = wait for the user). */
     public volatile String pendingPrompt;
     /** The first input this run was given — replayed when the execution is retried. */

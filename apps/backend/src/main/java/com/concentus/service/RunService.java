@@ -622,6 +622,14 @@ public class RunService {
     /** Sends an explicit instruction to a running session. */
     public void sendCommand(String runId, String text) {
         AgentRun run = require(runId);
+        if (run.handOffsFired) {
+            // This flow already handed its answer to the next one. Another message would produce a
+            // second answer that nobody passes on, and the hand-off cannot fire again — so the run
+            // would look like it did the work while quietly doing half the job. A finished chain
+            // is finished: run the flow again if there is more to say.
+            throw new IllegalStateException("This execution handed its result to another flow and "
+                    + "is closed. Run the flow again to continue.");
+        }
         // The first instruction a manual run receives is what a retry should replay.
         if (run.initialPrompt == null || run.initialPrompt.isBlank()) {
             run.initialPrompt = text;

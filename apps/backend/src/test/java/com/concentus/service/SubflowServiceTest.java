@@ -176,4 +176,23 @@ class SubflowServiceTest {
         assertThat(parent.bufferedEvents()).anySatisfy(e ->
                 assertThat(e.text()).contains("did not complete"));
     }
+
+    @Test
+    void hand_offs_fire_once_per_run_however_many_turns_it_has() {
+        // A finished run goes back to RUNNING when someone sends it another message, and lands on
+        // COMPLETED again at the end of that turn. Without this guard the second turn would start
+        // the same hand-off a second time — the email sent twice, the invoice raised twice.
+        childExists("flow_child");
+        when(runs.startSubflow(any(), anyString(), any())).thenReturn(summary("run-child", "RUNNING"));
+        AgentRun parent = parentRun("flow_parent", List.of());
+        parent.status = "COMPLETED";
+        parent.compiled = new CompiledFlow(new AgentSpec(), List.of(), null, null,
+                List.of(spec("flow_child", true)));
+
+        SubflowService service = service();
+        service.handOffAfter(parent);
+        service.handOffAfter(parent);
+
+        verify(runs, org.mockito.Mockito.times(1)).startSubflow(any(), anyString(), any());
+    }
 }

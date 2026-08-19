@@ -435,6 +435,22 @@ class RunServiceTest {
     }
 
     @Test
+    void aRunThatHandedItsResultOnIsClosedToFurtherMessages() {
+        // The flow chained onward: its answer is already the next flow's input. A later message
+        // would produce a second answer nobody passes on — and the hand-off cannot fire twice
+        // either, so the run would look like it worked while quietly doing half the job.
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        RunService svc = newService(4, 8, 10);
+        RunSummary s = svc.start(flow("f1"));
+        svc.get(s.id()).orElseThrow().handOffsFired = true;
+
+        assertThatThrownBy(() -> svc.sendCommand(s.id(), "one more thing"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("handed its result");
+    }
+
+    @Test
     void sendCommandThrowsWhenTheLocalRunIsNotYetCompiled() {
         when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
