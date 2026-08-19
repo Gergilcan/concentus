@@ -527,7 +527,7 @@ class FanoutExecutorTest {
                 dataDir.resolve(Path.of("local", "run-1", "workers", "worker-a", "mcp-config.json")));
         assertThat(mcpConfig).doesNotContain("mcp-google-ads");
         assertThat(run.bufferedEvents()).anySatisfy(e ->
-                assertThat(e.text()).contains("NOT given to worker")
+                assertThat(e.text()).contains("NOT given to")
                         .contains("does not proxy"));
     }
 
@@ -543,6 +543,50 @@ class FanoutExecutorTest {
                 dataDir.resolve(Path.of("local", "run-1", "workers", "worker-a", "mcp-config.json")));
         assertThat(mcpConfig).isEqualTo("{\"mcpServers\":{}}");
         assertThat(run.workerFacadeProfiles).isEmpty();
+    }
+
+    @Test
+    void theMergeStepReachesTheServersWiredToItLikeAWorkerDoes() throws Exception {
+        AgentSpec worker = spec("n1", "Worker A", "worker-a", "");
+        AgentSpec merger = spec("m1", "Merge", "merge", "");
+        merger.mcpServers.add(stdioServer("resend", "npx", "mcp-resend"));
+        AgentSpec.McpServerSpec remote = new AgentSpec.McpServerSpec();
+        remote.name = "holded";
+        remote.url = "https://mcp.example.com/mcp";
+        merger.mcpServers.add(remote);
+        AgentRun run = runWithMerger(merger, worker);
+
+        executor((args, dir) -> new FakeProcess(okStream("hola", "Informe"), 0), 900, 0)
+                .runTurn(run, run.compiled, "go");
+
+        String mcpConfig = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "merge", "mcp-config.json")));
+        assertThat(mcpConfig).contains("resend").contains("mcp-resend")
+                .contains("/api/runs/run-1/workers/m1/tools");
+        assertThat(mcpConfig).doesNotContain("mcp.example.com");
+        // Named for what it is: a line calling the merge step a worker sends whoever reads the
+        // log looking for a box that is not on the canvas.
+        assertThat(run.bufferedEvents()).anySatisfy(e ->
+                assertThat(e.text()).contains("The merge step 'Merge'"));
+    }
+
+    // A judge that can act has a stake in the outcome it judges, so the verifier keeps its
+    // verdict-only world — but a wire drawn onto it must not do nothing AND say nothing.
+    @Test
+    void theVerifierKeepsJudgingOnlyAndSaysSoWhenServersAreWiredToIt() throws Exception {
+        AgentSpec worker = spec("n1", "Worker A", "worker-a", "");
+        AgentSpec verifier = spec("v1", "Verifier", "verifier", "");
+        verifier.mcpServers.add(stdioServer("google-ads", "npx", "mcp-google-ads"));
+        AgentRun run = runWith(null, verifier, worker);
+
+        executor((args, dir) -> new FakeProcess(okStream("hola", "Informe"), 0), 900, 0)
+                .runTurn(run, run.compiled, "go");
+
+        String mcpConfig = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "verifier", "mcp-config.json")));
+        assertThat(mcpConfig).contains("concentus-verdict").doesNotContain("mcp-google-ads");
+        assertThat(run.bufferedEvents()).anySatisfy(e ->
+                assertThat(e.text()).contains("wired to 1 MCP server(s), which it does not get"));
     }
 
     @Test

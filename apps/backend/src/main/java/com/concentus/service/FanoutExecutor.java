@@ -8,6 +8,7 @@ import com.concentus.model.WorkVerdict;
 import com.concentus.support.LocalClaudeSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -664,6 +665,12 @@ public class FanoutExecutor {
      */
     private void writeWorkerMcpConfig(AgentRun run, AgentSpec spec, Path workdir, boolean facade)
             throws IOException {
+        Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
+                mapper.writeValueAsString(mcpConfigFor(run, spec, facade)));
+    }
+
+    /** As above, as a document the caller can still add its own servers to before writing. */
+    private ObjectNode mcpConfigFor(AgentRun run, AgentSpec spec, boolean facade) {
         var root = mapper.createObjectNode();
         var servers = root.putObject("mcpServers");
 
@@ -690,18 +697,17 @@ public class FanoutExecutor {
                 servers.set(m.name, CliMcpServers.stdioNode(mapper, m));
             }
             run.emit(RunEvent.of("system", restricted
-                    ? stdio.size() + " local MCP server(s) are NOT given to worker '" + spec.name
-                            + "': a facade profile cannot be enforced on a server this backend does "
+                    ? stdio.size() + " local MCP server(s) are NOT given to " + subject(run, spec)
+                            + ": a facade profile cannot be enforced on a server this backend does "
                             + "not proxy. Clear the profile to let it launch them, or move that "
                             + "work to a remote server."
-                    : "Worker '" + spec.name + "' launches " + stdio.size() + " local MCP "
+                    : subject(run, spec) + " launches " + stdio.size() + " local MCP "
                             + "server(s) itself: " + stdio.stream().map(m -> m.name)
                                     .collect(Collectors.joining(", ")) + ".",
                     spec.name, spec.nodeId));
         }
 
-        Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
-                mapper.writeValueAsString(root));
+        return root;
     }
 
     /**
@@ -734,14 +740,6 @@ public class FanoutExecutor {
         }
     }
 
-    /** No servers at all, said in the file rather than by leaving it out — see {@link #prepareWorkspace}. */
-    private void writeEmptyMcpConfig(Path workdir) throws IOException {
-        var root = mapper.createObjectNode();
-        root.putObject("mcpServers");
-        Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
-                mapper.writeValueAsString(root));
-    }
-
     /**
      * Resolves and freezes this worker's facade profile, minting its endpoint token. Returns
      * whether the worker gets a facade at all.
@@ -768,14 +766,14 @@ public class FanoutExecutor {
             String missing = spec.facadeProfileId == null || spec.facadeProfileId.isBlank()
                     ? "no facade profile"
                     : "a facade profile that no longer exists";
-            run.emit(RunEvent.of("system", "Worker '" + spec.name + "' has " + missing
+            run.emit(RunEvent.of("system", subject(run, spec) + " has " + missing
                     + ", so it reaches the " + spec.mcpServers.size() + " MCP server(s) wired to "
                     + "it with nothing filtered, writes included. Assign a profile "
                     + "(Resources → Facades) to narrow that to an allowlist, read-only, or "
                     + "simulated writes.", spec.name, spec.nodeId));
         } else {
             profile = chosen.get();
-            run.emit(RunEvent.of("system", "Worker '" + spec.name + "' runs behind facade profile '"
+            run.emit(RunEvent.of("system", subject(run, spec) + " runs behind facade profile '"
                     + profile.name() + "'" + (profile.readOnly() ? " (read-only)" : "")
                     + (profile.dryRunEnabled() && !profile.readOnly()
                             ? " (writes are dry-run)" : "") + ".", spec.name, spec.nodeId));
@@ -783,6 +781,16 @@ public class FanoutExecutor {
         run.workerFacadeProfiles.put(spec.nodeId, profile);
         run.workerToolTokens.put(spec.nodeId, UUID.randomUUID().toString());
         return true;
+    }
+
+    /**
+     * What to call this process in the run log. Read from what the spec IS rather than passed in,
+     * so a line can never name the merge step a worker because a call site forgot to say.
+     */
+    private static String subject(AgentRun run, AgentSpec spec) {
+        CompiledFlow flow = run.compiled;
+        if (flow != null && flow.merger() == spec) return "The merge step '" + spec.name + "'";
+        return "Worker '" + spec.name + "'";
     }
 
     /** Whether a profile withholds anything at all — an allowlist, read-only, or simulated writes. */
@@ -1233,7 +1241,16 @@ public class FanoutExecutor {
         LocalClaudeExecutor.appendContextFolderNote(verifier, md);
         Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
 
-        // The verifier's whole MCP world is the verdict endpoint — judging is all it can do.
+        // The verifier's whole MCP world is the verdict endpoint — judging is all it can do. Not
+        // an oversight and not extended when the merge step was: a judge that can act has a stake
+        // in the outcome it is judging. Said out loud when a flow draws otherwise, because the
+        // alternative is a wire on the canvas that does nothing and says nothing.
+        if (!verifier.mcpServers.isEmpty()) {
+            run.emit(RunEvent.of("system", "The verifier is wired to " + verifier.mcpServers.size()
+                    + " MCP server(s), which it does not get: it judges what the workers produced "
+                    + "and submits verdicts, and nothing else. Wire those servers to the workers "
+                    + "or to the merge step instead.", verifier.name, verifier.nodeId));
+        }
         writeSingleServerMcpConfig(workdir, "concentus-verdict",
                 runEndpoint(run, "verdict"), run.verdictToken);
     }
@@ -1333,9 +1350,11 @@ public class FanoutExecutor {
         LocalClaudeExecutor.appendContextFolderNote(merger, md);
         Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
 
-        // Empty and strict, like a worker without a facade: the merge reconciles and verifies on
-        // disk; if it ever needs MCP reach, that is a facade profile decision, not a default.
-        writeEmptyMcpConfig(workdir);
+        // The same reach a worker gets, for the same reason: the merge step is the process that
+        // speaks last, so it is the one that sends the report or files the ticket. It used to get
+        // an empty config on the grounds that reconciling happens on disk — which was true of the
+        // reconciling and silent about everything a flow draws onto that node.
+        writeWorkerMcpConfig(run, merger, workdir, resolveFacade(run, merger));
     }
 
     /** The merge's input: the goal, each worker's outcome, and where their real files sit. */

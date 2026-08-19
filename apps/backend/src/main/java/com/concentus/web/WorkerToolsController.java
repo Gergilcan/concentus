@@ -97,6 +97,10 @@ public class WorkerToolsController {
         for (AgentSpec s : run.compiled.allAgents()) {
             if (nodeId.equals(s.nodeId)) return s;
         }
+        // The merge step reaches MCP the same way a worker does, so it resolves here too — its
+        // token is minted the same way and its profile is frozen onto the same map.
+        AgentSpec merger = run.compiled.merger();
+        if (merger != null && nodeId.equals(merger.nodeId)) return merger;
         // Plan-born workers exist on the run, not the canvas.
         return run.syntheticWorkers.get(nodeId);
     }

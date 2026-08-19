@@ -1,4 +1,6 @@
-import type { MergeNodeData } from '../api/types.ts'
+import { useEffect, useState } from 'react'
+import { api } from '../api/client.ts'
+import type { FacadeProfile, MergeNodeData } from '../api/types.ts'
 import { EFFORT_OPTIONS } from '../constants.ts'
 import { Field, FineTuning, SelectField, TextArea } from './fields.tsx'
 import { ModelField } from './ModelField.tsx'
@@ -9,6 +11,12 @@ interface Props {
 }
 
 export function MergeInspector({ data, set }: Props) {
+  const [facades, setFacades] = useState<FacadeProfile[]>([])
+
+  useEffect(() => {
+    api.listFacadeProfiles().then(setFacades).catch(() => setFacades([]))
+  }, [])
+
   return (
     <>
       <Field label="Name" value={data.name} onChange={(v) => set({ name: v })} />
@@ -38,6 +46,25 @@ export function MergeInspector({ data, set }: Props) {
           value={data.maxTokens}
           onChange={(v) => set({ maxTokens: Number(v) })}
         />
+        {/* The merge speaks last, so it is the step that sends the report or files the ticket —
+            which is exactly why it reaches MCP like a worker rather than not at all. */}
+        <SelectField
+          label={
+            <span title="The merge step reaches the MCP servers wired to this node the same way a worker does: remote ones through the facade this backend enforces, local ones launched by its own process. Leave it empty and nothing is filtered. A profile narrows it to an allowlist, read-only, or simulated writes — and a profile that withholds anything withholds the local servers entirely, because a facade cannot enforce a rule on a server it does not proxy.">
+              Facade profile ⓘ
+            </span>
+          }
+          value={data.facadeProfileId ?? ''}
+          onChange={(v) => set({ facadeProfileId: v })}
+        >
+          <option value="">— none: everything wired to this node —</option>
+          {facades.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+              {p.readOnly ? ' (read-only)' : (p.dryRun ?? true) ? ' (dry-run writes)' : ''}
+            </option>
+          ))}
+        </SelectField>
       </FineTuning>
     </>
   )

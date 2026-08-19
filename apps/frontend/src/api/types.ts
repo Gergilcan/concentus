@@ -489,6 +489,12 @@ export type MergeNodeData = {
   systemPrompt: string
   maxTokens: number
   effort: string
+  /**
+   * Facade profile the merge step runs behind, exactly as a worker does. Absent means the servers
+   * wired to this node with nothing filtered. It speaks last, so it is the step that sends the
+   * report — which is why it reaches MCP at all.
+   */
+  facadeProfileId?: string
 }
 
 /**
