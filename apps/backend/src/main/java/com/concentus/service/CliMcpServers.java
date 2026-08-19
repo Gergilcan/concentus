@@ -48,6 +48,30 @@ public class CliMcpServers {
      *                     an OAuth server is configured the old way rather than pointed at an
      *                     endpoint that would refuse every call
      */
+    /**
+     * A local server the CLI launches itself, in the {@code command/args/env} shape the server's
+     * README says to put in mcp.json.
+     *
+     * <p>Static and shared because an independent worker needs exactly this too: a stdio server is
+     * a process on this machine, so there is nothing for the backend to proxy — the worker's own
+     * CLI starts it, in the worker's own workspace. Writing that entry twice would be two chances
+     * to disagree about how a local server is described.
+     */
+    public static ObjectNode stdioNode(com.fasterxml.jackson.databind.ObjectMapper mapper,
+                                       McpServerSpec m) {
+        var server = mapper.createObjectNode();
+        server.put("type", "stdio");
+        server.put("command", m.command);
+        var args = server.putArray("args");
+        for (String arg : m.args) args.add(arg);
+        Map<String, String> env = m.resolveEnv();
+        if (!env.isEmpty()) {
+            var envNode = server.putObject("env");
+            env.forEach(envNode::put);
+        }
+        return server;
+    }
+
     public ObjectNode node(McpServerSpec m, String runId, String runToolToken) {
         var server = mapper.createObjectNode();
 
@@ -56,16 +80,7 @@ public class CliMcpServers {
         // form credential:<id> were resolved just now, so tokens live encrypted in the credential
         // store rather than in the flow.
         if (m.isStdio()) {
-            server.put("type", "stdio");
-            server.put("command", m.command);
-            var args = server.putArray("args");
-            for (String arg : m.args) args.add(arg);
-            Map<String, String> env = m.resolveEnv();
-            if (!env.isEmpty()) {
-                var envNode = server.putObject("env");
-                env.forEach(envNode::put);
-            }
-            return server;
+            return stdioNode(mapper, m);
         }
 
         server.put("type", "http");

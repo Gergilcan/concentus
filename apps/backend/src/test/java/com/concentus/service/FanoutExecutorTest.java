@@ -454,6 +454,83 @@ class FanoutExecutorTest {
         assertThat(claudeMd).doesNotContain("DRY RUN");
     }
 
+    // A local server is a process on this machine: there is nothing for the backend to proxy, so
+    // the facade listed nothing and the worker reported the account as unreachable. The whole
+    // Google stack of a real flow — ads, search console, analytics — is stdio.
+    /** A local MCP server as a flow draws one: a command this machine runs, and no URL. */
+    private static AgentSpec.McpServerSpec stdioServer(String name, String command, String pkg) {
+        AgentSpec.McpServerSpec m = new AgentSpec.McpServerSpec();
+        m.name = name;
+        m.command = command;
+        m.args = List.of("-y", pkg);
+        return m;
+    }
+
+    private void withProfile(com.concentus.model.FacadeProfile profile) {
+        org.mockito.Mockito.when(profiles.get(profile.id()))
+                .thenReturn(java.util.Optional.of(profile));
+    }
+
+    @Test
+    void aWorkerLaunchesItsLocalMcpServersItselfBecauseNothingCanProxyThem() throws Exception {
+        AgentSpec a = spec("n1", "Worker A", "worker-a", "");
+        a.mcpServers.add(stdioServer("google-ads", "npx", "mcp-google-ads"));
+        AgentRun run = run(a);
+
+        executor((args, dir) -> new FakeProcess(okStream("hola", "Informe"), 0), 900, 0)
+                .runTurn(run, run.compiled, "go");
+
+        String mcpConfig = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "workers", "worker-a", "mcp-config.json")));
+        assertThat(mcpConfig).contains("google-ads").contains("stdio").contains("mcp-google-ads");
+        // No facade entry: an endpoint that can only answer "no tools" is a server the worker
+        // spends a turn discovering is empty.
+        assertThat(mcpConfig).doesNotContain("concentus-facade");
+        assertThat(run.bufferedEvents()).anySatisfy(e ->
+                assertThat(e.text()).contains("launches 1 local MCP server"));
+    }
+
+    @Test
+    void remoteServersStillGoThroughTheFacadeAlongsideTheLocalOnes() throws Exception {
+        AgentSpec a = spec("n1", "Worker A", "worker-a", "");
+        a.mcpServers.add(stdioServer("google-ads", "npx", "mcp-google-ads"));
+        AgentSpec.McpServerSpec remote = new AgentSpec.McpServerSpec();
+        remote.name = "resend";
+        remote.url = "https://mcp.resend.com/mcp";
+        a.mcpServers.add(remote);
+        AgentRun run = run(a);
+
+        executor((args, dir) -> new FakeProcess(okStream("hola", "Informe"), 0), 900, 0)
+                .runTurn(run, run.compiled, "go");
+
+        String mcpConfig = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "workers", "worker-a", "mcp-config.json")));
+        assertThat(mcpConfig).contains("concentus-facade").contains("google-ads");
+        assertThat(mcpConfig).doesNotContain("mcp.resend.com");
+    }
+
+    // The gate has to mean something: a profile the backend cannot enforce on a server it never
+    // sees would be a label, and the difference would only show up in what the worker changed.
+    @Test
+    void aRestrictingProfileWithholdsTheLocalServersAndSaysWhy() throws Exception {
+        AgentSpec a = spec("n1", "Worker A", "worker-a", "");
+        a.facadeProfileId = "fprof_1";
+        a.mcpServers.add(stdioServer("google-ads", "npx", "mcp-google-ads"));
+        AgentRun run = run(a);
+
+        withProfile(new com.concentus.model.FacadeProfile("fprof_1", "solo lectura", "",
+                List.of(), true, Boolean.FALSE));
+        executor((args, dir) -> new FakeProcess(okStream("hola", "Informe"), 0), 900, 0)
+                .runTurn(run, run.compiled, "go");
+
+        String mcpConfig = Files.readString(
+                dataDir.resolve(Path.of("local", "run-1", "workers", "worker-a", "mcp-config.json")));
+        assertThat(mcpConfig).doesNotContain("mcp-google-ads");
+        assertThat(run.bufferedEvents()).anySatisfy(e ->
+                assertThat(e.text()).contains("NOT given to worker")
+                        .contains("does not proxy"));
+    }
+
     @Test
     void aWorkerWithNoMcpWiredGetsNoFacadeAtAll() throws Exception {
         AgentSpec a = spec("n1", "Worker A", "worker-a", "");

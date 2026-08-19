@@ -644,16 +644,64 @@ public class FanoutExecutor {
 
         materialiseSkills(run, spec, workdir);
 
-        // With a facade: exactly one server — this backend, scoped to this worker, authenticated
-        // by a token only this worker's process is given. Without one: empty and strict, which
-        // states "no servers" in both places rather than leaving one to be inferred.
-        if (facade) {
-            writeSingleServerMcpConfig(workdir, "concentus-facade",
-                    runEndpoint(run, "workers/" + spec.nodeId + "/tools"),
+        writeWorkerMcpConfig(run, spec, workdir, facade);
+    }
+
+    /**
+     * The worker's own {@code mcp-config.json}: remote servers through the facade, local ones
+     * launched by the worker itself.
+     *
+     * <p>A stdio server is a process on this machine — there is nothing for the backend to sit in
+     * front of, so it goes into the worker's config the same way the shared session writes it. It
+     * used to be skipped in silence at both ends: the facade only ever listed HTTP servers, so a
+     * worker wired to three local servers got an empty tool list and an agent that reported the
+     * account as unreachable. Nothing said which of the two it was.
+     *
+     * <p>Which is also why a profile that withholds anything withholds the local servers entirely:
+     * the facade cannot enforce an allowlist, a read-only rule or a dry run on a server it does
+     * not proxy. Handing them over anyway would make the profile a label rather than a gate, and
+     * the difference would only show up in whatever the worker changed.
+     */
+    private void writeWorkerMcpConfig(AgentRun run, AgentSpec spec, Path workdir, boolean facade)
+            throws IOException {
+        var root = mapper.createObjectNode();
+        var servers = root.putObject("mcpServers");
+
+        List<AgentSpec.McpServerSpec> stdio = spec.mcpServers.stream()
+                .filter(AgentSpec.McpServerSpec::isStdio).toList();
+        boolean remote = spec.mcpServers.stream().anyMatch(m -> !m.isStdio());
+
+        // Only when there is something remote to proxy: an endpoint that can only ever answer
+        // "no tools" is a server the worker spends a turn discovering is empty.
+        if (facade && remote) {
+            var server = servers.putObject("concentus-facade");
+            server.put("type", "http");
+            server.put("url", runEndpoint(run, "workers/" + spec.nodeId + "/tools"));
+            server.putObject("headers").put(com.concentus.web.RunToolsController.TOKEN_HEADER,
                     run.workerToolTokens.get(spec.nodeId));
-        } else {
-            writeEmptyMcpConfig(workdir);
         }
+
+        if (!stdio.isEmpty()) {
+            boolean restricted = restricts(run.workerFacadeProfiles.get(spec.nodeId));
+            for (AgentSpec.McpServerSpec m : stdio) {
+                if (restricted) continue;
+                // Keyed by the node's own name, exactly as the shared session keys it, so a tool
+                // is called the same thing whichever way the flow runs.
+                servers.set(m.name, CliMcpServers.stdioNode(mapper, m));
+            }
+            run.emit(RunEvent.of("system", restricted
+                    ? stdio.size() + " local MCP server(s) are NOT given to worker '" + spec.name
+                            + "': a facade profile cannot be enforced on a server this backend does "
+                            + "not proxy. Clear the profile to let it launch them, or move that "
+                            + "work to a remote server."
+                    : "Worker '" + spec.name + "' launches " + stdio.size() + " local MCP "
+                            + "server(s) itself: " + stdio.stream().map(m -> m.name)
+                                    .collect(Collectors.joining(", ")) + ".",
+                    spec.name, spec.nodeId));
+        }
+
+        Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
+                mapper.writeValueAsString(root));
     }
 
     /**
