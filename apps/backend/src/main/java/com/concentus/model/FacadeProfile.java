@@ -21,10 +21,34 @@ import java.util.List;
  *                    writes stay behind the guard until someone deliberately clears it.
  */
 public record FacadeProfile(String id, String name, String description,
-                            List<String> tools, boolean readOnly, Boolean dryRun) {
+                            List<String> tools, boolean readOnly, Boolean dryRun,
+                            List<String> readAlso) {
+
+    /** The shape before a profile could name its own reads, kept so existing callers still build. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public FacadeProfile(String id, String name, String description,
+                         List<String> tools, boolean readOnly, Boolean dryRun) {
+        this(id, name, description, tools, readOnly, dryRun, List.of());
+    }
 
     public List<String> toolsOrEmpty() {
         return tools == null ? List.of() : tools;
+    }
+
+    /**
+     * Tool names this profile declares to be reads, whatever their name suggests.
+     *
+     * <p>Read/write is guessed from the verb a tool's name starts with, and the guess errs toward
+     * "write" because the other direction executes something. That is right by default and wrong
+     * for a whole category of real tools: {@code run_gaql_query} on Google Ads and
+     * {@code run_report} on Analytics are the two most useful reads either server has, and a
+     * read-only profile hides both. Somebody who knows their server can say so here instead of
+     * abandoning read-only entirely, which is what the alternative amounts to.
+     *
+     * <p>Matched the way every other filter in this class matches: case-insensitive substrings.
+     */
+    public List<String> readAlsoOrEmpty() {
+        return readAlso == null ? List.of() : readAlso;
     }
 
     /** Absent means on. The one setting whose safe direction is the default one. */

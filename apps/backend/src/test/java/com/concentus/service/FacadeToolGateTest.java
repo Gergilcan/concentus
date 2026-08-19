@@ -131,4 +131,44 @@ class FacadeToolGateTest {
         assertThat(FacadeToolGate.allowlisted("list_invoices", server, profile)).isFalse();
         assertThat(FacadeToolGate.allowlisted("create_contact", server, profile)).isFalse();
     }
+// ------------------------------------------------- reads the profile declares
+
+    private static FacadeProfile readingAlso(String... declared) {
+        return new FacadeProfile("p1", "lectura", "", List.of(), true, Boolean.FALSE,
+                List.of(declared));
+    }
+
+    // The guess errs toward "write", which is right by default and wrong for the two most useful
+    // reads Google Ads and Analytics have: a read-only worker was left with neither.
+    @Test
+    void aReadTheProfileDeclaresSurvivesReadOnly() {
+        List<ChatTypes.ToolSpec> visible = FacadeToolGate.visible(
+                tools("run_gaql_query", "run_report", "create_campaign"),
+                server(), readingAlso("run_gaql_query", "run_report"));
+
+        assertThat(names(visible)).containsExactly("run_gaql_query", "run_report");
+    }
+
+    @Test
+    void aToolAWorkerCanSeeUnderReadOnlyIsAToolItCanCall() {
+        FacadeProfile profile = readingAlso("run_gaql_query");
+
+        assertThat(FacadeToolGate.decide("run_gaql_query", profile))
+                .isEqualTo(FacadeToolGate.CallDecision.EXECUTE);
+        assertThat(FacadeToolGate.decide("create_campaign", profile))
+                .isEqualTo(FacadeToolGate.CallDecision.BLOCK);
+    }
+
+    @Test
+    void declaringNothingLeavesTheOldGuessExactlyAsItWas() {
+        assertThat(names(FacadeToolGate.visible(tools("list_campaigns", "run_gaql_query"),
+                server(), profile(List.of(), true, false)))).containsExactly("list_campaigns");
+    }
+
+    @Test
+    void aDeclaredReadIsMatchedTheWayEveryOtherFilterMatches() {
+        // Case-insensitive substring, like the node filter and the allowlist above it.
+        assertThat(FacadeToolGate.decide("ads_RUN_GAQL_query", readingAlso("run_gaql")))
+                .isEqualTo(FacadeToolGate.CallDecision.EXECUTE);
+    }
 }

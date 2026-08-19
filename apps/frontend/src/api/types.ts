@@ -797,6 +797,16 @@ export type FacadeProfile = {
   readOnly?: boolean
   /** Write-shaped tools answer "DRY RUN" instead of executing. Absent means ON (fail closed). */
   dryRun?: boolean
+  /**
+   * Tools this profile declares to be reads, whatever their name suggests.
+   *
+   * Read or write is guessed from the verb a name starts with, erring toward "write" because the
+   * other direction executes something. That leaves real reads outside — `run_gaql_query` and
+   * `run_report` are the most useful reads Google Ads and Analytics have, and read-only hides
+   * both. Naming them here beats the alternative people actually take, which is to abandon
+   * read-only for that worker.
+   */
+  readAlso?: string[]
 }
 
 export interface McpServerInfo {

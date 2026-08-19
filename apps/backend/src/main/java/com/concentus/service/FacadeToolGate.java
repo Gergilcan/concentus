@@ -59,7 +59,27 @@ public final class FacadeToolGate {
         List<ChatTypes.ToolSpec> afterProfile =
                 LocalModelAgentExecutor.selectTools(afterNode, profile.toolsOrEmpty());
         if (!profile.readOnly()) return afterProfile;
-        return afterProfile.stream().filter(t -> isReadTool(t.name())).toList();
+        return afterProfile.stream().filter(t -> isRead(t.name(), profile)).toList();
+    }
+
+    /**
+     * Whether this profile treats the tool as a read: the name says so, or the profile does.
+     *
+     * <p>The name check errs toward "write" on purpose, and that is right until it meets a server
+     * whose reads are called {@code run_gaql_query} or {@code run_report}. Declaring those beats
+     * the alternative people actually take, which is to give up on read-only for that worker.
+     */
+    static boolean isRead(String name, FacadeProfile profile) {
+        if (isReadTool(name)) return true;
+        if (name == null) return false;
+        String n = name.toLowerCase(Locale.ROOT);
+        for (String declared : profile.readAlsoOrEmpty()) {
+            if (declared != null && !declared.isBlank()
+                    && n.contains(declared.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -79,7 +99,9 @@ public final class FacadeToolGate {
     public enum CallDecision { EXECUTE, DRY_RUN, BLOCK }
 
     public static CallDecision decide(String toolName, FacadeProfile profile) {
-        if (isReadTool(toolName)) return CallDecision.EXECUTE;
+        // The same question the listing asked, so a tool a worker can SEE under read-only is a
+        // tool it can call. Advertising one and blocking it is a bug report waiting to happen.
+        if (isRead(toolName, profile)) return CallDecision.EXECUTE;
         if (profile.readOnly()) return CallDecision.BLOCK;
         return profile.dryRunEnabled() ? CallDecision.DRY_RUN : CallDecision.EXECUTE;
     }

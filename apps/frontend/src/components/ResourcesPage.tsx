@@ -233,6 +233,25 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
                 ),
               },
               {
+                key: 'readAlso',
+                label: 'Also reads',
+                render: (value, onChange) => (
+                  <label className={styles.field}>
+                    <span title="Read or write is guessed from the verb a tool's name starts with — get, list, search, find, read, fetch, query, preview, download, describe, show, count, check, status, history, ping. Anything else counts as a write, because guessing the other way would execute something. That leaves real reads outside: run_gaql_query on Google Ads and run_report on Analytics are the most useful reads either server has, and read-only hides both. Name them here and they survive. Case-insensitive substrings, one per line.">
+                      Also treat as reads, whatever the name suggests ⓘ
+                    </span>
+                    <textarea
+                      rows={3}
+                      placeholder={'run_gaql_query\nrun_report'}
+                      value={Array.isArray(value) ? (value as string[]).join('\n') : ''}
+                      onChange={(e) =>
+                        onChange(e.target.value.split('\n').map((s) => s.trim()).filter(Boolean))
+                      }
+                    />
+                  </label>
+                ),
+              },
+              {
                 key: 'dryRun',
                 label: 'Dry run',
                 render: (value, onChange) => (
@@ -254,7 +273,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
             ]}
             labelOf={(p) => p.name}
             idOf={(p) => p.id}
-            empty={() => ({ name: '', description: '', tools: [], readOnly: false, dryRun: true })}
+            empty={() => ({ name: '', description: '', tools: [], readAlso: [], readOnly: false, dryRun: true })}
             load={api.listFacadeProfiles}
             save={api.saveFacadeProfile}
             remove={api.deleteFacadeProfile}
