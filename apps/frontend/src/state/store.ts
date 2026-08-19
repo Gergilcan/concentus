@@ -176,6 +176,12 @@ function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
         query: 'SELECT * FROM my_table LIMIT 20',
         maxRows: 50,
       }
+    case 'condition':
+      // "Is there an answer at all" by default: the check people reach for first, and the one a
+      // gate left unconfigured should perform rather than waving everything through.
+      return { kind: 'condition', label: 'if', test: 'not_empty', value: '', caseSensitive: false }
+    case 'foreach':
+      return { kind: 'foreach', label: 'for each', source: 'lines', limit: 25 }
     case 'merge':
       return {
         kind: 'merge',

@@ -49,6 +49,12 @@ export function Palette() {
       <button className={cx(styles.addBtn, styles.addKnowledge)} title="Injects the passages most relevant to the run's prompt from a document base (Resources → Knowledge)." {...drag('knowledge')} onClick={() => addNode('knowledge')}>
         <span>📚</span> Knowledge base
       </button>
+      <button className={cx(styles.addBtn, styles.addCondition)} title="Draw it between an agent and what it hands off to: the branch runs only when the agent's answer passes the test. The same rule written into a prompt is a request; measured here it is a rule, and the run log says which way it went." {...drag('condition')} onClick={() => addNode('condition')}>
+        <span>⑂</span> Condition
+      </button>
+      <button className={cx(styles.addBtn, styles.addForEach)} title="Runs the branch behind it once per item of the agent's answer — one item per line, or a JSON array. Put a condition after it to filter the items." {...drag('foreach')} onClick={() => addNode('foreach')}>
+        <span>⟳</span> For each
+      </button>
 
       <p
         className={styles.hint}

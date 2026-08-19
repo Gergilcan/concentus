@@ -18,6 +18,8 @@ import { KnowledgeNode } from './nodes/KnowledgeNode.tsx'
 import { FlowRunNode } from './nodes/FlowRunNode.tsx'
 import { SqlNode } from './nodes/SqlNode.tsx'
 import { VerifierNode } from './nodes/VerifierNode.tsx'
+import { ConditionNode } from './nodes/ConditionNode.tsx'
+import { ForEachNode } from './nodes/ForEachNode.tsx'
 import { WorkerNode } from './nodes/WorkerNode.tsx'
 
 export type AgentRFNode = Node<AgentNodeData, 'agent'>
@@ -29,6 +31,8 @@ export type ApiRFNode = Node<import('../api/types.ts').ApiNodeData, 'api'>
 export type FlowRunRFNode = Node<import('../api/types.ts').FlowRunNodeData, 'flow'>
 export type MergeRFNode = Node<MergeNodeData, 'merge'>
 export type VerifierRFNode = Node<VerifierNodeData, 'verifier'>
+export type ConditionRFNode = Node<import('../api/types.ts').ConditionNodeData, 'condition'>
+export type ForEachRFNode = Node<import('../api/types.ts').ForEachNodeData, 'foreach'>
 
 export const nodeTypes = {
   agent: AgentNode,
@@ -41,6 +45,8 @@ export const nodeTypes = {
   flow: FlowRunNode,
   merge: MergeNode,
   verifier: VerifierNode,
+  condition: ConditionNode,
+  foreach: ForEachNode,
   // Not a palette kind: worker boxes are synthesized from the run report (plan-born workers).
   worker: WorkerNode,
 }

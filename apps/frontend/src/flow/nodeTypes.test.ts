@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { AgentNode } from './nodes/AgentNode.tsx'
 import { ApiNode } from './nodes/ApiNode.tsx'
+import { ConditionNode } from './nodes/ConditionNode.tsx'
+import { ForEachNode } from './nodes/ForEachNode.tsx'
 import { InputNode } from './nodes/InputNode.tsx'
 import { McpNode } from './nodes/McpNode.tsx'
 import { KnowledgeNode } from './nodes/KnowledgeNode.tsx'
@@ -18,8 +20,8 @@ import { nodeTypes } from './nodeTypes.ts'
 // 'worker' is deliberately in the registry but NOT in NodeKind: its boxes are synthesized
 // from the run report and must never be addable from the palette or saved with a flow.
 describe('nodeTypes', () => {
-  it('has exactly the eleven expected node-kind keys, no more, no fewer', () => {
-    expect(Object.keys(nodeTypes).sort()).toEqual(['agent', 'api', 'flow', 'input', 'knowledge', 'mcp', 'merge', 'repo', 'sql', 'verifier', 'worker'])
+  it('has exactly the thirteen expected node-kind keys, no more, no fewer', () => {
+    expect(Object.keys(nodeTypes).sort()).toEqual(['agent', 'api', 'condition', 'flow', 'foreach', 'input', 'knowledge', 'mcp', 'merge', 'repo', 'sql', 'verifier', 'worker'])
   })
 
   it('maps each key to the matching imported component', () => {
@@ -33,6 +35,8 @@ describe('nodeTypes', () => {
     expect(nodeTypes.flow).toBe(FlowRunNode)
     expect(nodeTypes.merge).toBe(MergeNode)
     expect(nodeTypes.verifier).toBe(VerifierNode)
+    expect(nodeTypes.condition).toBe(ConditionNode)
+    expect(nodeTypes.foreach).toBe(ForEachNode)
     expect(nodeTypes.worker).toBe(WorkerNode)
   })
 })

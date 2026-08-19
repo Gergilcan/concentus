@@ -4,6 +4,7 @@ import { cx } from '../utils/cx.ts'
 import { useFlowStore } from '../state/store.ts'
 import { AgentInspector } from './AgentInspector.tsx'
 import { ApiInspector } from './ApiInspector.tsx'
+import { ConditionInspector, ForEachInspector } from './GateInspectors.tsx'
 import { FlowVersions } from './FlowVersions.tsx'
 import { InputInspector } from './InputInspector.tsx'
 import { InputView, OutputView } from './NodeExecView.tsx'
@@ -28,6 +29,8 @@ function title(data: AppNodeData): string {
   if (data.kind === 'flow') return 'Run another flow'
   if (data.kind === 'merge') return 'Merge'
   if (data.kind === 'verifier') return 'Verifier'
+  if (data.kind === 'condition') return 'Condition'
+  if (data.kind === 'foreach') return 'For each'
   return 'Repository'
 }
 
@@ -195,6 +198,8 @@ export function Inspector() {
       {shownTab === 'properties' && data.kind === 'knowledge' && <KnowledgeInspector data={data} set={set} />}
       {shownTab === 'properties' && data.kind === 'api' && <ApiInspector data={data} set={set} />}
       {shownTab === 'properties' && data.kind === 'flow' && <FlowRunInspector data={data} set={set} />}
+      {shownTab === 'properties' && data.kind === 'condition' && <ConditionInspector data={data} set={set} />}
+      {shownTab === 'properties' && data.kind === 'foreach' && <ForEachInspector data={data} set={set} />}
 
       {shownTab === 'properties' && data.kind === 'merge' && <MergeInspector data={data} set={set} />}
 

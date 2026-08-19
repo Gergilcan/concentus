@@ -202,6 +202,8 @@ export type NodeKind =
   | 'input'
   | 'merge'
   | 'verifier'
+  | 'condition'
+  | 'foreach'
 
 export type InputNodeData = {
   kind: 'input'
@@ -485,6 +487,36 @@ export type VerifierNodeData = {
   effort: string
 }
 
+/**
+ * A gate on the way from an agent to what it hands off to: the branch runs only when the agent's
+ * output passes the test.
+ *
+ * <p>The same rule written into a prompt is a request — an agent having a bad day sends the empty
+ * report anyway. Measured afterwards, it is a rule, and it is visible on the canvas instead of
+ * buried in the third paragraph of an instruction.
+ */
+export type ConditionNodeData = {
+  kind: 'condition'
+  label: string
+  test: 'not_empty' | 'contains' | 'not_contains' | 'equals' | 'matches'
+  /** What to look for. Ignored by `not_empty`; a regular expression for `matches`. */
+  value: string
+  caseSensitive: boolean
+}
+
+/**
+ * A gate that runs the branch behind it once per item of the agent's answer, instead of once with
+ * the whole answer.
+ */
+export type ForEachNodeData = {
+  kind: 'foreach'
+  label: string
+  /** How to read the list: one item per line, or a JSON array anywhere in the output. */
+  source: 'lines' | 'json'
+  /** Ceiling on runs started at once — a list nobody expected to be long starts what it says. */
+  limit: number
+}
+
 export type AppNodeData =
   | AgentNodeData
   | McpNodeData
@@ -496,6 +528,8 @@ export type AppNodeData =
   | InputNodeData
   | MergeNodeData
   | VerifierNodeData
+  | ConditionNodeData
+  | ForEachNodeData
 
 export interface SqlPreview {
   columns: string[]

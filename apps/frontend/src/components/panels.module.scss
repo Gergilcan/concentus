@@ -606,3 +606,8 @@
   border-color: t.$accent;
   color: t.$text;
 }
+
+.addCondition span,
+.addForEach span {
+  color: t.$gate;
+}

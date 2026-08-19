@@ -29,6 +29,8 @@
   --knowledge: #b98cff;
   --merge: #ffa94d;
   --verifier: #94d82d;
+  /* Decision and iteration gates: one colour for both, because they are the same idea — the canvas deciding, rather than an agent being asked to. */
+  --gate: #f783ac;
   --subflow: #4dabf7;
 
   --danger: #ff6b6b;
@@ -84,6 +86,7 @@
   --knowledge: #8250df;
   --merge: #b35900;
   --verifier: #4d7c0f;
+  --gate: #a61e4d;
   --subflow: #1c6fb8;
 
   --danger: #d1242f;
@@ -117,6 +120,7 @@
   --knowledge: #d2a8ff;
   --merge: #ffc078;
   --verifier: #b3e355;
+  --gate: #ffa8c5;
   --subflow: #79c0ff;
 
   --danger: #ff8383;

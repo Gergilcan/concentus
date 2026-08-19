@@ -166,3 +166,9 @@
   border-color: t.$danger;
   text-decoration: line-through;
 }
+
+/* Decision and iteration: the canvas deciding, rather than an agent being asked to decide. */
+.condition,
+.foreach {
+  border-left: 3px solid t.$gate;
+}

@@ -136,6 +136,15 @@ public class SubflowService {
      * to hand a result to.
      */
     public void handOffAfter(AgentRun run) {
+        handOffAfter(run, null);
+    }
+
+    /**
+     * As above, with the run's own graph so the condition and for-each nodes drawn on the way to
+     * each hand-off can be applied. A null graph means no gates — every hand-off fires once, which
+     * is what a flow drawn before gates existed does.
+     */
+    public void handOffAfter(AgentRun run, com.concentus.model.FlowGraph graph) {
         if (run.compiled == null || run.compiled.afterFlows().isEmpty()) return;
         if (run.handOffsFired) return;
         if (!"COMPLETED".equals(run.status)) {
@@ -147,15 +156,32 @@ public class SubflowService {
         run.handOffsFired = true;
         String output = run.finalOutput();
         for (AgentSpec.SubflowSpec drawn : run.compiled.afterFlows()) {
-            AgentSpec.SubflowSpec handOff = new AgentSpec.SubflowSpec();
-            handOff.nodeId = drawn.nodeId;
-            handOff.label = drawn.label;
-            handOff.flowId = drawn.flowId;
-            handOff.waitForResult = false;
-            Result result = run(run, handOff, output == null ? "" : output);
-            run.emit(com.concentus.model.RunEvent.of("system", result.started()
-                    ? "Hand-off '" + drawn.label + "' started as run " + result.runId() + "."
-                    : "Hand-off '" + drawn.label + "' was not started: " + result.error()));
+            FlowGates.Decision decision = graph == null
+                    ? new FlowGates.Decision(List.of(output == null ? "" : output), null)
+                    : FlowGates.decide(graph, drawn.nodeId, output);
+            // Said in the log whichever way it went. A branch that silently did not fire is
+            // indistinguishable from a branch nobody drew, and the flow looks like it worked.
+            if (decision.reason() != null) {
+                run.emit(com.concentus.model.RunEvent.of("system",
+                        "Hand-off '" + drawn.label + "': " + decision.reason()));
+            }
+            if (!decision.fires()) continue;
+
+            for (String prompt : decision.prompts()) {
+                AgentSpec.SubflowSpec handOff = new AgentSpec.SubflowSpec();
+                handOff.nodeId = drawn.nodeId;
+                handOff.label = drawn.label;
+                handOff.flowId = drawn.flowId;
+                handOff.waitForResult = false;
+                Result result = run(run, handOff, prompt);
+                run.emit(com.concentus.model.RunEvent.of("system", result.started()
+                        ? "Hand-off '" + drawn.label + "' started as run " + result.runId() + "."
+                        : "Hand-off '" + drawn.label + "' was not started: " + result.error()));
+                // One refusal ends the branch: the reason a hand-off cannot start (depth, a
+                // missing flow, a budget) is the same for the next item, so continuing would only
+                // write the same line twenty-five times.
+                if (!result.started()) break;
+            }
         }
     }
 

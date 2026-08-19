@@ -508,7 +508,9 @@ public class RunService {
             if ("ERROR".equals(run.status)) {
                 notifier.runFailed(run);
             }
-            subflows.handOffAfter(run);
+            // The graph, not just the compiled specs: the condition and for-each nodes on the way
+            // to a hand-off are drawn, not compiled, and this is where they are read.
+            subflows.handOffAfter(run, flowOf(run).orElse(null));
             // The turn ended with the run stopped, waiting for a human. Once per run: a second
             // command sent while waiting would end the same way, and a second Slack message for
             // the same question reads as two questions.
