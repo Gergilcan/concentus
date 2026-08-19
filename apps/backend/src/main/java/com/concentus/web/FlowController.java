@@ -92,6 +92,26 @@ public class FlowController {
     }
 
     /**
+     * Saves a copy of this flow and returns it, so trying a different shape of the same job does
+     * not start with re-typing prompts that took an afternoon to write.
+     *
+     * <p>The copy arrives PAUSED. A copy of a flow that fires at 07:00 would fire at 07:00 too,
+     * from tomorrow, doing whatever the original does — twice, to the same account, mailbox or
+     * repository. Nobody duplicating a flow to try something meant that. Its trigger is kept as
+     * drawn, so enabling it is one click once the copy says what it should.
+     */
+    @PostMapping("/{id}/duplicate")
+    public FlowGraph duplicate(@PathVariable String id) {
+        FlowGraph source = requireFlow(id);
+        java.util.Set<String> names = store.list().stream()
+                .map(FlowGraph::name)
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+        FlowGraph saved = store.save(com.concentus.service.FlowDuplicator.copyOf(source, names));
+        versions.snapshot(saved, currentAuthor());
+        return saved;
+    }
+
+    /**
      * Replays the golden reference against the flow that was just saved — but only for a flow
      * that asked for it, and only when the save actually changed the graph.
      *

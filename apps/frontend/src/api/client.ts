@@ -146,6 +146,12 @@ export const api = {
   getFlow: (id: string) => req<BackendFlow>(`/flows/${id}`),
   saveFlow: (flow: BackendFlow) =>
     req<BackendFlow>('/flows', { method: 'POST', body: JSON.stringify(flow) }),
+  /**
+   * Saves a copy of a flow and returns it. Done on the backend, not by re-posting the graph with
+   * its id removed: a copy has to arrive paused and without the original's webhook secret, and
+   * both of those are rules about what a flow may do, not about what a form submits.
+   */
+  duplicateFlow: (id: string) => req<BackendFlow>(`/flows/${id}/duplicate`, { method: 'POST' }),
   deleteFlow: (id: string) => req<void>(`/flows/${id}`, { method: 'DELETE' }),
   runSavedFlow: (id: string) => req<RunSummary>(`/flows/${id}/run`, { method: 'POST' }),
   /**

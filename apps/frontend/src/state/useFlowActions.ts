@@ -53,10 +53,31 @@ export function useFlowActions({
     }
   }
 
+  /**
+   * A copy of a saved flow, made by the backend.
+   *
+   * <p>It used to be this call re-posting the graph with its id removed, which copied everything —
+   * including the parts that make a flow act on the world. A copy of a flow that fires at 07:00
+   * inherited the schedule AND stayed enabled, so from the next morning two flows did the same job
+   * to the same account; a copy of a webhook flow carried the provider's signing secret, so two
+   * endpoints claimed one signature. Those are rules about what a flow may do, so they live where
+   * they can be tested rather than in a click handler.
+   */
   const duplicateFlow = async (flow: BackendFlow) => {
+    if (!flow.id) {
+      pushError('Save this flow before duplicating it.')
+      return
+    }
     try {
-      await api.saveFlow({ ...flow, id: undefined, name: `${flow.name} (copy)` })
+      const copy = await api.duplicateFlow(flow.id)
       refreshFlows()
+      // Said out loud, because it is the one difference between the copy and what was clicked:
+      // a paused copy that nobody notices is paused reads as a flow that silently stopped working.
+      pushError(
+        copy.enabled === false
+          ? `"${copy.name}" created, paused. Its trigger is kept — press ▶ on the card when it says what you want.`
+          : `"${copy.name}" created.`,
+      )
     } catch (e) {
       pushError(errMessage(e))
     }
