@@ -139,16 +139,13 @@ public class RunService {
     }
 
     /**
-     * Refuses a start once the flow's monthly spend has reached its ceiling.
-     *
-     * <p>Checked at start, not mid-run: a run in flight finishes — cutting an agent off mid-task
-     * leaves half-done work that costs more to untangle than the tokens saved. The month is the
-     * calendar month in the machine's own timezone, which is the month the user's invoice thinks
-     * in. Ad-hoc runs of an unsaved canvas have no flow id and no history to sum, so no ceiling.
-     */
-    /**
      * Refuses a run whose flow has spent its monthly ceiling — but only where a run is actually
      * billed.
+     *
+     * <p>Checked at start, not mid-run: a run in flight finishes, because cutting an agent off
+     * mid-task leaves half-done work that costs more to untangle than the tokens saved. The month
+     * is the calendar month in the machine's own timezone, which is the month the invoice thinks
+     * in. An ad-hoc run of an unsaved canvas has no flow id and no history to sum, so no ceiling.
      *
      * <p>A ceiling exists to stop a flow running up an API bill nobody is watching. On the
      * {@code claude} CLI there is no per-token bill at all: the work comes out of a subscription
@@ -653,6 +650,15 @@ public class RunService {
      *                   run from the point it broke means
      */
     public RunSummary rerunBlock(String runId, String nodeId, String inputOverride, boolean downstream) {
+        return rerunBlock(runId, nodeId, inputOverride, downstream, null);
+    }
+
+    /**
+     * As above, with the block run on a different model — same input, same instructions, one
+     * thing changed, which is the only shape in which "would the cheaper model do" has an answer.
+     */
+    public RunSummary rerunBlock(String runId, String nodeId, String inputOverride,
+                                 boolean downstream, String model) {
         AgentRun old = require(runId);
         FlowGraph flow = flowOf(old).orElseThrow(() ->
                 new IllegalStateException("This execution has no stored flow to run a block from."));
@@ -669,7 +675,7 @@ public class RunService {
                     + "input to run it with.");
         }
 
-        FlowGraph slice = BlockSlice.of(flow, nodeId, downstream);
+        FlowGraph slice = BlockSlice.of(flow, nodeId, downstream, model);
         RunSummary started = start(slice, input);
         AgentRun run = runs.get(started.id());
         if (run == null) return started;
@@ -683,7 +689,8 @@ public class RunService {
                 + BlockSlice.labelOf(flow, nodeId) + "' of execution " + old.id
                 + (inputOverride == null || inputOverride.isBlank()
                         ? " with the input it received."
-                        : " with an edited input.")));
+                        : " with an edited input.")
+                + (model == null || model.isBlank() ? "" : " On " + model.trim() + ".")));
         runStore.persist(run);
         return run.toSummary();
     }

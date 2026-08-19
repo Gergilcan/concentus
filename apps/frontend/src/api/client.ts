@@ -216,10 +216,10 @@ export const api = {
    * block actually received; `downstream` also carries the agents it delegates to, which is what
    * continuing a failed run from the block that broke means.
    */
-  rerunBlock: (runId: string, nodeId: string, input: string, downstream: boolean) =>
+  rerunBlock: (runId: string, nodeId: string, input: string, downstream: boolean, model?: string) =>
     req<RunSummary>(`/runs/${runId}/nodes/${nodeId}/rerun`, {
       method: 'POST',
-      body: JSON.stringify({ input, downstream }),
+      body: JSON.stringify({ input, downstream, model: model ?? '' }),
     }),
   /** Marks (or unmarks) a run as its flow's golden reference. One per flow. */
   setGoldenRun: (runId: string, golden: boolean) =>

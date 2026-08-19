@@ -7,8 +7,9 @@ const rerunBlockMock = vi.fn()
 
 vi.mock('../api/client.ts', () => ({
   api: {
-    rerunBlock: (runId: string, nodeId: string, input: string, downstream: boolean) =>
-      rerunBlockMock(runId, nodeId, input, downstream),
+    rerunBlock: (runId: string, nodeId: string, input: string, downstream: boolean, model?: string) =>
+      rerunBlockMock(runId, nodeId, input, downstream, model),
+    getModelCatalog: () => Promise.reject(new Error('no catalog in this test')),
   },
 }))
 
@@ -44,7 +45,7 @@ describe('RerunBlockDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: /run this block/i }))
 
     await waitFor(() =>
-      expect(rerunBlockMock).toHaveBeenCalledWith('run_1', 'writer', 'Write it in Catalan.', false),
+      expect(rerunBlockMock).toHaveBeenCalledWith('run_1', 'writer', 'Write it in Catalan.', false, ''),
     )
     await waitFor(() => expect(useFlowStore.getState().activeRunId).toBe('run_2'))
   })
@@ -62,6 +63,29 @@ describe('RerunBlockDialog', () => {
         'writer',
         'Write the daily briefing.',
         true,
+        '',
+      ),
+    )
+  })
+
+  // Same input, same instructions, one thing changed — which is the only shape in which "would
+  // the cheaper model do this just as well" has an answer worth reading.
+  it('can send the block to a different model', async () => {
+    rerunBlockMock.mockResolvedValueOnce({ id: 'run_4' })
+    open()
+
+    fireEvent.change(screen.getByLabelText(/another model/i), {
+      target: { value: 'claude-haiku-4-5' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /run this block/i }))
+
+    await waitFor(() =>
+      expect(rerunBlockMock).toHaveBeenCalledWith(
+        'run_1',
+        'writer',
+        'Write the daily briefing.',
+        false,
+        'claude-haiku-4-5',
       ),
     )
   })

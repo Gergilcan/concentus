@@ -44,6 +44,21 @@ public final class BlockSlice {
      *                                  starts and immediately finds no agent to be.
      */
     public static FlowGraph of(FlowGraph flow, String nodeId, boolean downstream) {
+        return of(flow, nodeId, downstream, null);
+    }
+
+    /**
+     * As above, with the block run on a different model.
+     *
+     * <p>Same input, same instructions, one thing changed — which is the only shape in which the
+     * answer to "would the cheaper model do this just as well" means anything. Asking it used to
+     * cost a whole execution AND an edit to the flow, so the honest way to ask was expensive
+     * enough that people guessed instead.
+     *
+     * <p>Only the block itself is re-modelled: the agents it delegates to keep theirs. This
+     * compares one box against itself, and moving four models at once would compare two flows.
+     */
+    public static FlowGraph of(FlowGraph flow, String nodeId, boolean downstream, String model) {
         FlowNode target = null;
         for (FlowNode n : flow.nodesOrEmpty()) {
             if (n.id().equals(nodeId)) target = n;
@@ -65,7 +80,8 @@ public final class BlockSlice {
         // The target leads its own slice. Role matters: the compiler needs exactly one coordinator,
         // and the block being re-run is the one giving orders here even when it takes them in the
         // flow it was cut from.
-        nodes.add(new FlowNode(target.id(), target.type(), "coordinator", target.data()));
+        nodes.add(new FlowNode(target.id(), target.type(), "coordinator",
+                model == null || model.isBlank() ? target.data() : withModel(target, model)));
         for (FlowNode n : flow.nodesOrEmpty()) {
             if (n.id().equals(nodeId)) continue;
             if (keptAgents.contains(n.id())) {
@@ -96,6 +112,13 @@ public final class BlockSlice {
                 Boolean.TRUE, List.of(), Boolean.FALSE, null, flow.budgetUsd(),
                 flow.approvalSlackCredentialId(), flow.approvalSlackChannel(),
                 flow.approvalTeamsWebhook(), flow.variables(), null, Boolean.FALSE);
+    }
+
+    /** The block's data with one field replaced. The flow on disk is never touched. */
+    private static Map<String, Object> withModel(FlowNode target, String model) {
+        Map<String, Object> data = new java.util.LinkedHashMap<>(target.dataOrEmpty());
+        data.put("model", model.trim());
+        return data;
     }
 
     /** What to call a block in a message, given the flow it belongs to. Falls back to its id. */

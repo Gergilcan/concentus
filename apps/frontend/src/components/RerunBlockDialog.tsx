@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '../api/client.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { useFlowStore } from '../state/store.ts'
+import { ModelField } from './ModelField.tsx'
 import { Modal } from './Modal.tsx'
 import { Spinner } from './Spinner.tsx'
 import styles from './flows.module.scss'
@@ -30,6 +31,10 @@ export function RerunBlockDialog({
 }) {
   const [input, setInput] = useState(recordedInput)
   const [downstream, setDownstream] = useState(false)
+  // Blank means the model the block already names. The two knobs worth turning on a block are its
+  // instruction and its model, and until now the second one cost an edit to the flow plus a whole
+  // execution to see — which is expensive enough that people guess instead of measuring.
+  const [model, setModel] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const setActiveRun = useFlowStore((s) => s.setActiveRun)
@@ -39,7 +44,7 @@ export function RerunBlockDialog({
     setBusy(true)
     setError(null)
     try {
-      const started = await api.rerunBlock(runId, nodeId, input, downstream)
+      const started = await api.rerunBlock(runId, nodeId, input, downstream, model)
       // Straight to the new run: the reason to press this button is to watch what the block does
       // differently, and leaving the old run selected shows the old answer.
       setActiveRun(started.id)
@@ -66,6 +71,16 @@ export function RerunBlockDialog({
         disabled={busy}
         value={input}
         onChange={(e) => setInput(e.target.value)}
+      />
+      <ModelField
+        label={
+          <span title="Runs this block on another model, with the same input and the same instructions — the only shape in which 'would the cheaper model do this just as well' has an answer. Only this block moves: the agents it delegates to keep theirs, and the flow on disk is not touched.">
+            Run it on another model (blank = its own) ⓘ
+          </span>
+        }
+        value={model}
+        onChange={setModel}
+        allowNone
       />
       <label className={styles.checkRow}>
         <input

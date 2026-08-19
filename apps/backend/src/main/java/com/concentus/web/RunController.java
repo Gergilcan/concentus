@@ -120,14 +120,18 @@ public class RunController {
                                  @RequestBody(required = false) BlockRerunRequest req) {
         return runService.rerunBlock(id, nodeId,
                 req == null ? null : req.input(),
-                req != null && req.downstream());
+                req != null && req.downstream(),
+                req == null ? null : req.model());
     }
 
     /**
      * @param input      what to run the block with; null or blank means the input it recorded
      * @param downstream also run the agents this block delegates to
+     * @param model      run the block on this model instead of its own; null or blank keeps it.
+     *                   Only the block itself moves — the agents it delegates to keep theirs, so
+     *                   the comparison is one box against itself rather than two flows
      */
-    public record BlockRerunRequest(String input, boolean downstream) {
+    public record BlockRerunRequest(String input, boolean downstream, String model) {
     }
 
     /** Marks (or unmarks) this run as its flow's golden reference. One per flow. */

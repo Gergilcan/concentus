@@ -128,4 +128,33 @@ class BlockSliceTest {
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("ghost");
     }
+// Same input, same instructions, one thing changed — the only shape in which "would the
+    // cheaper model do this just as well" has an answer worth reading.
+    @Test
+    void the_block_can_be_re_run_on_a_different_model() {
+        FlowGraph slice = BlockSlice.of(team(), "writer", false, "claude-haiku-4-5");
+
+        assertThat(COMPILER.compile(slice).coordinator().model.id).isEqualTo("claude-haiku-4-5");
+    }
+
+    @Test
+    void the_agents_it_delegates_to_keep_their_own_model() {
+        FlowGraph slice = BlockSlice.of(team(), "writer", true, "claude-haiku-4-5");
+
+        CompiledFlow compiled = COMPILER.compile(slice);
+        assertThat(compiled.coordinator().model.id).isEqualTo("claude-haiku-4-5");
+        // Reviewer names no model of its own in this fixture, so what matters is that the
+        // override did not reach it: moving four models at once compares two flows, not one box.
+        assertThat(compiled.subAgents()).allSatisfy(s ->
+                assertThat(s.model == null ? null : s.model.id).isNotEqualTo("claude-haiku-4-5"));
+    }
+
+    @Test
+    void the_flow_on_disk_keeps_its_model() {
+        FlowGraph flow = team();
+        BlockSlice.of(flow, "writer", false, "claude-haiku-4-5");
+
+        assertThat(flow.nodesOrEmpty().stream().filter(n -> n.id().equals("writer")).findFirst()
+                .orElseThrow().dataOrEmpty()).doesNotContainKey("model");
+    }
 }
