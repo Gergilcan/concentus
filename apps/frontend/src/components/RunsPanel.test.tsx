@@ -225,4 +225,17 @@ describe('RunsPanel golden runs', () => {
 
     expect(screen.getByText('⇄ Compare')).toBeDisabled()
   })
+// The cost was only visible inside a comparison, which is one click and one decision too late
+  // for the question it answers: is another run of this worth it?
+  it('shows what each execution cost in the list', () => {
+    renderPanel([run({ id: 'r1', estimatedCostUsd: 4.35 })], 'f1')
+
+    expect(screen.getByTitle(/equivalent usage/)).toHaveTextContent('4.35')
+  })
+
+  it('says nothing where there is no estimate rather than showing a zero', () => {
+    renderPanel([run({ id: 'r1' })], 'f1')
+
+    expect(screen.queryByTitle(/equivalent usage/)).not.toBeInTheDocument()
+  })
 })

@@ -3,6 +3,7 @@ import { api } from '../api/client.ts'
 import type { RunSummary } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
+import { money } from '../utils/format.ts'
 import { CompareRunsModal } from './CompareRunsModal.tsx'
 import { ComparePickerModal } from './ComparePickerModal.tsx'
 import { Console } from './Console.tsx'
@@ -160,6 +161,17 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
                 </span>
               )}
               <span className={styles.runStatus}>{r.status}</span>
+              {/* What this execution cost, where the choice to run another one is made. It was
+                  only visible inside a comparison, which is one click and one decision too late
+                  for the question it answers. */}
+              {!!r.estimatedCostUsd && (
+                <span
+                  className={styles.runCost}
+                  title="Estimated at this run's own model rates. On a Claude subscription there is no per-token bill — read it as equivalent usage."
+                >
+                  {money(r.estimatedCostUsd)}
+                </span>
+              )}
               {r.flowId && (
                 <button
                   className={cx(styles.goldStar, isGolden(r) && styles.goldStarOn)}

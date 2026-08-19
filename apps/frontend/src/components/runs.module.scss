@@ -731,3 +731,11 @@
   font-family: monospace;
   font-size: 11px;
 }
+
+/* What one execution cost, in the list where the next one is decided. */
+.runCost {
+  font-size: 10px;
+  font-family: monospace;
+  color: t.$muted;
+  white-space: nowrap;
+}
