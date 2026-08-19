@@ -218,6 +218,22 @@
   font-size: 11px;
 }
 
+/* Runs this block again on its own — an offer under the input it was handed, not a headline. */
+.rerunBlock {
+  margin-top: 10px;
+  background: transparent;
+  border: 1px solid t.$border;
+  color: t.$text;
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 11px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$accent;
+  }
+}
+
 .mcpActions {
   border-top: 1px dashed t.$border;
   margin-top: 14px;

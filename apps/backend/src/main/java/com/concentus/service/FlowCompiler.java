@@ -65,21 +65,7 @@ public class FlowCompiler {
             throw new IllegalArgumentException("Flow has no agent nodes.");
         }
 
-        List<FlowNode> coordinators = agents.stream()
-                .filter(n -> "coordinator".equalsIgnoreCase(n.role()))
-                .toList();
-
-        FlowNode coordinatorNode;
-        if (coordinators.size() == 1) {
-            coordinatorNode = coordinators.get(0);
-        } else if (coordinators.isEmpty() && agents.size() == 1) {
-            coordinatorNode = agents.get(0);
-        } else if (coordinators.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Flow has multiple agents but no coordinator — mark exactly one agent as coordinator.");
-        } else {
-            throw new IllegalArgumentException("Flow has more than one coordinator — mark exactly one.");
-        }
+        FlowNode coordinatorNode = coordinatorOf(agents);
 
         AgentSpec coordinator = buildAgentSpec(coordinatorNode, flow, resources);
 
@@ -120,6 +106,43 @@ public class FlowCompiler {
             out.add(subflowSpec(node, flow));
         }
         return out;
+    }
+
+    /**
+     * The one agent that gives the orders. A lone agent leads by default — asking someone to tick
+     * "coordinator" on a flow with nothing to coordinate is ceremony — but past one, the role has
+     * to be stated, because guessing wrong reverses who instructs whom.
+     */
+    static FlowNode coordinatorOf(List<FlowNode> agents) {
+        List<FlowNode> coordinators = agents.stream()
+                .filter(n -> "coordinator".equalsIgnoreCase(n.role()))
+                .toList();
+
+        if (coordinators.size() == 1) return coordinators.get(0);
+        if (coordinators.isEmpty() && agents.size() == 1) return agents.get(0);
+        if (coordinators.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Flow has multiple agents but no coordinator — mark exactly one agent as coordinator.");
+        }
+        throw new IllegalArgumentException("Flow has more than one coordinator — mark exactly one.");
+    }
+
+    /**
+     * Who delegates to whom across a whole flow, keyed by node id — the same walk {@link #compile}
+     * runs, exposed so a slice of a flow ({@link BlockSlice}) can agree with it. Empty when the
+     * flow has no agents, or no single coordinator to walk out from: a caller asking about
+     * delegation in a flow that cannot compile wants an empty answer, not the compiler's exception.
+     */
+    static Map<String, String> delegatorsOf(FlowGraph flow) {
+        List<FlowNode> agents = byType(flow, "agent");
+        if (agents.isEmpty()) return Map.of();
+        FlowNode coordinatorNode;
+        try {
+            coordinatorNode = coordinatorOf(agents);
+        } catch (IllegalArgumentException e) {
+            return Map.of();
+        }
+        return delegationTree(coordinatorNode, agents, flow.edgesOrEmpty()).delegatorOf();
     }
 
     /** One flow node as a spec, with the two mistakes that are worth refusing on sight. */

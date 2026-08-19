@@ -108,6 +108,28 @@ public class RunController {
         return runService.retry(id);
     }
 
+    /**
+     * Runs ONE block of this execution again, as a new execution, with the input it received —
+     * editable first, and optionally carrying the agents it delegates to.
+     *
+     * <p>Separate from retry because the unit differs: retry repeats a flow, this repeats a block.
+     * The expensive thing about tuning a prompt was never the block, it was the flow in front of it.
+     */
+    @PostMapping("/{id}/nodes/{nodeId}/rerun")
+    public RunSummary rerunBlock(@PathVariable String id, @PathVariable String nodeId,
+                                 @RequestBody(required = false) BlockRerunRequest req) {
+        return runService.rerunBlock(id, nodeId,
+                req == null ? null : req.input(),
+                req != null && req.downstream());
+    }
+
+    /**
+     * @param input      what to run the block with; null or blank means the input it recorded
+     * @param downstream also run the agents this block delegates to
+     */
+    public record BlockRerunRequest(String input, boolean downstream) {
+    }
+
     /** Marks (or unmarks) this run as its flow's golden reference. One per flow. */
     @PostMapping("/{id}/golden")
     public RunSummary setGolden(@PathVariable String id, @RequestBody GoldenRequest req) {

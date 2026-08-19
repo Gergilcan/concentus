@@ -11,6 +11,7 @@ import { NodeLogView } from './NodeLogView.tsx'
 import { McpInspector } from './McpInspector.tsx'
 import { MergeInspector } from './MergeInspector.tsx'
 import { RepoInspector } from './RepoInspector.tsx'
+import { RerunBlockDialog } from './RerunBlockDialog.tsx'
 import { KnowledgeInspector } from './KnowledgeInspector.tsx'
 import { FlowRunInspector } from './FlowRunInspector.tsx'
 import { SqlInspector } from './SqlInspector.tsx'
@@ -49,6 +50,9 @@ export function Inspector() {
   const flowId = useFlowStore((s) => s.flowId)
   const exec = useFlowStore((s) => (selectedId ? s.runExecByNode[selectedId] : undefined))
   const [tab, setTab] = useState<Tab>('properties')
+  // Whether the "run this block again" dialog is open. Reset by closing it, not by changing
+  // selection: it names the block it was opened from and carries that block's recorded input.
+  const [rerun, setRerun] = useState(false)
   // The no-selection panel's own tab. Separate state from `tab` so selecting a node and coming
   // back does not drop you into a tab that means something else.
   const [flowTab, setFlowTab] = useState<'flow' | 'versions'>('flow')
@@ -150,6 +154,25 @@ export function Inspector() {
         <>
           {!activeRunId && <div className={styles.empty}>Select a run below to see its data.</div>}
           <InputView exec={exec} />
+          {/* Only for agent blocks: a capability node has no instruction to run again, and only
+              once there is a recorded input — the offer is to reproduce this block's conditions,
+              and with nothing recorded there are none to reproduce. */}
+          {activeRunId && data.kind === 'agent' && exec?.input && (
+            <>
+              <button className={styles.rerunBlock} onClick={() => setRerun(true)}>
+                Run this block again…
+              </button>
+              {rerun && (
+                <RerunBlockDialog
+                  runId={activeRunId}
+                  nodeId={id}
+                  label={data.name || id}
+                  recordedInput={exec.input}
+                  onClose={() => setRerun(false)}
+                />
+              )}
+            </>
+          )}
         </>
       )}
       {shownTab === 'logs' && (data.kind === 'agent' || data.kind === 'merge' || data.kind === 'verifier') && (

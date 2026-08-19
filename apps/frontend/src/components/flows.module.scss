@@ -811,6 +811,26 @@
   margin: var(--sp-2) 0;
 }
 
+/* A checkbox and its explanation on one line, for a dialog option that changes what runs. */
+.checkRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  font-size: 12px;
+  cursor: pointer;
+
+  input {
+    margin: 2px 0 0;
+    flex: 0 0 auto;
+  }
+}
+
+.checkHint {
+  color: t.$muted;
+  font-weight: 400;
+}
+
 .describeError {
   color: t.$danger;
   font-size: 12px;

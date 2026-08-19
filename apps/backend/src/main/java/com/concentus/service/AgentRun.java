@@ -275,6 +275,18 @@ public class AgentRun {
         }
     }
 
+    /**
+     * The record for a node if this run has one, without creating it. {@link #nodeExec} creates on
+     * demand, which is right while a run streams and wrong for a reader: asking a finished run what
+     * a block received would otherwise mint an empty pending block and persist it.
+     */
+    public NodeExec nodeExecOrNull(String nodeId) {
+        if (nodeId == null || nodeId.isBlank()) return null;
+        synchronized (nodeExecs) {
+            return nodeExecs.get(nodeId);
+        }
+    }
+
     /** The model configured for an agent node, or null for non-agent nodes / unknown ids. */
     private String modelOf(String nodeId) {
         CompiledFlow flow = compiled;

@@ -205,6 +205,16 @@ export const api = {
   rejectRun: (runId: string) => req<void>(`/runs/${runId}/reject`, { method: 'POST' }),
   stopRun: (runId: string) => req<void>(`/runs/${runId}/stop`, { method: 'POST' }),
   retryRun: (runId: string) => req<RunSummary>(`/runs/${runId}/retry`, { method: 'POST' }),
+  /**
+   * Runs ONE block of a finished run again, as a new run. An empty `input` means the input that
+   * block actually received; `downstream` also carries the agents it delegates to, which is what
+   * continuing a failed run from the block that broke means.
+   */
+  rerunBlock: (runId: string, nodeId: string, input: string, downstream: boolean) =>
+    req<RunSummary>(`/runs/${runId}/nodes/${nodeId}/rerun`, {
+      method: 'POST',
+      body: JSON.stringify({ input, downstream }),
+    }),
   /** Marks (or unmarks) a run as its flow's golden reference. One per flow. */
   setGoldenRun: (runId: string, golden: boolean) =>
     req<RunSummary>(`/runs/${runId}/golden`, { method: 'POST', body: JSON.stringify({ golden }) }),

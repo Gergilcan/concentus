@@ -619,6 +619,54 @@ public class RunService {
         return run.toSummary();
     }
 
+    /**
+     * Runs one block of a finished execution again, on its own, with an input you can edit first.
+     *
+     * <p>The input defaults to the one the block actually received — that is the whole point.
+     * Tuning a sub-agent's prompt used to mean re-running everything before it to reproduce the
+     * conditions it failed under; the recorded input reproduces them exactly, for the price of one
+     * block. Editing it is how the same machinery answers "what would it have done if I had asked
+     * differently".
+     *
+     * @param downstream keep the agents this one delegates to, which is what continuing a failed
+     *                   run from the point it broke means
+     */
+    public RunSummary rerunBlock(String runId, String nodeId, String inputOverride, boolean downstream) {
+        AgentRun old = require(runId);
+        FlowGraph flow = flowOf(old).orElseThrow(() ->
+                new IllegalStateException("This execution has no stored flow to run a block from."));
+
+        String input = inputOverride;
+        if (input == null || input.isBlank()) {
+            NodeExec recorded = old.nodeExecOrNull(nodeId);
+            input = recorded == null ? null : recorded.input;
+        }
+        if (input == null || input.isBlank()) {
+            // Refused rather than started empty: a block with no instruction does not fail, it
+            // improvises, and an improvised run looks like a real result until someone reads it.
+            throw new IllegalStateException("This block recorded no input to run again. Type the "
+                    + "input to run it with.");
+        }
+
+        FlowGraph slice = BlockSlice.of(flow, nodeId, downstream);
+        RunSummary started = start(slice, input);
+        AgentRun run = runs.get(started.id());
+        if (run == null) return started;
+        // Named for what it is wherever runs are listed, and pointed back at the execution it was
+        // cut from — a block re-run that looked like an ordinary manual run would quietly pollute
+        // a flow's history and its success rate with fragments of other runs.
+        run.trigger = downstream ? "continued" : "block re-run";
+        run.parentRunId = old.id;
+        run.flowVersion = old.flowVersion;
+        run.emit(RunEvent.of("system", (downstream ? "Continuing from" : "Running") + " block '"
+                + BlockSlice.labelOf(flow, nodeId) + "' of execution " + old.id
+                + (inputOverride == null || inputOverride.isBlank()
+                        ? " with the input it received."
+                        : " with an edited input.")));
+        runStore.persist(run);
+        return run.toSummary();
+    }
+
     /** Sends an explicit instruction to a running session. */
     public void sendCommand(String runId, String text) {
         AgentRun run = require(runId);
