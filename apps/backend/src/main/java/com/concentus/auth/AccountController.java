@@ -48,20 +48,20 @@ public class AccountController {
     private final AccountStore accounts;
     private final PasswordEncoder encoder;
     private final OrgContext orgContext;
-    private final MicrosoftSignIn microsoft;
+    private final OidcSignIn oidc;
     /** Issues the cookie that survives a restart of this backend. */
     private final org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe;
     private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
 
     public AccountController(AuthenticationManager authManager, AccountStore accounts,
                              PasswordEncoder encoder, OrgContext orgContext,
-                             MicrosoftSignIn microsoft,
+                             OidcSignIn oidc,
                              org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe) {
         this.authManager = authManager;
         this.accounts = accounts;
         this.encoder = encoder;
         this.orgContext = orgContext;
-        this.microsoft = microsoft;
+        this.oidc = oidc;
         this.rememberMe = rememberMe;
     }
 
@@ -89,7 +89,8 @@ public class AccountController {
         });
         // Whether the button should exist at all. Asked rather than assumed: a deployment with no
         // Entra registration must not offer a sign-in path that fails at the redirect.
-        out.put("microsoftSignIn", microsoft.isConfigured());
+        out.put("ssoEnabled", oidc.isConfigured());
+        out.put("ssoName", oidc.displayName());
         out.put("signedIn", me.isPresent());
         return out;
     }

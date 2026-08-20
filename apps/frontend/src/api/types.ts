@@ -845,8 +845,10 @@ export interface Member {
 
 export interface SessionInfo {
   authEnabled: boolean
-  /** Whether this deployment has a Microsoft Entra registration, so the button should exist. */
-  microsoftSignIn?: boolean
+  /** Whether this deployment has an identity provider configured, so the button should exist. */
+  ssoEnabled?: boolean
+  /** What to call it on that button — "Microsoft", "Google", or whatever was configured. */
+  ssoName?: string
   storeAvailable: boolean
   signedIn: boolean
   userId?: string

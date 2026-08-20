@@ -22,23 +22,23 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 /**
- * The two ends of signing in with a Microsoft work or school account.
+ * The two ends of signing in with the organization's identity provider.
  *
  * <p>Both are plain browser navigations rather than API calls the SPA makes: the first is a
- * redirect out to Microsoft, and the second arrives back from Microsoft carrying none of this
+ * redirect out to the provider, and the second arrives back from it carrying none of this
  * application's headers. Neither can require a session, which is why they are permitted in
  * {@link SecurityConfig} — and why the callback trusts nothing in the request except a {@code
  * state} value this process issued minutes earlier.
  */
 @RestController
-@RequestMapping("/api/account/oidc/microsoft")
-public class MicrosoftSignInController {
+@RequestMapping("/api/account/oidc")
+public class OidcSignInController {
 
-    private final MicrosoftSignIn signIn;
+    private final OidcSignIn signIn;
     private final PersistentTokenBasedRememberMeServices rememberMe;
     private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
 
-    public MicrosoftSignInController(MicrosoftSignIn signIn,
+    public OidcSignInController(OidcSignIn signIn,
                                      PersistentTokenBasedRememberMeServices rememberMe) {
         this.signIn = signIn;
         this.rememberMe = rememberMe;
@@ -49,7 +49,7 @@ public class MicrosoftSignInController {
     public void start(HttpServletRequest request, HttpServletResponse response) throws IOException {
         if (!signIn.isConfigured()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Microsoft sign-in is not configured on this deployment.");
+                    "Single sign-on is not configured on this deployment.");
         }
         response.sendRedirect(signIn.authorizationUrl(baseOf(request)));
     }
@@ -67,7 +67,7 @@ public class MicrosoftSignInController {
                          @RequestParam(required = false) String state,
                          @RequestParam(required = false) String error,
                          HttpServletRequest request, HttpServletResponse response) throws IOException {
-        MicrosoftSignIn.Outcome outcome = signIn.complete(code, state, error);
+        OidcSignIn.Outcome outcome = signIn.complete(code, state, error);
         if (!outcome.ok()) {
             response.sendRedirect("/?signin_error="
                     + URLEncoder.encode(outcome.error(), StandardCharsets.UTF_8));

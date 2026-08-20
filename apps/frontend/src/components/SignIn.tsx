@@ -8,8 +8,13 @@ interface Props {
   onSignedIn: (user: SignedInUser) => void
   /** True when the backend reported that its account store is unreachable. */
   storeUnavailable?: boolean
-  /** True when this deployment has a Microsoft Entra registration configured. */
-  microsoftSignIn?: boolean
+  /**
+   * What the organization's identity provider is called, when one is configured — "Microsoft",
+   * "Google", or whatever the deployment named it. Null hides the button, which is the honest
+   * state for a deployment that has no provider: a sign-in path that fails at the redirect is
+   * worse than one that is absent.
+   */
+  sso?: string | null
 }
 
 /**
@@ -20,7 +25,7 @@ interface Props {
  * reaches the server first claim the organization. The first administrator comes from the
  * deployment's configuration, and further members are invited by an existing one.
  */
-export function SignIn({ onSignedIn, storeUnavailable, microsoftSignIn }: Props) {
+export function SignIn({ onSignedIn, storeUnavailable, sso }: Props) {
   // A refusal from the directory comes back as a top-level navigation, so it arrives in the URL
   // rather than in a response this screen awaited. Usually it is a domain this deployment does not
   // admit, which is a sentence somebody needs to read — not a silent bounce back to the form.
@@ -90,13 +95,13 @@ export function SignIn({ onSignedIn, storeUnavailable, microsoftSignIn }: Props)
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
 
-        {microsoftSignIn && (
+        {sso && (
           <>
             <p className={styles.or}>or</p>
             {/* A link, not a fetch: the destination is another origin, and the browser has to go
                 there itself. */}
-            <a className={styles.provider} href="/api/account/oidc/microsoft/start">
-              Sign in with Microsoft
+            <a className={styles.provider} href="/api/account/oidc/start">
+              Sign in with {sso}
             </a>
           </>
         )}
