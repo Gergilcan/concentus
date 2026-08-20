@@ -108,7 +108,11 @@ public class OidcRegistry {
     }
 
     private String value(String key, String fallback) {
-        return settings.get(key, fallback);
+        // Installation-wide, not per-organization: the screen that needs these has nobody signed
+        // in, so there is no organization to scope them by. Scoping them anyway meant a
+        // registration saved by an admin was written under their organization and read back under
+        // the default one — stored correctly, and invisible.
+        return settings.installationWide(key, fallback);
     }
 
     private boolean accept(Configured configured, String key) {

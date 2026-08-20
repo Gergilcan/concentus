@@ -58,7 +58,9 @@ public class SignInProviderController {
     @GetMapping
     public Map<String, Object> list(HttpServletRequest request) {
         orgContext.requireAdmin();
-        String organizationId = orgContext.requireOrganizationId();
+        // The installation's own organization, not the caller's: a sign-in provider is a property
+        // of the installation, and the screen that offers it has nobody signed in to scope it by.
+        String organizationId = orgContext.defaultOrganizationId();
         List<String> enabled = enabledIds(organizationId);
 
         List<Map<String, Object>> out = new ArrayList<>();
@@ -91,7 +93,7 @@ public class SignInProviderController {
     @PutMapping
     public Map<String, Object> save(@RequestBody ProviderUpdate body, HttpServletRequest request) {
         orgContext.requireAdmin();
-        String organizationId = orgContext.requireOrganizationId();
+        String organizationId = orgContext.defaultOrganizationId();
         String id = body.id() == null ? "" : body.id().trim().toLowerCase(Locale.ROOT);
         if (!PRESETS.contains(id)) {
             throw new IllegalArgumentException("Unknown sign-in provider '" + body.id() + "'.");

@@ -121,6 +121,35 @@ class SettingsTest {
         assertThat(f.store().get("other-company", "runs.max-concurrent")).contains("99");
     }
 
+    /**
+     * One constructor, and the reason is a bug that cost an afternoon.
+     *
+     * <p>There was a private no-arg constructor behind {@link Settings#none()}. With two
+     * constructors and neither annotated, Spring falls back to the no-arg one — so the bean it
+     * built had a null store, every lookup quietly returned its caller's fallback, and the whole
+     * settings feature was inert with no error anywhere: run limits ignored, prices ignored, and a
+     * sign-in provider somebody had just registered still reported as unconfigured.
+     *
+     * <p>Asserted structurally because the symptom is silence. Nothing throws, nothing logs, and
+     * the only visible effect is a setting that does not apply — which reads as "my change did not
+     * save" and sends you looking in the wrong place.
+     */
+    @Test
+    void settings_has_exactly_one_constructor_so_spring_cannot_pick_the_wrong_one() {
+        assertThat(Settings.class.getDeclaredConstructors()).hasSize(1);
+    }
+
+    // The same fault, caught from the outside: a Settings built the way Spring builds it must
+    // actually read the store rather than answering with the fallback.
+    @Test
+    void a_wired_settings_reads_what_is_stored_rather_than_the_fallback() {
+        Fixture f = on("settings_8");
+        f.store().put("default", "runs.max-concurrent", "17", false, null);
+
+        assertThat(f.settings().number("runs.max-concurrent", 4)).isEqualTo(17);
+        assertThat(f.settings().installationWide("runs.max-concurrent", "4")).isEqualTo("17");
+    }
+
     // The catalogue is what the settings screen renders and what the API will accept; a key in one
     // and not the other is a field that saves nothing or a row nothing reads.
     @Test

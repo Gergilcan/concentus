@@ -27,14 +27,20 @@ public class Settings {
     private final Environment environment;
     private final OrgContext orgContext;
 
+    /**
+     * Annotated, and the only other constructor is gone.
+     *
+     * <p>There used to be a private no-arg one behind {@link #none()}. With two constructors and
+     * neither annotated, Spring falls back to the no-arg one — so the bean it built had a null
+     * store and a null organization context, every lookup returned its caller's fallback, and the
+     * whole settings feature was inert without a single error anywhere. It is the third time today
+     * that two constructors on one bean have cost an afternoon.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
     public Settings(SettingsStore store, Environment environment, OrgContext orgContext) {
         this.store = store;
         this.environment = environment;
         this.orgContext = orgContext;
-    }
-
-    private Settings() {
-        this(null, null, null);
     }
 
     /**
@@ -46,7 +52,7 @@ public class Settings {
      * nothing to say about settings.
      */
     public static Settings none() {
-        return new Settings();
+        return new Settings(null, null, null);
     }
 
     /**
@@ -103,6 +109,20 @@ public class Settings {
         if (stored.isPresent()) return stored;
         String configured = environment.getProperty(key);
         return configured == null || configured.isBlank() ? Optional.empty() : Optional.of(configured);
+    }
+
+    /**
+     * A setting that belongs to the installation rather than to one of its tenants.
+     *
+     * <p>For the handful that have to be readable before anybody has said who they are — the
+     * sign-in providers above all. Those are asked for by a screen with no session, so resolving
+     * them against "the current organization" resolves them against the default one on the way in
+     * and against the admin's own organization on the way out, and a registration saved by one is
+     * invisible to the other. Both ends use this, so both mean the same rows.
+     */
+    public String installationWide(String key, String fallback) {
+        if (store == null || orgContext == null) return fallback;
+        return forOrganization(orgContext.defaultOrganizationId(), key).orElse(fallback);
     }
 
     /** A whole number, or the fallback when it is unset or not one. */
