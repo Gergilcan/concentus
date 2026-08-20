@@ -53,9 +53,13 @@ of messages already processed.
 Create the folders you want in the mailbox — e.g. `Presupuestos` and `Presupuestos/Procesados`.
 
 Add the mailbox password under **Resources → Credentials**. It is encrypted with AES-256-GCM before
-being written, under the master key in `CONCENTUS_SECRET_KEY` — generate one with
-`openssl rand -base64 32`. Then on the Input node set the host, port, username and folder, and pick
-the credential from the dropdown.
+being written, under a master key the installation generates for itself on the first start and keeps
+in `secret.key` beside its data. Nothing to set up — but that file is what makes the stored
+passwords readable, so it belongs in whatever backs up the database. To hold the key somewhere else
+(a vault, a container secret), set `CONCENTUS_SECRET_KEY` and it is used instead of the file.
+
+Then on the Input node set the host, port, username and folder, and pick the credential from the
+dropdown.
 
 > **The node stores the credential id, not the value.** Every flow save snapshots the flow JSON
 > into version history, and duplicating a flow copies its nodes — a secret on a node, even
@@ -153,8 +157,9 @@ silently skipped. If the flow is paused, it is not polled.
 **"references a credential that no longer exists".** The credential was deleted, or the flow was
 imported from elsewhere. Pick one again on the Input node.
 
-**"could not decrypt the credential".** `CONCENTUS_SECRET_KEY` changed since it was saved. Restore
-the old key, or re-enter the credential under Resources → Credentials.
+**"could not decrypt the credential".** The master key is not the one it was saved under — usually
+a `secret.key` that was not copied along with the data, or a `CONCENTUS_SECRET_KEY` that changed.
+Restore the old key, or re-enter the credential under Resources → Credentials.
 
 **Authentication fails against Microsoft 365.** Basic auth for IMAP is retired there; see above.
 
