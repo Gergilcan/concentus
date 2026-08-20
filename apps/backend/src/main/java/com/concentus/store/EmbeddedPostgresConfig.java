@@ -98,7 +98,7 @@ public class EmbeddedPostgresConfig {
                                  ConfigurableApplicationContext context) throws IOException {
         StorageSettings settings = storageSettings.load();
         if (!settings.isExternal()) {
-            EmbeddedPostgres postgres = startEmbedded(dataDir);
+            EmbeddedPostgres postgres = open(dataDir, majorVersion);
             SchemaMigrator.migrate(postgres.getPostgresDatabase());
             // Registered so its close() runs on shutdown. Not a @Bean method, because it must not
             // exist at all in external mode.
@@ -155,7 +155,17 @@ public class EmbeddedPostgresConfig {
         }
     }
 
-    private EmbeddedPostgres startEmbedded(String dataDir) throws IOException {
+    /**
+     * Starts PostgreSQL on this installation's data directory.
+     *
+     * <p>Static, and public, because there is a second caller: somebody who switched to a company
+     * database, found it empty, and wants what they built brought across. The application is then
+     * running on the external server and this directory is idle — so the migration opens it,
+     * reads it, and stops it again. One server per data directory is still the rule; the desktop
+     * shell holds a single-instance lock, and the caller must not open this while the application
+     * is itself running on the embedded database.
+     */
+    public static EmbeddedPostgres open(String dataDir, int majorVersion) throws IOException {
         Path pgdata = Path.of(dataDir).toAbsolutePath().resolve("pgdata");
         Files.createDirectories(pgdata);
 
@@ -164,7 +174,7 @@ public class EmbeddedPostgresConfig {
         // launches reuse both, so this is a one-time cost rather than a per-start one.
         if (isEmpty(pgdata)) log.info("Preparing the embedded database for first use in {} …", pgdata);
 
-        requireMatchingMajorVersion(pgdata);
+        requireMatchingMajorVersion(pgdata, majorVersion);
         clearStalePidFile(pgdata);
 
         // Where the server binaries are unpacked. Overridden off the default (the system temp
@@ -223,7 +233,7 @@ public class EmbeddedPostgresConfig {
      * deleting the user's runs, credentials and flow history to fix a version number, which is not
      * a decision this code gets to make quietly.
      */
-    private void requireMatchingMajorVersion(Path pgdata) throws IOException {
+    private static void requireMatchingMajorVersion(Path pgdata, int majorVersion) throws IOException {
         Path versionFile = pgdata.resolve("PG_VERSION");
         if (!Files.isRegularFile(versionFile)) return;   // fresh directory: nothing to disagree with
 

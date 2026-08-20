@@ -147,7 +147,7 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
         </p>
       )}
 
-      <MigrateSection draft={draft} />
+      <MigrateSection draft={draft} activeMode={config.activeMode} />
       <BackupSection />
     </div>
   )
@@ -160,8 +160,14 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
  * while switching costs a restart. Kept apart, somebody can copy today, look around the company
  * database at leisure, and switch when they trust it — then repeat the copy for whatever they
  * built in between, because nothing is ever deleted or overwritten.
+ *
+ * Which way round is not a question anybody should have to answer: it follows from where the app
+ * is running. Still on the embedded database, the copy goes out to the server configured above.
+ * Already switched — and staring at an empty screen, which is how most people arrive here — it
+ * comes the other way, out of the data directory this installation left behind.
  */
-function MigrateSection({ draft }: { draft: StorageDraft }) {
+function MigrateSection({ draft, activeMode }: { draft: StorageDraft; activeMode: string }) {
+  const pulling = activeMode === 'external'
   const [contents, setContents] = useState<TableCount[] | null>(null)
   const [skip, setSkip] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
@@ -172,7 +178,7 @@ function MigrateSection({ draft }: { draft: StorageDraft }) {
     setReport(null)
     setFailed(false)
     try {
-      const c = await api.storageContents()
+      const c = await api.storageContents(pulling ? 'embedded' : 'active')
       setContents(c.tables)
     } catch (e) {
       setFailed(true)
@@ -185,14 +191,21 @@ function MigrateSection({ draft }: { draft: StorageDraft }) {
     setReport(null)
     setFailed(false)
     try {
-      const r = await api.migrateStorage({ ...draft, mode: 'external', skip: [...skip] })
+      const r = await api.migrateStorage({
+        ...draft,
+        mode: 'external',
+        from: pulling ? 'embedded' : 'active',
+        skip: [...skip],
+      })
       const moved = r.copied.filter((t) => t.rows > 0)
       setReport(
         (r.totalRows === 0
           ? 'Nothing new to copy — the target already holds everything.'
           : `Copied ${r.totalRows} rows: ${moved.map((t) => `${t.rows} ${t.table}`).join(', ')}.`) +
           (r.warnings.length ? ` ${r.warnings.join(' ')}` : '') +
-          ' Nothing here changed; switch above and restart when you are ready.',
+          (pulling
+            ? ' Reload the page to see it.'
+            : ' Nothing here changed; switch above and restart when you are ready.'),
       )
     } catch (e) {
       setFailed(true)
@@ -204,20 +217,25 @@ function MigrateSection({ draft }: { draft: StorageDraft }) {
     }
   }
 
-  const ready = draft.mode === 'external' && draft.url.trim() !== ''
+  // Pulling needs no target typed in: the destination is the database this app already runs on.
+  const ready = pulling || (draft.mode === 'external' && draft.url.trim() !== '')
   const total = (contents ?? []).reduce((n, t) => (skip.has(t.table) ? n : n + t.rows), 0)
 
   return (
     <div className={styles.subSection}>
       <h3
         className={styles.h4}
-        title="Copies every flow, agent, MCP server, credential, knowledge base and run into the PostgreSQL configured above, over the connection this app already has — no pg_dump, nothing to install. Rows already there are left exactly as they are: nothing is deleted or overwritten, so a copy that stops halfway is simply repeated. It does not switch — the app keeps running on its current database until you save the setting above and restart."
+        title={
+          pulling
+            ? 'Opens the embedded database this installation left behind and copies every flow, agent, MCP server, credential, knowledge base and run into the PostgreSQL you are running on now. Rows already here are left exactly as they are — nothing is deleted or overwritten, so a copy that stops halfway is simply repeated.'
+            : 'Copies every flow, agent, MCP server, credential, knowledge base and run into the PostgreSQL configured above, over the connection this app already has — no pg_dump, nothing to install. Rows already there are left exactly as they are: nothing is deleted or overwritten, so a copy that stops halfway is simply repeated. It does not switch — the app keeps running on its current database until you save the setting above and restart.'
+        }
       >
-        Move my data to that database ⓘ
+        {pulling ? 'Bring my old data here' : 'Move my data to that database'} ⓘ
       </h3>
       <div className={styles.crudActions}>
         <button className={styles.newBtn} disabled={busy} onClick={() => void look()}>
-          {contents ? 'Refresh what is here' : 'See what would move'}
+          {contents ? 'Refresh the list' : pulling ? 'See what is still there' : 'See what would move'}
         </button>
         <button
           className={styles.saveBtn}
@@ -225,11 +243,11 @@ function MigrateSection({ draft }: { draft: StorageDraft }) {
           onClick={() => void move()}
           title={
             ready
-              ? 'Copies into the database configured above. Adds only; never deletes.'
+              ? 'Adds only; never deletes. Safe to press twice.'
               : 'Fill in the external PostgreSQL above first — that is where the data goes.'
           }
         >
-          {busy ? 'Moving…' : 'Move it now'}
+          {busy ? 'Moving…' : pulling ? 'Bring it across' : 'Move it now'}
         </button>
       </div>
 
@@ -263,8 +281,9 @@ function MigrateSection({ draft }: { draft: StorageDraft }) {
       )}
       {contents && (
         <p className={panels.hint}>
-          {total.toLocaleString()} rows selected. Unticking run history or knowledge chunks moves
-          your configuration now and leaves the bulk for later — the copy can be repeated.
+          {total.toLocaleString()} rows selected{pulling ? ' from the embedded database' : ''}.
+          Unticking run history or knowledge chunks moves your configuration now and leaves the
+          bulk for later — the copy can be repeated.
         </p>
       )}
       {report && (

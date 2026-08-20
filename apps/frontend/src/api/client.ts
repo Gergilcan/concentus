@@ -248,8 +248,10 @@ export const api = {
       body: JSON.stringify(s),
     }),
   /** What this installation holds, table by table — the estimate shown before a migration. */
-  storageContents: () =>
-    req<{ tables: Array<{ table: string; rows: number }>; totalRows: number }>('/storage/contents'),
+  storageContents: (from: 'active' | 'embedded' = 'active') =>
+    req<{ tables: Array<{ table: string; rows: number }>; totalRows: number }>(
+      `/storage/contents?from=${from}`,
+    ),
   /**
    * Copies everything into another PostgreSQL. Does not switch to it: the copy is repeatable and
    * changes nothing here, while switching needs a restart and deserves its own decision.
@@ -257,7 +259,7 @@ export const api = {
    * A generous timeout, because this one really can take minutes — the default thirty seconds is
    * sized for a request, not for a year of run history crossing a VPN.
    */
-  migrateStorage: (s: StorageDraft & { skip?: string[] }) =>
+  migrateStorage: (s: StorageDraft & { from?: 'active' | 'embedded'; skip?: string[] }) =>
     req<{
       ok: boolean
       copied: Array<{ table: string; rows: number }>

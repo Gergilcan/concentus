@@ -2,17 +2,24 @@ package com.concentus.web;
 
 import com.concentus.auth.OrgContext;
 import com.concentus.model.StorageSettings;
+import com.concentus.store.EmbeddedPostgresConfig;
 import com.concentus.store.StorageMigrator;
 import com.concentus.store.StorageSettingsStore;
+import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.sql.DataSource;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -38,8 +45,13 @@ import java.util.Set;
 @RequestMapping("/api/storage")
 public class StorageController {
 
+    private static final Logger log = LoggerFactory.getLogger(StorageController.class);
+
     /** Only PostgreSQL. The schema uses jsonb and partial indexes; another engine would not run it. */
     private static final String REQUIRED_PREFIX = "jdbc:postgresql:";
+
+    /** Read the data directory this installation keeps its embedded database in, not the live one. */
+    private static final String FROM_EMBEDDED = "embedded";
 
     private final StorageSettingsStore store;
     /**
@@ -50,13 +62,20 @@ public class StorageController {
     /** The database this process is actually running on — the source of any migration. */
     private final DataSource current;
     private final OrgContext orgContext;
+    /** Where the embedded database lives. Blank on a server build, which has no embedded database. */
+    private final String dataDir;
+    private final int majorVersion;
 
     public StorageController(StorageSettingsStore store, ObjectProvider<StorageSettings> active,
-                             DataSource current, OrgContext orgContext) {
+                             DataSource current, OrgContext orgContext,
+                             @Value("${app.data-dir:}") String dataDir,
+                             @Value("${app.embedded-postgres.major-version:17}") int majorVersion) {
         this.store = store;
         this.active = active;
         this.current = current;
         this.orgContext = orgContext;
+        this.dataDir = dataDir;
+        this.majorVersion = majorVersion;
     }
 
     /**
@@ -145,19 +164,23 @@ public class StorageController {
      * because the table names alone describe the shape of everything stored here.
      */
     @GetMapping("/contents")
-    public Map<String, Object> contents() {
+    public Map<String, Object> contents(@RequestParam(defaultValue = "active") String from) {
         orgContext.requireAdmin();
-        List<StorageMigrator.TableCount> tables = StorageMigrator.survey(current);
-        return Map.of(
-                "tables", tables.stream().map(t -> Map.of("table", t.table(), "rows", t.rows())).toList(),
-                "totalRows", tables.stream().mapToLong(StorageMigrator.TableCount::rows).sum());
+        try (Source source = sourceFor(from)) {
+            List<StorageMigrator.TableCount> tables = StorageMigrator.survey(source.dataSource());
+            return Map.of(
+                    "tables", tables.stream()
+                            .map(t -> Map.of("table", t.table(), "rows", t.rows())).toList(),
+                    "totalRows", tables.stream().mapToLong(StorageMigrator.TableCount::rows).sum());
+        }
     }
 
     /**
      * @param skip tables to leave behind — for a move that wants the configuration on the company
      *             database without a year of run history crossing a VPN first
      */
-    public record MigrateRequest(String url, String username, String password, List<String> skip) {
+    public record MigrateRequest(String from, String url, String username, String password,
+                                 List<String> skip) {
     }
 
     /**
@@ -174,6 +197,21 @@ public class StorageController {
     @PostMapping("/migrate")
     public Map<String, Object> migrate(@RequestBody MigrateRequest body) {
         orgContext.requireAdmin();
+        try (Source source = sourceFor(body.from())) {
+            DataSource target = FROM_EMBEDDED.equalsIgnoreCase(body.from()) ? current : externalFrom(body);
+            StorageMigrator.Report report = StorageMigrator.copy(source.dataSource(), target,
+                    body.skip() == null ? Set.of() : Set.copyOf(body.skip()));
+            return Map.of(
+                    "ok", true,
+                    "copied", report.copied().stream()
+                            .map(t -> Map.of("table", t.table(), "rows", t.rows())).toList(),
+                    "warnings", report.warnings(),
+                    "totalRows", report.totalRows());
+        }
+    }
+
+    /** The database named in the request — the far side of a copy that leaves this installation. */
+    private DataSource externalFrom(MigrateRequest body) {
         requireUsableUrl(body.url());
 
         Properties props = new Properties();
@@ -186,16 +224,57 @@ public class StorageController {
         if (password != null && !password.isBlank()) props.put("password", password);
         // Long, unlike the connection test: this one is copying, and a slow link is not a failure.
         props.put("connectTimeout", "15");
+        return new SimpleUrlDataSource(body.url().trim(), props);
+    }
 
-        DataSource target = new SimpleUrlDataSource(body.url().trim(), props);
-        StorageMigrator.Report report = StorageMigrator.copy(current, target,
-                body.skip() == null ? Set.of() : Set.copyOf(body.skip()));
-        return Map.of(
-                "ok", true,
-                "copied", report.copied().stream()
-                        .map(t -> Map.of("table", t.table(), "rows", t.rows())).toList(),
-                "warnings", report.warnings(),
-                "totalRows", report.totalRows());
+    /**
+     * Which database a migration reads.
+     *
+     * <p>Two directions, because both happen. Somebody still on the embedded database copies it to
+     * a company server; somebody who already switched, restarted, and found an empty screen needs
+     * the opposite — and telling them to switch back, restart, migrate, switch again and restart
+     * once more is a worse answer than opening the idle data directory here.
+     *
+     * <p>Asking for the embedded side while the application is <em>running</em> on it is not a
+     * second server on one data directory: it is the same database, so the live connection is
+     * returned instead.
+     */
+    private Source sourceFor(String from) {
+        if (!FROM_EMBEDDED.equalsIgnoreCase(from) || FROM_EMBEDDED.equalsIgnoreCase(activeMode())) {
+            return new Source(current, null);
+        }
+        if (dataDir == null || dataDir.isBlank()) {
+            throw new IllegalStateException("This deployment has no embedded database — it has "
+                    + "always run on the PostgreSQL it was configured with.");
+        }
+        try {
+            EmbeddedPostgres postgres = EmbeddedPostgresConfig.open(dataDir, majorVersion);
+            log.info("Opened the embedded database at {} to read it for a migration.", dataDir);
+            return new Source(postgres.getPostgresDatabase(), postgres);
+        } catch (IOException | RuntimeException e) {
+            throw new IllegalStateException("The embedded database could not be opened: "
+                    + e.getMessage() + " Is another copy of Concentus running?", e);
+        }
+    }
+
+    /**
+     * A database to read, and the server to stop afterwards if this opened one.
+     *
+     * <p>{@code close()} does not throw: it runs on the way out of a request that has already
+     * succeeded or already failed for its own reasons, and a server that will not stop cleanly is
+     * worth a log line, not a different answer to the caller.
+     */
+    private record Source(DataSource dataSource, EmbeddedPostgres started) implements AutoCloseable {
+        @Override
+        public void close() {
+            if (started == null) return;
+            try {
+                started.close();
+            } catch (IOException e) {
+                log.warn("The embedded database opened for a migration did not stop cleanly: {}",
+                        e.getMessage());
+            }
+        }
     }
 
     /**

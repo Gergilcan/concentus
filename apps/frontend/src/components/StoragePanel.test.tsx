@@ -11,7 +11,7 @@ vi.mock('../api/client.ts', () => ({
     getStorage: () => getStorage(),
     saveStorage: vi.fn(),
     testStorage: vi.fn(),
-    storageContents: () => storageContents(),
+    storageContents: (from: string) => storageContents(from),
     migrateStorage: (body: unknown) => migrateStorage(body),
     exportBackup: vi.fn(),
     importBackup: vi.fn(),
@@ -58,6 +58,19 @@ describe('StoragePanel — moving data to another database', () => {
   const open = async () => {
     render(<StoragePanel pushError={vi.fn()} />)
     await screen.findByText(/Move my data/i)
+  }
+
+  /** The screen somebody sees after switching, restarting, and finding nothing there. */
+  const openAlreadySwitched = async () => {
+    getStorage.mockResolvedValue({
+      mode: 'external',
+      url: 'jdbc:postgresql://db.internal:5432/concentus',
+      username: 'concentus',
+      hasPassword: true,
+      activeMode: 'external',
+    })
+    render(<StoragePanel pushError={vi.fn()} />)
+    await screen.findByText(/Bring my old data here/i)
   }
 
   /** The URL field only exists once the storage is set to an external server. */
@@ -116,6 +129,29 @@ describe('StoragePanel — moving data to another database', () => {
     fireEvent.click(screen.getByRole('button', { name: /Move it now/i }))
 
     expect(await screen.findByText(/Nothing was deleted/i)).toBeInTheDocument()
+  })
+
+  // The way most people arrive at this feature: they switched, restarted, and their work is not
+  // there. The copy has to run the other way without asking them to switch back first.
+  it('reads the embedded database instead when the app already runs on the company one', async () => {
+    await openAlreadySwitched()
+
+    fireEvent.click(screen.getByRole('button', { name: /See what is still there/i }))
+
+    await waitFor(() => expect(storageContents).toHaveBeenCalled())
+    expect(storageContents.mock.calls[0][0]).toBe('embedded')
+  })
+
+  // Nothing to type: the destination is the database it is running on, which is the only reason
+  // the person is looking at this screen.
+  it('needs no target typed in when it is pulling data back', async () => {
+    await openAlreadySwitched()
+
+    fireEvent.click(screen.getByRole('button', { name: /Bring it across/i }))
+
+    await waitFor(() => expect(migrateStorage).toHaveBeenCalled())
+    expect(migrateStorage.mock.calls[0][0]).toMatchObject({ from: 'embedded' })
+    expect(await screen.findByText(/Reload the page/i)).toBeInTheDocument()
   })
 
   // Copying and switching are two decisions on purpose, and the screen has to say so — otherwise
