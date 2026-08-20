@@ -36,26 +36,49 @@ public class OidcSignInController {
 
     private final OidcSignIn signIn;
     private final PersistentTokenBasedRememberMeServices rememberMe;
+    private final DeviceAccountStore devices;
+    private final int rememberMeDays;
     private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
 
     public OidcSignInController(OidcSignIn signIn,
-                                     PersistentTokenBasedRememberMeServices rememberMe) {
+                                PersistentTokenBasedRememberMeServices rememberMe,
+                                DeviceAccountStore devices,
+                                @org.springframework.beans.factory.annotation.Value(
+                                        "${app.auth.remember-me-days:30}") int rememberMeDays) {
         this.signIn = signIn;
         this.rememberMe = rememberMe;
+        this.devices = devices;
+        this.rememberMeDays = rememberMeDays;
     }
 
-    /** Sends the browser to Microsoft. A link, not a fetch: the destination is another origin. */
+/**
+     * Sends the browser to a provider. A link, not a fetch: the destination is another origin.
+     *
+     * <p>Named in the query because a deployment can offer several, and the name is checked
+     * against what is configured rather than trusted — the value arrives from a page, and an
+     * unchecked one would be a redirect to wherever the query said.
+     */
     @GetMapping("/start")
-    public void start(HttpServletRequest request, HttpServletResponse response) throws IOException {
+    public void start(@RequestParam(required = false) String provider,
+                      HttpServletRequest request, HttpServletResponse response) throws IOException {
         if (!signIn.isConfigured()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Single sign-on is not configured on this deployment.");
         }
-        response.sendRedirect(signIn.authorizationUrl(baseOf(request)));
+        // Absent means the only one, which is what a link written before there could be several
+        // still asks for.
+        String id = provider == null || provider.isBlank()
+                ? signIn.providers().getFirst().id()
+                : provider;
+        try {
+            response.sendRedirect(signIn.authorizationUrl(id, baseOf(request)));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        }
     }
 
     /**
-     * Where Microsoft sends the person back.
+     * Where a provider sends the person back.
      *
      * <p>Ends in a redirect to the application either way, because this is a top-level navigation
      * and there is nobody to read a JSON body. A refusal travels as a query parameter the sign-in
@@ -92,6 +115,9 @@ public class OidcSignInController {
         // The cookie that survives a restart of this backend. Without it, signing in through a
         // directory would still mean signing in again after every deploy.
         rememberMe.loginSuccess(request, response, authentication);
+        // The same as the password path: this browser has now proved it may be this person, so it
+        // may switch back to them without proving it again.
+        devices.attach(DeviceCookie.ensure(request, response, rememberMeDays), account);
 
         response.sendRedirect("/");
     }

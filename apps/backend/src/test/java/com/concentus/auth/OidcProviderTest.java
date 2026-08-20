@@ -70,11 +70,25 @@ class OidcProviderTest {
                 .isEqualTo("openid email");
     }
 
+    // Behaves as generic — endpoints discovered from the issuer, nothing assumed about the
+    // supplier — but keeps the name it was given. A deployment can configure two of these, and
+    // folding both into one "generic" would have the second shadow the first: one button, and it
+    // sends people to the other company's directory.
     @Test
-    void an_unknown_preset_is_treated_as_generic_rather_than_guessed_at() {
+    void an_unknown_preset_is_discovered_from_its_issuer_and_keeps_its_name() {
         OidcProvider p = OidcProvider.of("okta", "https://tecnovent.okta.com", null, null, null);
 
-        assertThat(p.id()).isEqualTo("generic");
+        assertThat(p.id()).isEqualTo("okta");
         assertThat(p.issuer()).isEqualTo("https://tecnovent.okta.com");
+        assertThat(p.hasStatedEndpoints()).isFalse();
+        assertThat(p.subjectClaim()).isEqualTo("sub");
+    }
+
+    // The id is written into user_identities beside every subject and into a URL, and it comes
+    // from configuration.
+    @Test
+    void a_name_that_is_not_url_safe_is_reduced_rather_than_carried_through() {
+        assertThat(OidcProvider.of("Corp Directory!", "https://id.example", null, null, null).id())
+                .isEqualTo("corpdirectory");
     }
 }

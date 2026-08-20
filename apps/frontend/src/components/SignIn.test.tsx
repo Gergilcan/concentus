@@ -49,6 +49,38 @@ describe('SignIn', () => {
     expect(screen.queryByText(/sign up|create an account|register/i)).not.toBeInTheDocument()
   })
 
+  // A company rarely has one way in: staff on the corporate directory, a contractor with a Google
+  // account, and whoever installed the thing with a password. Each button has to go to its own
+  // provider — one that sends people to the wrong directory is worse than no button.
+  it('offers every configured provider, each to its own', () => {
+    render(
+      <SignIn
+        onSignedIn={vi.fn()}
+        providers={[
+          { id: 'microsoft', name: 'Microsoft' },
+          { id: 'google', name: 'Google' },
+        ]}
+      />,
+    )
+
+    expect(screen.getByRole('link', { name: 'Continue with Microsoft' })).toHaveAttribute(
+      'href',
+      '/api/account/oidc/start?provider=microsoft',
+    )
+    expect(screen.getByRole('link', { name: 'Continue with Google' })).toHaveAttribute(
+      'href',
+      '/api/account/oidc/start?provider=google',
+    )
+  })
+
+  // Passwords alone is a real deployment, and an 'or' with nothing after it is a broken screen.
+  it('shows no provider buttons when there are none', () => {
+    render(<SignIn onSignedIn={vi.fn()} />)
+
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.queryByText('or')).not.toBeInTheDocument()
+  })
+
   it('says so when the backend cannot reach its account store', () => {
     render(<SignIn onSignedIn={vi.fn()} storeUnavailable />)
 

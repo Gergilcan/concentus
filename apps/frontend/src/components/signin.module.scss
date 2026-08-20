@@ -118,6 +118,12 @@
 
 .provider {
   display: block;
+  // Stacked when a deployment offers several, which is the normal case for a company that has
+  // a directory and contractors who do not.
+  & + & {
+    margin-top: 8px;
+  }
+
   text-align: center;
   text-decoration: none;
   background: t.$panel-2;

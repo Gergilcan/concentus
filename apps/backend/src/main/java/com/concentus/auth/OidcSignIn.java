@@ -17,18 +17,19 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Signing in with an identity provider the organization already has.
+ * Signing in with an identity provider somebody already has.
  *
- * <p>Provider-agnostic on purpose. Anything that speaks OpenID Connect works — Entra ID, Google,
- * Auth0, a self-hosted Keycloak — because which supplier holds a company's identities is their
- * decision and not something this application should have baked in. The endpoints are discovered
- * from the issuer, so configuration is a preset (or an issuer), a client id and a secret.
+ * <p>Provider-agnostic, and more than one at a time. Which supplier holds a company's identities
+ * is their decision, and often it is several: the staff are on the corporate directory, the
+ * contractor auditing them has a Google account, and whoever installed the thing wants a
+ * password. Endpoints are discovered from the issuer where the provider publishes them, so
+ * configuring one is a preset, a client id and a secret.
  *
  * <p>The authorization-code flow, driven from here rather than through Spring's OAuth2 client:
  * this is a single-page app talking to its own API, and that starter's redirect-and-filter
@@ -43,7 +44,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p><b>People are matched by subject, never by address.</b> Addresses are reassigned when people
  * leave a company; matching on one would eventually hand a leaver's flows, and their role, to
- * whoever inherited the mailbox.
+ * whoever inherited the mailbox. The subject is scoped by provider, so the same address arriving
+ * through two directories is two identities linked to one account rather than a collision.
  */
 @Service
 public class OidcSignIn {
@@ -59,80 +61,86 @@ public class OidcSignIn {
             .connectTimeout(Duration.ofSeconds(15)).build();
     private final SecureRandom random = new SecureRandom();
     private final Map<String, Pending> pending = new ConcurrentHashMap<>();
-    /** Discovered once and kept: an issuer's endpoints do not move between requests. */
-    private final AtomicReference<Endpoints> endpoints = new AtomicReference<>();
+    /** Discovered once per provider and kept: an issuer's endpoints do not move between requests. */
+    private final Map<String, Endpoints> endpoints = new ConcurrentHashMap<>();
 
     private final AccountStore accounts;
     private final UserIdentityStore identities;
     private final EmailDomainPolicy domains;
     private final ObjectMapper mapper;
-    private final boolean enabled;
-    private final OidcProvider provider;
-    private final String clientId;
-    private final String clientSecret;
-    private final String defaultRole;
+    private final OidcRegistry registry;
     private final String organizationId;
 
     public OidcSignIn(AccountStore accounts, UserIdentityStore identities,
-                      EmailDomainPolicy domains, ObjectMapper mapper,
-                      @Value("${app.auth.oidc.enabled:false}") boolean enabled,
-                      @Value("${app.auth.oidc.provider:microsoft}") String preset,
-                      @Value("${app.auth.oidc.issuer:}") String issuer,
-                      @Value("${app.auth.oidc.tenant:organizations}") String tenant,
-                      @Value("${app.auth.oidc.display-name:}") String displayName,
-                      @Value("${app.auth.oidc.scope:}") String scope,
-                      @Value("${app.auth.oidc.client-id:}") String clientId,
-                      @Value("${app.auth.oidc.client-secret:}") String clientSecret,
-                      @Value("${app.auth.oidc.default-role:VIEWER}") String defaultRole,
+                      EmailDomainPolicy domains, ObjectMapper mapper, OidcRegistry registry,
                       @Value("${app.organization-id:default}") String organizationId) {
         this.accounts = accounts;
         this.identities = identities;
         this.domains = domains;
         this.mapper = mapper;
-        this.enabled = enabled;
-        this.provider = OidcProvider.of(preset, issuer, tenant, displayName, scope);
-        this.clientId = clientId == null ? "" : clientId.trim();
-        this.clientSecret = clientSecret == null ? "" : clientSecret.trim();
-        this.defaultRole = defaultRole;
+        this.registry = registry;
         this.organizationId = organizationId;
     }
 
-    /**
-     * Whether the button should exist at all: switched on, with an issuer, a client id and a
-     * secret. An "enabled" provider missing its credentials is a button that fails, which is worse
-     * than one that is absent.
-     */
+    /** Whether any provider is configured at all — whether there is a button to show. */
     public boolean isConfigured() {
-        return enabled && provider.isUsable() && !clientId.isBlank() && !clientSecret.isBlank();
+        return registry.any();
     }
 
-    /** What to write on the button. */
+    /** Every provider somebody may sign in with, for the buttons on the sign-in screen. */
+    public List<OidcRegistry.Configured> providers() {
+        return registry.all();
+    }
+
+    /**
+     * What to write on the button when there is one.
+     *
+     * <p>Kept for the single-provider answer the session endpoint has always given. With several
+     * configured it names the first, which is the one a caller that only understands one would
+     * have used anyway.
+     */
     public String displayName() {
-        return provider.displayName();
+        return registry.all().stream().findFirst()
+                .map(OidcRegistry.Configured::displayName).orElse("your organization");
     }
 
-    private record Pending(String redirectUri, Instant expiresAt) {
+    /** A sign-in that has left for a provider and not come back yet. */
+    private record Pending(String providerId, String redirectUri, Instant expiresAt) {
     }
 
     /** The three endpoints this flow needs, as the provider itself publishes them. */
     record Endpoints(String authorization, String token, String userinfo) {
     }
 
-    /** Where to send the browser, and the state this process will accept back. */
-    public String authorizationUrl(String requestBase) {
+    /**
+     * Where to send the browser, and the state this process will accept back.
+     *
+     * <p>The state names the provider as well as proving the attempt is ours: the callback is one
+     * URL for all of them — every provider's registration points at it — so what comes back has to
+     * say which conversation it belongs to, and it must be this process that said so rather than
+     * the request.
+     */
+    public String authorizationUrl(String providerId, String requestBase) {
+        OidcRegistry.Configured configured = require(providerId);
         String redirectUri = requestBase + CALLBACK_PATH;
         String state = HexFormat.of().formatHex(randomBytes(24));
         sweepExpired();
-        pending.put(state, new Pending(redirectUri, Instant.now().plus(PENDING_TTL)));
+        pending.put(state, new Pending(configured.id(), redirectUri, Instant.now().plus(PENDING_TTL)));
 
-        return discover().authorization()
-                + (discover().authorization().contains("?") ? "&" : "?")
-                + "client_id=" + encode(clientId)
+        String authorization = endpointsOf(configured).authorization();
+        return authorization
+                + (authorization.contains("?") ? "&" : "?")
+                + "client_id=" + encode(configured.clientId())
                 + "&response_type=code"
                 + "&redirect_uri=" + encode(redirectUri)
                 + "&response_mode=query"
-                + "&scope=" + encode(provider.scope())
+                + "&scope=" + encode(configured.provider().scope())
                 + "&state=" + encode(state);
+    }
+
+    private OidcRegistry.Configured require(String providerId) {
+        return registry.byId(providerId).orElseThrow(() -> new IllegalArgumentException(
+                "No sign-in provider called '" + providerId + "' is configured here."));
     }
 
     /** What the callback produced: an account to sign in as, or a reason it did not. */
@@ -152,30 +160,36 @@ public class OidcSignIn {
      * provider, applies the domain policy, and finds or creates their account.
      */
     public Outcome complete(String code, String state, String error) {
-        if (error != null && !error.isBlank()) {
-            return Outcome.failed(provider.displayName() + " refused the sign-in: " + error);
-        }
-        if (code == null || code.isBlank() || state == null) {
-            return Outcome.failed("The sign-in did not come back with a code.");
-        }
-        Pending started = pending.remove(state);
+        Pending started = state == null ? null : pending.remove(state);
         if (started == null || started.expiresAt().isBefore(Instant.now())) {
             // Either a state this process never issued, or one from an attempt left open too long.
             // Both answer the same way: start again. Distinguishing them tells an attacker which.
+            // Checked before the provider's own error, because until this passes there is no
+            // knowing which provider the error even came from.
             return Outcome.failed("This sign-in link is no longer valid. Try again.");
         }
+        OidcRegistry.Configured configured = registry.byId(started.providerId()).orElse(null);
+        if (configured == null) {
+            return Outcome.failed("That sign-in provider is no longer configured here.");
+        }
+        if (error != null && !error.isBlank()) {
+            return Outcome.failed(configured.displayName() + " refused the sign-in: " + error);
+        }
+        if (code == null || code.isBlank()) {
+            return Outcome.failed("The sign-in did not come back with a code.");
+        }
 
+        OidcProvider provider = configured.provider();
         try {
-            String accessToken = exchange(code, started.redirectUri());
-            JsonNode me = userinfo(accessToken);
-            String subject = text(me, "sub");
-            // email where the directory has one; preferred_username is the UPN on Entra and is
-            // what a work account always carries. Both are standard OIDC claims, which is why no
-            // provider-specific API is called here any more.
-            String email = text(me, "email");
+            String accessToken = exchange(configured, code, started.redirectUri());
+            JsonNode me = userinfo(configured, accessToken);
+            String subject = text(me, provider.subjectClaim());
+            // The configured claim, then the OIDC standard fallbacks: preferred_username is the
+            // UPN on Entra and is what a work account always carries when email is absent.
+            String email = text(me, provider.emailClaim());
             if (email == null) email = text(me, "preferred_username");
             if (subject == null || email == null || !email.contains("@")) {
-                return Outcome.failed(provider.displayName()
+                return Outcome.failed(configured.displayName()
                         + " did not return an address for this account.");
             }
             if (!domains.allows(email)) {
@@ -183,7 +197,7 @@ public class OidcSignIn {
                 return Outcome.failed("Addresses at " + EmailDomainPolicy.domainOf(email)
                         + " cannot sign in to this deployment.");
             }
-            return new Outcome(resolveAccount(subject, email), null);
+            return new Outcome(resolveAccount(configured, subject, email), null);
         } catch (RuntimeException e) {
             log.warn("Sign-in through {} failed: {}", provider.id(), e.getMessage());
             return Outcome.failed("Sign-in could not be completed: " + e.getMessage());
@@ -194,24 +208,27 @@ public class OidcSignIn {
      * The account this identity belongs to, creating one the first time.
      *
      * <p>Three cases, in the order they must be asked. A known subject is the person, whatever
-     * their address is today. An unknown subject whose address already has a password account is
-     * the same human arriving a second way, so the identity is linked rather than a duplicate
-     * created — with their existing role, which is the point of linking. Neither means a new
-     * account, at the role a first-time arrival gets.
+     * their address is today. An unknown subject whose address already has an account is the same
+     * human arriving a second way — through a second provider, or beside the password they already
+     * had — so the identity is linked rather than a duplicate created, with their existing role,
+     * which is the point of linking. Neither means a new account, at the role a first-time arrival
+     * gets.
      */
-    private Accounts.UserAccount resolveAccount(String subject, String email) {
-        Optional<Accounts.UserAccount> linked = identities.find(provider.id(), subject)
+    private Accounts.UserAccount resolveAccount(OidcRegistry.Configured configured,
+                                                String subject, String email) {
+        String providerId = configured.provider().id();
+        Optional<Accounts.UserAccount> linked = identities.find(providerId, subject)
                 .flatMap(id -> accounts.findById(id.userId()));
         if (linked.isPresent()) return linked.get();
 
         Optional<Accounts.UserAccount> byEmail = accounts.findByEmail(email);
         if (byEmail.isPresent()) {
-            identities.link(provider.id(), subject, byEmail.get().id(),
+            identities.link(providerId, subject, byEmail.get().id(),
                     byEmail.get().organizationId(), email);
             return byEmail.get();
         }
 
-        String role = Accounts.normalizeRole(defaultRole);
+        String role = Accounts.normalizeRole(configured.defaultRole());
         // A misconfigured role must not silently become an admin, and must not lock the person out
         // either: the safest reading of an unrecognised value is the lowest rung.
         if (role == null) role = Accounts.ROLE_VIEWER;
@@ -219,39 +236,44 @@ public class OidcSignIn {
         // than an empty column, so nothing can ever match it by accident.
         Accounts.UserAccount created = accounts.createUser(organizationId, email,
                 "{external}" + HexFormat.of().formatHex(randomBytes(32)), role);
-        identities.link(provider.id(), subject, created.id(), created.organizationId(), email);
-        log.info("Provisioned {} from {} sign-in as {}", email, provider.id(), role);
+        identities.link(providerId, subject, created.id(), created.organizationId(), email);
+        log.info("Provisioned {} from {} sign-in as {}", email, providerId, role);
         return created;
     }
 
     /**
-     * The provider's endpoints, from its own discovery document.
+     * A provider's endpoints: as it publishes them, or as configuration states them.
      *
-     * <p>Fetched once. Three URLs copied by hand into configuration are three chances to paste the
-     * wrong one, and the symptom of a wrong token endpoint is a sign-in that fails after the person
-     * has already typed their password.
+     * <p>Discovery is fetched once. Three URLs copied by hand into configuration are three chances
+     * to paste the wrong one, and the symptom of a wrong token endpoint is a sign-in that fails
+     * after the person has already typed their password — so it is only done that way for the
+     * providers that publish nothing to discover.
      */
-    Endpoints discover() {
-        Endpoints known = endpoints.get();
-        if (known != null) return known;
-        JsonNode document = send(HttpRequest.newBuilder(URI.create(provider.discoveryUrl()))
-                .timeout(Duration.ofSeconds(20)).GET().build(), "reading the provider's configuration");
-        Endpoints found = new Endpoints(
-                require(document, "authorization_endpoint"),
-                require(document, "token_endpoint"),
-                require(document, "userinfo_endpoint"));
-        endpoints.set(found);
-        return found;
+    Endpoints endpointsOf(OidcRegistry.Configured configured) {
+        OidcProvider provider = configured.provider();
+        if (provider.hasStatedEndpoints()) {
+            return new Endpoints(provider.authorizationUrl(), provider.tokenUrl(),
+                    provider.userinfoUrl());
+        }
+        return endpoints.computeIfAbsent(provider.id(), id -> {
+            JsonNode document = send(HttpRequest.newBuilder(URI.create(provider.discoveryUrl()))
+                    .timeout(Duration.ofSeconds(20)).GET().build(),
+                    "reading " + configured.displayName() + "'s configuration");
+            return new Endpoints(
+                    required(document, "authorization_endpoint"),
+                    required(document, "token_endpoint"),
+                    required(document, "userinfo_endpoint"));
+        });
     }
 
-    private String exchange(String code, String redirectUri) {
-        String body = "client_id=" + encode(clientId)
-                + "&client_secret=" + encode(clientSecret)
+    private String exchange(OidcRegistry.Configured configured, String code, String redirectUri) {
+        String body = "client_id=" + encode(configured.clientId())
+                + "&client_secret=" + encode(configured.clientSecret())
                 + "&grant_type=authorization_code"
                 + "&code=" + encode(code)
                 + "&redirect_uri=" + encode(redirectUri)
-                + "&scope=" + encode(provider.scope());
-        HttpRequest request = HttpRequest.newBuilder(URI.create(discover().token()))
+                + "&scope=" + encode(configured.provider().scope());
+        HttpRequest request = HttpRequest.newBuilder(URI.create(endpointsOf(configured).token()))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .timeout(Duration.ofSeconds(20))
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
@@ -262,13 +284,13 @@ public class OidcSignIn {
         return token;
     }
 
-    private JsonNode userinfo(String accessToken) {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(discover().userinfo()))
+    private JsonNode userinfo(OidcRegistry.Configured configured, String accessToken) {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(endpointsOf(configured).userinfo()))
                 .header("Authorization", "Bearer " + accessToken)
                 .timeout(Duration.ofSeconds(20))
                 .GET()
                 .build();
-        return send(request, "reading the account from " + provider.displayName());
+        return send(request, "reading the account from " + configured.displayName());
     }
 
     private JsonNode send(HttpRequest request, String what) {
@@ -288,7 +310,7 @@ public class OidcSignIn {
         }
     }
 
-    private static String require(JsonNode document, String field) {
+    private static String required(JsonNode document, String field) {
         String value = text(document, field);
         if (value == null) {
             throw new IllegalStateException("the provider's configuration has no " + field);
@@ -297,7 +319,7 @@ public class OidcSignIn {
     }
 
     private static String text(JsonNode node, String field) {
-        JsonNode value = node == null ? null : node.get(field);
+        JsonNode value = node == null || field == null ? null : node.get(field);
         return value == null || value.isNull() || value.asText().isBlank() ? null : value.asText();
     }
 
