@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { api } from '../api/client.ts'
 import type { SignedInUser, SignInProvider } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
+import { ProviderButtons } from './ProviderButtons.tsx'
 import styles from './signin.module.scss'
 
 interface Props {
@@ -97,17 +98,7 @@ export function SignIn({ onSignedIn, storeUnavailable, providers = [] }: Props) 
         {providers.length > 0 && (
           <>
             <p className={styles.or}>or</p>
-            {/* Links, not fetches: the destination is another origin, and the browser has to go
-                there itself. */}
-            {providers.map((p) => (
-              <a
-                key={p.id}
-                className={styles.provider}
-                href={`/api/account/oidc/start?provider=${encodeURIComponent(p.id)}`}
-              >
-                Continue with {p.name}
-              </a>
-            ))}
+            <ProviderButtons providers={providers} verb="Continue" />
           </>
         )}
 

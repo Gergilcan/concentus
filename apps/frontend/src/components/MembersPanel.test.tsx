@@ -6,6 +6,8 @@ const listMembers = vi.fn()
 const changeMemberRole = vi.fn()
 const addMember = vi.fn()
 const session = vi.fn()
+const listSignInProviders = vi.fn()
+const saveSignInProvider = vi.fn()
 
 vi.mock('../api/client.ts', () => ({
   api: {
@@ -13,6 +15,8 @@ vi.mock('../api/client.ts', () => ({
     changeMemberRole: (id: string, role: string) => changeMemberRole(id, role),
     addMember: (email: string, password: string, role: string) => addMember(email, password, role),
     session: () => session(),
+    listSignInProviders: () => listSignInProviders(),
+    saveSignInProvider: (u: unknown) => saveSignInProvider(u),
   },
 }))
 
@@ -26,6 +30,7 @@ vi.mock('../api/client.ts', () => ({
 describe('MembersPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    listSignInProviders.mockResolvedValue({ providers: [], redirectUri: "http://127.0.0.1:8734/api/account/oidc/callback", live: [] })
     session.mockResolvedValue({ signedIn: true, email: 'gerard@tecnovent.com' })
     listMembers.mockResolvedValue([
       { id: '1', email: 'gerard@tecnovent.com', role: 'ADMIN', createdAt: Date.now() - 86400000 },

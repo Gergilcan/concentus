@@ -111,11 +111,15 @@ public class AccountController {
             out.put("organizationId", u.organizationId());
             out.put("role", u.role());
         });
-        // Which buttons the sign-in screen should show. Asked rather than assumed: a provider
-        // with no registration must not be offered as a path that fails at the redirect.
-        out.put("providers", oidc.providers().stream()
-                .map(p -> Map.of("id", p.id(), "name", p.displayName()))
-                .toList());
+        // Every way in this application knows about, and whether each is ready.
+        //
+        // All of them, not only the configured ones. Hiding the rest answered "can I sign in with
+        // my work account here?" with silence, which reads as "no" — when the true answer is
+        // usually "yes, once somebody spends two minutes registering it". A button that is there
+        // and explains what it needs is a better answer than a button that is not there, as long
+        // as it never fails at the redirect: see the sign-in screen, which turns an unregistered
+        // one into an explanation rather than a link.
+        out.put("providers", oidc.offerable());
         // The single-provider shape this endpoint has always answered with, kept so a client that
         // only knows about one keeps working.
         out.put("ssoEnabled", oidc.isConfigured());

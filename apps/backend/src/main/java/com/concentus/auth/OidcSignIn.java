@@ -87,9 +87,31 @@ public class OidcSignIn {
         return registry.any();
     }
 
-    /** Every provider somebody may sign in with, for the buttons on the sign-in screen. */
+    /** Every provider somebody may sign in with right now — the ones with a registration. */
     public List<OidcRegistry.Configured> providers() {
         return registry.all();
+    }
+
+    /**
+     * Every way in this application knows about, ready or not.
+     *
+     * <p>The sign-in screen shows all of them. One that is not registered is not a broken button:
+     * it says what it needs, which is a better answer to "can I sign in with my work account here"
+     * than an absence somebody reads as no.
+     */
+    public List<Map<String, Object>> offerable() {
+        List<String> ready = registry.all().stream().map(OidcRegistry.Configured::id).toList();
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (OidcRegistry.Configured configured : registry.all()) {
+            out.add(Map.of("id", configured.id(), "name", configured.displayName(),
+                    "configured", true));
+        }
+        for (String id : OidcRegistry.PRESETS) {
+            if (ready.contains(id)) continue;
+            out.add(Map.of("id", id, "name", OidcProvider.of(id, null, null, null, null).displayName(),
+                    "configured", false));
+        }
+        return out;
     }
 
     /**

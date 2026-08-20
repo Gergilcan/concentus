@@ -1002,6 +1002,94 @@
   max-width: 78ch;
 }
 
+/**
+ * The redirect URI, given the weight it deserves.
+ *
+ * Every directory registration fails the same way the first time — the address registered there
+ * does not match the one this application asks for. So it is the first thing on the screen and it
+ * is copyable, rather than a sentence in help text underneath the fields.
+ */
+.redirectBox {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  border: 1px solid t.$accent-soft;
+  border-radius: t.$radius;
+  padding: 12px 14px;
+  margin-bottom: var(--sp-4);
+
+  code {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 12.5px;
+    color: t.$text;
+  }
+}
+
+.redirectLabel {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: t.$muted;
+  width: 100%;
+}
+
+.providerCard {
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: var(--sp-3);
+
+    h4 {
+      margin: 0;
+    }
+  }
+
+  p {
+    margin-top: var(--sp-3);
+    max-width: 72ch;
+  }
+}
+
+/** Whether this one is on the sign-in screen, said where the answer is decided. */
+.providerOn,
+.providerOff {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.providerOn {
+  color: t.$ok;
+  border: 1px solid t.$ok;
+}
+
+.providerOff {
+  color: t.$muted;
+  border: 1px solid t.$border;
+}
+
+.providerFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-4);
+
+  .field {
+    margin-bottom: 0;
+    max-width: none;
+  }
+}
+
 .rosterHead {
   display: flex;
   align-items: flex-start;

@@ -844,11 +844,39 @@ export interface Member {
   createdAt: number
 }
 
-/** One identity provider a person may sign in with. */
+/** One identity provider a person may sign in with, or could once it is registered. */
 export interface SignInProvider {
   id: string
   /** What to call it on the button — "Microsoft", "Google", or whatever was configured. */
   name: string
+  /**
+   * Whether this installation has a registration for it.
+   *
+   * False is still shown: the button explains what it needs instead of going nowhere. An absent
+   * button answers "can I sign in with my work account" with silence, which reads as no.
+   */
+  configured?: boolean
+}
+
+/**
+ * A directory people could sign in with, and whether it is set up.
+ *
+ * `hasSecret` rather than the secret: what the screen needs is whether there is one, so it can
+ * show a filled field without the value ever being readable back out of the API.
+ */
+export interface SignInProviderConfig {
+  id: string
+  name: string
+  enabled: boolean
+  clientId: string
+  hasSecret: boolean
+  tenant: string
+  issuer: string
+  displayName: string
+  /** Microsoft restricts by directory; nothing else does, so nothing else asks. */
+  wantsTenant: boolean
+  /** Only a provider with no preset needs to be told where it lives. */
+  wantsIssuer: boolean
 }
 
 /**

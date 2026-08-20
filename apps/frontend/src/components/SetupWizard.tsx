@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { api } from '../api/client.ts'
 import type { SignedInUser, SignInProvider } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
+import { ProviderButtons } from './ProviderButtons.tsx'
 import styles from './signin.module.scss'
 
 interface Props {
@@ -136,17 +137,9 @@ export function SetupWizard({ onSignedIn, storeUnavailable, providers = [] }: Pr
         {providers.length > 0 && (
           <>
             <p className={styles.or}>or</p>
-            {/* Links, not fetches: the destination is another origin. The first account to arrive
-                through one of these administers the installation, exactly as the form above does. */}
-            {providers.map((p) => (
-              <a
-                key={p.id}
-                className={styles.provider}
-                href={`/api/account/oidc/start?provider=${encodeURIComponent(p.id)}`}
-              >
-                Set up with {p.name}
-              </a>
-            ))}
+            {/* The first account to arrive through one of these administers the installation,
+                exactly as the form above does. */}
+            <ProviderButtons providers={providers} verb="Set up" />
           </>
         )}
 

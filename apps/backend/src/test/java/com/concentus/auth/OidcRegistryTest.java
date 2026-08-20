@@ -1,6 +1,8 @@
 package com.concentus.auth;
 
 import org.junit.jupiter.api.Test;
+import com.concentus.config.Settings;
+import com.concentus.config.SettingsStore;
 import org.springframework.mock.env.MockEnvironment;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -15,6 +17,23 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class OidcRegistryTest {
 
+    /**
+     * The configuration these providers are read from.
+     *
+     * <p>A MockEnvironment behind a real Settings, rather than the environment directly: what the
+     * registry reads now is the resolver, so a deployment's configuration and what somebody typed
+     * into the app go through the same door. Building it this way keeps these tests about the
+     * provider entries and not about which of the two won.
+     */
+    private static Settings settingsFrom(MockEnvironment env) {
+        return new Settings(new SettingsStore(null, null) {
+            @Override
+            public java.util.Optional<String> get(String organizationId, String key) {
+                return java.util.Optional.empty();
+            }
+        }, env, new OrgContext("default"));
+    }
+
     private static MockEnvironment env() {
         return new MockEnvironment();
     }
@@ -28,7 +47,7 @@ class OidcRegistryTest {
                 .withProperty("app.auth.oidc.google.client-id", "g-id")
                 .withProperty("app.auth.oidc.google.client-secret", "g-secret");
 
-        OidcRegistry registry = new OidcRegistry(env);
+        OidcRegistry registry = new OidcRegistry(settingsFrom(env));
 
         assertThat(registry.all()).extracting(OidcRegistry.Configured::id)
                 .containsExactly("microsoft", "google");
@@ -46,7 +65,7 @@ class OidcRegistryTest {
                 .withProperty("app.auth.oidc.microsoft.client-secret", "ms-secret")
                 .withProperty("app.auth.oidc.google.client-id", "g-id");
 
-        assertThat(new OidcRegistry(env).all()).extracting(OidcRegistry.Configured::id)
+        assertThat(new OidcRegistry(settingsFrom(env)).all()).extracting(OidcRegistry.Configured::id)
                 .containsExactly("microsoft");
     }
 
@@ -61,7 +80,7 @@ class OidcRegistryTest {
                 .withProperty("app.auth.oidc.client-id", "id")
                 .withProperty("app.auth.oidc.client-secret", "secret");
 
-        OidcRegistry registry = new OidcRegistry(env);
+        OidcRegistry registry = new OidcRegistry(settingsFrom(env));
 
         assertThat(registry.all()).hasSize(1);
         assertThat(registry.all().getFirst().provider().issuer())
@@ -70,7 +89,7 @@ class OidcRegistryTest {
 
     @Test
     void nothing_configured_offers_nothing() {
-        assertThat(new OidcRegistry(env()).any()).isFalse();
+        assertThat(new OidcRegistry(settingsFrom(env())).any()).isFalse();
     }
 
     // A provider that is OAuth2 rather than OpenID Connect publishes nothing to discover and names
@@ -82,7 +101,7 @@ class OidcRegistryTest {
                 .withProperty("app.auth.oidc.discord.client-id", "id")
                 .withProperty("app.auth.oidc.discord.client-secret", "secret");
 
-        OidcProvider discord = new OidcRegistry(env).byId("discord").orElseThrow().provider();
+        OidcProvider discord = new OidcRegistry(settingsFrom(env)).byId("discord").orElseThrow().provider();
 
         assertThat(discord.hasStatedEndpoints()).isTrue();
         assertThat(discord.isUsable()).isTrue();
@@ -104,7 +123,7 @@ class OidcRegistryTest {
                 .withProperty("app.auth.oidc.internal.client-id", "id")
                 .withProperty("app.auth.oidc.internal.client-secret", "secret");
 
-        OidcRegistry.Configured configured = new OidcRegistry(env).byId("internal").orElseThrow();
+        OidcRegistry.Configured configured = new OidcRegistry(settingsFrom(env)).byId("internal").orElseThrow();
 
         assertThat(configured.displayName()).isEqualTo("Staff directory");
         assertThat(configured.provider().userinfoUrl()).isEqualTo("https://id.example/me");
@@ -123,7 +142,7 @@ class OidcRegistryTest {
                 .withProperty("app.auth.oidc.google.client-secret", "d")
                 .withProperty("app.auth.oidc.google.default-role", "VIEWER");
 
-        OidcRegistry registry = new OidcRegistry(env);
+        OidcRegistry registry = new OidcRegistry(settingsFrom(env));
 
         assertThat(registry.byId("microsoft").orElseThrow().defaultRole()).isEqualTo("OPERATOR");
         assertThat(registry.byId("google").orElseThrow().defaultRole()).isEqualTo("VIEWER");

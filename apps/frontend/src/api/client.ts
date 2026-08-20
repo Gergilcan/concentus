@@ -40,6 +40,7 @@ import type {
   SessionInfo,
   SignedInUser,
   SettingEntry,
+  SignInProviderConfig,
   SwitchableAccount,
   SqlPreview,
 } from './types.ts'
@@ -439,6 +440,33 @@ export const api = {
    * back to an account you left is the case it exists for.
    */
   switchableAccounts: () => req<SwitchableAccount[]>('/account/accounts'),
+  /**
+   * The directories people could sign in with, and the redirect URI to register.
+   *
+   * The redirect URI comes from the backend rather than being built here: it has to match what the
+   * application will actually ask for, which depends on how the request arrived — localhost, a LAN
+   * address, or a domain behind a proxy.
+   */
+  listSignInProviders: () =>
+    req<{
+      providers: SignInProviderConfig[]
+      redirectUri: string
+      live: Array<{ id: string; name: string }>
+    }>('/account/providers'),
+  /** Saves one registration. A blank secret leaves the stored one alone. */
+  saveSignInProvider: (update: {
+    id: string
+    enabled: boolean
+    clientId: string
+    clientSecret: string
+    tenant: string
+    issuer: string
+    displayName: string
+  }) =>
+    req<{ providers: SignInProviderConfig[]; redirectUri: string }>('/account/providers', {
+      method: 'PUT',
+      body: JSON.stringify(update),
+    }),
   /** Every setting this installation offers, with what it is now and where that value came from. */
   listSettings: () => req<{ settings: SettingEntry[] }>('/settings'),
   /**

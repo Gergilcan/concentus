@@ -146,6 +146,26 @@
   color: t.$text;
 }
 
+/**
+ * A way in that has no registration yet.
+ *
+ * Shown, and deliberately not disabled: a disabled control says "not for you" where the true
+ * answer is "not yet, and here is what it needs". Pressing it explains.
+ */
+.providerUnset {
+  color: t.$muted;
+  border-style: dashed;
+  cursor: pointer;
+  width: 100%;
+}
+
+.providerNote {
+  margin: 6px 2px 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: t.$muted;
+}
+
 .provider {
   display: block;
   // Stacked when a deployment offers several, which is the normal case for a company that has

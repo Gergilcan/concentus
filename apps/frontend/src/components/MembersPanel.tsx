@@ -3,6 +3,7 @@ import { api } from '../api/client.ts'
 import type { Member } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { timeAgo } from './flowFormat.ts'
+import { SignInProvidersPanel } from './SignInProvidersPanel.tsx'
 import { Spinner } from './Spinner.tsx'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
@@ -227,6 +228,8 @@ export function MembersPanel({ pushError }: { pushError: (m: string) => void }) 
           })}
         </ul>
       )}
+
+      <SignInProvidersPanel pushError={pushError} />
 
       <div className={styles.roleLegend}>
         <h4 className={styles.h4}>What each role may do</h4>

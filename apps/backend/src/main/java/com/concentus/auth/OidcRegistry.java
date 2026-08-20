@@ -2,7 +2,6 @@ package com.concentus.auth;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -32,10 +31,17 @@ import java.util.Optional;
  * app.auth.oidc.google.client-secret=…
  * </pre>
  *
- * <p>Read from the {@link Environment} rather than bound to a properties class: the keys are
- * chosen by whoever writes the configuration, and a fixed record cannot have a field for a
- * provider nobody has thought of yet. Each entry may also state its own endpoints and claims, so
- * a provider that is OAuth2 rather than OpenID Connect is configuration and not new code.
+ * <p>Read through {@link com.concentus.config.Settings} rather than bound to a properties class:
+ * the keys are chosen by whoever writes the configuration, and a fixed record cannot have a field
+ * for a provider nobody has thought of yet. Each entry may also state its own endpoints and
+ * claims, so a provider that is OAuth2 rather than OpenID Connect is configuration and not new
+ * code.
+ *
+ * <p><b>Resolved on every read, not held from startup.</b> Registering an application with a
+ * directory and pasting its client id is something somebody does once, in the app, and then wants
+ * to try — and a value cached at startup would mean the button they just configured is not there
+ * until they restart. That is also why the settings behind this are the only ones in the catalogue
+ * that do not ask for one.
  *
  * <p>The single-provider keys that came before this still work unchanged. A deployment that set
  * {@code app.auth.oidc.enabled=true} with a client id and secret keeps exactly the provider it
@@ -45,6 +51,16 @@ import java.util.Optional;
 public class OidcRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(OidcRegistry.class);
+
+    /**
+     * The ways in this application knows how to speak to, in the order somebody wants them.
+     *
+     * <p>Offered on the sign-in screen whether or not they are registered — an unregistered one
+     * explains itself rather than failing — so this list is what somebody is told is possible, not
+     * only what is switched on. "generic" is left out: it is a shape, not a provider, and nothing
+     * sensible goes on a button until somebody has given it a name.
+     */
+    public static final List<String> PRESETS = List.of("microsoft", "google", "discord");
 
     /** One configured provider: where it is, and what this deployment signs in to it as. */
     public record Configured(OidcProvider provider, String clientId, String clientSecret,
@@ -67,35 +83,45 @@ public class OidcRegistry {
         }
     }
 
-    private final Map<String, Configured> byId = new LinkedHashMap<>();
+    private final com.concentus.config.Settings settings;
 
-    public OidcRegistry(Environment env) {
-        for (String key : namedProviders(env)) {
-            Configured configured = read(env, key, "app.auth.oidc." + key + ".");
+    public OidcRegistry(com.concentus.config.Settings settings) {
+        this.settings = settings;
+    }
+
+    /** Everything configured right now. Rebuilt per call — see the note about restarts above. */
+    private Map<String, Configured> current() {
+        Map<String, Configured> byId = new LinkedHashMap<>();
+        for (String key : namedProviders()) {
+            Configured configured = read(key, "app.auth.oidc." + key + ".");
             if (accept(configured, key)) byId.put(configured.id(), configured);
         }
-        if (byId.isEmpty() && env.getProperty("app.auth.oidc.enabled", Boolean.class, false)) {
+        if (byId.isEmpty() && Boolean.parseBoolean(value("app.auth.oidc.enabled", "false"))) {
             // The shape this application had before it could hold more than one. Kept working, not
             // migrated: an upgrade that quietly switched off a company's sign-in would lock out
             // everyone whose account has no password.
-            String preset = env.getProperty("app.auth.oidc.provider", "microsoft");
-            Configured legacy = read(env, preset, "app.auth.oidc.");
+            String preset = value("app.auth.oidc.provider", "microsoft");
+            Configured legacy = read(preset, "app.auth.oidc.");
             if (accept(legacy, preset)) byId.put(legacy.id(), legacy);
         }
-        if (!byId.isEmpty()) {
-            log.info("Sign-in providers configured: {}", String.join(", ", byId.keySet()));
-        }
+        return byId;
+    }
+
+    private String value(String key, String fallback) {
+        return settings.get(key, fallback);
     }
 
     private boolean accept(Configured configured, String key) {
         if (configured.isUsable()) return true;
-        log.warn("Ignoring the '{}' sign-in provider: it needs a client id, a client secret, and "
-                + "either a known preset or an issuer.", key);
+        // At debug, not warn: this is read on every sign-in screen now, and a half-filled provider
+        // somebody is in the middle of configuring would otherwise fill the log.
+        log.debug("Not offering the '{}' sign-in provider: it needs a client id, a client secret, "
+                + "and either a known preset or an issuer.", key);
         return false;
     }
 
-    private static List<String> namedProviders(Environment env) {
-        String listed = env.getProperty("app.auth.oidc.providers", "");
+    private List<String> namedProviders() {
+        String listed = value("app.auth.oidc.providers", "");
         List<String> names = new ArrayList<>();
         for (String part : listed.split(",")) {
             String name = part.trim().toLowerCase(Locale.ROOT);
@@ -104,27 +130,26 @@ public class OidcRegistry {
         return names;
     }
 
-    private static Configured read(Environment env, String preset, String prefix) {
+    private Configured read(String preset, String prefix) {
         OidcProvider provider = OidcProvider.of(
                 preset,
-                env.getProperty(prefix + "issuer"),
-                env.getProperty(prefix + "tenant"),
-                env.getProperty(prefix + "display-name"),
-                env.getProperty(prefix + "scope"))
+                value(prefix + "issuer", null),
+                value(prefix + "tenant", null),
+                value(prefix + "display-name", null),
+                value(prefix + "scope", null))
                 .withEndpoints(
-                        env.getProperty(prefix + "authorization-url"),
-                        env.getProperty(prefix + "token-url"),
-                        env.getProperty(prefix + "userinfo-url"))
+                        value(prefix + "authorization-url", null),
+                        value(prefix + "token-url", null),
+                        value(prefix + "userinfo-url", null))
                 .withClaims(
-                        env.getProperty(prefix + "subject-claim"),
-                        env.getProperty(prefix + "email-claim"));
+                        value(prefix + "subject-claim", null),
+                        value(prefix + "email-claim", null));
         return new Configured(provider,
-                trimmed(env.getProperty(prefix + "client-id")),
-                trimmed(env.getProperty(prefix + "client-secret")),
+                trimmed(value(prefix + "client-id", null)),
+                trimmed(value(prefix + "client-secret", null)),
                 // Falls back to the shared setting, so "everyone arrives as a Viewer" is said once
                 // rather than repeated under every provider.
-                env.getProperty(prefix + "default-role",
-                        env.getProperty("app.auth.oidc.default-role", "VIEWER")));
+                value(prefix + "default-role", value("app.auth.oidc.default-role", "VIEWER")));
     }
 
     private static String trimmed(String value) {
@@ -133,14 +158,15 @@ public class OidcRegistry {
 
     /** Every provider a person may sign in with, in the order they were configured. */
     public List<Configured> all() {
-        return List.copyOf(byId.values());
+        return List.copyOf(current().values());
     }
 
     public Optional<Configured> byId(String id) {
-        return Optional.ofNullable(id == null ? null : byId.get(id.trim().toLowerCase(Locale.ROOT)));
+        return Optional.ofNullable(id == null ? null
+                : current().get(id.trim().toLowerCase(Locale.ROOT)));
     }
 
     public boolean any() {
-        return !byId.isEmpty();
+        return !current().isEmpty();
     }
 }
