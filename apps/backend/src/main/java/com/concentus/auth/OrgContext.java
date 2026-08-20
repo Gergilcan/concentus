@@ -18,27 +18,26 @@ import java.util.Optional;
  * <p>Background work (job workers, subscription renewal, delta sync) runs with no authenticated
  * principal, so those call sites pass the organization id explicitly — it comes from the job row
  * or the connection record that scheduled them, not from this class.
+ *
+ * <p>There is no longer a mode without accounts. It existed for the single-user desktop install,
+ * where a password to reach a loopback port bought nothing — and it stopped being true the moment
+ * that install could point at a database a team shares, because then every roles screen was
+ * describing a policy nothing enforced. One shape, always enforced, is also one shape to reason
+ * about: a request either carries a principal or it is refused.
  */
 @Component
 public class OrgContext {
 
     private final String defaultOrganizationId;
-    private final boolean authEnabled;
 
-    public OrgContext(@Value("${app.organization-id:default}") String defaultOrganizationId,
-                      @Value("${app.auth.enabled:true}") boolean authEnabled) {
+    public OrgContext(@Value("${app.organization-id:default}") String defaultOrganizationId) {
         this.defaultOrganizationId = (defaultOrganizationId == null || defaultOrganizationId.isBlank())
                 ? "default" : defaultOrganizationId.trim();
-        this.authEnabled = authEnabled;
     }
 
-    /** The organization id used when authentication is switched off, and for bootstrap. */
+    /** The organization this installation creates its first account and its records under. */
     public String defaultOrganizationId() {
         return defaultOrganizationId;
-    }
-
-    public boolean authEnabled() {
-        return authEnabled;
     }
 
     /** The signed-in user, if this thread is serving an authenticated request. */
@@ -51,20 +50,18 @@ public class OrgContext {
     /**
      * The current organization id.
      *
-     * @throws IllegalStateException when authentication is on but the request has no principal —
-     *         a coding error (an endpoint that should have been behind the filter chain), and one
-     *         that must fail rather than silently fall back to the default organization.
+     * @throws IllegalStateException when the request has no principal — a coding error (an endpoint
+     *         that should have been behind the filter chain), and one that must fail rather than
+     *         silently fall back to the default organization.
      */
     public String requireOrganizationId() {
-        Optional<ConcentusUserDetails> user = currentUser();
-        if (user.isPresent()) return user.get().organizationId();
-        if (!authEnabled) return defaultOrganizationId;
-        throw new IllegalStateException("No authenticated user on this request.");
+        return currentUser().map(ConcentusUserDetails::organizationId)
+                .orElseThrow(() -> new IllegalStateException("No authenticated user on this request."));
     }
 
     /** True when the caller may change integration settings and credentials-adjacent config. */
     public boolean isAdmin() {
-        return !authEnabled || currentUser().map(u -> Accounts.ROLE_ADMIN.equalsIgnoreCase(u.role())).orElse(false);
+        return currentUser().map(u -> Accounts.ROLE_ADMIN.equalsIgnoreCase(u.role())).orElse(false);
     }
 
     /** Throws unless the caller is an admin of their organization. */

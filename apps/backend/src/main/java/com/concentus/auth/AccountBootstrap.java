@@ -8,17 +8,19 @@ import org.springframework.context.event.EventListener;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
-import java.security.SecureRandom;
-import java.util.Base64;
-
 /**
- * Makes sure the configured administrator account exists.
+ * Makes sure the administrator account named in configuration exists.
  *
- * <p>Without this, adding authentication would lock every existing install out of its own data:
- * the API now requires a session, and there would be no account to sign in with and no open
- * endpoint to create one. The first admin therefore comes from configuration, not from a public
- * registration endpoint — a self-hosted deployment must never expose "create the owner account"
- * to whoever reaches it first.
+ * <p>For deployments nobody sits in front of: a container started by a pipeline cannot be asked
+ * anything, so the first account comes from {@code CONCENTUS_ADMIN_EMAIL} and
+ * {@code CONCENTUS_ADMIN_PASSWORD}. Where somebody <em>is</em> in front of it, the first launch
+ * asks instead — an installation with no accounts offers a setup screen, and what it creates is
+ * an account whose password its owner chose and nobody else has seen.
+ *
+ * <p><b>Nothing is generated here.</b> An account created with a password printed into a log file
+ * is an account whose password is in a log file, and on a desktop install nobody reads that log —
+ * so the "recoverable" part of the trade never happened, and what remained was a live
+ * administrator credential sitting in plain text.
  *
  * <p><b>Keyed on the configured email, not on the table being empty.</b> The obvious version of
  * this — "do nothing if any user exists" — silently ignores configuration forever after the first
@@ -36,9 +38,6 @@ import java.util.Base64;
 public class AccountBootstrap {
 
     private static final Logger log = LoggerFactory.getLogger(AccountBootstrap.class);
-
-    /** Used only when no email is configured at all. */
-    private static final String FALLBACK_ADMIN_EMAIL = "admin@localhost";
 
     private final AccountStore accounts;
     private final PasswordEncoder encoder;
@@ -76,26 +75,18 @@ public class AccountBootstrap {
         // written against it either way.
         accounts.createOrganization(orgContext.defaultOrganizationId(), organizationName);
 
-        if (!orgContext.authEnabled()) {
-            // In the desktop build this is the designed state, not a misconfiguration: the socket
-            // is bound to loopback and the only user is the person at the machine, so warning on
-            // every launch would train them to ignore warnings. On a server it stays loud.
-            if (desktop) {
-                log.info("Desktop build: the API is bound to loopback and runs without accounts.");
-            } else {
-                log.warn("app.auth.enabled=false — the API is UNAUTHENTICATED. "
-                        + "Only use this for local development.");
+        if (adminEmail.isBlank()) {
+            // Nothing configured, so nothing to provision. On an installation with no accounts the
+            // first launch asks for one; on one that has them, this is simply not its business.
+            if (accounts.countUsers() == 0) {
+                log.info("No accounts yet — the first launch will ask for one. Set "
+                        + "CONCENTUS_ADMIN_EMAIL and CONCENTUS_ADMIN_PASSWORD instead where "
+                        + "nobody is there to be asked.");
             }
             return;
         }
 
-        boolean emailConfigured = !adminEmail.isBlank();
-        String email = emailConfigured ? adminEmail.trim() : FALLBACK_ADMIN_EMAIL;
-
-        // With no email configured, only step in on a genuinely empty database — otherwise every
-        // restart would recreate a fallback account the operator has deliberately removed.
-        if (!emailConfigured && accounts.countUsers() > 0) return;
-
+        String email = adminEmail.trim();
         if (accounts.findByEmail(email).isPresent()) {
             handleExisting(email);
             return;
@@ -104,8 +95,13 @@ public class AccountBootstrap {
     }
 
     private void create(String email) {
-        boolean generated = adminPassword.isBlank();
-        String password = generated ? randomPassword() : adminPassword;
+        if (adminPassword.isBlank()) {
+            log.error("CONCENTUS_ADMIN_EMAIL is set to {} but CONCENTUS_ADMIN_PASSWORD is empty. "
+                    + "No account was created — set a password, or leave both unset and let the "
+                    + "first launch ask for one.", email);
+            return;
+        }
+        String password = adminPassword;
         try {
             // The same rule that governs changing a password later, so the account cannot be
             // created in a state from which it could not be re-set.
@@ -126,24 +122,7 @@ public class AccountBootstrap {
 
         accounts.createUser(orgContext.defaultOrganizationId(), email, encoder.encode(password),
                 Accounts.ROLE_ADMIN);
-
-        if (generated) {
-            // A password in the startup log of a server you control is recoverable; a server
-            // nobody can sign in to is not, and neither is a default password.
-            log.warn("""
-
-                    ────────────────────────────────────────────────────────────────
-                     No administrator existed, so one was created:
-                       email:    {}
-                       password: {}
-                     This password is shown once and is not stored in plain text.
-                     Set CONCENTUS_ADMIN_EMAIL / CONCENTUS_ADMIN_PASSWORD to choose
-                     your own, and change this one after signing in.
-                    ────────────────────────────────────────────────────────────────
-                    """, email, password);
-        } else {
-            log.info("Created the administrator account for {}.", email);
-        }
+        log.info("Created the administrator account for {}.", email);
     }
 
     private void handleExisting(String email) {
@@ -170,11 +149,5 @@ public class AccountBootstrap {
         log.warn("Reset the password for {} from configuration. "
                 + "Remove CONCENTUS_ADMIN_PASSWORD_RESET so the next restart does not do it again.",
                 email);
-    }
-
-    private static String randomPassword() {
-        byte[] bytes = new byte[18];
-        new SecureRandom().nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }

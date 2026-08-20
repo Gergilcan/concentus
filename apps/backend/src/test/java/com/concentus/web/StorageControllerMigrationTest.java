@@ -29,6 +29,26 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class StorageControllerMigrationTest {
 
+    /**
+     * An organization context that answers "yes" to requireAdmin.
+     *
+     * <p>These tests are about the direction of a copy, not about who may ask for one — which is
+     * covered where it belongs, by the filter chain and by requireAdmin's own tests.
+     */
+    private static OrgContext adminContext() {
+        return new OrgContext("default") {
+            @Override
+            public boolean isAdmin() {
+                return true;
+            }
+
+            @Override
+            public String requireOrganizationId() {
+                return "default";
+            }
+        };
+    }
+
     /** A key of no consequence: nothing in this test reads a sealed value back. */
     private static SecretCipher cipher() {
         byte[] raw = new byte[32];
@@ -53,8 +73,7 @@ class StorageControllerMigrationTest {
                 return active;
             }
         };
-        // Authentication off: this test is about the direction of a copy, not about who may ask.
-        return new StorageController(settings, provider, live, new OrgContext("default", false),
+        return new StorageController(settings, provider, live, adminContext(),
                 dataDir.toString(), 17);
     }
 
@@ -110,7 +129,7 @@ class StorageControllerMigrationTest {
             public StorageSettings getIfAvailable() {
                 return external;
             }
-        }, live, new OrgContext("default", false), "", 17);
+        }, live, adminContext(), "", 17);
 
         assertThatThrownBy(() -> controller.contents("embedded"))
                 .isInstanceOf(IllegalStateException.class)

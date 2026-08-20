@@ -50,8 +50,8 @@ class McpStudioControllerTest {
     // ------------------------------------------------------------------- auth
 
     @Test
-    void withAuthOffAndNoTokenTheEndpointIsOpen() {
-        McpStudioController controller = controller(authOff(), "", "", echoTool());
+    void onTheDesktopAndWithNoTokenTheEndpointIsOpen() {
+        McpStudioController controller = controller(DESKTOP, "", "", echoTool());
 
         ResponseEntity<JsonNode> response = call(controller, null, listRequest());
 
@@ -60,8 +60,8 @@ class McpStudioControllerTest {
     }
 
     @Test
-    void withAuthOffAConfiguredTokenIsStillEnforced() {
-        McpStudioController controller = controller(authOff(), TOKEN, "", echoTool());
+    void onTheDesktopAConfiguredTokenIsStillEnforced() {
+        McpStudioController controller = controller(DESKTOP, TOKEN, "", echoTool());
 
         assertThat(call(controller, null, listRequest()).getStatusCode().value()).isEqualTo(401);
         assertThat(call(controller, "wrong", listRequest()).getStatusCode().value()).isEqualTo(401);
@@ -74,22 +74,22 @@ class McpStudioControllerTest {
      * and credential in the organization the moment someone turns accounts on.
      */
     @Test
-    void withAuthOnAndNoTokenConfiguredEveryRequestIsRefused() {
-        McpStudioController controller = controller(authOn(), "", "", echoTool());
+    void onAServerWithNoTokenConfiguredEveryRequestIsRefused() {
+        McpStudioController controller = controller(SERVER, "", "", echoTool());
 
         assertThat(call(controller, null, listRequest()).getStatusCode().value()).isEqualTo(401);
         assertThat(call(controller, TOKEN, listRequest()).getStatusCode().value()).isEqualTo(401);
     }
 
     @Test
-    void withAuthOnTheTokenActsAsTheConfiguredAccount() {
+    void onAServerTheTokenActsAsTheConfiguredAccount() {
         AccountStore accounts = mock(AccountStore.class);
         when(accounts.findByEmail("owner@example.com")).thenReturn(Optional.of(
                 new Accounts.UserAccount("u1", "org-7", "owner@example.com", "hash", "ADMIN", true, 0L)));
 
         McpStudioController controller = new McpStudioController(
-                List.of(() -> List.of(echoTool())), MAPPER, authOn(), accounts,
-                TOKEN, "owner@example.com");
+                List.of(() -> List.of(echoTool())), MAPPER, serverOrg(), accounts,
+                TOKEN, "owner@example.com", SERVER);
 
         assertThat(call(controller, TOKEN, listRequest()).getStatusCode().value()).isEqualTo(200);
     }
@@ -99,23 +99,25 @@ class McpStudioControllerTest {
      * organization: that fallback would be a cross-tenant read, and it would happen silently.
      */
     @Test
-    void withAuthOnAnUnknownOrDisabledAccountIsRefused() {
+    void onAServerAnUnknownOrDisabledAccountIsRefused() {
         AccountStore accounts = mock(AccountStore.class);
         when(accounts.findByEmail(anyString())).thenReturn(Optional.empty());
         McpStudioController unknown = new McpStudioController(
-                List.of(() -> List.of(echoTool())), MAPPER, authOn(), accounts, TOKEN, "ghost@example.com");
+                List.of(() -> List.of(echoTool())), MAPPER, serverOrg(), accounts, TOKEN,
+                "ghost@example.com", SERVER);
         assertThat(call(unknown, TOKEN, listRequest()).getStatusCode().value()).isEqualTo(401);
 
         when(accounts.findByEmail("off@example.com")).thenReturn(Optional.of(
                 new Accounts.UserAccount("u2", "org-7", "off@example.com", "hash", "USER", false, 0L)));
         McpStudioController disabled = new McpStudioController(
-                List.of(() -> List.of(echoTool())), MAPPER, authOn(), accounts, TOKEN, "off@example.com");
+                List.of(() -> List.of(echoTool())), MAPPER, serverOrg(), accounts, TOKEN,
+                "off@example.com", SERVER);
         assertThat(call(disabled, TOKEN, listRequest()).getStatusCode().value()).isEqualTo(401);
     }
 
     @Test
-    void withAuthOnAndNoAccountConfiguredTheTokenAloneIsNotEnough() {
-        McpStudioController controller = controller(authOn(), TOKEN, "", echoTool());
+    void onAServerTheTokenAloneIsNotEnoughWithoutAnAccount() {
+        McpStudioController controller = controller(SERVER, TOKEN, "", echoTool());
 
         assertThat(call(controller, TOKEN, listRequest()).getStatusCode().value()).isEqualTo(401);
     }
@@ -127,7 +129,8 @@ class McpStudioControllerTest {
         when(accounts.findByEmail("owner@example.com")).thenReturn(Optional.of(
                 new Accounts.UserAccount("u1", "org-7", "owner@example.com", "hash", "ADMIN", true, 0L)));
         McpStudioController controller = new McpStudioController(
-                List.of(() -> List.of(echoTool())), MAPPER, authOn(), accounts, TOKEN, "owner@example.com");
+                List.of(() -> List.of(echoTool())), MAPPER, serverOrg(), accounts, TOKEN,
+                "owner@example.com", SERVER);
 
         call(controller, TOKEN, listRequest());
 
@@ -142,14 +145,14 @@ class McpStudioControllerTest {
         StudioToolset second = () -> List.of(echoTool());
 
         assertThatThrownBy(() -> new McpStudioController(List.of(first, second), MAPPER,
-                authOff(), mock(AccountStore.class), "", ""))
+                desktopOrg(), mock(AccountStore.class), "", "", DESKTOP))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("echo");
     }
 
     @Test
     void initializeAnnouncesTheServerAndHowToUseIt() {
-        McpStudioController controller = controller(authOff(), "", "", echoTool());
+        McpStudioController controller = controller(DESKTOP, "", "", echoTool());
 
         JsonNode result = call(controller, null, request("initialize")).getBody().path("result");
 
@@ -162,7 +165,7 @@ class McpStudioControllerTest {
 
     @Test
     void anUnknownToolIsAFixableToolResultNotATransportError() {
-        McpStudioController controller = controller(authOff(), "", "", echoTool());
+        McpStudioController controller = controller(DESKTOP, "", "", echoTool());
 
         JsonNode result = callTool(controller, "does_not_exist").path("result");
 
@@ -176,7 +179,7 @@ class McpStudioControllerTest {
         StudioTool exploding = tool("boom", args -> {
             throw new ResponseStatusException(NOT_FOUND, "No such flow");
         });
-        McpStudioController controller = controller(authOff(), "", "", exploding);
+        McpStudioController controller = controller(DESKTOP, "", "", exploding);
 
         JsonNode result = callTool(controller, "boom").path("result");
 
@@ -189,7 +192,7 @@ class McpStudioControllerTest {
         StudioTool exploding = tool("boom", args -> {
             throw new IllegalArgumentException("'flowId' is required and was not given.");
         });
-        McpStudioController controller = controller(authOff(), "", "", exploding);
+        McpStudioController controller = controller(DESKTOP, "", "", exploding);
 
         assertThat(text(callTool(controller, "boom").path("result")))
                 .isEqualTo("'flowId' is required and was not given.");
@@ -200,7 +203,7 @@ class McpStudioControllerTest {
         StudioTool exploding = tool("boom", args -> {
             throw new NullPointerException("somewhere deep");
         });
-        McpStudioController controller = controller(authOff(), "", "", exploding);
+        McpStudioController controller = controller(DESKTOP, "", "", exploding);
 
         JsonNode body = callTool(controller, "boom");
 
@@ -211,7 +214,7 @@ class McpStudioControllerTest {
 
     @Test
     void anUnsupportedMethodIsAJsonRpcError() {
-        McpStudioController controller = controller(authOff(), "", "", echoTool());
+        McpStudioController controller = controller(DESKTOP, "", "", echoTool());
 
         JsonNode body = call(controller, null, request("resources/list")).getBody();
 
@@ -221,7 +224,7 @@ class McpStudioControllerTest {
     /** A tool called with no arguments at all must see an empty object, not a null. */
     @Test
     void missingArgumentsArriveAsAnEmptyObject() {
-        McpStudioController controller = controller(authOff(), "", "", echoTool());
+        McpStudioController controller = controller(DESKTOP, "", "", echoTool());
 
         var params = MAPPER.createObjectNode();
         params.put("name", "echo");
@@ -234,18 +237,30 @@ class McpStudioControllerTest {
 
     // ------------------------------------------------------------------ setup
 
-    private static OrgContext authOff() {
-        return new OrgContext("local", false);
+    /**
+     * The two shapes this endpoint is reachable in.
+     *
+     * <p>The distinction used to be whether accounts existed; with accounts everywhere it is what
+     * it always meant — a socket bound to loopback with one person at the machine, or a deployment
+     * anybody can reach. The guard on the desktop is the bind, not the account check, which is why
+     * removing the account-free mode did not change what this endpoint allows there.
+     */
+    private static final boolean DESKTOP = true;
+    private static final boolean SERVER = false;
+
+    private static OrgContext desktopOrg() {
+        return new OrgContext("local");
     }
 
-    private static OrgContext authOn() {
-        return new OrgContext("default", true);
+    private static OrgContext serverOrg() {
+        return new OrgContext("default");
     }
 
-    private static McpStudioController controller(OrgContext orgContext, String token,
+    private static McpStudioController controller(boolean desktop, String token,
                                                   String account, StudioTool... tools) {
-        return new McpStudioController(List.of(() -> List.of(tools)), MAPPER, orgContext,
-                mock(AccountStore.class), token, account);
+        return new McpStudioController(List.of(() -> List.of(tools)), MAPPER,
+                desktop ? desktopOrg() : serverOrg(), mock(AccountStore.class), token, account,
+                desktop);
     }
 
     /** Answers with its own arguments, so a test can see exactly what the handler received. */

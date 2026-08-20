@@ -43,21 +43,22 @@ class FlowControllerTest {
     private final com.concentus.service.GoldenStatusService goldenStatus =
             mock(com.concentus.service.GoldenStatusService.class);
 
-    /** {@code authEnabled=false} is the desktop install: one person, no account to name. */
-    private FlowController controller(boolean authEnabled) {
+    private FlowController controller() {
         return new FlowController(store, runService, scheduler, mailTriggers, versions, memory,
-                new OrgContext("default", authEnabled),
+                new OrgContext("default"),
                 mock(com.concentus.service.FlowGenerator.class), goldenStatus,
                 mock(com.concentus.service.FlowDoctor.class));
     }
 
+    // A wrong name on a revision is worse than no name: it is the field people read to work out
+    // what changed and who to ask.
     @Test
-    void savingCreditsTheRevisionToTheLocalUserWhenAuthenticationIsOff() {
+    void savingLeavesTheRevisionUnsignedWhenNobodyIsOnTheRequest() {
         when(store.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        controller(false).save(flow("f1", "My Flow"));
+        controller().save(flow("f1", "My Flow"));
 
-        verify(versions).snapshot(any(), eq("local"));
+        verify(versions).snapshot(any(), eq(null));
     }
 
     @Test
@@ -66,7 +67,7 @@ class FlowControllerTest {
 
         // No principal on this thread: rather than crediting the revision to the default account,
         // it is stored unsigned and the history shows "—".
-        controller(true).save(flow("f1", "My Flow"));
+        controller().save(flow("f1", "My Flow"));
 
         verify(versions).snapshot(any(), eq((String) null));
     }
@@ -76,12 +77,12 @@ class FlowControllerTest {
         when(versions.get("f1", 1)).thenReturn(Optional.of(flow("f1", "Original")));
         when(store.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        FlowGraph restored = controller(false).restore("f1", 1);
+        FlowGraph restored = controller().restore("f1", 1);
 
         assertThat(restored.name()).isEqualTo("Original");
         // Appending the restore as its own revision is what keeps history additive: the version
         // that was current when Restore was pressed stays in the list, recoverable.
-        verify(versions).snapshot(any(), eq("local"));
+        verify(versions).snapshot(any(), eq(null));
         verify(scheduler).reschedule();
     }
 
@@ -89,7 +90,7 @@ class FlowControllerTest {
     void previewingARevisionReturnsItWithoutSavingOrSnapshottingAnything() {
         when(versions.get("f1", 2)).thenReturn(Optional.of(flow("f1", "Two versions ago")));
 
-        FlowGraph preview = controller(false).version("f1", 2);
+        FlowGraph preview = controller().version("f1", 2);
 
         assertThat(preview.name()).isEqualTo("Two versions ago");
         assertThat(preview.id()).isEqualTo("f1");
@@ -101,7 +102,7 @@ class FlowControllerTest {
     void previewingAVersionThatIsNotThereIs404RatherThanAnEmptyCanvas() {
         when(versions.get("f1", 9)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> controller(false).version("f1", 9))
+        assertThatThrownBy(() -> controller().version("f1", 9))
                 .hasMessageContaining("No such version");
     }
 
@@ -115,7 +116,7 @@ class FlowControllerTest {
                 new com.concentus.service.AgentRun("run_g", "f1", "Flow", "local");
         when(goldenStatus.autoCheckAfterSave(any(), any())).thenReturn(Optional.of(golden));
 
-        controller(false).save(flow("f1", "After"));
+        controller().save(flow("f1", "After"));
 
         verify(runService).startGoldenCheck(any(), eq("run_g"));
     }
@@ -132,7 +133,7 @@ class FlowControllerTest {
         when(runService.startGoldenCheck(any(), eq("run_g")))
                 .thenThrow(new IllegalStateException("Monthly budget reached."));
 
-        FlowGraph saved = controller(false).save(flow("f1", "After"));
+        FlowGraph saved = controller().save(flow("f1", "After"));
 
         assertThat(saved.name()).isEqualTo("After");
     }
@@ -142,7 +143,7 @@ class FlowControllerTest {
         when(store.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(goldenStatus.autoCheckAfterSave(any(), any())).thenReturn(Optional.empty());
 
-        controller(false).save(flow("f1", "After"));
+        controller().save(flow("f1", "After"));
 
         verify(runService, never()).startGoldenCheck(any(), any());
     }

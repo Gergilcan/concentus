@@ -56,18 +56,20 @@ public class AccountController {
     private final org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe;
     /** The accounts this browser has already signed into, so switching between them costs a click. */
     private final DeviceAccountStore devices;
-    /** Whether this installation asks people to sign in at all — read at startup, changed here. */
-    private final SignInSettingsStore signInSettings;
     private final int rememberMeDays;
+    /** What the organization is called, for the row the first account is created under. */
+    private final String organizationName;
     private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
 
     public AccountController(AuthenticationManager authManager, AccountStore accounts,
                              PasswordEncoder encoder, OrgContext orgContext,
                              OidcSignIn oidc,
                              org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe,
-                             DeviceAccountStore devices, SignInSettingsStore signInSettings,
+                             DeviceAccountStore devices,
                              @org.springframework.beans.factory.annotation.Value(
-                                     "${app.auth.remember-me-days:30}") int rememberMeDays) {
+                                     "${app.auth.remember-me-days:30}") int rememberMeDays,
+                             @org.springframework.beans.factory.annotation.Value(
+                                     "${app.organization-name:Concentus}") String organizationName) {
         this.authManager = authManager;
         this.accounts = accounts;
         this.encoder = encoder;
@@ -75,8 +77,8 @@ public class AccountController {
         this.oidc = oidc;
         this.rememberMe = rememberMe;
         this.devices = devices;
-        this.signInSettings = signInSettings;
         this.rememberMeDays = rememberMeDays;
+        this.organizationName = organizationName;
     }
 
     public record LoginRequest(String email, String password) {
@@ -88,12 +90,20 @@ public class AccountController {
     public record PasswordChangeRequest(String currentPassword, String newPassword) {
     }
 
-    /** Whether sign-in is required at all, plus the current session's identity if there is one. */
+    /**
+     * Who is signed in, and what this browser should show if nobody is.
+     *
+     * <p>{@code setupRequired} is the one state that is neither "signed in" nor "sign in": an
+     * installation with no accounts at all, which cannot ask anybody to sign in because there is
+     * nobody to be. It answers with the setup screen instead.
+     */
     @GetMapping("/session")
     public Map<String, Object> session() {
         Map<String, Object> out = new java.util.LinkedHashMap<>();
-        out.put("authEnabled", orgContext.authEnabled());
         out.put("storeAvailable", accounts.isAvailable());
+        // Only meaningful while it is true, and it stops being true the moment the first account
+        // exists — which is also the moment /setup starts refusing.
+        out.put("setupRequired", accounts.isAvailable() && accounts.countUsers() == 0);
         Optional<ConcentusUserDetails> me = orgContext.currentUser();
         me.ifPresent(u -> {
             out.put("userId", u.userId());
@@ -230,82 +240,76 @@ public class AccountController {
         if (device != null) devices.detach(device, userId);
     }
 
-    /**
-     * @param required     whether the next start should ask people to sign in
-     * @param adminEmail   the account that will be able to sign in, when turning it on
-     * @param adminPassword its password — set only if that account is being created
-     */
-    public record SignInRequest(boolean required, String adminEmail, String adminPassword) {
+    public record SetupRequest(String email, String password) {
     }
 
     /**
-     * Whether this installation asks people to sign in: what it does now, and what it will do next.
+     * Creates the first account, and signs it in.
      *
-     * <p>Two answers rather than one, because they differ for exactly as long as it takes to
-     * restart, and that gap is the whole reason somebody would look at this screen twice.
+     * <p>The one endpoint that needs no session, and the only window in which it does anything:
+     * it refuses the moment an account exists. That is what makes it safe to leave open — an
+     * installation with accounts cannot be claimed through it, and one without them has no other
+     * way in.
+     *
+     * <p>Signed in immediately rather than bounced to the login screen. Somebody who has just
+     * chosen an address and a password, on this machine, seconds ago, has proved everything a
+     * login form would ask them to prove again.
+     *
+     * <p>An identity provider works too, and is handled where that flow already is: the first
+     * account to arrive through one is an administrator for the same reason this one is — it is
+     * the account that claimed an empty installation.
      */
-    @GetMapping("/sign-in-required")
-    public Map<String, Object> signInRequired() {
-        return Map.of(
-                "active", orgContext.authEnabled(),
-                "next", signInSettings.load().required(),
-                "changeable", signInSettings.isSupported(),
-                "restartRequired", signInSettings.isSupported()
-                        && signInSettings.load().required() != orgContext.authEnabled());
+    @PostMapping("/setup")
+    public Map<String, Object> setup(@RequestBody SetupRequest body,
+                                     HttpServletRequest request, HttpServletResponse response) {
+        if (!accounts.isAvailable()) {
+            throw new IllegalStateException("The database is not reachable, so no account can be "
+                    + "created yet.");
+        }
+        if (accounts.countUsers() > 0) {
+            // Not "forbidden": nothing is wrong with the request, it has simply arrived after the
+            // question was settled — most likely a second tab that was open during the first.
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This installation already has an account. Sign in with it instead.");
+        }
+        if (body == null || body.email() == null || !body.email().contains("@")) {
+            throw new IllegalArgumentException("An email address is required.");
+        }
+        Accounts.requireStrongPassword(body.password());
+
+        String organizationId = orgContext.defaultOrganizationId();
+        accounts.createOrganization(organizationId, organizationName);
+        Accounts.UserAccount created = accounts.createUser(organizationId, body.email().trim(),
+                encoder.encode(body.password()), Accounts.ROLE_ADMIN);
+        LOG.info("First account created: {} administers this installation.", created.email());
+
+        return signInAs(created, request, response);
     }
 
     /**
-     * Turns sign-in on or off for the next start.
+     * Puts an account into this browser's session, and records that it may come back to it.
      *
-     * <p><b>Turning it on names the account that will be able to sign in.</b> Not a courtesy: with
-     * accounts off there is nobody signed in, so a switch that simply flipped would produce, on the
-     * next launch, a login screen with no account behind it and no way in from the interface. So
-     * the address is required, and it is either promoted to administrator or created as one — the
-     * password only being needed in the second case.
-     *
-     * <p>Admin only, which with accounts off means whoever is at the machine. That is the same
-     * boundary the desktop build already runs on: a socket bound to loopback, and the person
-     * sitting in front of it.
+     * <p>Shared by the three ways in — a password, a provider, and the first-run setup — because
+     * the parts that must not differ between them are exactly the ones easy to forget: a fresh
+     * session id so a session fixed beforehand cannot be reused, the cookie that survives a
+     * restart, and the device attachment the account switcher rests on.
      */
-    @PostMapping("/sign-in-required")
-    public Map<String, Object> setSignInRequired(@RequestBody SignInRequest body) {
-        orgContext.requireAdmin();
-        if (!signInSettings.isSupported()) {
-            throw new IllegalStateException("This deployment's sign-in comes from its configuration "
-                    + "(app.auth.enabled), not from here.");
-        }
-        if (body != null && body.required()) {
-            requireAnAdminExists(body);
-        }
-        signInSettings.save(body != null && body.required());
-        return signInRequired();
-    }
-
-    /**
-     * Makes sure somebody can sign in before sign-in is switched on.
-     *
-     * <p>An existing account at that address is promoted rather than replaced — its history, its
-     * authorship on every flow version, and any identity linked to it stay attached to it. Only an
-     * address nobody has yet needs a password, because only then is an account being made.
-     */
-    private void requireAnAdminExists(SignInRequest body) {
-        String organizationId = orgContext.requireOrganizationId();
-        if (body.adminEmail() == null || body.adminEmail().isBlank()) {
-            throw new IllegalArgumentException("Name the account that will administer this "
-                    + "installation, or nobody will be able to sign in after the restart.");
-        }
-        String email = body.adminEmail().trim();
-        Optional<Accounts.UserAccount> existing = accounts.findByEmail(email);
-        if (existing.isPresent()) {
-            if (!existing.get().isAdmin()) {
-                accounts.updateRole(existing.get().id(), organizationId, Accounts.ROLE_ADMIN);
-            }
-            return;
-        }
-        Accounts.requireStrongPassword(body.adminPassword());
-        accounts.createUser(organizationId, email, encoder.encode(body.adminPassword()),
-                Accounts.ROLE_ADMIN);
-        LOG.info("Created {} as the administrator, ahead of switching sign-in on.", email);
+    private Map<String, Object> signInAs(Accounts.UserAccount account, HttpServletRequest request,
+                                         HttpServletResponse response) {
+        ConcentusUserDetails principal = ConcentusUserDetails.of(account);
+        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
+                principal, null, principal.getAuthorities());
+        HttpSession existing = request.getSession(false);
+        if (existing != null) existing.invalidate();
+        request.getSession(true);
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(authentication);
+        SecurityContextHolder.setContext(context);
+        contextRepository.saveContext(context, request, response);
+        rememberMe.loginSuccess(request, response, authentication);
+        devices.attach(DeviceCookie.ensure(request, response, rememberMeDays), account);
+        return Map.of("userId", account.id(), "email", account.email(),
+                "organizationId", account.organizationId(), "role", account.role());
     }
 
     /** Members of the caller's own organization. Never returns password hashes. */

@@ -6,8 +6,6 @@ const listMembers = vi.fn()
 const changeMemberRole = vi.fn()
 const addMember = vi.fn()
 const session = vi.fn()
-const signInRequired = vi.fn()
-const setSignInRequired = vi.fn()
 
 vi.mock('../api/client.ts', () => ({
   api: {
@@ -15,8 +13,6 @@ vi.mock('../api/client.ts', () => ({
     changeMemberRole: (id: string, role: string) => changeMemberRole(id, role),
     addMember: (email: string, password: string, role: string) => addMember(email, password, role),
     session: () => session(),
-    signInRequired: () => signInRequired(),
-    setSignInRequired: (required: boolean, e?: string, p?: string) => setSignInRequired(required, e, p),
   },
 }))
 
@@ -30,9 +26,7 @@ vi.mock('../api/client.ts', () => ({
 describe('MembersPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    signInRequired.mockResolvedValue({ active: true, next: true, changeable: true, restartRequired: false })
-    setSignInRequired.mockResolvedValue({ active: false, next: true, changeable: true, restartRequired: true })
-    session.mockResolvedValue({ authEnabled: true, signedIn: true, email: 'gerard@tecnovent.com' })
+    session.mockResolvedValue({ signedIn: true, email: 'gerard@tecnovent.com' })
     listMembers.mockResolvedValue([
       { id: '1', email: 'gerard@tecnovent.com', role: 'ADMIN', createdAt: Date.now() - 86400000 },
       { id: '2', email: 'auditoria@tecnovent.com', role: 'VIEWER', createdAt: Date.now() - 3600000 },
@@ -112,67 +106,6 @@ describe('MembersPanel', () => {
     await waitFor(() =>
       expect(addMember).toHaveBeenCalledWith('marta@tecnovent.com', 'a-long-enough-one', 'VIEWER'),
     )
-  })
-
-  // With sign-in off, everything below this line describes a policy nothing is enforcing. Reading
-  // the roles without knowing that is worse than not reading them.
-  it('says when the roles below it are not being enforced', async () => {
-    signInRequired.mockResolvedValue({
-      active: false,
-      next: false,
-      changeable: true,
-      restartRequired: false,
-    })
-
-    render(<MembersPanel pushError={vi.fn()} />)
-
-    expect(await screen.findByText(/Sign-in is off on this machine/)).toBeInTheDocument()
-  })
-
-  // Flipping it without naming an account would produce, at the next launch, a login screen with
-  // nobody behind it and no way in from the interface.
-  it('will not turn sign-in on without an account to administer it', async () => {
-    signInRequired.mockResolvedValue({
-      active: false,
-      next: false,
-      changeable: true,
-      restartRequired: false,
-    })
-    render(<MembersPanel pushError={vi.fn()} />)
-    await screen.findByText(/Sign-in is off on this machine/)
-
-    expect(screen.getByRole('button', { name: /Require sign-in/ })).toBeDisabled()
-
-    fireEvent.change(screen.getByPlaceholderText('name@company.com'), {
-      target: { value: 'gerard@tecnovent.com' },
-    })
-    fireEvent.change(screen.getByPlaceholderText('At least 12 characters'), {
-      target: { value: 'a-long-enough-one' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /Require sign-in/ }))
-
-    await waitFor(() =>
-      expect(setSignInRequired).toHaveBeenCalledWith(
-        true,
-        'gerard@tecnovent.com',
-        'a-long-enough-one',
-      ),
-    )
-  })
-
-  // A server build takes it from configuration: a deployment anyone can reach must not be able to
-  // switch its own front door off through its own front door.
-  it('offers no switch where the answer comes from configuration', async () => {
-    signInRequired.mockResolvedValue({
-      active: true,
-      next: true,
-      changeable: false,
-      restartRequired: false,
-    })
-
-    await open()
-
-    expect(screen.queryByText(/Sign-in is/)).not.toBeInTheDocument()
   })
 
   // The rungs were explained in a select's tooltip, which is to say nowhere: the moment somebody

@@ -21,8 +21,11 @@ export function useSession() {
       setSession(await api.session())
     } catch {
       // The endpoint is reachable without a session, so a failure here means the backend is down
-      // or misconfigured. Treat it as "sign-in required": failing closed is the safe direction.
-      setSession({ authEnabled: true, storeAvailable: false, signedIn: false })
+      // or misconfigured. Treat it as "sign in": failing closed is the safe direction, and it is
+      // deliberately NOT the setup screen — offering to create the first account because the
+      // backend was briefly unreachable would be offering to claim an installation that is not
+      // empty.
+      setSession({ storeAvailable: false, signedIn: false })
     } finally {
       setLoading(false)
     }
@@ -34,7 +37,6 @@ export function useSession() {
 
   const onSignedIn = useCallback((user: SignedInUser) => {
     setSession({
-      authEnabled: true,
       storeAvailable: true,
       signedIn: true,
       userId: user.userId,

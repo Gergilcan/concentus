@@ -50,7 +50,7 @@ class BackupServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private final BackupService service = new BackupService(flows, agents, mcpDefs, facades,
-            databases, knowledge, skills, variables, credentials, new OrgContext("local", false),
+            databases, knowledge, skills, variables, credentials, new OrgContext("local"),
             mapper);
 
     private void emptyStores() {

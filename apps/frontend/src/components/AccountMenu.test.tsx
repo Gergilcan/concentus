@@ -50,7 +50,7 @@ describe('AccountMenu', () => {
 
   const render1 = (role: string | null = 'ADMIN', email = 'gerard@tecnovent.com') =>
     render(
-      <PermissionsProvider role={role} authEnabled>
+      <PermissionsProvider role={role}>
         <AccountMenu signedInAs={email} onSignOut={vi.fn()} />
       </PermissionsProvider>,
     )
@@ -127,7 +127,7 @@ describe('AccountMenu', () => {
   it('signs out', () => {
     const onSignOut = vi.fn()
     render(
-      <PermissionsProvider role="ADMIN" authEnabled>
+      <PermissionsProvider role="ADMIN">
         <AccountMenu signedInAs="gerard@tecnovent.com" onSignOut={onSignOut} />
       </PermissionsProvider>,
     )

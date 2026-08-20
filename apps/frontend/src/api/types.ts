@@ -827,10 +827,11 @@ export interface SignedInUser {
 }
 
 /**
- * Whether sign-in is required and, if so, who is signed in.
+ * Who is signed in, and what to show if nobody is.
  *
- * `authEnabled: false` is the escape hatch for local development, in which case the API is open
- * and every request resolves to the default organization.
+ * Three states, not two. Signed in; not signed in; and an installation with no accounts at all,
+ * which cannot ask anybody to sign in because there is nobody to be — that one gets the setup
+ * screen.
  */
 /** One account in the organization, as the members screen reads it. Never carries a hash. */
 export interface Member {
@@ -851,22 +852,6 @@ export interface SignInProvider {
 }
 
 /**
- * Whether this installation asks people to sign in.
- *
- * Two answers, because they differ for exactly as long as it takes to restart: the filter chain
- * is built once, at startup, so a change lands on the next launch.
- */
-export interface SignInPolicy {
-  /** What this running process does. */
-  active: boolean
-  /** What the next start will do. */
-  next: boolean
-  /** False where the answer comes from configuration rather than from the app — a server build. */
-  changeable: boolean
-  restartRequired: boolean
-}
-
-/**
  * One account this browser can return to without signing in again.
  *
  * It got here by being signed into on this browser — with its own password or its own provider —
@@ -881,7 +866,8 @@ export interface SwitchableAccount {
 }
 
 export interface SessionInfo {
-  authEnabled: boolean
+  /** No accounts exist yet: the first launch, which asks for one instead of asking to sign in. */
+  setupRequired?: boolean
   /** Every provider configured here. Empty on a deployment that signs in with passwords only. */
   providers?: SignInProvider[]
   /** Whether any provider is configured. Kept from when a deployment could have only one. */

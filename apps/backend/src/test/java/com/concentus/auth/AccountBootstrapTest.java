@@ -42,7 +42,7 @@ class AccountBootstrapTest {
     }
 
     private AccountBootstrap bootstrap(String email, String password, boolean reset) {
-        return new AccountBootstrap(accounts, encoder, new OrgContext(ORG, true), email, password,
+        return new AccountBootstrap(accounts, encoder, new OrgContext(ORG), email, password,
                 reset, "Concentus", false);
     }
 
@@ -131,31 +131,19 @@ class AccountBootstrapTest {
     // ---- fallback behaviour ----
 
     @Test
-    void withNoEmailConfiguredAFallbackAdminIsCreatedOnlyOnAnEmptyDatabase() {
-        bootstrap("", "", false).bootstrap();
-
-        verify(accounts).createUser(eq(ORG), eq("admin@localhost"), anyString(),
-                eq(Accounts.ROLE_ADMIN));
-    }
-
-    @Test
-    void withNoEmailConfiguredNothingIsRecreatedOnceAccountsExist() {
-        // Otherwise every restart would resurrect a fallback account an operator had removed.
-        when(accounts.countUsers()).thenReturn(1L);
-
+    void withNoEmailConfiguredNoAccountIsInvented() {
         bootstrap("", "", false).bootstrap();
 
         verify(accounts, never()).createUser(anyString(), anyString(), anyString(), anyString());
     }
 
     @Test
-    void aGeneratedPasswordSatisfiesThePolicyItIsCreatedUnder() {
+    void withNoEmailConfiguredNothingIsRecreatedOnceAccountsExist() {
+        when(accounts.countUsers()).thenReturn(1L);
+
         bootstrap("", "", false).bootstrap();
 
-        verify(accounts).createUser(eq(ORG), eq("admin@localhost"),
-                org.mockito.ArgumentMatchers.argThat(hash ->
-                        hash.substring("hashed:".length()).length() >= Accounts.MIN_PASSWORD_LENGTH),
-                eq(Accounts.ROLE_ADMIN));
+        verify(accounts, never()).createUser(anyString(), anyString(), anyString(), anyString());
     }
 
     // ---- environment guards ----
@@ -170,15 +158,25 @@ class AccountBootstrapTest {
         verify(accounts, never()).createUser(anyString(), anyString(), anyString(), anyString());
     }
 
+    // The organization has to exist before anything is written against it, including the account
+    // the first launch is about to be asked for.
     @Test
-    void theDefaultOrganizationIsCreatedEvenWithAuthDisabled() {
-        // Integration rows are written against it either way.
-        AccountBootstrap open = new AccountBootstrap(accounts, encoder, new OrgContext(ORG, false),
-                CONFIGURED_EMAIL, GOOD_PASSWORD, false, "Concentus", false);
-
-        open.bootstrap();
+    void theOrganizationIsCreatedEvenWhenNoAdministratorIsConfigured() {
+        bootstrap("", "", false).bootstrap();
 
         verify(accounts).createOrganization(ORG, "Concentus");
+        verify(accounts, never()).createUser(anyString(), anyString(), anyString(), anyString());
+    }
+
+    /**
+     * An account whose password was printed into a log file is an account whose password is in a
+     * log file — and on a desktop install nobody reads that log, so the "recoverable" half of the
+     * old trade never happened. Nothing is invented here any more; the first launch asks.
+     */
+    @Test
+    void anEmailWithoutAPasswordCreatesNothingRatherThanGeneratingOne() {
+        bootstrap(CONFIGURED_EMAIL, "", false).bootstrap();
+
         verify(accounts, never()).createUser(anyString(), anyString(), anyString(), anyString());
     }
 

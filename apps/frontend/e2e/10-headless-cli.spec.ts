@@ -3,7 +3,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expect, test } from './fixtures'
+import { E2E_EMAIL, E2E_PASSWORD, expect, signedInRequest, test } from './fixtures'
 
 /**
  * The headless CLI against a real backend: `scripts/concentus-run.mjs` imports a flow, starts a
@@ -57,8 +57,16 @@ test('runs a flow against a live backend and exits with what really happened', a
   // A developer's laptop has the claude CLI signed in and can start runs; a CI runner has neither
   // that nor an API key, and the backend refuses to start one at all. Both are real, and the point
   // of this test is that the CLI reports each one honestly instead of exiting 0 regardless.
-  const status = await (await request.get(`${baseURL}/api/auth/status`)).json()
-  const result = await runCli([file, '--url', baseURL!, '--timeout', '60'])
+  const status = await signedInRequest(request, baseURL!, '/api/auth/status')
+  // The CLI signs in like anything else does: the backend requires an account for every request,
+  // and a script that could skip that would be a hole rather than a convenience.
+  const result = await runCli([
+    file,
+    '--url', baseURL!,
+    '--timeout', '60',
+    '--email', E2E_EMAIL,
+    '--password', E2E_PASSWORD,
+  ])
 
   if (status.authenticated) {
     // 2 is "stopped for a human", which is what a manual flow given no input is: it started, it

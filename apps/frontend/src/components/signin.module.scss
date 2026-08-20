@@ -46,9 +46,22 @@
   flex-direction: column;
   gap: 6px;
 
-  span {
+  span,
+  > label {
     font-size: 12px;
     color: t.$muted;
+  }
+
+  /**
+   * Said under the field it is about, and only ever one line.
+   *
+   * Deliberately no colour here: `.field small` outranks a bare `.fieldWarn` class, so setting one
+   * would quietly grey out the very message that needs to stand out — the amber is the whole point
+   * of saying a password is three characters short.
+   */
+  small {
+    font-size: 11px;
+    margin-top: -2px;
   }
 
   input {
@@ -114,6 +127,23 @@
   color: t.$muted;
   font-size: 11px;
   margin: 12px 0 8px;
+}
+
+/** The measurement a field is failing: amber, because nothing is broken yet. */
+.fieldWarn {
+  color: t.$warn;
+}
+
+.fieldNote {
+  color: t.$muted;
+}
+
+/** The first launch says what it is doing, because it happens once and explains everything after. */
+.setupTitle {
+  margin: 14px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: t.$text;
 }
 
 .provider {

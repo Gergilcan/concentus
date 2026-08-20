@@ -3,7 +3,6 @@ package com.concentus.auth;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -109,7 +108,6 @@ public class SecurityConfig {
      * which is enough for the single-process deployment this project ships.
      */
     @Bean
-    @ConditionalOnProperty(name = "app.auth.enabled", havingValue = "true", matchIfMissing = true)
     public SecurityFilterChain apiSecurity(HttpSecurity http, ObjectMapper mapper,
                                           PersistentTokenBasedRememberMeServices rememberMe) throws Exception {
         CsrfTokenRequestAttributeHandler csrfHandler = new CsrfTokenRequestAttributeHandler();
@@ -165,6 +163,11 @@ public class SecurityConfig {
                     // question an operator actually asks — "what can a VIEWER do?" — has an answer
                     // that fits on a screen.
 
+                    // Creating the very first account. Open because there is nobody to authorize
+                    // it — an installation with no accounts has no way in otherwise — and refused
+                    // by the endpoint itself the moment one exists, which is the only window in
+                    // which it does anything at all.
+                    .requestMatchers("/api/account/setup").permitAll()
                     // Changing your own password is not a privilege; it is how you keep an account.
                     .requestMatchers("/api/account/password", "/api/account/logout").authenticated()
                     // The accounts this browser has already signed into, and going back to one of
@@ -207,21 +210,6 @@ public class SecurityConfig {
             .rememberMe(r -> r.rememberMeServices(rememberMe))
             .httpBasic(b -> b.disable())
             .formLogin(f -> f.disable());
-        return http.build();
-    }
-
-    /**
-     * Escape hatch for local development and for the existing single-user installs this feature
-     * lands on: {@code app.auth.enabled=false} leaves the API open exactly as it was before, and
-     * {@link OrgContext} then resolves everything to the configured default organization.
-     * Never use it on a reachable deployment.
-     */
-    @Bean
-    @ConditionalOnProperty(name = "app.auth.enabled", havingValue = "false")
-    public SecurityFilterChain openSecurity(HttpSecurity http) throws Exception {
-        http.securityMatcher("/api/**", "/ws/**")
-            .csrf(csrf -> csrf.disable())
-            .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
         return http.build();
     }
 

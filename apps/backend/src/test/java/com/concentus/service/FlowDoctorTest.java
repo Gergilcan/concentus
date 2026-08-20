@@ -47,7 +47,7 @@ class FlowDoctorTest {
             mock(com.concentus.store.FacadeProfileStore.class);
 
     private final FlowDoctor doctor = new FlowDoctor(claude, new FlowCompiler(), credentials,
-            mcpOAuth, plugins, runtimes, runStore, variables, new OrgContext("default", false), facades);
+            mcpOAuth, plugins, runtimes, runStore, variables, new OrgContext("default"), facades);
 
     @BeforeEach
     void healthyMachine() {

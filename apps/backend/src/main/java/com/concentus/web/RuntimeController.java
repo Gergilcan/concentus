@@ -31,11 +31,16 @@ public class RuntimeController {
     private final RuntimeProbe probe;
     private final RuntimeInstaller installer;
     private final OrgContext orgContext;
+    /** Installing changes the host, which only the person sitting at it may do. */
+    private final boolean desktop;
 
-    public RuntimeController(RuntimeProbe probe, RuntimeInstaller installer, OrgContext orgContext) {
+    public RuntimeController(RuntimeProbe probe, RuntimeInstaller installer, OrgContext orgContext,
+                             @org.springframework.beans.factory.annotation.Value(
+                                     "${app.desktop:false}") boolean desktop) {
         this.probe = probe;
         this.installer = installer;
         this.orgContext = orgContext;
+        this.desktop = desktop;
     }
 
     /** Every runtime this app knows about. {@code refresh=true} after an install. */
@@ -80,7 +85,7 @@ public class RuntimeController {
      * a server's authenticated user should be able to do to its host.
      */
     private void requireDesktop() {
-        if (orgContext.authEnabled()) {
+        if (!desktop) {
             throw new IllegalStateException(
                     "Installing runtimes is only available in the desktop app. On a server, install "
                             + "them on the host yourself.");

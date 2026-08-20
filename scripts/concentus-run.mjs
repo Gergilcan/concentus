@@ -72,7 +72,18 @@ export function isSettled(status) {
 }
 
 export function parseArgs(argv) {
-  const args = { flowPath: null, input: null, url: null, jar: DEFAULT_JAR, timeoutSeconds: 1800, quiet: false }
+  const args = {
+    flowPath: null,
+    input: null,
+    url: null,
+    jar: DEFAULT_JAR,
+    timeoutSeconds: 1800,
+    quiet: false,
+    // Credentials default to the environment, because a CI job that must pass a password on the
+    // command line is a CI job with a password in its logs.
+    email: process.env.CONCENTUS_EMAIL ?? null,
+    password: process.env.CONCENTUS_PASSWORD ?? null,
+  }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     const next = () => argv[++i]
@@ -80,6 +91,8 @@ export function parseArgs(argv) {
     else if (arg === '--url') args.url = (next() ?? '').replace(/\/$/, '')
     else if (arg === '--jar') args.jar = next()
     else if (arg === '--timeout') args.timeoutSeconds = Number(next())
+    else if (arg === '--email') args.email = next()
+    else if (arg === '--password') args.password = next()
     else if (arg === '--quiet') args.quiet = true
     else if (arg === '--help' || arg === '-h') args.help = true
     else if (arg.startsWith('--')) throw new Error(`Unknown option ${arg}`)
@@ -101,6 +114,9 @@ const USAGE = `Usage: node scripts/concentus-run.mjs <flow.json> [options]
   --jar PATH       Backend jar to boot (default apps/backend/target/concentus-backend.jar).
   --timeout SECS   Give up waiting and exit ${EXIT.timedOut} (default 1800).
   --quiet          Only print the final answer and the outcome line.
+  --email ADDRESS  Account to sign in as. Defaults to CONCENTUS_EMAIL.
+  --password PASS  Its password. Defaults to CONCENTUS_PASSWORD; prefer the variable, since an
+                   argument ends up in the job's log and in the process list.
 
 Exit codes: ${EXIT.completed} completed · ${EXIT.failed} failed · ${EXIT.needsHuman} needs a human ·
             ${EXIT.timedOut} timed out · ${EXIT.usage} usage/setup problem
@@ -213,11 +229,87 @@ async function bootBackend(jar, log) {
 
 // ---------------------------------------------------------------- api
 
+/**
+ * The cookies this process has been given: the session, and the CSRF token.
+ *
+ * <p>A jar of exactly two, kept here rather than threaded through every call — the backend
+ * requires an account for every request, and node's fetch keeps no cookies on its own.
+ */
+const jar = new Map()
+
+/** Folds a response's Set-Cookie headers into the jar, replacing by name. */
+function remember(res) {
+  for (const raw of res.headers.getSetCookie?.() ?? []) {
+    const [pair] = raw.split(';')
+    const at = pair.indexOf('=')
+    if (at > 0) jar.set(pair.slice(0, at).trim(), pair.slice(at + 1))
+  }
+}
+
+function cookieHeader() {
+  return [...jar].map(([name, value]) => `${name}=${value}`).join('; ')
+}
+
+/**
+ * Signs in, so the rest of this script can do anything at all.
+ *
+ * <p>Every endpoint below needs an account — there is no unauthenticated mode any more, and there
+ * was no honest way to keep one: a backend a script can drive without credentials is a backend
+ * anybody who can reach it can drive. The CSRF token comes back as a readable cookie and goes back
+ * out as a header, exactly as the browser does it.
+ */
+async function signIn(base, args) {
+  if (!args.email || !args.password) {
+    throw new Error(
+      'This backend requires an account. Set CONCENTUS_EMAIL and CONCENTUS_PASSWORD (or pass '
+        + '--email and --password).',
+    )
+  }
+  // One GET first, to be given the CSRF cookie the sign-in has to echo back. A cookie alone
+  // would not prove intent — a third-party page can cause a browser to send cookies but cannot
+  // read them — so the token travels as a header, and this is where it comes from.
+  remember(await fetch(`${base}/api/account/session`))
+  const res = await fetch(`${base}/api/account/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Cookie: cookieHeader(),
+      ...(csrfToken() ? { 'X-XSRF-TOKEN': csrfToken() } : {}),
+    },
+    body: JSON.stringify({ email: args.email, password: args.password }),
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    let message = text
+    try {
+      message = JSON.parse(text).error ?? text
+    } catch {
+      /* not JSON — the body is the message */
+    }
+    throw new Error(`Could not sign in as ${args.email} (${res.status}): ${message}`)
+  }
+  remember(res)
+  return JSON.parse(text)
+}
+
+/** The CSRF token out of the jar, which Spring expects echoed in a header on every write. */
+function csrfToken() {
+  const value = jar.get('XSRF-TOKEN')
+  return value ? decodeURIComponent(value) : null
+}
+
 async function api(base, path_, init) {
+  const token = csrfToken()
   const res = await fetch(`${base}/api${path_}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(jar.size ? { Cookie: cookieHeader() } : {}),
+      ...(token && init?.method && init.method !== 'GET' ? { 'X-XSRF-TOKEN': token } : {}),
+      ...(init?.headers ?? {}),
+    },
   })
+  remember(res)
   const text = await res.text()
   if (!res.ok) {
     let message = text
@@ -264,6 +356,16 @@ async function main(argv) {
     return EXIT.usage
   }
   const base = args.url ?? backend.base
+
+  try {
+    await signIn(base, args)
+  } catch (e) {
+    // A setup problem rather than a failed run: nothing was started, and what has to change is the
+    // invocation.
+    process.stderr.write(`${e.message}\n`)
+    if (backend) await backend.stop()
+    return EXIT.usage
+  }
 
   try {
     // The flow travels in the request rather than being saved first: a headless run should not

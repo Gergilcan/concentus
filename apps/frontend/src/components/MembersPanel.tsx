@@ -1,107 +1,11 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.ts'
-import type { Member, SignInPolicy } from '../api/types.ts'
+import type { Member } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { timeAgo } from './flowFormat.ts'
 import { Spinner } from './Spinner.tsx'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
-
-/**
- * Whether this installation asks people to sign in.
- *
- * Off is right for a fresh desktop install and says so: one person, a socket bound to loopback,
- * and a password to reach a port only they can open buys nothing. It stops being right the moment
- * the data is on a database a team shares — then who may change a flow is a real question, and
- * every screen below this one is describing a policy nothing is enforcing.
- *
- * Turning it on asks for the account that will administer it, and will not proceed without one.
- * With sign-in off there is nobody signed in, so a switch that simply flipped would produce, at
- * the next launch, a login screen with no account behind it and no way in from the interface.
- */
-function SignInSwitch({ pushError }: { pushError: (m: string) => void }) {
-  const [policy, setPolicy] = useState<SignInPolicy | null>(null)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    api
-      .signInRequired()
-      .then(setPolicy)
-      .catch(() => setPolicy(null))
-  }, [])
-
-  const set = async (required: boolean) => {
-    setBusy(true)
-    try {
-      setPolicy(await api.setSignInRequired(required, email.trim(), password))
-      setPassword('')
-    } catch (e) {
-      pushError(errMessage(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  // A server build takes the answer from its configuration, where it belongs: a deployment anyone
-  // can reach must not be able to switch its own front door off through its own front door.
-  if (!policy || !policy.changeable) return null
-
-  return (
-    <div className={policy.active ? styles.signInOn : styles.signInOff}>
-      {policy.active ? (
-        <>
-          <b>Sign-in is on.</b> Everyone reaching this installation needs an account, and every
-          request is checked against the role it carries.
-          {policy.next ? (
-            <button className={styles.linkBtn} disabled={busy} onClick={() => void set(false)}>
-              Switch it off
-            </button>
-          ) : (
-            <span className={styles.pending}> Switched off on the next start.</span>
-          )}
-        </>
-      ) : (
-        <>
-          <b>Sign-in is off on this machine.</b> There are no accounts to check, so the roles below
-          describe a policy nothing is enforcing — which is fine while the data is local and only
-          you can reach the port, and is not once it lives on a database a team shares.
-          {policy.next ? (
-            <span className={styles.pending}> Restart to start asking for a sign-in.</span>
-          ) : (
-            <div className={styles.signInFields}>
-              <label className={styles.field}>
-                <span>Your address — this account will administer it</span>
-                <input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@company.com"
-                />
-              </label>
-              <label className={styles.field}>
-                <span>Password (only if this address has no account yet)</span>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 12 characters"
-                />
-              </label>
-              <button
-                className={styles.saveBtn}
-                disabled={busy || !email.trim()}
-                onClick={() => void set(true)}
-              >
-                {busy ? 'Turning it on…' : 'Require sign-in'}
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  )
-}
 
 /** The ladder, least privileged first, with what each rung actually means on screen. */
 const ROLES: Array<{ id: string; label: string; means: string }> = [
@@ -223,8 +127,6 @@ export function MembersPanel({ pushError }: { pushError: (m: string) => void }) 
 
   return (
     <div className={styles.roster}>
-      <SignInSwitch pushError={pushError} />
-
       <div className={styles.rosterHead}>
         <div>
           <h3 className={styles.h4}>Members</h3>

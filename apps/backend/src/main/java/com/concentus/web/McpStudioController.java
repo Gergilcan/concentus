@@ -94,19 +94,23 @@ public class McpStudioController {
     private final AccountStore accounts;
     private final String token;
     private final String accountEmail;
+    /** Loopback and one person at the machine — the guard this endpoint actually rests on. */
+    private final boolean desktop;
 
     public McpStudioController(List<StudioToolset> toolsets, ObjectMapper mapper,
                                OrgContext orgContext, AccountStore accounts,
                                @Value("${app.mcp.studio.token:}") String token,
-                               @Value("${app.mcp.studio.account:}") String accountEmail) {
+                               @Value("${app.mcp.studio.account:}") String accountEmail,
+                               @Value("${app.desktop:false}") boolean desktop) {
         this.tools = index(toolsets);
         this.mapper = mapper;
         this.orgContext = orgContext;
         this.accounts = accounts;
         this.token = token == null ? "" : token.trim();
         this.accountEmail = accountEmail == null ? "" : accountEmail.trim();
+        this.desktop = desktop;
         log.info("Studio MCP server ready at {} with {} tools.", PATH, tools.size());
-        if (orgContext.authEnabled() && this.token.isEmpty()) {
+        if (!desktop && this.token.isEmpty()) {
             log.warn("Studio MCP server is DISABLED: authentication is on and no "
                     + "app.mcp.studio.token (CONCENTUS_MCP_TOKEN) is configured. Set one, plus "
                     + "app.mcp.studio.account (CONCENTUS_MCP_ACCOUNT) naming the account it acts as.");
@@ -191,10 +195,14 @@ public class McpStudioController {
     private boolean authorize(String presented) {
         if (!token.isEmpty()) {
             if (!McpJsonRpc.tokenMatches(token, presented)) return false;
-            return !orgContext.authEnabled() || impersonateConfiguredAccount();
+            // A configured token still has to say which account it acts as, except on the desktop,
+            // where the single organization is the only one there is.
+            return desktop || impersonateConfiguredAccount();
         }
-        // No token configured: open exactly where the rest of the API is open, closed where it is not.
-        return !orgContext.authEnabled();
+        // No token: reachable only on the desktop build, and there the guard is the same one the
+        // shutdown endpoint rests on — a socket bound to loopback and one person at the machine.
+        // Not the account check, which is why this did not change when accounts became mandatory.
+        return desktop;
     }
 
     private boolean impersonateConfiguredAccount() {

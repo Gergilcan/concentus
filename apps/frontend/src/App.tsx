@@ -17,6 +17,7 @@ import { Palette } from './components/Palette.tsx'
 import { ResourcesPage } from './components/ResourcesPage.tsx'
 import { UsagePage } from './components/UsagePage.tsx'
 import { RunsPanel } from './components/RunsPanel.tsx'
+import { SetupWizard } from './components/SetupWizard.tsx'
 import { SignIn } from './components/SignIn.tsx'
 import { Toolbar } from './components/Toolbar.tsx'
 import { FlowCanvas } from './flow/FlowCanvas.tsx'
@@ -43,12 +44,22 @@ export default function App() {
   const { session, loading, onSignedIn, signOut } = useSession()
 
   if (loading) return null
-  if (session?.authEnabled && !session.signedIn) {
+  // An installation with no accounts cannot ask anybody to sign in, because there is nobody to be.
+  if (session?.setupRequired) {
     return (
-      <SignIn
+      <SetupWizard
         onSignedIn={onSignedIn}
         storeUnavailable={!session.storeAvailable}
         providers={session.providers ?? []}
+      />
+    )
+  }
+  if (!session?.signedIn) {
+    return (
+      <SignIn
+        onSignedIn={onSignedIn}
+        storeUnavailable={!session?.storeAvailable}
+        providers={session?.providers ?? []}
       />
     )
   }
@@ -56,7 +67,7 @@ export default function App() {
   // do is asked in a dozen unrelated places — a Save button, a Run button, a delete — and passing
   // it down by hand would mean the one component that forgot is the one that offers a 403.
   return (
-    <PermissionsProvider role={session?.role} authEnabled={session?.authEnabled ?? false}>
+    <PermissionsProvider role={session?.role}>
       <Workspace signedInAs={session?.email ?? null} onSignOut={signOut} />
     </PermissionsProvider>
   )

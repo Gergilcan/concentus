@@ -197,16 +197,16 @@ public class FlowController {
         return saved;
     }
 
-    /**
-     * Who to credit for a save: the signed-in email, or {@code "local"} when authentication is
-     * off (single-user desktop install — there is exactly one person and no account to name).
-     * Null when auth is on but the request carried no principal, which leaves the revision
-     * unsigned rather than attributing it to someone who did not save it.
+/**
+     * Who to credit for a save: the signed-in address.
+     *
+     * <p>Null when the request carried no principal — a revision saved by something other than a
+     * person, a webhook or a scheduled run. Left unsigned rather than attributed to somebody who
+     * did not save it: a wrong name on a revision is worse than no name, because it is the field
+     * people read to work out what changed and who to ask.
      */
     private String currentAuthor() {
-        return orgContext.currentUser()
-                .map(ConcentusUserDetails::email)
-                .orElseGet(() -> orgContext.authEnabled() ? null : "local");
+        return orgContext.currentUser().map(ConcentusUserDetails::email).orElse(null);
     }
 
     @DeleteMapping("/{id}")

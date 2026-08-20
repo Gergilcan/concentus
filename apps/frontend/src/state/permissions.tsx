@@ -30,12 +30,14 @@ export interface Permissions {
 }
 
 /**
- * Everything is allowed where sign-in is switched off — the desktop install and development
- * builds, which have no accounts at all and where a locked-down interface would be a bug rather
- * than a policy.
+ * What a role may do.
+ *
+ * <p>An unknown or missing role gets nothing. There used to be a mode with no accounts, where
+ * everything was allowed and this returned early; with accounts everywhere, "no role" means the
+ * session has not resolved yet — and a screen that briefly offers to delete things while it works
+ * that out is worse than one that briefly offers too little.
  */
-export function permissionsFor(role: string | null | undefined, authEnabled: boolean): Permissions {
-  if (!authEnabled) return { canRun: true, canEdit: true, canAdminister: true, role: null }
+export function permissionsFor(role: string | null | undefined): Permissions {
   const level = rank(role)
   return {
     canRun: level >= rank('OPERATOR'),
@@ -62,15 +64,13 @@ const PermissionsContext = createContext<Permissions>({
 
 export function PermissionsProvider({
   role,
-  authEnabled,
   children,
 }: {
   role: string | null | undefined
-  authEnabled: boolean
   children: ReactNode
 }) {
   return (
-    <PermissionsContext.Provider value={permissionsFor(role, authEnabled)}>
+    <PermissionsContext.Provider value={permissionsFor(role)}>
       {children}
     </PermissionsContext.Provider>
   )

@@ -232,6 +232,16 @@ public class OidcSignIn {
         // A misconfigured role must not silently become an admin, and must not lock the person out
         // either: the safest reading of an unrecognised value is the lowest rung.
         if (role == null) role = Accounts.ROLE_VIEWER;
+        // Except for the very first account, which administers the installation it just claimed —
+        // the same rule the setup screen follows, so signing in with a work account is a way to
+        // set the thing up rather than a way to end up locked out as a Viewer with nobody above
+        // you. It applies only to a genuinely empty installation; the second arrival is a Viewer
+        // like everybody else. Where that window is a risk — a server reachable before anybody has
+        // claimed it — CONCENTUS_ADMIN_EMAIL settles the question before the first launch.
+        if (accounts.countUsers() == 0) {
+            role = Accounts.ROLE_ADMIN;
+            log.info("{} is the first account here, so it administers this installation.", email);
+        }
         // No usable password: this account cannot be signed into with one. A random value rather
         // than an empty column, so nothing can ever match it by accident.
         Accounts.UserAccount created = accounts.createUser(organizationId, email,
