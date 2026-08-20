@@ -127,8 +127,8 @@ public class RunStore {
                       session_id, local_session_id, local_started, error,
                       total_input_tokens, total_output_tokens, flow_json, events_json, node_execs_json,
                       created_at, updated_at, initial_prompt, notify_webhook, cost_usd, golden,
-                      flow_version)
-                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                      flow_version, started_by)
+                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     on conflict (id) do update set
                       flow_id=excluded.flow_id, flow_name=excluded.flow_name, mode=excluded.mode,
                       backend=excluded.backend, status=excluded.status, trigger_type=excluded.trigger_type,
@@ -141,13 +141,14 @@ public class RunStore {
                       notify_webhook=excluded.notify_webhook,
                       cost_usd=excluded.cost_usd,
                       golden=excluded.golden,
-                      flow_version=excluded.flow_version
+                      flow_version=excluded.flow_version,
+                      started_by=excluded.started_by
                     """,
                     run.id, run.flowId, run.flowName, run.mode, run.backend, run.status, run.trigger,
                     run.sessionId, run.localSessionId, run.localStarted, run.error,
                     run.totalInputTokens, run.totalOutputTokens, run.flowJson, eventsJson, execsJson,
                     run.createdAt, now, run.initialPrompt, run.notifyWebhook, run.estimatedCostUsd(),
-                    run.golden, run.flowVersion);
+                    run.golden, run.flowVersion, run.startedBy);
             } catch (Exception e) {
                 log.debug("persist run {} failed: {}", run.id, e.getMessage());
             }
@@ -181,7 +182,7 @@ public class RunStore {
                     parseList(rs.getString("node_execs_json"), new TypeReference<List<NodeExec>>() {}),
                     rs.getLong("created_at"), rs.getString("initial_prompt"),
                     rs.getString("notify_webhook"), rs.getBoolean("golden"),
-                    rs.getInt("flow_version")),
+                    rs.getInt("flow_version"), rs.getString("started_by")),
                 limit);
         } catch (Exception e) {
             log.warn("Loading persisted runs failed: {}", e.getMessage());
@@ -244,6 +245,20 @@ public class RunStore {
                          boolean localStarted, String error, long totalInputTokens,
                          long totalOutputTokens, String flowJson, List<RunEvent> events,
                          List<NodeExec> nodeExecs, long createdAt, String initialPrompt,
-                         String notifyWebhook, boolean golden, int flowVersion) {
+                         String notifyWebhook, boolean golden, int flowVersion,
+                         /** The person who pressed Run; null for a schedule, a webhook or a sub-flow. */
+                         String startedBy) {
+
+        /** The shape before executions were credited to a person, for the callers that predate it. */
+        public RunRow(String id, String flowId, String flowName, String mode, String backend,
+                      String status, String trigger, String sessionId, String localSessionId,
+                      boolean localStarted, String error, long totalInputTokens,
+                      long totalOutputTokens, String flowJson, List<RunEvent> events,
+                      List<NodeExec> nodeExecs, long createdAt, String initialPrompt,
+                      String notifyWebhook, boolean golden, int flowVersion) {
+            this(id, flowId, flowName, mode, backend, status, trigger, sessionId, localSessionId,
+                    localStarted, error, totalInputTokens, totalOutputTokens, flowJson, events,
+                    nodeExecs, createdAt, initialPrompt, notifyWebhook, golden, flowVersion, null);
+        }
     }
 }

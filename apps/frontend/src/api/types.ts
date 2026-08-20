@@ -28,6 +28,8 @@ export interface RunSummary {
   totalInputTokens?: number
   totalOutputTokens?: number
   estimatedCostUsd?: number
+  /** Who pressed Run. Absent for a schedule, a webhook or a flow started by another flow. */
+  startedBy?: string | null
   /** This run is its flow's golden reference — the known-good execution edits are compared against. */
   golden?: boolean
   /**

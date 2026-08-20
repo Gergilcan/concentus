@@ -343,6 +343,9 @@ public class RunService {
         run.inputUsdPerMTok = inputUsdPerMTok;
         run.outputUsdPerMTok = outputUsdPerMTok;
         run.trigger = trigger.mode() == null ? "manual" : trigger.mode().toLowerCase();
+        // Who pressed Run, when a person did. A cron thread and a webhook have no security
+        // context, so this stays null there and the trigger already says what they were.
+        run.startedBy = signedInEmail();
         run.permissionMode = trigger.permissionMode();
         // Shadow mode: a triggered run plans but never acts, so you can watch what a trigger
         // WOULD have done for a few days before trusting it. Manual runs stay real — you are
@@ -397,6 +400,21 @@ public class RunService {
             submitOrFail(run, () -> execute(run, compiled));
         }
         return run.toSummary();
+    }
+
+    /**
+     * The signed-in person behind this request, or null.
+     *
+     * <p>Read from the security context rather than injected, so nothing about running a flow
+     * depends on authentication being switched on: with accounts off there is no context, no name,
+     * and the run is credited to nobody — which is the truth on a single-user desktop install.
+     */
+    private static String signedInEmail() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) return null;
+        return auth.getPrincipal() instanceof com.concentus.auth.ConcentusUserDetails user
+                ? user.email() : null;
     }
 
     /** Submits work to the run-worker pool; if the queue is full, fails the run instead of blocking. */
@@ -818,6 +836,7 @@ public class RunService {
                 run.status = "RUNNING".equals(row.status()) || "STARTING".equals(row.status())
                         ? "IDLE" : row.status();
                 run.trigger = row.trigger();
+                run.startedBy = row.startedBy();
                 run.sessionId = row.sessionId();
                 run.localSessionId = row.localSessionId();
                 run.localStarted = row.localStarted();

@@ -161,6 +161,14 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
                 </span>
               )}
               <span className={styles.runStatus}>{r.status}</span>
+              {/* Who started it, where an argument about who started it would be had. Absent for a
+                  schedule or a webhook: the trigger badge beside this already says what they
+                  were, and a name invented for them would be worse than the gap. */}
+              {r.startedBy && (
+                <span className={styles.runCost} title={`Started by ${r.startedBy}`}>
+                  {r.startedBy.split('@')[0]}
+                </span>
+              )}
               {/* What this execution cost, where the choice to run another one is made. It was
                   only visible inside a comparison, which is one click and one decision too late
                   for the question it answers. */}

@@ -1,0 +1,11 @@
+-- Who started a run.
+--
+-- Flow EDITS have been credited since versions gained an author, so "who changed this flow, and
+-- when" was answerable. Executions were not: a run knew what triggered it — cron, a webhook, a
+-- person pressing Run — and never which person. In an organization where one role may run a flow
+-- and another may change it, half an audit trail is the half that does not settle arguments.
+--
+-- Null for everything that is not a person: a schedule, a webhook delivery, a flow started by
+-- another flow. Those already say what they were in trigger_type, and inventing a name for them
+-- would be worse than the gap.
+alter table runs add column if not exists started_by text;

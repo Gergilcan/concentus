@@ -47,6 +47,15 @@ public class AgentRun {
     /** How this execution was triggered: "manual" | "prompt" | "cron" | "webhook". */
     public volatile String trigger = "manual";
     /**
+     * The person who started this run, by email; null when nothing did.
+     *
+     * <p>Null is the honest answer for a schedule, a webhook delivery or a flow started by another
+     * flow: those already say what they were in {@link #trigger}, and inventing a name for them
+     * would be worse than the gap. Flow edits have been credited to an author since versions
+     * gained one; this is the other half of the same question.
+     */
+    public volatile String startedBy;
+    /**
      * The flows that led here, oldest first, when this run was started by another flow.
      *
      * <p>Carried on the run rather than looked up, because the loop it prevents is not visible
@@ -360,7 +369,8 @@ public class AgentRun {
 
     public RunSummary toSummary() {
         return new RunSummary(id, flowId, flowName, mode, status, createdAt, sessionId, agentIds, error,
-                trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd(), golden, flowVersion);
+                trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd(), golden, flowVersion,
+                startedBy);
     }
 
     /**
