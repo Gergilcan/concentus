@@ -107,19 +107,15 @@
   width: 26px;
   height: 26px;
   border-radius: 999px;
-  border: 1px solid t.$border;
-  background: t.$panel-2;
+  border: 1px solid t.$accent-soft;
+  background: t.$accent-soft;
   color: t.$text;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0;
 }
 
-.avatarLarge {
-  @extend .avatar;
-  width: 34px;
-  height: 34px;
-  font-size: 15px;
-}
+
 
 .roleChip {
   flex: none;
@@ -146,26 +142,35 @@
   padding: 6px;
 }
 
+/**
+ * The account in use, laid out exactly like the ones it can be swapped for.
+ *
+ * Same row, same gap, and a placeholder where the × sits below — so the discs, the addresses and
+ * the roles read as three columns instead of three near-misses. The alternative, a larger avatar
+ * for the current account, looked deliberate and made every row beneath it look misaligned.
+ */
 .accountWho {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
+  gap: 2px;
   border-bottom: 1px solid t.$border;
+  padding-bottom: 6px;
   margin-bottom: 6px;
 }
 
-.accountWhoText {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex-wrap: wrap;
+/** The row you are already on: same shape, nothing to click. */
+.currentRow {
+  cursor: default;
+
+  &:hover {
+    background: transparent;
+  }
 }
 
-.accountWhoEmail {
-  font-size: 12.5px;
-  overflow-wrap: anywhere;
+/** Holds the column the × occupies in the rows below, and does nothing else. */
+.spacerOnly {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /** The accounts this browser can go back to. */
@@ -256,6 +261,13 @@
     line-height: 1.45;
     margin-top: 3px;
   }
+}
+
+/** Leaving is separated from the accounts above it: it is the one entry that undoes a session. */
+.accountFoot {
+  border-top: 1px solid t.$border;
+  margin-top: 6px;
+  padding-top: 6px;
 }
 
 .accountSignOut {

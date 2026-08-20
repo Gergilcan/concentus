@@ -844,25 +844,28 @@
  */
 .signInOff,
 .signInOn {
-  border: 1px solid t.;
-  border-radius: t.;
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
   padding: var(--sp-4);
   margin-bottom: var(--sp-4);
   font-size: 12.5px;
   line-height: 1.55;
-  color: t.;
+  color: t.$muted;
+  // A measure, not the panel's full width: this is a paragraph to read once, and 110 characters a
+  // line is where the eye starts losing the return.
+  max-width: 78ch;
 
   b {
-    color: t.;
+    color: t.$text;
   }
 }
 
 .signInOff {
-  border-color: t.;
+  border-color: t.$warn;
 }
 
 .signInOn {
-  border-color: t.;
+  border-color: t.$ok;
 }
 
 .signInFields {

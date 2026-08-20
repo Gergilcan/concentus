@@ -126,11 +126,19 @@ export function AccountMenu({
 
       {open && (
         <div className={styles.accountMenu} role="menu">
+          {/* Built from the same parts as the rows below, including the space the × occupies:
+              the disc, the address and the role then line up in three columns down the whole menu
+              rather than nearly. */}
           <div className={styles.accountWho}>
-            <span className={styles.avatarLarge}>{initial(signedInAs)}</span>
-            <span className={styles.accountWhoText}>
-              <span className={styles.accountWhoEmail}>{signedInAs}</span>
+            <div className={`${styles.accountRow} ${styles.currentRow}`}>
+              <span className={styles.avatar}>{initial(signedInAs)}</span>
+              <span className={styles.accountRowText} title={signedInAs}>
+                {signedInAs}
+              </span>
               {role && <span className={styles.roleChip}>{roleLabel(role)}</span>}
+            </div>
+            <span className={`${styles.forgetBtn} ${styles.spacerOnly}`} aria-hidden="true">
+              ×
             </span>
           </div>
 
@@ -143,6 +151,9 @@ export function AccountMenu({
                     role="menuitem"
                     className={styles.accountRow}
                     disabled={busy === a.userId}
+                    // The address is what tells two accounts apart, and a long one is elided in a
+                    // menu this narrow.
+                    title={`${a.email} — ${roleLabel(a.role)}`}
                     onClick={() => void switchTo(a)}
                   >
                     <span className={styles.avatar}>{initial(a.email)}</span>
@@ -181,14 +192,16 @@ export function AccountMenu({
             </button>
           )}
 
-          <button
-            type="button"
-            role="menuitem"
-            className={`${styles.accountAction} ${styles.accountSignOut}`}
-            onClick={onSignOut}
-          >
-            Sign out
-          </button>
+          <div className={styles.accountFoot}>
+            <button
+              type="button"
+              role="menuitem"
+              className={`${styles.accountAction} ${styles.accountSignOut}`}
+              onClick={onSignOut}
+            >
+              Sign out
+            </button>
+          </div>
 
           {note && <p className={styles.accountNote}>{note}</p>}
         </div>

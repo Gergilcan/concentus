@@ -112,9 +112,9 @@ export function SignIn({ onSignedIn, storeUnavailable, providers = [] }: Props) 
         )}
 
         <p className={styles.hint}>
-          The first administrator is created from <code>CONCENTUS_ADMIN_EMAIL</code> and{' '}
-          <code>CONCENTUS_ADMIN_PASSWORD</code>. If neither was set, a password was generated and
-          printed once in the backend log at startup.
+          No account? There is no sign-up here — on a self-hosted install that would let whoever
+          reaches the server first claim the organization. An administrator adds you under
+          Resources → Members.
         </p>
       </form>
     </div>
