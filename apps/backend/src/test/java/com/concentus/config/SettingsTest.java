@@ -1,0 +1,137 @@
+package com.concentus.config;
+
+import com.concentus.auth.OrgContext;
+import com.concentus.secrets.SecretCipher;
+import com.concentus.store.SchemaMigrator;
+import com.concentus.store.TestDatabase;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.env.MockEnvironment;
+
+import javax.sql.DataSource;
+import java.util.Base64;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * What a setting is, right now.
+ *
+ * <p>Three places in a fixed order — what somebody set in the application, what the deployment was
+ * started with, what the code does — and the order is the whole feature. A container started by a
+ * pipeline has to keep taking its environment; the person running the desktop app has to be able
+ * to change the same thing from a form, because there the environment is computed by the shell and
+ * there is no file for them to edit.
+ */
+class SettingsTest {
+
+    private static SecretCipher cipher() {
+        byte[] raw = new byte[32];
+        for (int i = 0; i < raw.length; i++) raw[i] = (byte) i;
+        return new SecretCipher(Base64.getEncoder().encodeToString(raw));
+    }
+
+    private record Fixture(Settings settings, SettingsStore store, MockEnvironment environment) {
+    }
+
+    private static Fixture on(String databaseName) {
+        DataSource ds = TestDatabase.freshDatabase(databaseName);
+        assertThat(SchemaMigrator.migrate(ds)).isTrue();
+        SettingsStore store = new SettingsStore(new JdbcTemplate(ds), cipher());
+        store.load();
+        MockEnvironment environment = new MockEnvironment();
+        return new Fixture(new Settings(store, environment, new OrgContext("default")), store,
+                environment);
+    }
+
+    @Test
+    void with_nothing_set_anywhere_the_fallback_stands() {
+        Fixture f = on("settings_1");
+
+        assertThat(f.settings().number("runs.max-concurrent", 4)).isEqualTo(4);
+    }
+
+    @Test
+    void the_deployments_configuration_is_used_when_nobody_has_changed_it() {
+        Fixture f = on("settings_2");
+        f.environment().setProperty("runs.max-concurrent", "9");
+
+        assertThat(f.settings().number("runs.max-concurrent", 4)).isEqualTo(9);
+    }
+
+    // The reason this exists: on the desktop the environment is computed by the shell, so a value
+    // configured there is a value nobody can change. What is set in the app wins.
+    @Test
+    void what_somebody_set_in_the_application_wins() {
+        Fixture f = on("settings_3");
+        f.environment().setProperty("runs.max-concurrent", "9");
+
+        f.store().put("default", "runs.max-concurrent", "20", false, "gerard@tecnovent.com");
+
+        assertThat(f.settings().number("runs.max-concurrent", 4)).isEqualTo(20);
+    }
+
+    /**
+     * Clearing a field has to mean "go back to what it was", not "set it to empty". Without that
+     * there is no way back to the deployment's own value once a field has been touched.
+     */
+    @Test
+    void clearing_a_setting_lets_the_configured_value_stand_again() {
+        Fixture f = on("settings_4");
+        f.environment().setProperty("runs.max-concurrent", "9");
+        f.store().put("default", "runs.max-concurrent", "20", false, null);
+
+        f.store().put("default", "runs.max-concurrent", "", false, null);
+
+        assertThat(f.settings().number("runs.max-concurrent", 4)).isEqualTo(9);
+    }
+
+    @Test
+    void a_secret_is_sealed_in_the_table_and_still_reads_back_here() {
+        DataSource ds = TestDatabase.freshDatabase("settings_5");
+        assertThat(SchemaMigrator.migrate(ds)).isTrue();
+        JdbcTemplate jdbc = new JdbcTemplate(ds);
+        SettingsStore store = new SettingsStore(jdbc, cipher());
+        store.load();
+
+        store.put("default", "pricing.input-usd-per-mtok", "sk-not-a-real-key", true, null);
+
+        assertThat(store.get("default", "pricing.input-usd-per-mtok")).contains("sk-not-a-real-key");
+        // What is on disk is not the key: a client secret filed under "settings" is still a
+        // credential.
+        assertThat(jdbc.queryForObject(
+                "select value from settings where key = 'pricing.input-usd-per-mtok'", String.class))
+                .isNotEqualTo("sk-not-a-real-key");
+    }
+
+    @Test
+    void a_setting_that_is_not_a_number_falls_back_rather_than_throwing() {
+        Fixture f = on("settings_6");
+        f.store().put("default", "runs.max-concurrent", "quite a lot", false, null);
+
+        // Read inside a run somebody is watching, so a parse failure must not take anything down.
+        assertThat(f.settings().number("runs.max-concurrent", 4)).isEqualTo(4);
+    }
+
+    @Test
+    void one_organizations_limits_are_not_anothers() {
+        Fixture f = on("settings_7");
+        f.store().put("other-company", "runs.max-concurrent", "99", false, null);
+
+        assertThat(f.settings().number("runs.max-concurrent", 4)).isEqualTo(4);
+        assertThat(f.store().get("other-company", "runs.max-concurrent")).contains("99");
+    }
+
+    // The catalogue is what the settings screen renders and what the API will accept; a key in one
+    // and not the other is a field that saves nothing or a row nothing reads.
+    @Test
+    void every_catalogued_setting_names_a_real_configuration_key() {
+        assertThat(SettingsCatalog.all()).isNotEmpty();
+        assertThat(SettingsCatalog.all()).allSatisfy(def -> {
+            assertThat(def.key()).doesNotStartWith("app.auth.oidc.");
+            assertThat(def.label()).isNotBlank();
+            assertThat(def.help()).isNotBlank();
+        });
+        assertThat(SettingsCatalog.isKnown("runs.max-concurrent")).isTrue();
+        assertThat(SettingsCatalog.isKnown("app.data-dir")).isFalse();
+    }
+}

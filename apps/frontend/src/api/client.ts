@@ -39,6 +39,7 @@ import type {
   StorageDraft,
   SessionInfo,
   SignedInUser,
+  SettingEntry,
   SwitchableAccount,
   SqlPreview,
 } from './types.ts'
@@ -438,6 +439,17 @@ export const api = {
    * back to an account you left is the case it exists for.
    */
   switchableAccounts: () => req<SwitchableAccount[]>('/account/accounts'),
+  /** Every setting this installation offers, with what it is now and where that value came from. */
+  listSettings: () => req<{ settings: SettingEntry[] }>('/settings'),
+  /**
+   * Saves overrides. A blank value clears one, which is what lets the deployment's own
+   * configuration — or the built-in default — stand again.
+   */
+  saveSettings: (values: Record<string, string>) =>
+    req<{ settings: SettingEntry[] }>('/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ values }),
+    }),
 /**
    * Creates the first account on an installation that has none, and signs it in.
    *

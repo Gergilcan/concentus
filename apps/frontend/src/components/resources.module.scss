@@ -901,6 +901,107 @@
   text-decoration: underline;
 }
 
+/**
+ * A settings group: a heading, then rows of "what this is" beside "what it is set to".
+ *
+ * Two columns rather than a stacked form, because the help text is the point. These are limits
+ * somebody adjusts once a year, and the question is never "what goes in this box" but "what
+ * happens if I change it" — so the sentence gets the room and the control gets a fixed column.
+ */
+.settingGroup {
+  margin-bottom: var(--sp-5);
+
+  h4 {
+    margin-bottom: 8px;
+  }
+}
+
+.settingList {
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
+  overflow: hidden;
+}
+
+.settingRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: var(--sp-5);
+  align-items: start;
+  padding: 12px 14px;
+  border-bottom: 1px solid t.$border;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background: t.$panel-2;
+  }
+
+  @media (max-width: 720px) {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+/** Changed but not saved yet, so the Save button's count has something to point at. */
+.settingEdited {
+  box-shadow: inset 3px 0 0 t.$accent;
+}
+
+.settingText {
+  min-width: 0;
+
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  p {
+    margin: 3px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: t.$muted;
+    max-width: 68ch;
+  }
+}
+
+/** Where the current value came from, and whether changing it waits for a restart. */
+.settingMeta {
+  display: inline-block;
+  margin-top: 5px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: t.$muted;
+}
+
+.settingControl {
+  input,
+  select {
+    width: 100%;
+    background: t.$bg;
+    border: 1px solid t.$border;
+    border-radius: 6px;
+    color: t.$text;
+    padding: 6px 9px;
+    font-size: 12.5px;
+
+    &:focus {
+      outline: none;
+      border-color: t.$accent;
+    }
+  }
+}
+
+.savedNote {
+  margin: 0 0 var(--sp-4);
+  color: t.$ok;
+  font-size: 12.5px;
+  max-width: 78ch;
+}
+
 .rosterHead {
   display: flex;
   align-items: flex-start;

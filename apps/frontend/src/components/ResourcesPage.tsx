@@ -12,13 +12,14 @@ import { McpServerJson } from './McpServerJson.tsx'
 import { MembersPanel } from './MembersPanel.tsx'
 import { ModelField } from './ModelField.tsx'
 import { PluginsPanel } from './PluginsPanel.tsx'
+import { SettingsPanel } from './SettingsPanel.tsx'
 import { SkillsPanel } from './SkillsPanel.tsx'
 import { StoragePanel } from './StoragePanel.tsx'
 import { UpdatesPanel } from './UpdatesPanel.tsx'
 import { shellBridge } from '../api/shell.ts'
 import styles from './resources.module.scss'
 
-type Tab = 'members' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
+type Tab = 'settings' | 'members' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
 
 /**
  * The tab strip, in display order. `desktopOnly` keeps Updates out of a browser tab, which has no
@@ -55,6 +56,12 @@ const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolea
       "Values substituted into every flow's prompts as {{NAME}} when a run starts. A flow can override any of them — or add its own — in its settings.",
   },
   { id: 'credentials', label: 'Credentials' },
+  {
+    id: 'settings',
+    label: 'Settings',
+    title:
+      'Limits, timeouts and allowlists for this installation. All of it used to be environment variables, which on a desktop install is a place nobody can edit.',
+  },
   { id: 'storage', label: 'Storage' },
   { id: 'updates', label: 'Updates', desktopOnly: true },
 ]
@@ -312,6 +319,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
         {tab === 'credentials' && <CredentialsPanel pushError={pushError} />}
 
         {tab === 'plugins' && <PluginsPanel pushError={pushError} />}
+        {tab === 'settings' && <SettingsPanel pushError={pushError} />}
         {tab === 'storage' && <StoragePanel pushError={pushError} />}
         {tab === 'updates' && <UpdatesPanel />}
       </div>

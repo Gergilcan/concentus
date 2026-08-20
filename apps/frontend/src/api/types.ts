@@ -852,6 +852,28 @@ export interface SignInProvider {
 }
 
 /**
+ * One thing about this installation somebody may change.
+ *
+ * The key is the configuration key it overrides, verbatim — one vocabulary for the thing however
+ * it is set. `source` is what makes the screen honest: the same number means different things
+ * depending on whether a person chose it, the deployment was started with it, or it is simply what
+ * the code does.
+ */
+export interface SettingEntry {
+  key: string
+  group: string
+  label: string
+  help: string
+  type: 'TEXT' | 'NUMBER' | 'BOOLEAN' | 'LIST' | 'SECRET' | 'CHOICE'
+  restartRequired: boolean
+  options: string[]
+  source: 'STORED' | 'CONFIGURED' | 'DEFAULT'
+  /** Empty for a secret, always: what it holds is never read back out of the API. */
+  value: string
+  hasValue: boolean
+}
+
+/**
  * One account this browser can return to without signing in again.
  *
  * It got here by being signed into on this browser — with its own password or its own provider —

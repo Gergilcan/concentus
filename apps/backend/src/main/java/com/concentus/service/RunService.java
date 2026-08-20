@@ -81,11 +81,7 @@ public class RunService {
                       NotificationService notifier, RemoteApprovalService remoteApprovals,
                       SubflowService subflows,
                       com.concentus.store.VariableStore variableStore,
-                      @Value("${runs.max-concurrent:8}") int maxConcurrent,
-                      @Value("${runs.queue-capacity:64}") int queueCapacity,
-                      @Value("${runs.max-retained:200}") int maxRetainedRuns,
-                      @Value("${pricing.input-usd-per-mtok:3.0}") double inputUsdPerMTok,
-                      @Value("${pricing.output-usd-per-mtok:15.0}") double outputUsdPerMTok) {
+                      com.concentus.config.Settings settings) {
         this.clientProvider = clientProvider;
         this.compiler = compiler;
         this.launcher = launcher;
@@ -99,9 +95,14 @@ public class RunService {
         this.subflows = subflows;
         this.remoteApprovals = remoteApprovals;
         this.variableStore = variableStore;
-        this.maxRetainedRuns = maxRetainedRuns;
-        this.inputUsdPerMTok = inputUsdPerMTok;
-        this.outputUsdPerMTok = outputUsdPerMTok;
+        // Read here rather than injected as placeholders, so what somebody set under Settings is
+        // what this pool is sized with. Still read once — a thread pool cannot be resized under a
+        // run in flight — which is why the settings screen says these wait for a restart.
+        int maxConcurrent = settings.number("runs.max-concurrent", 8);
+        int queueCapacity = settings.number("runs.queue-capacity", 64);
+        this.maxRetainedRuns = settings.number("runs.max-retained", 200);
+        this.inputUsdPerMTok = settings.decimal("pricing.input-usd-per-mtok", 3.0);
+        this.outputUsdPerMTok = settings.decimal("pricing.output-usd-per-mtok", 15.0);
         AtomicInteger threadCount = new AtomicInteger(1);
         ThreadFactory threadFactory = r -> {
             Thread t = new Thread(r, "run-worker-" + threadCount.getAndIncrement());

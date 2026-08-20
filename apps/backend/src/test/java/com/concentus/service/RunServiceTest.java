@@ -77,7 +77,10 @@ class RunServiceTest {
                 new PricingTable("", 3.0, 15.0),
                 new CloudStreamEventHandler(), runStore, flowVersions, mapper,
                 notifier, remoteApprovals, mock(SubflowService.class), variableStore(),
-                maxConcurrent, queueCapacity, maxRetainedRuns, 3.0, 15.0);
+                com.concentus.config.Settings.of(java.util.Map.of(
+                        "runs.max-concurrent", String.valueOf(maxConcurrent),
+                        "runs.queue-capacity", String.valueOf(queueCapacity),
+                        "runs.max-retained", String.valueOf(maxRetainedRuns))));
         created.add(s);
         return s;
     }
@@ -844,7 +847,11 @@ class RunServiceTest {
         RunService s = new RunService(clientProvider, compiler, launcher, backends(),
                 new PricingTable("", 3.0, 15.0),
                 new CloudStreamEventHandler(), runStore, flowVersions, mapper, notifier,
-                remoteApprovals, mock(SubflowService.class), variableStore(), 4, 8, 10, 3.0, 15.0);
+                remoteApprovals, mock(SubflowService.class), variableStore(),
+                com.concentus.config.Settings.of(java.util.Map.of(
+                        "runs.max-concurrent", "4",
+                        "runs.queue-capacity", "8",
+                        "runs.max-retained", "10")));
         created.add(s);
         return s;
     }
