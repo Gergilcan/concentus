@@ -378,6 +378,31 @@
   min-width: 0;
 }
 
+/**
+ * The tables a migration would move, one tick each.
+ *
+ * A list rather than a bordered grid: it is read once, before pressing a button, and a report's
+ * worth of chrome around four row counts would suggest it says more than it does.
+ */
+.migrateTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-top: 8px;
+
+  td {
+    padding: 3px 0;
+    border-bottom: 1px dashed t.$border;
+  }
+
+  label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+}
+
 /* ---- knowledge bases ---- */
 .kbDocs {
   border-top: 1px solid t.$border;

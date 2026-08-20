@@ -247,6 +247,23 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(s),
     }),
+  /** What this installation holds, table by table — the estimate shown before a migration. */
+  storageContents: () =>
+    req<{ tables: Array<{ table: string; rows: number }>; totalRows: number }>('/storage/contents'),
+  /**
+   * Copies everything into another PostgreSQL. Does not switch to it: the copy is repeatable and
+   * changes nothing here, while switching needs a restart and deserves its own decision.
+   *
+   * A generous timeout, because this one really can take minutes — the default thirty seconds is
+   * sized for a request, not for a year of run history crossing a VPN.
+   */
+  migrateStorage: (s: StorageDraft & { skip?: string[] }) =>
+    req<{
+      ok: boolean
+      copied: Array<{ table: string; rows: number }>
+      warnings: string[]
+      totalRows: number
+    }>('/storage/migrate', { method: 'POST', body: JSON.stringify(s) }, 15 * 60_000),
 
   // Knowledge bases: document collections agents retrieve from. The upload is multipart, so it
   // bypasses req()'s JSON defaults.

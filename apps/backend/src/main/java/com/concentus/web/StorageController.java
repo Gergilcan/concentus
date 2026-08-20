@@ -1,6 +1,8 @@
 package com.concentus.web;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.StorageSettings;
+import com.concentus.store.StorageMigrator;
 import com.concentus.store.StorageSettingsStore;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,12 +12,15 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  * Choosing where Concentus keeps its own data.
@@ -42,10 +47,16 @@ public class StorageController {
      * a backend run by hand takes its datasource from properties and has no such choice to report.
      */
     private final ObjectProvider<StorageSettings> active;
+    /** The database this process is actually running on — the source of any migration. */
+    private final DataSource current;
+    private final OrgContext orgContext;
 
-    public StorageController(StorageSettingsStore store, ObjectProvider<StorageSettings> active) {
+    public StorageController(StorageSettingsStore store, ObjectProvider<StorageSettings> active,
+                             DataSource current, OrgContext orgContext) {
         this.store = store;
         this.active = active;
+        this.current = current;
+        this.orgContext = orgContext;
     }
 
     /**
@@ -124,6 +135,97 @@ public class StorageController {
             // "does this work", and the UI shows the reason next to the field.
             return Map.of("ok", false, "detail", e.getMessage());
         }
+    }
+
+    /**
+     * What this installation holds, table by table, biggest first.
+     *
+     * <p>Shown before the button that copies it: the two questions somebody asks are "how long will
+     * this take" and "what exactly travels", and both are answered by a list of counts. Admin only,
+     * because the table names alone describe the shape of everything stored here.
+     */
+    @GetMapping("/contents")
+    public Map<String, Object> contents() {
+        orgContext.requireAdmin();
+        List<StorageMigrator.TableCount> tables = StorageMigrator.survey(current);
+        return Map.of(
+                "tables", tables.stream().map(t -> Map.of("table", t.table(), "rows", t.rows())).toList(),
+                "totalRows", tables.stream().mapToLong(StorageMigrator.TableCount::rows).sum());
+    }
+
+    /**
+     * @param skip tables to leave behind — for a move that wants the configuration on the company
+     *             database without a year of run history crossing a VPN first
+     */
+    public record MigrateRequest(String url, String username, String password, List<String> skip) {
+    }
+
+    /**
+     * Copies everything into another PostgreSQL, and does not switch to it.
+     *
+     * <p>Two decisions, deliberately kept apart: the copy adds rows and changes nothing here, so it
+     * can be repeated and can be done while still working on the embedded database; switching costs
+     * a restart. Someone who copies first can test the company database at leisure and move when
+     * they are ready.
+     *
+     * <p>Never deletes — see {@link StorageMigrator}. Admin only: this both reads everything stored
+     * here and writes it somewhere else.
+     */
+    @PostMapping("/migrate")
+    public Map<String, Object> migrate(@RequestBody MigrateRequest body) {
+        orgContext.requireAdmin();
+        requireUsableUrl(body.url());
+
+        Properties props = new Properties();
+        if (body.username() != null && !body.username().isBlank()) props.put("user", body.username());
+        // A blank password means the one already saved for the external database, so a migration can
+        // follow a saved configuration without the browser ever having held the value.
+        String password = body.password() == null || body.password().isBlank()
+                ? store.plaintextPassword(store.load())
+                : body.password();
+        if (password != null && !password.isBlank()) props.put("password", password);
+        // Long, unlike the connection test: this one is copying, and a slow link is not a failure.
+        props.put("connectTimeout", "15");
+
+        DataSource target = new SimpleUrlDataSource(body.url().trim(), props);
+        StorageMigrator.Report report = StorageMigrator.copy(current, target,
+                body.skip() == null ? Set.of() : Set.copyOf(body.skip()));
+        return Map.of(
+                "ok", true,
+                "copied", report.copied().stream()
+                        .map(t -> Map.of("table", t.table(), "rows", t.rows())).toList(),
+                "warnings", report.warnings(),
+                "totalRows", report.totalRows());
+    }
+
+    /**
+     * A DataSource over one URL and its properties.
+     *
+     * <p>Not a pool: this is used once, by one migration, and a pool would hold connections open to
+     * a database this process is not otherwise running on. Spring's DriverManagerDataSource would
+     * do, but it takes user and password as separate arguments and drops everything else — the
+     * connect timeout among them.
+     */
+    private record SimpleUrlDataSource(String url, Properties props) implements DataSource {
+        @Override public Connection getConnection() throws SQLException {
+            return DriverManager.getConnection(url, props);
+        }
+        @Override public Connection getConnection(String username, String password) throws SQLException {
+            Properties p = new Properties();
+            p.putAll(props);
+            p.put("user", username);
+            p.put("password", password);
+            return DriverManager.getConnection(url, p);
+        }
+        @Override public java.io.PrintWriter getLogWriter() { return null; }
+        @Override public void setLogWriter(java.io.PrintWriter out) { }
+        @Override public void setLoginTimeout(int seconds) { }
+        @Override public int getLoginTimeout() { return 0; }
+        @Override public java.util.logging.Logger getParentLogger() {
+            return java.util.logging.Logger.getGlobal();
+        }
+        @Override public <T> T unwrap(Class<T> iface) { return iface.cast(this); }
+        @Override public boolean isWrapperFor(Class<?> iface) { return iface.isInstance(this); }
     }
 
     /** The mode this process is running on, which may differ from the one saved for next time. */

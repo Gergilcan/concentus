@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
 import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
-import type { StorageConfig } from '../api/types.ts'
+import type { StorageConfig, StorageDraft } from '../api/types.ts'
 import { Field, SelectField } from './fields.tsx'
 import { Spinner } from './Spinner.tsx'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
+
+/** One table and how much of it there is. */
+type TableCount = { table: string; rows: number }
 
 /**
  * Where Concentus keeps its own data.
@@ -38,7 +41,7 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
       .catch((e) => pushError(String(e)))
   }, [pushError])
 
-  const draft = { mode, url, username, password }
+  const draft: StorageDraft = { mode, url, username, password }
 
   const onTest = async () => {
     setTesting(true)
@@ -58,11 +61,7 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
       const saved = await api.saveStorage(draft)
       setConfig(saved)
       setPassword(null)
-      setStatus(
-        saved.restartRequired
-          ? 'Saved. Restart Concentus to start using it.'
-          : 'Saved.',
-      )
+      setStatus(saved.restartRequired ? 'Saved. Restart Concentus to start using it.' : 'Saved.')
     } catch (e) {
       pushError(errMessage(e))
     }
@@ -109,9 +108,10 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
           />
           <p
             className={panels.hint}
-            title="PostgreSQL only (the schema uses jsonb). An empty database is all it needs — tables are created on first connection. Switching copies nothing over: the new database starts empty."
+            title="PostgreSQL only (the schema uses jsonb). An empty database is all it needs — tables are created on first connection. Switching alone copies nothing over; use 'Move my data' below to bring across what you already have."
           >
-            For teams: shared, backed up, audited. Nothing is migrated when switching. ⓘ
+            For teams: shared, backed up, audited. Switching alone starts empty — move your data
+            below. ⓘ
           </p>
         </>
       )}
@@ -129,7 +129,10 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
       </div>
 
       {test && (
-        <p className={panels.hint} style={{ color: test.ok ? 'var(--ok, #4ade80)' : 'var(--danger, #f3b6b6)' }}>
+        <p
+          className={panels.hint}
+          style={{ color: test.ok ? 'var(--ok, #4ade80)' : 'var(--danger, #f3b6b6)' }}
+        >
           {test.ok ? '✓ ' : '✗ '}
           {test.detail}
         </p>
@@ -144,7 +147,134 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
         </p>
       )}
 
+      <MigrateSection draft={draft} />
       <BackupSection />
+    </div>
+  )
+}
+
+/**
+ * Bringing an installation's data to another PostgreSQL.
+ *
+ * Separate from the setting above, and on purpose: copying adds rows and changes nothing here,
+ * while switching costs a restart. Kept apart, somebody can copy today, look around the company
+ * database at leisure, and switch when they trust it — then repeat the copy for whatever they
+ * built in between, because nothing is ever deleted or overwritten.
+ */
+function MigrateSection({ draft }: { draft: StorageDraft }) {
+  const [contents, setContents] = useState<TableCount[] | null>(null)
+  const [skip, setSkip] = useState<Set<string>>(new Set())
+  const [busy, setBusy] = useState(false)
+  const [report, setReport] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  const look = async () => {
+    setReport(null)
+    setFailed(false)
+    try {
+      const c = await api.storageContents()
+      setContents(c.tables)
+    } catch (e) {
+      setFailed(true)
+      setReport(errMessage(e))
+    }
+  }
+
+  const move = async () => {
+    setBusy(true)
+    setReport(null)
+    setFailed(false)
+    try {
+      const r = await api.migrateStorage({ ...draft, mode: 'external', skip: [...skip] })
+      const moved = r.copied.filter((t) => t.rows > 0)
+      setReport(
+        (r.totalRows === 0
+          ? 'Nothing new to copy — the target already holds everything.'
+          : `Copied ${r.totalRows} rows: ${moved.map((t) => `${t.rows} ${t.table}`).join(', ')}.`) +
+          (r.warnings.length ? ` ${r.warnings.join(' ')}` : '') +
+          ' Nothing here changed; switch above and restart when you are ready.',
+      )
+    } catch (e) {
+      setFailed(true)
+      // Half a copy is a normal outcome of a dropped connection, and repeating it is the fix: the
+      // rows already across are not sent again.
+      setReport(`${errMessage(e)} Nothing was deleted; press Move again to continue.`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const ready = draft.mode === 'external' && draft.url.trim() !== ''
+  const total = (contents ?? []).reduce((n, t) => (skip.has(t.table) ? n : n + t.rows), 0)
+
+  return (
+    <div className={styles.subSection}>
+      <h3
+        className={styles.h4}
+        title="Copies every flow, agent, MCP server, credential, knowledge base and run into the PostgreSQL configured above, over the connection this app already has — no pg_dump, nothing to install. Rows already there are left exactly as they are: nothing is deleted or overwritten, so a copy that stops halfway is simply repeated. It does not switch — the app keeps running on its current database until you save the setting above and restart."
+      >
+        Move my data to that database ⓘ
+      </h3>
+      <div className={styles.crudActions}>
+        <button className={styles.newBtn} disabled={busy} onClick={() => void look()}>
+          {contents ? 'Refresh what is here' : 'See what would move'}
+        </button>
+        <button
+          className={styles.saveBtn}
+          disabled={busy || !ready}
+          onClick={() => void move()}
+          title={
+            ready
+              ? 'Copies into the database configured above. Adds only; never deletes.'
+              : 'Fill in the external PostgreSQL above first — that is where the data goes.'
+          }
+        >
+          {busy ? 'Moving…' : 'Move it now'}
+        </button>
+      </div>
+
+      {contents && (
+        <table className={styles.migrateTable}>
+          <tbody>
+            {contents
+              .filter((t) => t.rows > 0)
+              .map((t) => (
+                <tr key={t.table}>
+                  <td>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={!skip.has(t.table)}
+                        onChange={(e) => {
+                          const next = new Set(skip)
+                          if (e.target.checked) next.delete(t.table)
+                          else next.add(t.table)
+                          setSkip(next)
+                        }}
+                      />{' '}
+                      {t.table}
+                    </label>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>{t.rows.toLocaleString()}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      )}
+      {contents && (
+        <p className={panels.hint}>
+          {total.toLocaleString()} rows selected. Unticking run history or knowledge chunks moves
+          your configuration now and leaves the bulk for later — the copy can be repeated.
+        </p>
+      )}
+      {report && (
+        <p
+          className={panels.hint}
+          style={{ color: failed ? 'var(--danger, #f3b6b6)' : 'var(--ok, #4ade80)' }}
+        >
+          {report}
+        </p>
+      )}
     </div>
   )
 }
