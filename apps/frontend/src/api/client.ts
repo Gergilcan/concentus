@@ -54,6 +54,23 @@ export interface SqlSourceInput {
 const DEFAULT_TIMEOUT_MS = 30_000
 
 /**
+ * A request the server refused, carrying the status it refused with.
+ *
+ * The message alone is what most callers show, but a few need to tell "this does not exist" from
+ * "this did not work": a screen polling a record that has been deleted has to stop asking, and it
+ * cannot decide that by reading prose.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+/**
  * Reads the CSRF token the backend sets as a readable cookie.
  *
  * Spring Security issues `XSRF-TOKEN` and expects it echoed in a header on every state-changing
@@ -121,7 +138,7 @@ async function req<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIME
     } catch {
       /* non-JSON error body */
     }
-    throw new Error(message)
+    throw new ApiError(message, res.status)
   }
   if (res.status === 204) return undefined as T
   const text = await res.text()

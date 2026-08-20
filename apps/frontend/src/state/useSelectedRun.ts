@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api/client.ts'
+import { ApiError, api } from '../api/client.ts'
 import type { RunSummary } from '../api/types.ts'
 import { RUN_POLL_INTERVAL_MS } from '../constants.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -70,7 +70,19 @@ export function useSelectedRun(pushError: (m: string) => void, runs: RunSummary[
       api
         .getRunNodes(selectedRun)
         .then((r) => alive && setRunExec(r))
-        .catch((e) => alive && pushError(errMessage(e)))
+        .catch((e) => {
+          if (!alive) return
+          // The run is gone — deleted, or left behind by a move to another database. Keeping the
+          // selection meant polling a dead id every second forever, one error toast per tick, and
+          // no way out but clearing browser storage. Unknown runs are still kept (see
+          // runBelongsToOpenFlow); this is the one case where absence is an answer, not a race.
+          if (e instanceof ApiError && e.status === 404) {
+            setSelectedRun(null)
+            setRunExec(null)
+            return
+          }
+          pushError(errMessage(e))
+        })
         .finally(() => {
           inFlight = false
         })
