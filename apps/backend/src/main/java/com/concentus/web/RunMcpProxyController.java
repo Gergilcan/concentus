@@ -67,15 +67,26 @@ public class RunMcpProxyController {
     private final McpOAuthStore oauth;
     private final OrgContext orgContext;
     private final ObjectMapper mapper;
+    /** A span per tool call: which server, on which run, and how long it took. */
+    private final com.concentus.telemetry.Telemetry telemetry;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(20)).build();
 
+    @org.springframework.beans.factory.annotation.Autowired
     public RunMcpProxyController(RunService runs, McpOAuthStore oauth, OrgContext orgContext,
-                                 ObjectMapper mapper) {
+                                 ObjectMapper mapper,
+                                 com.concentus.telemetry.Telemetry telemetry) {
         this.runs = runs;
         this.oauth = oauth;
         this.orgContext = orgContext;
         this.mapper = mapper;
+        this.telemetry = telemetry;
+    }
+
+    /** The shape tests build: a proxy that records nothing, because they are about what it proxies. */
+    RunMcpProxyController(RunService runs, McpOAuthStore oauth, OrgContext orgContext,
+                          ObjectMapper mapper) {
+        this(runs, oauth, orgContext, mapper, com.concentus.telemetry.Telemetry.none());
     }
 
     @PostMapping("/{server}")
@@ -84,6 +95,22 @@ public class RunMcpProxyController {
                                         @RequestHeader(value = SESSION_HEADER, required = false) String sessionId,
                                         @RequestHeader(value = VERSION_HEADER, required = false) String protocolVersion,
                                         @RequestBody(required = false) byte[] body) {
+        try (var span = telemetry.start(com.concentus.telemetry.Telemetry.SPAN_TOOL)) {
+            span.tag(com.concentus.telemetry.Telemetry.ATTR_RUN_ID, runId)
+                    .tag(com.concentus.telemetry.Telemetry.ATTR_SERVER, server);
+            return proxied(runId, server, token, sessionId, protocolVersion, body);
+        }
+    }
+
+    /**
+     * The proxying itself.
+     *
+     * <p>Split from {@link #proxy} so the span wraps everything including a refusal: a tool call
+     * rejected for a bad token is exactly the kind of thing somebody is looking for in a trace,
+     * and instrumenting only the happy path would hide it.
+     */
+    private ResponseEntity<byte[]> proxied(String runId, String server, String token,
+                                           String sessionId, String protocolVersion, byte[] body) {
         AgentRun run = runs.get(runId).orElse(null);
         String expected = run == null ? null : run.toolToken;
         if (!McpJsonRpc.tokenMatches(expected, token)) {

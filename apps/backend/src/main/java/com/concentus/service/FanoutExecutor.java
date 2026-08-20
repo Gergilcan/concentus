@@ -82,6 +82,11 @@ public class FanoutExecutor {
     private final int timeoutSeconds;
     private final int retries;
     private final ProcessStarter starter;
+    /**
+     * What a fan-out says about itself. Not final: the constructor tests use knows nothing about
+     * telemetry, and this stays a recorder of nothing there.
+     */
+    private com.concentus.telemetry.Telemetry telemetry = com.concentus.telemetry.Telemetry.none();
     private final ExecutorService pool;
     private final ScheduledExecutorService watchdogs;
 
@@ -94,7 +99,8 @@ public class FanoutExecutor {
                           com.concentus.store.SkillStore skillStore, SkillService skillService,
                           @Value("${app.data-dir}") String dataDir,
                           @Value("${server.port:8734}") int serverPort,
-                          com.concentus.config.Settings settings) {
+                          com.concentus.config.Settings settings,
+                          com.concentus.telemetry.Telemetry telemetry) {
         // Through Settings rather than as placeholders, so what somebody set under Resources →
         // Settings is what a fan-out actually runs with. The package-private constructor below
         // still takes plain values — it is what tests build, and they are about what a limit does
@@ -107,6 +113,9 @@ public class FanoutExecutor {
                 settings.number("workers.retries", 1), (args, workdir) ->
                         new ProcessBuilder(args).directory(workdir.toFile())
                                 .redirectErrorStream(true).start());
+        // After the delegation rather than through it: the constructor below is what tests build,
+        // and none of them has anything to say about telemetry.
+        this.telemetry = telemetry;
     }
 
     FanoutExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
@@ -434,6 +443,20 @@ public class FanoutExecutor {
     }
 
     private Outcome runWorker(AgentRun run, AgentSpec spec, String cmd, String userText) {
+        try (var span = telemetry.start(com.concentus.telemetry.Telemetry.SPAN_WORKER)) {
+            span.tag(com.concentus.telemetry.Telemetry.ATTR_RUN_ID, run.id)
+                    .tag(com.concentus.telemetry.Telemetry.ATTR_FLOW_ID, run.flowId)
+                    .tag(com.concentus.telemetry.Telemetry.ATTR_NODE_ID, spec.nodeId)
+                    .tag(com.concentus.telemetry.Telemetry.ATTR_AGENT, spec.name)
+                    .tag(com.concentus.telemetry.Telemetry.ATTR_MODEL, spec.model == null ? null : spec.model.id);
+            Outcome outcome = runWorkerProcess(run, spec, cmd, userText);
+            telemetry.count("concentus.workers.finished",
+                    "ok", String.valueOf(outcome != null && outcome.ok()));
+            return outcome;
+        }
+    }
+
+    private Outcome runWorkerProcess(AgentRun run, AgentSpec spec, String cmd, String userText) {
         boolean synthetic = spec.nodeId.startsWith("worker:");
         NodeExec exec = run.nodeExec(spec.nodeId, synthetic ? "worker" : "agent", spec.name);
         if (exec != null) {

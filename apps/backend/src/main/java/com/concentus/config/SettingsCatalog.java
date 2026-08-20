@@ -3,6 +3,8 @@ package com.concentus.config;
 import java.util.List;
 
 import static com.concentus.config.SettingDef.choice;
+import static com.concentus.config.SettingDef.flag;
+import static com.concentus.config.SettingDef.secret;
 import static com.concentus.config.SettingDef.number;
 import static com.concentus.config.SettingDef.text;
 
@@ -34,6 +36,7 @@ public final class SettingsCatalog {
     public static final String GROUP_WORKERS = "Independent workers";
     public static final String GROUP_ATTACHMENTS = "Attachments";
     public static final String GROUP_PRICING = "Pricing";
+    public static final String GROUP_TELEMETRY = "Traces and metrics";
 
     private static final List<SettingDef> ALL = List.of(
             number("runs.max-concurrent", GROUP_RUNS, "Runs at once",
@@ -80,7 +83,26 @@ public final class SettingsCatalog {
             number("integration.attachments.max-total-bytes", GROUP_ATTACHMENTS, "Largest message",
                     "In bytes, across every attachment on one message.", true),
             number("integration.attachments.max-count", GROUP_ATTACHMENTS, "Most files per message",
-                    "How many attachments one message may carry.", true)
+                    "How many attachments one message may carry.", true),
+
+            flag("management.otlp.tracing.export.enabled", GROUP_TELEMETRY, "Send traces",
+                    "Whether anything leaves this machine. Off, the spans are still created — a run "
+                            + "behaves identically either way — and simply go nowhere.", true),
+            text("management.otlp.tracing.endpoint", GROUP_TELEMETRY, "Collector address",
+                    "Where to send them, as an OTLP HTTP endpoint — an OpenTelemetry Collector, "
+                            + "Tempo, Jaeger, Honeycomb. Read only when the switch above is on.",
+                    true),
+            secret("management.otlp.tracing.headers.authorization", GROUP_TELEMETRY,
+                    "Collector authorization header",
+                    "For a hosted collector that wants one. Sent as the Authorization header on "
+                            + "every export.", true),
+            text("management.tracing.sampling.probability", GROUP_TELEMETRY, "Fraction traced",
+                    "1.0 traces every run, which is right for a handful a day. A busy deployment "
+                            + "wants less: one run's trace carries every model and tool call "
+                            + "underneath it.", true),
+            flag("management.otlp.metrics.export.enabled", GROUP_TELEMETRY, "Send metrics too",
+                    "Counters and timers — runs by outcome, workers, tool calls — alongside the "
+                            + "traces.", true)
     );
 
     public static List<SettingDef> all() {

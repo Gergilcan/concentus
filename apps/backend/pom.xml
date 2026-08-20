@@ -52,6 +52,35 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Tracing and metrics, spoken as OpenTelemetry.
+
+             Micrometer is what the framework already instruments — HTTP requests, scheduled
+             tasks, WebSocket sessions — and the OpenTelemetry bridge turns those observations
+             into OTLP spans without any of that code knowing. What is added by hand is the part
+             a generic instrumentation cannot see: a run, a block inside it, a worker, a tool
+             call. See Telemetry.
+
+             Exports nothing unless an endpoint is configured. A desktop install with no
+             collector must not spend its evening retrying gRPC to localhost:4317. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-otlp</artifactId>
+        </dependency>
+        <!-- A tracer that records into a list, so a test can read what a span actually said. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- JDBC + connection pool for persisting runs/executions (PostgreSQL / Neon) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

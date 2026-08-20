@@ -72,6 +72,8 @@ public class RunService {
     private final double inputUsdPerMTok;
     private final double outputUsdPerMTok;
     private final ConcurrentHashMap<String, AgentRun> runs = new ConcurrentHashMap<>();
+    /** What this service says about itself: a span per unit of work, and counters per outcome. */
+    private final com.concentus.telemetry.Telemetry telemetry;
 
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
                       ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
@@ -81,7 +83,8 @@ public class RunService {
                       NotificationService notifier, RemoteApprovalService remoteApprovals,
                       SubflowService subflows,
                       com.concentus.store.VariableStore variableStore,
-                      com.concentus.config.Settings settings) {
+                      com.concentus.config.Settings settings,
+                      com.concentus.telemetry.Telemetry telemetry) {
         this.clientProvider = clientProvider;
         this.compiler = compiler;
         this.launcher = launcher;
@@ -95,6 +98,7 @@ public class RunService {
         this.subflows = subflows;
         this.remoteApprovals = remoteApprovals;
         this.variableStore = variableStore;
+        this.telemetry = telemetry;
         // Read here rather than injected as placeholders, so what somebody set under Settings is
         // what this pool is sized with. Still read once — a thread pool cannot be resized under a
         // run in flight — which is why the settings screen says these wait for a restart.
@@ -418,11 +422,32 @@ public class RunService {
                 ? user.email() : null;
     }
 
-    /** Submits work to the run-worker pool; if the queue is full, fails the run instead of blocking. */
+    /**
+     * Submits work to the run-worker pool; if the queue is full, fails the run instead of blocking.
+     *
+     * <p>Also where each unit of a run becomes a span. Not one span for the whole run: a run
+     * starts on one thread, waits for a person, and continues on another, and a span held across
+     * that would measure how long somebody took to answer rather than how long anything worked.
+     * What is worth measuring is each stretch the machine was actually busy, which is exactly what
+     * gets submitted here.
+     */
     private void submitOrFail(AgentRun run, Runnable task) {
         try {
-            exec.submit(task);
+            exec.submit(() -> {
+                try (var span = telemetry.start(com.concentus.telemetry.Telemetry.SPAN_RUN)) {
+                    span.tag(com.concentus.telemetry.Telemetry.ATTR_RUN_ID, run.id)
+                            .tag(com.concentus.telemetry.Telemetry.ATTR_FLOW_ID, run.flowId)
+                            .tag(com.concentus.telemetry.Telemetry.ATTR_FLOW_NAME, run.flowName);
+                    try {
+                        task.run();
+                    } catch (RuntimeException e) {
+                        span.failed(e);
+                        throw e;
+                    }
+                }
+            });
         } catch (RejectedExecutionException e) {
+            telemetry.count("concentus.runs.rejected");
             fail(run, "Too many runs in progress right now. Please try again shortly.");
         }
     }
@@ -939,6 +964,7 @@ public class RunService {
     }
 
     private void fail(AgentRun run, String message) {
+        telemetry.count("concentus.runs.finished", "status", "ERROR");
         run.status = "ERROR";
         run.error = message;
         run.emit(RunEvent.of("error", message));
