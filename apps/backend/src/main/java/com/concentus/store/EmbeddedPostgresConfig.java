@@ -38,6 +38,12 @@ import java.util.Optional;
  * launch and run as a child process against a data directory inside the user's app-data folder.
  * The SQL is untouched, and the user installs nothing.
  *
+ * <p><b>This is what a first launch gets, whatever the build.</b> It used to be the desktop's
+ * arrangement alone, and a plain {@code java -jar} pointed at localhost:5432 and refused to start
+ * without a PostgreSQL already there — an installation step before anything could be seen at all.
+ * A deployment that wants its own database still says so, and is still believed: an external URL
+ * in the storage settings, or {@code PERSIST_DB_URL} in the environment, wins over this.
+ *
  * <p><b>Credentials.</b> There are none to set or to ask for. The server listens on a loopback
  * port chosen at startup and accepts local connections without a password, which is the default
  * for an instance that is started, used and stopped by one process. Nothing is gained by adding a
@@ -52,7 +58,6 @@ import java.util.Optional;
  * not two different cases that can drift apart.
  */
 @Configuration
-@ConditionalOnProperty(name = "app.desktop", havingValue = "true")
 public class EmbeddedPostgresConfig {
 
     private static final Logger log = LoggerFactory.getLogger(EmbeddedPostgresConfig.class);
@@ -95,8 +100,19 @@ public class EmbeddedPostgresConfig {
     @Bean
     public DataSource dataSource(StorageSettingsStore storageSettings,
                                  @Value("${app.data-dir}") String dataDir,
+                                 @Value("${PERSIST_DB_URL:}") String configuredUrl,
+                                 @Value("${PERSIST_DB_USER:}") String configuredUser,
+                                 @Value("${PERSIST_DB_PASSWORD:}") String configuredPassword,
                                  ConfigurableApplicationContext context) throws IOException {
         StorageSettings settings = storageSettings.load();
+        // A deployment that named a database in its environment meant it. Read from PERSIST_DB_URL
+        // rather than spring.datasource.url because the latter has a default — it would read as
+        // "configured" on every install that has never heard of it, which is the case this whole
+        // change is about.
+        if (!settings.isExternal() && !configuredUrl.isBlank()) {
+            settings = new StorageSettings("external", configuredUrl, configuredUser,
+                    configuredPassword);
+        }
         if (!settings.isExternal()) {
             EmbeddedPostgres postgres = open(dataDir, majorVersion);
             SchemaMigrator.migrate(postgres.getPostgresDatabase());
@@ -114,7 +130,11 @@ public class EmbeddedPostgresConfig {
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(settings.url());
         config.setUsername(settings.username());
-        config.setPassword(storageSettings.plaintextPassword(settings));
+        // A password straight from the environment is already plaintext; one from the settings file
+        // is sealed. Which it is follows from where the settings came from a few lines above.
+        config.setPassword(configuredUrl.equals(settings.url()) && !configuredPassword.isBlank()
+                ? configuredPassword
+                : storageSettings.plaintextPassword(settings));
         // The stores survive an unreachable database by design — each reports itself unavailable —
         // so a database that is briefly down must not prevent the app from opening.
         config.setInitializationFailTimeout(-1);

@@ -54,30 +54,81 @@ public class SecretCipher {
     private final SecureRandom random = new SecureRandom();
 
     /**
-     * @throws IllegalStateException when no usable key is configured, which stops the application
-     *         from starting. Required rather than optional on purpose: every credential the app
-     *         holds depends on it, so a deployment that starts without one would run in a
-     *         half-working state — the UI offering credential fields that silently cannot save,
-     *         and mail triggers quietly not polling. Failing at startup, once, with the command to
-     *         fix it is the kinder failure.
+     * The configured key, or one kept beside the data it protects.
+     *
+     * <p>A key is not optional — every stored credential depends on it, and an installation
+     * without one would offer credential fields that silently cannot save. What <em>was</em>
+     * optional, and should not have been mandatory, is making a person produce it before the
+     * application will start at all. So one is generated on first run and written to
+     * {@code <data-dir>/secret.key}.
+     *
+     * <p><b>What that costs, said plainly.</b> A key in a file next to the database it decrypts is
+     * weaker than one held elsewhere: anyone who can read the folder can read the credentials. It
+     * is the right trade for a single machine, where the alternative was no encryption at all
+     * because the application never started. It is <em>not</em> the right trade for a shared
+     * deployment, and one that sets {@code CONCENTUS_SECRET_KEY} keeps its key out of the data
+     * directory entirely — as the desktop build already does, taking it from the OS keyring.
      */
-    public SecretCipher(@Value("${app.secret-key:}") String configuredKey) {
-        this.key = parseKey(configuredKey);
-        if (key == null) {
-            throw new IllegalStateException("""
+    @org.springframework.beans.factory.annotation.Autowired
+    public SecretCipher(@Value("${app.secret-key:}") String configuredKey,
+                        @Value("${app.data-dir:./data}") String dataDir) {
+        SecretKey configured = parseKey(configuredKey);
+        this.key = configured != null ? configured : keptBesideTheData(dataDir);
+    }
 
-                    ────────────────────────────────────────────────────────────────
-                     CONCENTUS_SECRET_KEY is required and is not set (or is not a
-                     valid 32-byte base64 key).
+    /** For a test, or anything else that supplies its own key and stores nothing. */
+    public SecretCipher(String configuredKey) {
+        SecretKey configured = parseKey(configuredKey);
+        if (configured == null) {
+            throw new IllegalStateException("Not a valid 32-byte base64 key.");
+        }
+        this.key = configured;
+    }
 
-                     Generate one:
-                       openssl rand -base64 32
+    /**
+     * Reads the generated key, creating it the first time.
+     *
+     * <p>Owner-only where the filesystem can express that. On Windows it cannot, in the sense
+     * POSIX means, and the guard there is the same one the rest of the app-data folder rests on:
+     * it is inside the user's own profile.
+     */
+    private static SecretKey keptBesideTheData(String dataDir) {
+        java.nio.file.Path file = java.nio.file.Path.of(dataDir).toAbsolutePath()
+                .resolve("secret.key");
+        try {
+            if (java.nio.file.Files.isRegularFile(file)) {
+                SecretKey existing = parseKey(java.nio.file.Files.readString(file).trim());
+                if (existing != null) return existing;
+                log.error("{} does not hold a usable key. Move it aside and restart to generate a "
+                        + "new one — every stored credential will have to be re-entered.", file);
+                throw new IllegalStateException("The stored secret key is unreadable: " + file);
+            }
+            byte[] fresh = new byte[32];
+            new java.security.SecureRandom().nextBytes(fresh);
+            String encoded = Base64.getEncoder().encodeToString(fresh);
+            java.nio.file.Files.createDirectories(file.getParent());
+            java.nio.file.Files.writeString(file, encoded);
+            restrictToOwner(file);
+            log.warn("No CONCENTUS_SECRET_KEY was set, so one was generated and written to {}. "
+                    + "Back it up with the data it protects: without it, every stored credential "
+                    + "is unreadable.", file);
+            return parseKey(encoded);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Could not read or create the secret key at " + file
+                    + ": " + e.getMessage(), e);
+        }
+    }
 
-                     Then set it in .env (or the container environment) and start
-                     again. Keep it safe: changing it makes every stored credential
-                     unreadable, and they have to be re-entered.
-                    ────────────────────────────────────────────────────────────────
-                    """);
+    private static void restrictToOwner(java.nio.file.Path file) {
+        try {
+            java.nio.file.Files.setPosixFilePermissions(file,
+                    java.util.Set.of(java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                            java.nio.file.attribute.PosixFilePermission.OWNER_WRITE));
+        } catch (UnsupportedOperationException | java.io.IOException e) {
+            // Windows, or a filesystem without POSIX permissions. Not worth failing over: the
+            // folder itself is inside the user's profile, which is the guard that was already
+            // protecting the database sitting next to this file.
+            log.debug("Could not restrict permissions on {}: {}", file, e.getMessage());
         }
     }
 

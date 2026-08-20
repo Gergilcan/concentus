@@ -100,14 +100,41 @@ class SecretCipherTest {
 
     // ---- key handling ----
 
+    /**
+     * A key is still not optional — every stored credential depends on it. What changed is who has
+     * to produce it: unset, one is generated and kept beside the data, so an installation is never
+     * in the half-working state this test used to describe (credential fields that silently cannot
+     * save, mail triggers quietly not polling). This constructor is the one a caller uses when it
+     * supplies its own key, and there "" is a mistake rather than a request.
+     */
     @Test
-    void withNoKeyConfiguredTheApplicationRefusesToStart() {
-        // Required, not optional. Starting without it would leave a half-working deployment:
-        // credential fields that silently cannot save, and mail triggers quietly not polling.
+    void anEmptyKeyIsRefusedRatherThanTreatedAsNoEncryption() {
         assertThatThrownBy(() -> new SecretCipher(""))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("CONCENTUS_SECRET_KEY is required")
-                .hasMessageContaining("openssl rand -base64 32");
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void withNothingConfiguredAKeyIsGeneratedAndKeptWithTheData(@org.junit.jupiter.api.io.TempDir
+                                                                java.nio.file.Path dataDir) {
+        SecretCipher first = new SecretCipher("", dataDir.toString());
+        String sealed = first.seal("a value");
+
+        // The same installation, started again: the key is read back rather than made afresh, or
+        // every credential stored before the restart would be unreadable after it.
+        SecretCipher afterRestart = new SecretCipher("", dataDir.toString());
+
+        assertThat(afterRestart.open(sealed)).isEqualTo("a value");
+        assertThat(java.nio.file.Files.exists(dataDir.resolve("secret.key"))).isTrue();
+    }
+
+    // A configured key is a deployment's decision to keep it out of the data directory, and must
+    // not be quietly replaced by one that is in it.
+    @Test
+    void a_configured_key_is_used_and_nothing_is_written(@org.junit.jupiter.api.io.TempDir
+                                                         java.nio.file.Path dataDir) {
+        new SecretCipher(key(), dataDir.toString());
+
+        assertThat(java.nio.file.Files.exists(dataDir.resolve("secret.key"))).isFalse();
     }
 
     @Test
