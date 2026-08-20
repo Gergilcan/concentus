@@ -78,11 +78,11 @@ class FlowDuplicatorTest {
     @Test
     void a_second_copy_is_numbered_rather_than_named_the_same() {
         assertThat(FlowDuplicator.copyOf(source(), Set.of("Daily briefing")).name())
-                .isEqualTo("Daily briefing copy");
-        assertThat(FlowDuplicator.copyOf(source(), Set.of("Daily briefing", "Daily briefing copy"))
-                .name()).isEqualTo("Daily briefing copy 2");
+                .isEqualTo("Daily briefing (copy)");
+        assertThat(FlowDuplicator.copyOf(source(), Set.of("Daily briefing", "Daily briefing (copy)"))
+                .name()).isEqualTo("Daily briefing (copy 2)");
         // Case is not a distinction anyone reading a flow list makes.
-        assertThat(FlowDuplicator.copyOf(source(), Set.of("daily briefing COPY")).name())
-                .isEqualTo("Daily briefing copy 2");
+        assertThat(FlowDuplicator.copyOf(source(), Set.of("daily briefing (COPY)")).name())
+                .isEqualTo("Daily briefing (copy 2)");
     }
 }

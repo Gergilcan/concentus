@@ -26,8 +26,14 @@ public final class FlowDuplicator {
     private FlowDuplicator() {
     }
 
-    /** What a copy is called, unless that name is taken too. */
-    static final String SUFFIX = " copy";
+    /**
+     * What a copy is called, unless that name is taken too.
+     *
+     * <p>Parenthesised because the rest of the application already is — a sandbox copy is
+     * "<name> (sandbox)" — and a list where one kind of copy is bracketed and another is not reads
+     * as two different features.
+     */
+    static final String SUFFIX = " (copy)";
 
     /**
      * @param existingNames every flow name already in use, so two copies of the same flow do not
@@ -67,13 +73,15 @@ public final class FlowDuplicator {
         return new FlowNode(input.id(), input.type(), input.role(), data);
     }
 
-    /** "Report" -> "Report copy" -> "Report copy 2", so a third copy is not a mystery. */
+    /** "Report" -> "Report (copy)" -> "Report (copy 2)", so a third copy is not a mystery. */
     static String uniqueName(String name, Set<String> existingNames) {
         Set<String> taken = lowercased(existingNames);
         String base = (name == null || name.isBlank() ? "Flow" : name) + SUFFIX;
         if (!taken.contains(base.toLowerCase(Locale.ROOT))) return base;
+        // "(copy 2)", not "(copy) 2": the number belongs inside the bracket that says what this is.
+        String numbered = base.substring(0, base.length() - 1);
         for (int i = 2; ; i++) {
-            String candidate = base + " " + i;
+            String candidate = numbered + " " + i + ")";
             if (!taken.contains(candidate.toLowerCase(Locale.ROOT))) return candidate;
         }
     }
