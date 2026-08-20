@@ -6,7 +6,11 @@ A **desktop application** for designing, running, and steering Claude agents —
 
 Install it and open it. There is no server to deploy, no database to provision, no API key to
 paste, and nothing to configure — the app carries its own Java runtime and its own PostgreSQL, and
-runs your flows on the Claude Code login already on your machine.
+runs your flows on the Claude Code login already on your machine. The first launch asks you to
+create an account, and that is the whole of the setup.
+
+The same is now true of the jar on its own: `java -jar concentus-backend.jar`, with no environment
+at all, starts its own database, generates its own encryption key, and asks for that first account.
 
 ### Why a desktop app and not a web service
 
@@ -583,10 +587,43 @@ Notes:
   regardless — so turning it off produced a build where stored secrets silently did not work.
 - **pgvector is not included.** These binaries do not ship it, so MCP tool search ranks by word
   overlap rather than semantically. The app detects this and says so rather than pretending.
-- Running the backend by hand does **not** activate the embedded database — that lives in the
-  `desktop` profile. Point `PERSIST_DB_*` at a PostgreSQL of your own for development.
+- **Running the backend by hand gets the same embedded database.** It used to be behind the
+  `desktop` profile, so `java -jar` pointed at `localhost:5432` and refused to start without a
+  PostgreSQL already there — an installation step before anything could be seen at all. Name a
+  database and it is believed: `PERSIST_DB_URL` in the environment, or an external URL under
+  *Resources → Storage*, and the embedded server is never started.
 - An unreachable database never crash-loops the app (`initialization-fail-timeout=-1`); each store
   logs and reports itself unavailable instead.
+
+### Moving to a company database
+
+Pointing Concentus at a shared PostgreSQL always worked; arriving there with an empty one is what
+did not. *Resources → Storage* copies everything across — table by table, over the connection the
+app already has, no `pg_dump` and nothing to install, which matters on a desktop install where the
+source database is embedded inside the application and is not a thing you can dump.
+
+**Nothing is ever deleted.** Rows go in with `on conflict do nothing`, so a copy that stops
+halfway is repeated rather than unpicked, and a database that already holds some of this merges
+instead of losing it. Copying and switching stay two decisions: the copy changes nothing here, so
+it can be done while still working on the embedded database and repeated for whatever was built in
+between. Only switching costs a restart.
+
+It goes both ways. Somebody who switched, restarted and found an empty screen gets the opposite
+direction — the app opens the idle data directory, copies out of it, and stops it again.
+
+### Zero configuration
+
+With nothing set at all, `java -jar concentus-backend.jar` starts its own PostgreSQL, generates its
+own encryption key, and asks for the first account. Two things used to be mandatory and are not any
+more:
+
+- **The database**, as above.
+- **`CONCENTUS_SECRET_KEY`**, which protects every stored credential. Unset, one is generated on
+  first run and kept at `<data-dir>/secret.key`. Said plainly, because it is a real trade: a key in
+  a file beside the database it decrypts is weaker than one held apart — anyone who can read the
+  folder can read the credentials. That is the right trade on one machine, where the alternative
+  was no encryption at all because the application never ran, and the wrong one for a deployment
+  several people can reach. Set it there; on the desktop the shell supplies it from the OS keyring.
 
 ## Context folders
 
@@ -654,35 +691,168 @@ Notes:
 
 ## Sign-in and organizations
 
-The API requires an authenticated session. Sessions are the servlet container's own — no extra
-dependency — and every state-changing request carries the CSRF token Spring Security sets as the
-readable `XSRF-TOKEN` cookie (the SPA's `req()` helper does this for you).
+**There is no mode without accounts.** There used to be one, for the desktop install — one person,
+a socket bound to loopback, and a password to reach a port only they can open buys nothing. It
+stopped being right the moment that install could point at a database a team shares: then who may
+change a flow is a real question, and a roles screen enforcing nothing is worse than no roles.
 
-- **The administrator account** comes from `CONCENTUS_ADMIN_EMAIL` / `CONCENTUS_ADMIN_PASSWORD`,
-  and is provisioned at startup whenever *that email* has no account yet — not only on an empty
-  database, so setting it after the first boot still works. Leave the password blank and one is
-  generated and printed **once** in the backend log. Minimum 12 characters, the same rule that
-  governs changing a password later, so an account is never created in a state from which its own
-  password could not be re-set.
-- **An existing password is never overwritten from configuration.** That would let anyone able to
-  edit an environment variable take over a live account, and would silently undo a password
-  changed in the app. `CONCENTUS_ADMIN_PASSWORD_RESET=true` is the explicit one-run opt-in for a
-  genuinely lost one.
-- There is deliberately **no public registration endpoint**: on a self-hosted install that would
-  let whoever reaches the server first claim the organization. Further members are invited by an
-  admin from `POST /api/account/members`.
-- **Every integration table is partitioned by `organization_id`**, and the id always comes from
-  the authenticated principal, never from a request parameter — so no request can address another
-  tenant's mail events, subscriptions or estimates.
-- **`AUTH_ENABLED=false`** leaves the API open exactly as it was before accounts existed, and
-  resolves everything to `APP_ORGANIZATION_ID`. Local development only.
-- **Accounts fail closed.** Unlike run persistence, which degrades to memory when the database is
-  unavailable, sign-in refuses rather than degrading — a server nobody can authenticate against is
-  safer than one that authenticates nobody.
+Sessions are the servlet container's own — no extra dependency — and every state-changing request
+carries the CSRF token Spring Security sets as the readable `XSRF-TOKEN` cookie (the SPA's
+`req()` helper does this for you).
 
-Pre-existing resources (flows, agents, MCP definitions, databases) are now behind sign-in but are
-still shared across the deployment rather than partitioned per organization; repartitioning them
-would be a data migration that breaks existing installs.
+### The first account
+
+An installation with no accounts shows a **setup screen** rather than a sign-in screen: there is
+nobody to sign in as. You choose the address and the password, and you are signed in on the spot —
+somebody who picked a password seconds ago has already proved what a login form would ask them to
+prove again. Or you use a work account: **the first identity to arrive through a provider
+administers the installation**, for the same reason.
+
+`POST /api/account/setup` is the one endpoint reachable without a session, and it refuses the
+moment an account exists. That window is the whole of what makes it safe to leave open — an
+installation with accounts cannot be claimed through it, and one without them has no other way in.
+
+Nothing is ever invented for you. The backend used to create an administrator and print a
+generated password into the startup log; on a desktop install nobody reads that log, so the
+"recoverable" half of the trade never happened and what remained was a live credential in plain
+text.
+
+For a deployment nobody sits in front of — a container started by a pipeline — set
+`CONCENTUS_ADMIN_EMAIL` and `CONCENTUS_ADMIN_PASSWORD`. Both or neither: a blank password creates
+nothing. The account is provisioned whenever *that email* has no account yet, not only on an empty
+database, so setting it after the first boot still works. An existing password is never overwritten
+from configuration — that would let anyone able to edit an environment variable take over a live
+account — and `CONCENTUS_ADMIN_PASSWORD_RESET=true` is the explicit one-run opt-in for a lost one.
+
+### Signing in with a directory
+
+> Step by step, including the redirect URI mistake everybody makes on the first attempt:
+> **[docs/sign-in-providers.md](docs/sign-in-providers.md)**.
+
+Microsoft, Google and Discord, or anything else that speaks OpenID Connect. **Registered from
+inside the application**, under *Resources → Members → Sign-in providers*: paste a client id and a
+secret, and the button appears without a restart. It used to be six environment variables and a
+restart, which on a desktop install is not something anybody can do — the feature worked and
+nobody could turn it on.
+
+The screen's first row is the **redirect URI**, with a button to copy it. Every registration fails
+the same way the first time — the address in the directory not matching the one the application
+asks for — so it is computed from the request rather than described in documentation you would
+have to find. Registering `http://127.0.0.1:8734/…` with Entra needs the application manifest
+(`web.redirectUris`); the portal's own field refuses `http` with a loopback address.
+
+The sign-in screen offers **every** provider, registered or not. Showing only the configured ones
+answered "can I sign in with my work account here?" with an absence, which reads as no. An
+unregistered one is not a link: it says what it needs, rather than sending somebody to a provider
+that will refuse them after they have typed their password.
+
+Somebody arriving through a directory for the first time gets `VIEWER` — arriving with a valid
+company account proves who they are, not what they should be allowed to change. An address that
+already has an account is linked to it rather than duplicated, whichever way they arrive; people
+are matched by the provider's own immutable id, never by their address, because addresses are
+reassigned when people leave.
+
+### Roles
+
+Four rungs, each keeping what the one below it has: **Viewer** reads, **Operator** also runs,
+**Member** also edits, **Admin** also manages who is in the organization. Enforced by method and
+path in one place in `SecurityConfig`, so "what can a Viewer do?" has an answer that fits on a
+screen. Members and roles are managed under *Resources → Members*.
+
+### Several accounts on one machine
+
+Checking what an operator sees and then going back to being an admin to change it is the loop
+anybody setting up permissions is in, and it used to cost a sign-out and two passwords each way.
+The header is a face: behind it, the accounts this browser has signed into, with their roles, and
+one click to become one of them.
+
+**An account gets on that list only by being signed into.** Nothing there grants access — the rows
+record what this browser already proved. What the browser holds is one opaque device id in an
+HttpOnly cookie; the accounts attached to it live in the database, so no second credential ends up
+anywhere a page can read. It is not impersonation: an admin cannot become a colleague, only return
+to an account they signed into themselves.
+
+One at a time, because a session is a cookie and two accounts cannot share one browsing context.
+The desktop shell can open a **second window with its own cookie jar**, which is the only honest
+way to have two roles on screen at once.
+
+### Isolation
+
+**Every integration table is partitioned by `organization_id`**, and the id always comes from the
+authenticated principal, never from a request parameter — so no request can address another
+tenant's mail events, subscriptions or estimates. Sign-in providers are the deliberate exception:
+they are installation-wide, because the screen that offers them has nobody signed in to scope them
+by.
+
+**Accounts fail closed.** Unlike run persistence, which degrades to memory when the database is
+unavailable, sign-in refuses rather than degrading — a server nobody can authenticate against is
+safer than one that authenticates nobody.
+
+Pre-existing resources (flows, agents, MCP definitions, databases) are behind sign-in but are still
+shared across the deployment rather than partitioned per organization; repartitioning them would be
+a data migration that breaks existing installs.
+
+## Settings
+
+Almost everything adjustable here used to be an environment variable. On a server that means
+editing a container's environment and redeploying to change a queue length; on the desktop it
+means nothing at all, because the shell computes the environment and there is no file a person can
+edit. They were not settings, they were constants with a comment.
+
+*Resources → Settings* is a table, a resolver and a screen. A value is looked up in three places,
+in order:
+
+1. what somebody set in the application,
+2. what the deployment was started with,
+3. the built-in default.
+
+That order is what keeps both audiences working — a container started by a pipeline still takes
+its environment, and the person in front of the app can change the same thing from a form.
+Clearing a field removes the override rather than storing an empty one, which is the only reading
+that leaves a way back. Secrets are sealed with the same key that protects stored credentials and
+are never read back out of the API.
+
+The screen says **where each value came from**, because "8" means three different things and only
+one of them is yours to clear, and **whether the change waits for a restart** — most do, because
+they size a thread pool or a policy when the application starts.
+
+Four things cannot be settings, because they are what has to be known before there is anywhere to
+keep one: the database the table lives in, the key that decrypts it, the data directory and the
+port, and the bootstrap administrator for a deployment nobody sits in front of.
+
+The catalogue only lists settings whose consumers actually read through it. A field that saves a
+row nothing looks at is worse than no field, because it looks like it worked — so it grows as
+consumers are converted rather than being written out in full first.
+
+## Traces and metrics (OpenTelemetry)
+
+The framework already instruments what a framework can see: an HTTP request, a scheduled task, a
+WebSocket session. None of that answers the question anybody actually has here, which is about a
+**run** — why it took eleven minutes, which block was slow, which tool call hung, what the third
+worker spent.
+
+So there are five span names and one vocabulary of attributes, in one place (`Telemetry`):
+`concentus.run`, `concentus.node`, `concentus.worker`, `concentus.tool`, `concentus.model`.
+Scattering `spanBuilder` calls through the services would have produced five spellings of
+`flow.id` inside a month, and a dashboard is only as good as the agreement between the things it
+groups.
+
+Spans wrap each stretch of a run the machine is actually busy for, each fan-out worker, and each
+MCP tool call — refusals included, since a tool call rejected for a bad token is exactly what
+somebody goes to a trace for. Not one span per run: a run starts on one thread, waits for a
+person, and continues on another, and a span covering that would measure how long somebody took to
+answer.
+
+**No prompts, no outputs, no tool arguments.** Attributes carry identifiers, counts and outcomes. A
+trace ends up in somebody else's system, usually with a longer retention than anything here and
+read by people who were never given access to the flows. What is useful for debugging and what is
+safe to export are different sets, and where they differ the smaller one wins.
+
+Off unless a collector is named, and off by a switch rather than by a blank address: an empty
+endpoint is not "nowhere" to the OTLP exporter, it is an invalid URL, and it refuses to start
+rather than staying quiet. The spans are created either way, so a run behaves identically on a
+machine that exports and one that does not. Configure it under *Resources → Settings*, or with
+`OTLP_ENABLED` and `OTLP_ENDPOINT`.
 
 ## Background jobs
 
@@ -879,9 +1049,14 @@ onto a valid delivery.
 | POST | `/api/mcp/studio` | Concentus **as** an MCP server — design, validate, run and steer flows from an outside agent ([details](#concentus-as-an-mcp-server)) |
 | POST | `/api/webhooks/{flowId}` | inbound webhook that starts a run with the event payload ([auth](#webhook-authentication)) |
 | GET | `/api/rag/status` · POST `/api/rag/preview` | RAG capabilities / preview a SQL source's rows |
-| GET | `/api/account/session` | whether sign-in is required, and who is signed in |
+| GET | `/api/account/session` | who is signed in, which providers exist, and whether this installation still needs its first account |
+| POST | `/api/account/setup` | create that first account. The only endpoint reachable without a session, and it refuses once one exists |
 | POST | `/api/account/login` · `/api/account/logout` | sign in / out ([details](#sign-in-and-organizations)) |
 | GET/POST | `/api/account/members` | organization members (admin only) · `POST /api/account/password` |
+| GET | `/api/account/accounts` · POST `…/{userId}/use` | the accounts this browser has signed into, and switching to one |
+| GET/PUT | `/api/account/providers` | register Microsoft / Google / Discord, and the redirect URI to give them (admin only) |
+| GET/PUT | `/api/settings` | everything adjustable, with where each value came from (admin only) |
+| GET/POST | `/api/storage`, `/api/storage/migrate` | where this installation keeps its data, and copying it to another PostgreSQL (admin only) |
 
 Flows persist as JSON under `apps/backend/data/flows` (override with `APP_DATA_DIR`).
 
@@ -892,9 +1067,16 @@ nor a browser:
 
 ```bash
 pnpm desktop:build                                     # once — builds the jar
+export CONCENTUS_EMAIL=you@company.com                 # the API needs an account, like anything else
+export CONCENTUS_PASSWORD=…
 node scripts/concentus-run.mjs my-flow.json --input "go"
 echo $?                                                # 0 completed · 1 failed · 2 needs a human
 ```
+
+It signs in like everything else does. A script that could drive the backend without credentials
+would be a hole rather than a convenience — there is no unauthenticated mode any more, and there
+was no honest way to keep one for this. Prefer the environment variables over `--email` /
+`--password`: an argument ends up in the job's log and in the process list.
 
 It boots the jar on a free port with a throwaway data directory, imports the flow, starts a run,
 prints the agents' messages on **stdout** and everything else (progress, errors, the outcome) on
@@ -908,6 +1090,7 @@ you the answer and nothing else.
 | `--jar PATH` | a different jar (default `apps/backend/target/concentus-backend.jar`). |
 | `--timeout SECS` | give up waiting (default 1800) and exit 3. |
 | `--quiet` | only the answer and the outcome line. |
+| `--email` / `--password` | the account to sign in as. Default to `CONCENTUS_EMAIL` / `CONCENTUS_PASSWORD`. |
 
 **Exit codes**, because a shell needs to tell three different situations apart:
 
@@ -1012,4 +1195,11 @@ java -cp target/concentus-backend.jar com.concentus.Main path/to/agent.yaml "you
   (by `--strict-mcp-config`) — and when you need the real thing, a process per agent with
   enforced MCP facades is exactly what
   [independent workers](#independent-workers-fan-out-execution) provide.
+- **Settings apply on the next start**, mostly. Almost every one sizes a thread pool or a policy
+  when its bean is built, so the screen says which wait for a restart rather than pretending
+  otherwise. Sign-in providers are the exception, and deliberately so: somebody who has just
+  pasted a client id wants to try it.
+- **Two accounts at once needs two windows.** A session is a cookie, so they cannot share one
+  browsing context; the desktop shell opens a second window with its own cookie jar. Switching
+  between accounts in one window is a click.
 - Built against `anthropic-java` 2.34.0 and Spring Boot 3.5.x on Java 25.
