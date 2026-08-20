@@ -343,20 +343,48 @@ async function showMainWindow(port: number): Promise<void> {
  * handles directly — so the flow completes even though it happened outside this window.
  */
 function openExternalLinksInBrowser(win: BrowserWindow, origin: string): void {
+  /**
+   * Whether the window is currently showing our own interface.
+   *
+   * <p>This is the whole distinction. A link to a website, clicked from our UI, belongs in the
+   * browser. A navigation that happens while the window is already somewhere else belongs to
+   * whatever took it there — and the only thing that does is an authorization flow we started.
+   */
+  const atHome = () => win.webContents.getURL().startsWith(origin)
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (!url.startsWith(origin)) {
-      void shell.openExternal(url)
-      return { action: 'deny' }
-    }
-    return { action: 'allow' }
+    if (url.startsWith(origin) || !atHome()) return { action: 'allow' }
+    void shell.openExternal(url)
+    return { action: 'deny' }
   })
 
   win.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith(origin)) {
-      event.preventDefault()
-      void shell.openExternal(url)
-    }
+    if (url.startsWith(origin)) return
+    // Signing in with a directory is the case this used to break, and it broke it completely.
+    // Microsoft's login page submits the password by POSTing to /login — which is a navigation off
+    // our origin, so this handler cancelled it and re-opened that URL in the system browser as a
+    // GET. The endpoint only accepts POST, so what the person saw was AADSTS900561 in a browser
+    // window they had not asked for, every time, with nothing wrong on either side.
+    //
+    // Once the window has left our origin it is inside a flow we sent it into, and every step of
+    // that flow — form posts, consent, a redirect back — has to be allowed to happen where it
+    // started. The flow ends by returning to our own origin, which is how the window comes home.
+    if (!atHome()) return
+    event.preventDefault()
+    void shell.openExternal(url)
+  })
+
+  /**
+   * A way back when a provider's page goes wrong.
+   *
+   * <p>This window has no address bar and no back button, so an error page from a directory is a
+   * dead end: nothing on it leads anywhere, and the person is left with a Microsoft error inside
+   * an application that appears to have stopped. Escape returns to the interface, which is what
+   * every other full-screen dead end in this app already does.
+   */
+  win.webContents.on('before-input-event', (_event, input) => {
+    if (input.type !== 'keyDown' || input.key !== 'Escape' || atHome()) return
+    void win.loadURL(origin)
   })
 }
 
