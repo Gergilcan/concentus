@@ -59,6 +59,27 @@ class ApiExceptionHandlerTest {
         assertThat(response.getBody().get("error")).doesNotContain("db-prod-01");
     }
 
+    // A run the UI is still polling after its row was cleared out. The status it asked for is the
+    // status it must get: a 500 would tell the browser the server broke, and it would keep polling.
+    @Test
+    void aStatusAControllerChoseOnPurposeIsTheStatusTheClientGets() {
+        ResponseEntity<Map<String, String>> response = handler.deliberate(
+                new org.springframework.web.server.ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "No such run"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody()).containsEntry("error", "No such run");
+    }
+
+    @Test
+    void aDeliberateStatusWithoutAReasonStillSaysSomething() {
+        ResponseEntity<Map<String, String>> response = handler.deliberate(
+                new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody().get("error")).isNotBlank();
+    }
+
     @Test
     void exceptionWithNoMessageFallsBackToTheSimpleClassName() {
         ResponseEntity<Map<String, String>> response = handler.badRequest(new IllegalArgumentException());

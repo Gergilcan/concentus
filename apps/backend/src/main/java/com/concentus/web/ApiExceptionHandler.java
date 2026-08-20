@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.Map;
@@ -56,6 +57,27 @@ public class ApiExceptionHandler {
             org.springframework.web.HttpRequestMethodNotSupportedException e) {
         log.debug("Method not supported: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).build();
+    }
+
+    /**
+     * A status a controller chose on purpose — "No such run", "Invalid email or password".
+     *
+     * <p>Without this, every one of them fell through to the generic handler below and came back as
+     * a 500 with the body "Internal server error", while the log carried a full stack trace for an
+     * answer the code had decided to give. Two costs, both real: the browser could not tell a
+     * missing run from a broken server, and a screen that polls a run id which no longer exists
+     * filled the log with alarms.
+     *
+     * <p>The reason travels to the client because it was written to be read by whoever asked;
+     * unlike the generic path, nothing here comes from a driver or a stack.
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, String>> deliberate(ResponseStatusException e) {
+        String reason = e.getReason() == null ? e.getStatusCode().toString() : e.getReason();
+        // Deliberate, so it is not an incident: at debug, where it can be turned on while chasing
+        // something without being on for everyone the rest of the time.
+        log.debug("Answering {} — {}", e.getStatusCode(), reason);
+        return ResponseEntity.status(e.getStatusCode()).body(Map.of("error", reason));
     }
 
     @ExceptionHandler(Exception.class)
