@@ -53,7 +53,10 @@ export const E2E_PASSWORD = 'an-e2e-password-long-enough'
  * third-party page can cause a browser to send cookies but cannot read them — which is the whole
  * point of the header, and is why an API client has to do the same dance a browser does.
  */
-async function csrfHeader(request: APIRequestContext, baseURL: string) {
+async function csrfHeader(
+  request: APIRequestContext,
+  baseURL: string,
+): Promise<Record<string, string>> {
   await request.get(`${baseURL}/api/account/session`)
   const state = await request.storageState()
   const token = state.cookies.find((c) => c.name === 'XSRF-TOKEN')?.value
