@@ -167,6 +167,13 @@ public class SecurityConfig {
 
                     // Changing your own password is not a privilege; it is how you keep an account.
                     .requestMatchers("/api/account/password", "/api/account/logout").authenticated()
+                    // The accounts this browser has already signed into, and going back to one of
+                    // them. Open, deliberately: the case they exist for is somebody who has just
+                    // signed out and wants to return, and requiring a session would mean requiring
+                    // the very thing they came to get. They are not an open door either — the
+                    // authorization is the device cookie, which was only ever attached to an
+                    // account by signing into it, and it names accounts rather than granting them.
+                    .requestMatchers("/api/account/accounts", "/api/account/accounts/**").permitAll()
                     // Reading is every signed-in role: flows, runs, transcripts, costs. Someone who
                     // wants to know what the automation did last night should not need the power to
                     // make it do anything tonight.

@@ -843,11 +843,34 @@ export interface Member {
   createdAt: number
 }
 
+/** One identity provider a person may sign in with. */
+export interface SignInProvider {
+  id: string
+  /** What to call it on the button — "Microsoft", "Google", or whatever was configured. */
+  name: string
+}
+
+/**
+ * One account this browser can return to without signing in again.
+ *
+ * It got here by being signed into on this browser — with its own password or its own provider —
+ * which is the whole of what switching back is allowed to rely on.
+ */
+export interface SwitchableAccount {
+  userId: string
+  email: string
+  role: string
+  /** The one this window is currently working as. */
+  current: boolean
+}
+
 export interface SessionInfo {
   authEnabled: boolean
-  /** Whether this deployment has an identity provider configured, so the button should exist. */
+  /** Every provider configured here. Empty on a deployment that signs in with passwords only. */
+  providers?: SignInProvider[]
+  /** Whether any provider is configured. Kept from when a deployment could have only one. */
   ssoEnabled?: boolean
-  /** What to call it on that button — "Microsoft", "Google", or whatever was configured. */
+  /** What to call the first one. Kept from when a deployment could have only one. */
   ssoName?: string
   storeAvailable: boolean
   signedIn: boolean

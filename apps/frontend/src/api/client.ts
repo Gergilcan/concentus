@@ -39,6 +39,7 @@ import type {
   StorageDraft,
   SessionInfo,
   SignedInUser,
+  SwitchableAccount,
   SqlPreview,
 } from './types.ts'
 
@@ -430,6 +431,18 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   signOut: () => req<void>('/account/logout', { method: 'POST' }),
+  /**
+   * The accounts this browser has already signed into.
+   *
+   * Answered for the browser rather than for the session, so it survives signing out — coming
+   * back to an account you left is the case it exists for.
+   */
+  switchableAccounts: () => req<SwitchableAccount[]>('/account/accounts'),
+  /** Becomes one of them. Allowed only because this browser signed into it once, with its own password or provider. */
+  useAccount: (userId: string) =>
+    req<SignedInUser>(`/account/accounts/${userId}/use`, { method: 'POST' }),
+  /** Drops an account from this browser. Signing into it again brings it back. */
+  forgetAccount: (userId: string) => req<void>(`/account/accounts/${userId}`, { method: 'DELETE' }),
   /** Everyone in the caller's own organization. Password hashes never leave the backend. */
   listMembers: () => req<import('./types.ts').Member[]>('/account/members'),
   addMember: (email: string, password: string, role: string) =>

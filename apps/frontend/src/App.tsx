@@ -48,7 +48,7 @@ export default function App() {
       <SignIn
         onSignedIn={onSignedIn}
         storeUnavailable={!session.storeAvailable}
-        sso={session.ssoEnabled ? (session.ssoName ?? 'your organization') : null}
+        providers={session.providers ?? []}
       />
     )
   }

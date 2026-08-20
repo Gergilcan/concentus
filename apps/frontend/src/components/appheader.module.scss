@@ -78,31 +78,47 @@
   position: relative;
 }
 
-.accountBtn {
+.avatarBtn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  max-width: 260px;
   background: transparent;
-  border: 1px solid t.$border;
-  color: t.$muted;
-  min-height: var(--control-h);
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 2px;
   cursor: pointer;
 
-  &:hover,
-  &[aria-expanded='true'] {
-    color: t.$text;
+  &:hover .avatar,
+  &[aria-expanded='true'] .avatar {
     border-color: t.$accent;
   }
 }
 
-.accountEmail {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/**
+ * The initial, not a photograph.
+ *
+ * There are no avatars to fetch — the accounts here come from a directory or from an address
+ * somebody typed — and a generic silhouette on every row would make the rows harder to tell apart
+ * rather than easier, which is the one job it has.
+ */
+.avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid t.$border;
+  background: t.$panel-2;
+  color: t.$text;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.avatarLarge {
+  @extend .avatar;
+  width: 34px;
+  height: 34px;
+  font-size: 15px;
 }
 
 .roleChip {
@@ -121,56 +137,125 @@
   top: calc(100% + 6px);
   right: 0;
   z-index: 40;
-  min-width: 280px;
+  min-width: 300px;
+  max-width: 360px;
   background: t.$panel;
   border: 1px solid t.$border;
   border-radius: t.$radius;
   box-shadow: 0 12px 32px rgb(0 0 0 / 35%);
   padding: 6px;
-
-  button {
-    display: block;
-    width: 100%;
-    text-align: left;
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    color: t.$text;
-    font-size: 12.5px;
-    padding: 8px 10px;
-    cursor: pointer;
-
-    &:hover {
-      background: t.$panel-2;
-    }
-
-    small {
-      display: block;
-      color: t.$muted;
-      font-size: 11px;
-      line-height: 1.45;
-      margin-top: 3px;
-    }
-  }
 }
 
 .accountWho {
-  padding: 8px 10px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
   border-bottom: 1px solid t.$border;
   margin-bottom: 6px;
 }
 
+.accountWhoText {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
 .accountWhoEmail {
-  display: block;
   font-size: 12.5px;
   overflow-wrap: anywhere;
 }
 
-.accountWhoRole {
-  display: block;
+/** The accounts this browser can go back to. */
+.accountList {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid t.$border;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+}
+
+.accountRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: t.$text;
+  font-size: 12.5px;
+  text-align: left;
+  padding: 7px 8px;
+  cursor: pointer;
+
+  &:hover {
+    background: t.$panel-2;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.accountRowText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/** Dropping an account from this browser, next to the row it drops. */
+.forgetBtn {
+  flex: none;
+  background: transparent;
+  border: none;
   color: t.$muted;
-  font-size: 11px;
-  margin-top: 2px;
+  font-size: 15px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$danger;
+    background: t.$panel-2;
+  }
+}
+
+.accountAction {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: t.$text;
+  font-size: 12.5px;
+  padding: 8px 10px;
+  cursor: pointer;
+
+  &:hover {
+    background: t.$panel-2;
+  }
+
+  small {
+    display: block;
+    color: t.$muted;
+    font-size: 11px;
+    line-height: 1.45;
+    margin-top: 3px;
+  }
 }
 
 .accountSignOut {

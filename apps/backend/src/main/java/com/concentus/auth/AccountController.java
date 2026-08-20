@@ -51,18 +51,26 @@ public class AccountController {
     private final OidcSignIn oidc;
     /** Issues the cookie that survives a restart of this backend. */
     private final org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe;
+    /** The accounts this browser has already signed into, so switching between them costs a click. */
+    private final DeviceAccountStore devices;
+    private final int rememberMeDays;
     private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
 
     public AccountController(AuthenticationManager authManager, AccountStore accounts,
                              PasswordEncoder encoder, OrgContext orgContext,
                              OidcSignIn oidc,
-                             org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe) {
+                             org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe,
+                             DeviceAccountStore devices,
+                             @org.springframework.beans.factory.annotation.Value(
+                                     "${app.auth.remember-me-days:30}") int rememberMeDays) {
         this.authManager = authManager;
         this.accounts = accounts;
         this.encoder = encoder;
         this.orgContext = orgContext;
         this.oidc = oidc;
         this.rememberMe = rememberMe;
+        this.devices = devices;
+        this.rememberMeDays = rememberMeDays;
     }
 
     public record LoginRequest(String email, String password) {
@@ -87,8 +95,13 @@ public class AccountController {
             out.put("organizationId", u.organizationId());
             out.put("role", u.role());
         });
-        // Whether the button should exist at all. Asked rather than assumed: a deployment with no
-        // Entra registration must not offer a sign-in path that fails at the redirect.
+        // Which buttons the sign-in screen should show. Asked rather than assumed: a provider
+        // with no registration must not be offered as a path that fails at the redirect.
+        out.put("providers", oidc.providers().stream()
+                .map(p -> Map.of("id", p.id(), "name", p.displayName()))
+                .toList());
+        // The single-provider shape this endpoint has always answered with, kept so a client that
+        // only knows about one keeps working.
         out.put("ssoEnabled", oidc.isConfigured());
         out.put("ssoName", oidc.displayName());
         out.put("signedIn", me.isPresent());
@@ -125,8 +138,90 @@ public class AccountController {
         rememberMe.loginSuccess(request, response, authentication);
 
         ConcentusUserDetails user = (ConcentusUserDetails) authentication.getPrincipal();
+        // Now that this browser has proved it may be this person, it may come back to them without
+        // proving it again — which is the whole of what the switcher is allowed to do.
+        devices.attach(DeviceCookie.ensure(request, response, rememberMeDays),
+                accounts.findById(user.userId()).orElse(null));
         return Map.of("userId", user.userId(), "email", user.email(),
                 "organizationId", user.organizationId(), "role", user.role());
+    }
+
+    /** One account this browser can switch to without signing in again. */
+    public record SwitchableAccount(String userId, String email, String role, boolean current) {
+    }
+
+    /**
+     * The accounts this browser has signed into.
+     *
+     * <p>Answered for the device rather than for the session, so it survives signing out — coming
+     * back to an account you left is the case this exists for.
+     */
+    @GetMapping("/accounts")
+    public List<SwitchableAccount> switchableAccounts(HttpServletRequest request) {
+        String device = DeviceCookie.of(request);
+        String currentId = orgContext.currentUser().map(ConcentusUserDetails::userId).orElse(null);
+        return devices.forDevice(device).stream()
+                // Read through the account, so a role changed since the last sign-in is the role
+                // shown — and an account deleted since then disappears rather than being offered.
+                .map(a -> accounts.findById(a.userId()).orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .map(a -> new SwitchableAccount(a.id(), a.email(), a.role(), a.id().equals(currentId)))
+                .toList();
+    }
+
+    /**
+     * Becomes one of the accounts this browser has already signed into.
+     *
+     * <p>The authorization is the attachment and nothing else: the account has to be one this
+     * device signed into, which it could only have done with that account's own password or its
+     * own provider. The id in the path is checked against the device's list, never trusted —
+     * naming somebody else's account answers "not one of yours".
+     *
+     * <p>Deliberately not impersonation. An admin cannot become a colleague from here; they can
+     * only return to an account they themselves signed into on this machine.
+     */
+    @PostMapping("/accounts/{userId}/use")
+    public Map<String, Object> switchTo(@PathVariable String userId,
+                                        HttpServletRequest request, HttpServletResponse response) {
+        String device = DeviceCookie.of(request);
+        if (device == null || !devices.isAttached(device, userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "This browser has not signed in to that account.");
+        }
+        Accounts.UserAccount account = accounts.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "That account no longer exists."));
+
+        ConcentusUserDetails principal = ConcentusUserDetails.of(account);
+        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
+                principal, null, principal.getAuthorities());
+        // A brand-new session id, the same rule both sign-in paths follow: whatever the previous
+        // account's session held must not be carried into this one.
+        HttpSession existing = request.getSession(false);
+        if (existing != null) existing.invalidate();
+        request.getSession(true);
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(authentication);
+        SecurityContextHolder.setContext(context);
+        contextRepository.saveContext(context, request, response);
+        rememberMe.loginSuccess(request, response, authentication);
+        devices.touch(device, userId);
+
+        return Map.of("userId", account.id(), "email", account.email(),
+                "organizationId", account.organizationId(), "role", account.role());
+    }
+
+    /**
+     * Forgets an account on this browser.
+     *
+     * <p>The way out of "this machine can become four people". Signing into it again brings it
+     * back, so nothing is lost by using it.
+     */
+    @org.springframework.web.bind.annotation.DeleteMapping("/accounts/{userId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void forgetAccount(@PathVariable String userId, HttpServletRequest request) {
+        String device = DeviceCookie.of(request);
+        if (device != null) devices.detach(device, userId);
     }
 
     /** Members of the caller's own organization. Never returns password hashes. */
