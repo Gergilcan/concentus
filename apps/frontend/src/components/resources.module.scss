@@ -821,13 +821,63 @@
 
 /* One account and what it may do. The role sits next to the address, because the pair is the
    whole row: who, and how much. */
-.memberRow {
+/**
+ * Members is a roster, not a master/detail.
+ *
+ * It used to render in the two-column CRUD shell, which put every address in a 280px rail —
+ * ellipsised at the @ — next to a three-field form with a thousand pixels to itself. One column,
+ * the page's own gutters, and the list gets the width.
+ */
+.roster {
+  overflow: auto;
+  padding: var(--sp-4) var(--sp-5);
+  min-width: 0;
+  max-width: 900px;
+}
+
+.rosterHead {
   display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
+
+  // Without this the heading block is sized by flex's content distribution and the sentence under
+  // it wrapped at 400px with half the row empty beside it.
+  > div {
+    flex: 1;
+    min-width: 0;
+  }
+
+  p {
+    margin: 4px 0 0;
+    max-width: 62ch;
+  }
+}
+
+.memberList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
+  overflow: hidden;
+}
+
+.memberRow {
+  display: grid;
+  // The address takes the slack; the two facts about it keep their own width, so rows line up
+  // into columns instead of drifting with the length of each email.
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 7px 8px;
-  border-radius: 6px;
-  font-size: 12px;
+  gap: var(--sp-5);
+  padding: 10px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid t.$border;
+
+  &:last-child {
+    border-bottom: none;
+  }
 
   &:hover {
     background: t.$panel-2;
@@ -838,20 +888,160 @@
     border: 1px solid t.$border;
     color: t.$text;
     border-radius: 6px;
-    padding: 3px 6px;
-    font-size: 11px;
+    padding: 4px 8px;
+    font-size: 12px;
+    // A fixed measure so the right edge is a column rather than a ragged edge that moves with the
+    // longest role name — including the unknown one, which is the longest of all.
+    min-width: 116px;
   }
 }
 
+.memberWho {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .memberEmail {
-  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/** The row the person reading is looking at — the one whose role they can lock themselves out of. */
+.youTag {
+  flex: none;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$accent;
+  border: 1px solid t.$accent-soft;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
 .memberMeta {
   color: t.$muted;
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
+}
+
+.memberRole {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/** Four steps, filled to the rung. See the Rungs component for why this is drawn at all. */
+.rungs {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+
+  i {
+    display: block;
+    width: 4px;
+    height: 12px;
+    border-radius: 1px;
+  }
+}
+
+.rungOn {
+  background: t.$accent;
+}
+
+.rungOff {
+  background: t.$border;
+}
+
+.addMember {
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
+  background: t.$panel;
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+
+.addMemberFields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--sp-4);
+
+  // One row of three on a laptop, stacked on anything narrower — three fields at 180px each are
+  // not a form, they are a puzzle.
+  @media (max-width: 860px) {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .field {
+    margin-bottom: 0;
+    max-width: none;
+  }
+}
+
+.addMemberFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+
+  p,
+  span {
+    margin: 0;
+    max-width: 62ch;
+  }
+}
+
+.emptyRoster {
+  border: 1px dashed t.$border;
+  border-radius: t.$radius;
+  padding: var(--sp-4);
+  margin: 0;
+  color: t.$muted;
+  font-size: 12.5px;
+  max-width: 62ch;
+}
+
+/**
+ * The ladder written out once, under the roster.
+ *
+ * It lived in a select's tooltip, which is to say nowhere: the one moment somebody needs to know
+ * what Operator means is while deciding whether to grant it, and a tooltip has to be hunted for.
+ */
+.roleLegend {
+  margin-top: var(--sp-5);
+
+  dl {
+    margin: var(--sp-3) 0 0;
+    display: grid;
+    // Two columns where there is room: four one-line definitions stacked down the left of a wide
+    // window is a column of text in a field of nothing.
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 12px var(--sp-5);
+  }
+
+  dt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+
+  dd {
+    // Exactly the rungs (4 x 4px + 3 x 2px gap) plus the gap after them, so every description
+    // starts on the same line as its label rather than nearly.
+    margin: 2px 0 0 30px;
+    color: t.$muted;
+    font-size: 12px;
+    max-width: 62ch;
+  }
+
+  p {
+    margin-top: var(--sp-4);
+    max-width: 62ch;
+  }
 }
