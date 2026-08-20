@@ -17,10 +17,15 @@ public class AttachmentPolicy {
     private final long maxBytesTotal;
     private final int maxAttachments;
 
-    public AttachmentPolicy(
-            @Value("${integration.attachments.max-bytes:10485760}") long maxBytesPerAttachment,
-            @Value("${integration.attachments.max-total-bytes:31457280}") long maxBytesTotal,
-            @Value("${integration.attachments.max-count:15}") int maxAttachments) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public AttachmentPolicy(com.concentus.config.Settings settings) {
+        this(settings.number("integration.attachments.max-bytes", 10_485_760L),
+                settings.number("integration.attachments.max-total-bytes", 31_457_280L),
+                settings.number("integration.attachments.max-count", 15));
+    }
+
+    /** The limits themselves, for a test that is about what they do. */
+    public AttachmentPolicy(long maxBytesPerAttachment, long maxBytesTotal, int maxAttachments) {
         this.maxBytesPerAttachment = maxBytesPerAttachment;
         this.maxBytesTotal = maxBytesTotal;
         this.maxAttachments = maxAttachments;

@@ -34,9 +34,15 @@ public class PricingTable {
     private final Map<String, Rate> byModel;
     private final Rate fallback;
 
-    public PricingTable(@Value("${pricing.models:}") String configured,
-                        @Value("${pricing.input-usd-per-mtok:3.0}") double fallbackInput,
-                        @Value("${pricing.output-usd-per-mtok:15.0}") double fallbackOutput) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public PricingTable(com.concentus.config.Settings settings) {
+        this(settings.get("pricing.models", ""),
+                settings.decimal("pricing.input-usd-per-mtok", 3.0),
+                settings.decimal("pricing.output-usd-per-mtok", 15.0));
+    }
+
+    /** The table itself, for a test that is about how a model is priced. */
+    public PricingTable(String configured, double fallbackInput, double fallbackOutput) {
         this.byModel = parse(configured);
         this.fallback = new Rate(fallbackInput, fallbackOutput);
     }

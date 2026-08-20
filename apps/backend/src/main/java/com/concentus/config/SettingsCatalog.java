@@ -2,6 +2,7 @@ package com.concentus.config;
 
 import java.util.List;
 
+import static com.concentus.config.SettingDef.choice;
 import static com.concentus.config.SettingDef.number;
 import static com.concentus.config.SettingDef.text;
 
@@ -30,6 +31,8 @@ public final class SettingsCatalog {
     }
 
     public static final String GROUP_RUNS = "Runs";
+    public static final String GROUP_WORKERS = "Independent workers";
+    public static final String GROUP_ATTACHMENTS = "Attachments";
     public static final String GROUP_PRICING = "Pricing";
 
     private static final List<SettingDef> ALL = List.of(
@@ -49,7 +52,35 @@ public final class SettingsCatalog {
                             + "million tokens read. Used to price a run after the fact; it does not "
                             + "change what anything is billed.", true),
             text("pricing.output-usd-per-mtok", GROUP_PRICING, "Default output price",
-                    "The same, for what the model writes.", true)
+                    "The same, for what the model writes.", true),
+            text("pricing.models", GROUP_PRICING, "Model prices",
+                    "What each model costs, one per line as model=input/output in dollars per "
+                            + "million tokens. Anything not listed uses the two defaults above.",
+                    true),
+
+            number("workers.max-concurrent", GROUP_WORKERS, "Workers at once",
+                    "The width of a fan-out: how many independent agents may run in parallel for "
+                            + "one block. Each is a process of its own, so this is a limit on the "
+                            + "machine rather than on the work.", true),
+            number("workers.timeout-seconds", GROUP_WORKERS, "Worker timeout",
+                    "How long one worker may take before it is stopped and reported as failed.",
+                    true),
+            number("workers.retries", GROUP_WORKERS, "Retries per worker",
+                    "How many times a worker that failed is started again before the fan-out gives "
+                            + "up on that item.", true),
+            choice("local.permission-mode", GROUP_WORKERS, "What agents may do unasked",
+                    "The Claude CLI's permission mode. \"bypassPermissions\" is what an unattended "
+                            + "run needs, because \"default\" stops to ask and there is nobody there "
+                            + "to answer.", true,
+                    "bypassPermissions", "acceptEdits", "default", "plan"),
+
+            number("integration.attachments.max-bytes", GROUP_ATTACHMENTS, "Largest file",
+                    "In bytes. A file bigger than this is refused with its size, rather than "
+                            + "filling a context window with something nobody will read.", true),
+            number("integration.attachments.max-total-bytes", GROUP_ATTACHMENTS, "Largest message",
+                    "In bytes, across every attachment on one message.", true),
+            number("integration.attachments.max-count", GROUP_ATTACHMENTS, "Most files per message",
+                    "How many attachments one message may carry.", true)
     );
 
     public static List<SettingDef> all() {

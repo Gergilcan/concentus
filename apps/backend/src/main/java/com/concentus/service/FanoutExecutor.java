@@ -93,14 +93,18 @@ public class FanoutExecutor {
                           PluginRegistry pluginRegistry,
                           com.concentus.store.SkillStore skillStore, SkillService skillService,
                           @Value("${app.data-dir}") String dataDir,
-                          @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                           @Value("${server.port:8734}") int serverPort,
-                          @Value("${workers.max-concurrent:4}") int maxConcurrent,
-                          @Value("${workers.timeout-seconds:900}") int timeoutSeconds,
-                          @Value("${workers.retries:1}") int retries) {
+                          com.concentus.config.Settings settings) {
+        // Through Settings rather than as placeholders, so what somebody set under Resources →
+        // Settings is what a fan-out actually runs with. The package-private constructor below
+        // still takes plain values — it is what tests build, and they are about what a limit does
+        // rather than where it came from.
         this(support, ragInjector, preRunSubflows, contextFolders, mapper, profiles, pluginRegistry,
                 skillStore, skillService, dataDir,
-                permissionMode, serverPort, maxConcurrent, timeoutSeconds, retries, (args, workdir) ->
+                settings.get("local.permission-mode", "bypassPermissions"), serverPort,
+                settings.number("workers.max-concurrent", 4),
+                settings.number("workers.timeout-seconds", 900),
+                settings.number("workers.retries", 1), (args, workdir) ->
                         new ProcessBuilder(args).directory(workdir.toFile())
                                 .redirectErrorStream(true).start());
     }
