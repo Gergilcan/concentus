@@ -186,7 +186,9 @@
 
 .body {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  // auto, not a fixed 300px: the column holds a handful of rows and used to reserve the same
+  // width whether it had six or none, next to the list people actually came for.
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--sp-3);
   align-items: start;
 }
@@ -590,6 +592,45 @@
   padding: 14px;
   position: sticky;
   top: 14px;
+  width: 300px;
+  max-width: 100%;
+}
+
+/**
+ * Folded away: a spine with the title down it, and the width back to the flows.
+ *
+ * <p>Still on screen rather than gone. A panel that disappears entirely is one nobody finds
+ * again, and the point of folding this is to get the width back, not to hide that it exists.
+ */
+.sideColClosed {
+  @extend .sideCol;
+  width: auto;
+  padding: 8px 6px;
+
+  .sideToggle {
+    writing-mode: vertical-rl;
+    gap: 8px;
+  }
+}
+
+.sideToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$muted;
+
+  &:hover {
+    color: t.$text;
+  }
 }
 
 .sideTitle {
@@ -598,6 +639,11 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: t.$muted;
+}
+
+/** The open panel keeps a gap between its title and its rows; the folded one has no rows. */
+.sideCol .sideToggle {
+  margin-bottom: 10px;
 }
 
 .sideEmpty {
@@ -616,6 +662,11 @@
 
 .runRow {
   width: 100%;
+  // Without this the row cannot shrink below the width of the flow name inside it, so a long
+  // name pushed the whole row — timestamp and retry included — straight through the panel's
+  // border. A flex item's default min-width is its content, and `overflow: hidden` on the child
+  // does nothing until the parent is allowed to be narrower than what it holds.
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -635,6 +686,7 @@
 
 .runFlow {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -658,6 +710,7 @@
   display: flex;
   align-items: center;
   gap: 2px;
+  min-width: 0;
 }
 
 .retry {

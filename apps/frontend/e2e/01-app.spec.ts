@@ -31,7 +31,7 @@ test('loads and shows the header with all four views', async ({ page }) => {
 test('every view renders its own content', async ({ page }) => {
   await openApp(page)
 
-  await expect(page.getByRole('heading', { name: 'Flows', level: 1 })).toBeVisible()
+  await expect(page.getByLabel('Search flows')).toBeVisible()
 
   await goTo(page, 'Studio')
   await expect(page.getByRole('heading', { name: 'Add node' })).toBeVisible()
@@ -49,5 +49,5 @@ test('every view renders its own content', async ({ page }) => {
   ).toBeVisible()
 
   await goTo(page, 'Flows')
-  await expect(page.getByRole('heading', { name: 'Flows', level: 1 })).toBeVisible()
+  await expect(page.getByLabel('Search flows')).toBeVisible()
 })

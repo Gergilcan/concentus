@@ -10,18 +10,14 @@ import styles from './flows.module.scss'
 /** Flow-level settings: name, tags, schedule pause, failure webhook. */
 export function SettingsModal({
   flow,
-  folders = [],
   onClose,
   onSave,
 }: {
   flow: BackendFlow
-  /** Folder names already in use, offered as suggestions; typing a new one creates it. */
-  folders?: string[]
   onClose: () => void
   onSave: (changes: Partial<BackendFlow>) => Promise<void>
 }) {
   const [name, setName] = useState(flow.name)
-  const [folder, setFolder] = useState(flow.folder ?? '')
   const [tags, setTags] = useState((flow.tags ?? []).join(', '))
   const [enabled, setEnabled] = useState(flow.enabled !== false)
   const [webhook, setWebhook] = useState(flow.notifyWebhook ?? '')
@@ -45,7 +41,6 @@ export function SettingsModal({
     setBusy(true)
     await onSave({
       name: name.trim() || flow.name,
-      folder: folder.trim(),
       tags: tags
         .split(',')
         .map((t) => t.trim())
@@ -56,7 +51,7 @@ export function SettingsModal({
       approvalSlackCredentialId: slackCredential.trim(),
       approvalSlackChannel: slackChannel.trim(),
       approvalTeamsWebhook: teamsWebhook.trim(),
-      variables,
+      variables: savedVariables(),
       goldenAutoRun,
     })
     setBusy(false)
@@ -68,14 +63,22 @@ export function SettingsModal({
     ...new Set([...orgVariables.map((v) => v.name), ...Object.keys(variables)]),
   ].sort()
 
+  /**
+   * Sets a value, and keeps the row.
+   *
+   * <p>This used to delete the entry when the value went blank, which is what "it will not let me
+   * edit them" looked like from outside: clear a flow-only variable to retype it, and the field
+   * you were typing in vanished from the screen mid-edit. Blank still means "inherit the
+   * organization's value" — that is decided at save, where an empty flow-only entry is dropped,
+   * rather than while somebody is still typing.
+   */
   const setVariable = (name: string, value: string) => {
-    setVariables((prev) => {
-      const next = { ...prev }
-      if (value === '') delete next[name]
-      else next[name] = value
-      return next
-    })
+    setVariables((prev) => ({ ...prev, [name]: value }))
   }
+
+  /** What actually travels: blank flow values are the absence of an override, not an override. */
+  const savedVariables = () =>
+    Object.fromEntries(Object.entries(variables).filter(([, value]) => value.trim() !== ''))
 
   return (
     <Modal title="Flow settings" onClose={onClose}>
@@ -83,23 +86,10 @@ export function SettingsModal({
         <span>Name</span>
         <input value={name} onChange={(e) => setName(e.target.value)} />
       </label>
-      <label
-        className={styles.field}
-        title="Files this flow in a dashboard folder. Blank = top level. Use / to nest ('Clients/ACME'). Typing a new path creates the folder; you can also drag cards onto folders on the dashboard. The bundled samples live in 'Samples'."
-      >
-        <span>Folder (blank = top level) ⓘ</span>
-        <input
-          value={folder}
-          onChange={(e) => setFolder(e.target.value)}
-          placeholder="e.g. Facturación or Clients/ACME"
-          list="flow-folder-options"
-        />
-        <datalist id="flow-folder-options">
-          {folders.map((f) => (
-            <option key={f} value={f} />
-          ))}
-        </datalist>
-      </label>
+      {/* No folder field. Filing a flow is done by dragging its card onto a folder on the
+          dashboard, where the folders are visible and the result is immediate; typing a path into
+          a settings dialog asked somebody to remember the tree and to spell it. The flow keeps
+          whichever folder it is in — this screen simply no longer has an opinion about it. */}
       <label className={styles.field}>
         <span>Tags (comma separated)</span>
         <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="ops, nightly" />
@@ -150,12 +140,18 @@ export function SettingsModal({
 
       <h4
         className={styles.sectionHead}
-        title="When a run of this flow stops for a human — waiting for approval, or asking you something — it goes to these channels. Slack can answer both: a ✅ reaction approves a plan (❌ rejects), and a reply in a question's thread becomes the run's next command. The app polls, so no public URL is needed. Teams is notification-only: its webhooks cannot carry a reply back."
+        title="Where a run goes when it stops for a human — waiting for approval, or asking a question. Fill in either one, or both, or neither: with none of it set the run still waits, and you answer it in the app."
       >
         Remote approvals and questions ⓘ
       </h4>
+      <p className={styles.modalHint}>
+        Optional, and independent of each other. <b>Slack</b> can also answer: a ✅ reaction approves
+        a plan (❌ rejects) and a reply in the question&apos;s thread becomes the run&apos;s next
+        command — the app polls, so no public URL is needed. <b>Teams</b> only tells you: its
+        webhooks cannot carry a reply back. With neither, a waiting run is answered in the app.
+      </p>
       <CredentialField
-        label="Slack bot token"
+        label="Slack bot token (optional)"
         value={slackCredential}
         onChange={setSlackCredential}
         what="the Slack bot (scopes: chat:write, reactions:read, channels:history)"
@@ -164,7 +160,7 @@ export function SettingsModal({
         className={styles.field}
         title="Channel id (C0123456789, from the channel's details) or a public channel name. The bot must be invited to it (/invite @bot)."
       >
-        <span>Slack channel ⓘ</span>
+        <span>Slack channel — only if you set a Slack token ⓘ</span>
         <input
           value={slackChannel}
           onChange={(e) => setSlackChannel(e.target.value)}
@@ -175,7 +171,7 @@ export function SettingsModal({
         className={styles.field}
         title="A Teams incoming-webhook URL (Workflows). Posts the plan or the question as a card — notification only; answer from the app or Slack."
       >
-        <span>Teams webhook (notify only) ⓘ</span>
+        <span>Teams webhook, on its own or alongside Slack (notify only) ⓘ</span>
         <input
           value={teamsWebhook}
           onChange={(e) => setTeamsWebhook(e.target.value)}

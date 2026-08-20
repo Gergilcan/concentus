@@ -12,7 +12,6 @@ import { SettingsModal, VersionsModal } from './FlowModals.tsx'
 import { FlowsKpis } from './FlowsKpis.tsx'
 import { decided, type Sort } from './flowFormat.ts'
 import {
-  collectTags,
   computeStats,
   downloadFlowJson,
   groupRunsByFlow,
@@ -23,7 +22,6 @@ import {
 import { FlowsToolbar } from './FlowsToolbar.tsx'
 import { RecipesModal } from './RecipesModal.tsx'
 import { RecentRunsList } from './RecentRunsList.tsx'
-import { TagFilterBar } from './TagFilterBar.tsx'
 import styles from './flows.module.scss'
 
 /** dataTransfer types for the dashboard's drag & drop — custom so foreign drags are ignored. */
@@ -65,7 +63,20 @@ export function FlowsPage({
 }: Props) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<Sort>('recent')
-  const [tagFilter, setTagFilter] = useState<string | null>(null)
+  /**
+   * Whether the recent-executions column is open.
+   *
+   * <p>Remembered, because it is a fact about this screen and this person — a wide monitor wants
+   * it open, a laptop wants the width for the flows — and re-deciding it on every visit is the
+   * thing that makes a fold not worth using.
+   */
+  const [runsOpen, setRunsOpen] = useState(
+    () => localStorage.getItem('concentus.recentRuns') !== 'closed',
+  )
+
+  useEffect(() => {
+    localStorage.setItem('concentus.recentRuns', runsOpen ? 'open' : 'closed')
+  }, [runsOpen])
   const [settingsFor, setSettingsFor] = useState<BackendFlow | null>(null)
   const [versionsFor, setVersionsFor] = useState<BackendFlow | null>(null)
   const [describing, setDescribing] = useState(false)
@@ -117,11 +128,12 @@ export function FlowsPage({
   }, [runs, checking])
 
   const runsByFlow = useMemo(() => groupRunsByFlow(runs), [runs])
-  const allTags = useMemo(() => collectTags(flows), [flows])
   const stats = useMemo(() => computeStats(flows, runs), [flows, runs])
   const visible = useMemo(
-    () => visibleFlows(flows, runsByFlow, query, sort, tagFilter),
-    [flows, query, sort, tagFilter, runsByFlow],
+    // No tag filter any more: the pill bar it came from is gone, and what it did — narrowing to
+    // one tag — the search box already does, since it matches tags as well as names.
+    () => visibleFlows(flows, runsByFlow, query, sort, null),
+    [flows, query, sort, runsByFlow],
   )
   const recent = useMemo(() => recentRuns(runs), [runs])
 
@@ -131,7 +143,7 @@ export function FlowsPage({
   // tree and shows every match flat — a filter that hid its matches inside folders would just be
   // broken search.
   const [path, setPath] = useState('')
-  const filtering = query.trim() !== '' || tagFilter !== null
+  const filtering = query.trim() !== ''
   const tiles = useMemo(() => childFolders(visible, path), [visible, path])
   const here = useMemo(() => flowsAt(visible, path), [visible, path])
   const crumbs = useMemo(() => breadcrumbOf(path), [path])
@@ -175,10 +187,6 @@ export function FlowsPage({
   const removeDraft = (full: string) =>
     saveDrafts(drafts.filter((d) => d !== full && !d.startsWith(full + '/')))
 
-  const allFolders = useMemo(
-    () => [...new Set([...flows.map(folderOf).filter(Boolean), ...drafts])].sort(),
-    [flows, drafts],
-  )
 
   const patch = async (flow: BackendFlow, changes: Partial<BackendFlow>) => {
     try {
@@ -237,7 +245,9 @@ export function FlowsPage({
       setVersionsFor={setVersionsFor}
       setSettingsFor={setSettingsFor}
       setDoctorFor={setDoctorFor}
-      setTagFilter={setTagFilter}
+      // A tag on a card still narrows the list; it does it through the search box now, which is
+      // the one place left that filters and the one somebody can clear without hunting for a bar.
+      setTagFilter={(tag) => setQuery(tag ?? '')}
       onDragStart={(e) => flow.id && e.dataTransfer.setData(FLOW_DND, flow.id)}
       golden={flow.id ? goldenByFlow.get(flow.id) : undefined}
       onGoldenCheck={startGoldenCheck}
@@ -256,13 +266,11 @@ export function FlowsPage({
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
+        {/* No title and no strapline. This is the screen the application opens on, seen more
+            often than any other, and it was spending its first hundred pixels telling somebody who
+            uses it daily what it is. The toolbar says what can be done here, which is the part
+            that is not obvious. */}
         <header className={styles.pageHead}>
-          <div>
-            <h1 className={styles.title}>Flows</h1>
-            <p className={styles.subtitle}>
-              Design multi-agent flows, run them on your Claude subscription, and watch every step.
-            </p>
-          </div>
           <FlowsToolbar
             query={query}
             onQueryChange={setQuery}
@@ -276,8 +284,6 @@ export function FlowsPage({
         </header>
 
         <FlowsKpis stats={stats} />
-
-        <TagFilterBar tags={allTags} activeTag={tagFilter} onSelect={setTagFilter} />
 
         <div className={styles.body}>
           <section className={styles.gridCol}>
@@ -409,9 +415,22 @@ export function FlowsPage({
             )}
           </section>
 
-          <aside className={styles.sideCol}>
-            <h2 className={styles.sideTitle}>Recent executions</h2>
-            <RecentRunsList runs={recent} onOpenRun={onOpenRun} onRetryRun={onRetryRun} />
+          {/* Sized by what is in it, and foldable. It used to be a fixed column holding a
+              handful of rows and a lot of nothing, next to the list people actually came for. */}
+          <aside className={runsOpen ? styles.sideCol : styles.sideColClosed}>
+            <button
+              type="button"
+              className={styles.sideToggle}
+              aria-expanded={runsOpen}
+              onClick={() => setRunsOpen(!runsOpen)}
+              title={runsOpen ? 'Hide recent executions' : 'Show recent executions'}
+            >
+              <span>Recent executions</span>
+              <span aria-hidden="true">{runsOpen ? '▸' : '◂'}</span>
+            </button>
+            {runsOpen && (
+              <RecentRunsList runs={recent} onOpenRun={onOpenRun} onRetryRun={onRetryRun} />
+            )}
           </aside>
         </div>
       </div>
@@ -419,7 +438,6 @@ export function FlowsPage({
       {settingsFor && (
         <SettingsModal
           flow={settingsFor}
-          folders={allFolders}
           onClose={() => setSettingsFor(null)}
           onSave={async (changes) => {
             await patch(settingsFor, changes)

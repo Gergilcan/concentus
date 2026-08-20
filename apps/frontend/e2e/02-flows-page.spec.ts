@@ -6,13 +6,11 @@ import { expect, flowCard, openApp, test } from './fixtures'
  * CRUD spec that follows creates its own flows regardless.
  */
 
-test('shows the dashboard: title, KPIs and toolbar', async ({ page }) => {
+test('shows the dashboard: KPIs and toolbar', async ({ page }) => {
   await openApp(page)
-  await expect(page.getByRole('heading', { name: 'Flows', level: 1 })).toBeVisible()
-  await expect(page.getByText('Design multi-agent flows')).toBeVisible()
 
-  // By the KPI class, not by text: "Flows" is also the nav button and the page title, and a
-  // text lookup trips over all three. The order is the component's own render order.
+  // By the KPI class, not by text: "Flows" is also the nav button, and a text lookup trips over
+  // both. The order is the component's own render order.
   await expect(page.locator('[class*="kpiLabel"]')).toHaveText([
     'Flows',
     'Executions',
@@ -40,6 +38,7 @@ test('a recipe builds a configured flow from the bundled sample', async ({ page 
   // exact: label matching is case-insensitive and substring-based, and the "Start it now"
   // checkbox's own text says "it runs on a schedule".
   await dialog.getByLabel('Schedule', { exact: true }).fill('15 6 * * *')
+  await dialog.getByRole('button', { name: 'Next' }).click()
   await dialog.getByRole('button', { name: 'Create the flow' }).click()
 
   // Straight onto the canvas, carrying the answers: this is assembled from the REAL bundled
@@ -114,80 +113,70 @@ test('the samples live in a folder you enter and leave — and search reaches in
   await page.getByLabel('Search flows').fill('')
 })
 
-test('a flow moves into a folder from its settings', async ({ page }) => {
+test('drag and drop: a card into a folder, a folder into a folder, a card back out', async ({
+  page,
+}) => {
   await openApp(page)
-  await page.getByRole('button', { name: '+ New flow' }).first().click()
-  await page.getByLabel('Flow name').fill('E2E foldered flow')
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
-  await page.getByRole('button', { name: '← Flows' }).click()
 
-  await flowCard(page, 'E2E foldered flow').getByTitle('Settings').click()
-  const dialog = page.getByRole('dialog')
-  await dialog.getByLabel(/Folder/).fill('E2E Carpeta')
-  await dialog.getByRole('button', { name: 'Save' }).click()
-
-  // The card left the root for its new folder's tile.
-  const folder = page.getByRole('button', { name: 'Folder E2E Carpeta' })
-  await expect(folder).toBeVisible()
-  await expect(flowCard(page, 'E2E foldered flow')).toHaveCount(0)
-  await folder.click()
-  await expect(flowCard(page, 'E2E foldered flow')).toHaveCount(1)
-
-  // Clean up: back to the root, then delete.
-  await flowCard(page, 'E2E foldered flow').getByTitle('Settings').click()
-  await page.getByRole('dialog').getByLabel(/Folder/).fill('')
-  await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
-  await page.getByRole('button', { name: 'All flows' }).click()
-  page.on('dialog', (d) => void d.accept())
-  await flowCard(page, 'E2E foldered flow').getByTitle('Delete').click()
-  await expect(flowCard(page, 'E2E foldered flow')).toHaveCount(0)
-})
-
-test('drag and drop: a card into a folder, a folder into a folder, a card back out', async ({ page }) => {
-  await openApp(page)
-  const newFlow = async (name: string, folder?: string) => {
+  /**
+   * A folder, made where folders are made.
+   *
+   * <p>This used to be set up through the flow's settings dialog, which had a folder field. That
+   * field is gone: it asked somebody to remember the tree and to spell it, next to a dashboard
+   * where the folders are visible and a card can be dropped on one. So the test files things the
+   * way the application now does.
+   */
+  const newFolder = async (name: string) => {
+    await page.getByRole('button', { name: '+ New folder' }).click()
+    await page.getByLabel('New folder name').fill(name)
+    await page.getByLabel('New folder name').press('Enter')
+    // .first(): a folder is a tile in the grid and, once you are inside it, a breadcrumb too.
+    await expect(page.getByRole('button', { name: `Folder ${name}` }).first()).toBeVisible()
+  }
+  const newFlow = async (name: string) => {
     await page.getByRole('button', { name: '+ New flow' }).first().click()
     await page.getByLabel('Flow name').fill(name)
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await page.getByRole('button', { name: '← Flows' }).click()
-    if (folder) {
-      await flowCard(page, name).getByTitle('Settings').click()
-      const dialog = page.getByRole('dialog')
-      await dialog.getByLabel(/Folder/).fill(folder)
-      await dialog.getByRole('button', { name: 'Save' }).click()
-    }
   }
-  await newFlow('E2E dnd anchor', 'DnD Uno')
-  await newFlow('E2E dnd mover')
+  const folder = (name: string) => page.getByRole('button', { name: `Folder ${name}` }).first()
 
-  // Card onto a folder tile: the card leaves the root and appears inside.
-  const uno = page.getByRole('button', { name: 'Folder DnD Uno' })
-  await flowCard(page, 'E2E dnd mover').dragTo(uno)
+  await newFolder('DnD Uno')
+  await newFolder('DnD Dos')
+  await newFlow('E2E dnd mover')
+  // A folder with a flow in it is a real folder — derived from where its flows live — rather than
+  // a draft this browser is remembering. Only a real one can be moved, because moving it is
+  // re-filing what is inside it.
+  await newFlow('E2E dnd resident')
+  await flowCard(page, 'E2E dnd resident').dragTo(folder('DnD Dos'))
+
+  // Card onto a folder tile: the card leaves the root and is found inside.
+  await flowCard(page, 'E2E dnd mover').dragTo(folder('DnD Uno'))
   await expect(flowCard(page, 'E2E dnd mover')).toHaveCount(0)
-  await uno.click()
+  await folder('DnD Uno').click()
   await expect(flowCard(page, 'E2E dnd mover')).toHaveCount(1)
 
-  // Card onto a breadcrumb segment: back out to the root.
+  // Card onto the breadcrumb: back out to the root.
   await flowCard(page, 'E2E dnd mover').dragTo(page.getByRole('button', { name: 'All flows' }))
-  await expect(flowCard(page, 'E2E dnd mover')).toHaveCount(0)
   await page.getByRole('button', { name: 'All flows' }).click()
   await expect(flowCard(page, 'E2E dnd mover')).toHaveCount(1)
 
-  // Folder onto a folder: nest it, then walk down the two levels.
-  await flowCard(page, 'E2E dnd mover').getByTitle('Settings').click()
-  await page.getByRole('dialog').getByLabel(/Folder/).fill('DnD Dos')
-  await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
-  const dos = page.getByRole('button', { name: 'Folder DnD Dos' })
-  await dos.dragTo(uno)
-  await expect(dos).toHaveCount(0)
-  await uno.click()
-  await expect(page.getByRole('button', { name: 'Folder DnD Dos' })).toBeVisible()
-  await page.getByRole('button', { name: 'Folder DnD Dos' }).click()
-  await expect(flowCard(page, 'E2E dnd mover')).toHaveCount(1)
+  // Folder onto a folder: what was at the root is now inside the other one.
+  //
+  // Not asserted by its absence at the root: "+ New folder" also records a draft path in this
+  // browser, and a draft outlives the flows moving out from under it — deliberately, so a folder
+  // somebody made does not vanish the moment it empties. What matters here is that the nesting
+  // happened, which is what walking into it shows.
+  await folder('DnD Dos').dragTo(folder('DnD Uno'))
+  await folder('DnD Uno').click()
+  await expect(folder('DnD Dos')).toBeVisible()
+  await folder('DnD Dos').click()
+  await expect(flowCard(page, 'E2E dnd resident')).toHaveCount(1)
 
-  // Clean up: pull both flows to the root and delete them.
+  // Clean up: the flow is at the root, and the folders are drafts this browser remembers.
+  await page.getByRole('button', { name: 'All flows' }).click()
   page.on('dialog', (d) => void d.accept())
-  for (const name of ['E2E dnd mover', 'E2E dnd anchor']) {
+  for (const name of ['E2E dnd mover', 'E2E dnd resident']) {
     await page.getByLabel('Search flows').fill(name)
     await flowCard(page, name).getByTitle('Delete').click()
     await expect(flowCard(page, name)).toHaveCount(0)

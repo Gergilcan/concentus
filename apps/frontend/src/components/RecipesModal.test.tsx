@@ -54,11 +54,15 @@ describe('RecipesModal', () => {
     const { onSaved, onClose } = open()
 
     fireEvent.click(screen.getByText('Send me a briefing every morning'))
-    expect(screen.getByText(/Question 1 of 2/)).toBeInTheDocument()
+    expect(screen.getByText(/Question 1 of 3/)).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Topics'), { target: { value: 'Competitors and EU AI rules' } })
     fireEvent.click(screen.getByText('Next'))
     fireEvent.change(screen.getByLabelText('Schedule'), { target: { value: '30 6 * * *' } })
+    fireEvent.click(screen.getByText('Next'))
+    // Where it shouts if it fails — asked here rather than found out from the run that failed
+    // at three in the morning with nobody watching. Left blank on purpose: optional means
+    // optional, and the flow still has to be creatable without it.
     fireEvent.click(screen.getByText('Create the flow'))
 
     await waitFor(() => expect(saveFlowMock).toHaveBeenCalled())
@@ -81,6 +85,7 @@ describe('RecipesModal', () => {
 
     fireEvent.click(screen.getByText('Send me a briefing every morning'))
     fireEvent.click(screen.getByText('Next'))
+    fireEvent.click(screen.getByText('Next'))
     expect(screen.getByText(/every run costs tokens/)).toBeInTheDocument()
     fireEvent.click(screen.getByLabelText(/Start it now/))
     fireEvent.click(screen.getByText('Create the flow'))
@@ -94,6 +99,7 @@ describe('RecipesModal', () => {
     const { onClose } = open()
 
     fireEvent.click(screen.getByText('Send me a briefing every morning'))
+    fireEvent.click(screen.getByText('Next'))
     fireEvent.click(screen.getByText('Next'))
     fireEvent.click(screen.getByText('Create the flow'))
 

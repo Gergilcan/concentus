@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BackendFlow } from '../api/types.ts'
-import { applyRecipe, fieldKey, fieldsOf, RECIPES } from './recipes.ts'
+import { applyRecipe, fieldKey, fieldsOf, FLOW, RECIPES } from './recipes.ts'
 
 const inbox = RECIPES.find((r) => r.id === 'inbox-triage')!
 
@@ -85,15 +85,44 @@ describe('the recipe manifests', () => {
     }
   })
 
-  it('points every recipe at a bundled sample and every field at a node id', () => {
+  it('points every recipe at a bundled sample, and every field at something that exists', () => {
     // The sample ids are the bundled library flows; a typo here would only surface as a 404 when
     // someone actually picked the recipe.
-    const bundled = ['mailbox-assistant', 'daily-briefing']
+    const bundled = [
+      'mailbox-assistant',
+      'daily-briefing',
+      'webhook-issue-triage',
+      'pr-review-crew',
+      'docs-from-code',
+      'outlook-quote-to-holded',
+    ]
+    // The node ids the samples actually use, plus FLOW for an answer about the flow itself. A
+    // field pointing anywhere else is a question whose answer lands nowhere — which looks like the
+    // recipe worked and produces a flow missing the one thing you were asked for.
+    const targets = [FLOW, 'in-1', 'agent-1', 'repo-1']
     for (const recipe of RECIPES) {
       expect(bundled, recipe.id).toContain(recipe.sampleId)
       for (const field of fieldsOf(recipe)) {
-        expect(field.nodeId, `${recipe.id}/${field.field}`).toBe('in-1')
+        expect(targets, `${recipe.id}/${field.field}`).toContain(field.nodeId)
       }
     }
+  })
+
+  // Answers about the flow reach the flow. Before this they were dropped on the floor: applyRecipe
+  // only ever patched node data, so a recipe could ask where to send failures and then quietly
+  // produce a flow that sends them nowhere.
+  it('applies an answer that belongs to the flow rather than to a node', () => {
+    const recipe = RECIPES.find((r) => fieldsOf(r).some((f) => f.nodeId === FLOW))
+    expect(recipe, 'no recipe asks anything about the flow').toBeDefined()
+    const field = fieldsOf(recipe!).find((f) => f.nodeId === FLOW)!
+
+    const built = applyRecipe(
+      { id: 'sample', name: 'Sample', mode: 'local', nodes: [], edges: [] },
+      recipe!,
+      { [fieldKey(field)]: 'https://hooks.example.com/x' },
+      false,
+    )
+
+    expect(built[field.field as keyof typeof built]).toBe('https://hooks.example.com/x')
   })
 })
