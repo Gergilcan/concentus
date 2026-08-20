@@ -851,6 +851,22 @@ export interface SignInProvider {
 }
 
 /**
+ * Whether this installation asks people to sign in.
+ *
+ * Two answers, because they differ for exactly as long as it takes to restart: the filter chain
+ * is built once, at startup, so a change lands on the next launch.
+ */
+export interface SignInPolicy {
+  /** What this running process does. */
+  active: boolean
+  /** What the next start will do. */
+  next: boolean
+  /** False where the answer comes from configuration rather than from the app — a server build. */
+  changeable: boolean
+  restartRequired: boolean
+}
+
+/**
  * One account this browser can return to without signing in again.
  *
  * It got here by being signed into on this browser — with its own password or its own provider —

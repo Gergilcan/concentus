@@ -162,6 +162,24 @@ function probeReady(port: number): Promise<boolean> {
 }
 
 /** Poll until ready, or until the process dies or the timeout expires. */
+/**
+ * Whether this install asks people to sign in.
+ *
+ * The backend writes sign-in.json when somebody changes it, and this reads it back on the next
+ * launch — the security filter chain is built once, at startup, so there is no other moment for
+ * the answer to matter. Unreadable or absent means off, which is what a fresh install is.
+ */
+function signInRequired(dataDir: string): boolean {
+  try {
+    const file = path.join(dataDir, 'sign-in.json')
+    if (!fs.existsSync(file)) return false
+    return JSON.parse(fs.readFileSync(file, 'utf8')).required === true
+  } catch (e) {
+    log.warn(`Could not read sign-in.json (${String(e)}); starting without sign-in.`)
+    return false
+  }
+}
+
 async function waitForReady(port: number, child: ChildProcess): Promise<void> {
   const deadline = Date.now() + STARTUP_TIMEOUT_MS
   while (Date.now() < deadline) {
@@ -272,6 +290,10 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
     // What the header's version chip shows. Packaged only: a dev run's package.json version is
     // a placeholder, and showing it would label every dev build as some unrelated release.
     CONCENTUS_APP_VERSION: isPackaged() ? app.getVersion() : '',
+    // Whether this install asks people to sign in. Written by the app itself (Resources →
+    // Members) and read here, because the security filter chain is built once at startup — which
+    // is also why turning it on asks for a restart rather than taking effect immediately.
+    AUTH_ENABLED: signInRequired(data) ? 'true' : 'false',
   }
 
   // Native access for onnxruntime's System.load is granted by the jar's own manifest

@@ -835,6 +835,69 @@
   max-width: 900px;
 }
 
+/**
+ * The state of the front door, above the roster that describes who may come through it.
+ *
+ * At the top because it changes what everything below it means: with sign-in off, the roles are a
+ * description of a policy nothing is enforcing, and reading them without knowing that is worse
+ * than not reading them.
+ */
+.signInOff,
+.signInOn {
+  border: 1px solid t.;
+  border-radius: t.;
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: t.;
+
+  b {
+    color: t.;
+  }
+}
+
+.signInOff {
+  border-color: t.;
+}
+
+.signInOn {
+  border-color: t.;
+}
+
+.signInFields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) auto;
+  align-items: end;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+
+  @media (max-width: 860px) {
+    grid-template-columns: 1fr;
+  }
+
+  .field {
+    margin-bottom: 0;
+    max-width: none;
+  }
+}
+
+/** Waiting on a restart: stated, not styled as an error, because nothing is wrong. */
+.pending {
+  color: t.$accent;
+}
+
+/** An action that reads as part of the sentence it sits in. */
+.linkBtn {
+  background: none;
+  border: none;
+  padding: 0 0 0 4px;
+  color: t.$accent;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 .rosterHead {
   display: flex;
   align-items: flex-start;

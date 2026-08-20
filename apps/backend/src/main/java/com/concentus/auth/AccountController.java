@@ -44,6 +44,9 @@ import java.util.Optional;
 @RequestMapping("/api/account")
 public class AccountController {
 
+    private static final org.slf4j.Logger LOG =
+            org.slf4j.LoggerFactory.getLogger(AccountController.class);
+
     private final AuthenticationManager authManager;
     private final AccountStore accounts;
     private final PasswordEncoder encoder;
@@ -53,6 +56,8 @@ public class AccountController {
     private final org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe;
     /** The accounts this browser has already signed into, so switching between them costs a click. */
     private final DeviceAccountStore devices;
+    /** Whether this installation asks people to sign in at all — read at startup, changed here. */
+    private final SignInSettingsStore signInSettings;
     private final int rememberMeDays;
     private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
 
@@ -60,7 +65,7 @@ public class AccountController {
                              PasswordEncoder encoder, OrgContext orgContext,
                              OidcSignIn oidc,
                              org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe,
-                             DeviceAccountStore devices,
+                             DeviceAccountStore devices, SignInSettingsStore signInSettings,
                              @org.springframework.beans.factory.annotation.Value(
                                      "${app.auth.remember-me-days:30}") int rememberMeDays) {
         this.authManager = authManager;
@@ -70,6 +75,7 @@ public class AccountController {
         this.oidc = oidc;
         this.rememberMe = rememberMe;
         this.devices = devices;
+        this.signInSettings = signInSettings;
         this.rememberMeDays = rememberMeDays;
     }
 
@@ -222,6 +228,84 @@ public class AccountController {
     public void forgetAccount(@PathVariable String userId, HttpServletRequest request) {
         String device = DeviceCookie.of(request);
         if (device != null) devices.detach(device, userId);
+    }
+
+    /**
+     * @param required     whether the next start should ask people to sign in
+     * @param adminEmail   the account that will be able to sign in, when turning it on
+     * @param adminPassword its password — set only if that account is being created
+     */
+    public record SignInRequest(boolean required, String adminEmail, String adminPassword) {
+    }
+
+    /**
+     * Whether this installation asks people to sign in: what it does now, and what it will do next.
+     *
+     * <p>Two answers rather than one, because they differ for exactly as long as it takes to
+     * restart, and that gap is the whole reason somebody would look at this screen twice.
+     */
+    @GetMapping("/sign-in-required")
+    public Map<String, Object> signInRequired() {
+        return Map.of(
+                "active", orgContext.authEnabled(),
+                "next", signInSettings.load().required(),
+                "changeable", signInSettings.isSupported(),
+                "restartRequired", signInSettings.isSupported()
+                        && signInSettings.load().required() != orgContext.authEnabled());
+    }
+
+    /**
+     * Turns sign-in on or off for the next start.
+     *
+     * <p><b>Turning it on names the account that will be able to sign in.</b> Not a courtesy: with
+     * accounts off there is nobody signed in, so a switch that simply flipped would produce, on the
+     * next launch, a login screen with no account behind it and no way in from the interface. So
+     * the address is required, and it is either promoted to administrator or created as one — the
+     * password only being needed in the second case.
+     *
+     * <p>Admin only, which with accounts off means whoever is at the machine. That is the same
+     * boundary the desktop build already runs on: a socket bound to loopback, and the person
+     * sitting in front of it.
+     */
+    @PostMapping("/sign-in-required")
+    public Map<String, Object> setSignInRequired(@RequestBody SignInRequest body) {
+        orgContext.requireAdmin();
+        if (!signInSettings.isSupported()) {
+            throw new IllegalStateException("This deployment's sign-in comes from its configuration "
+                    + "(app.auth.enabled), not from here.");
+        }
+        if (body != null && body.required()) {
+            requireAnAdminExists(body);
+        }
+        signInSettings.save(body != null && body.required());
+        return signInRequired();
+    }
+
+    /**
+     * Makes sure somebody can sign in before sign-in is switched on.
+     *
+     * <p>An existing account at that address is promoted rather than replaced — its history, its
+     * authorship on every flow version, and any identity linked to it stay attached to it. Only an
+     * address nobody has yet needs a password, because only then is an account being made.
+     */
+    private void requireAnAdminExists(SignInRequest body) {
+        String organizationId = orgContext.requireOrganizationId();
+        if (body.adminEmail() == null || body.adminEmail().isBlank()) {
+            throw new IllegalArgumentException("Name the account that will administer this "
+                    + "installation, or nobody will be able to sign in after the restart.");
+        }
+        String email = body.adminEmail().trim();
+        Optional<Accounts.UserAccount> existing = accounts.findByEmail(email);
+        if (existing.isPresent()) {
+            if (!existing.get().isAdmin()) {
+                accounts.updateRole(existing.get().id(), organizationId, Accounts.ROLE_ADMIN);
+            }
+            return;
+        }
+        Accounts.requireStrongPassword(body.adminPassword());
+        accounts.createUser(organizationId, email, encoder.encode(body.adminPassword()),
+                Accounts.ROLE_ADMIN);
+        LOG.info("Created {} as the administrator, ahead of switching sign-in on.", email);
     }
 
     /** Members of the caller's own organization. Never returns password hashes. */

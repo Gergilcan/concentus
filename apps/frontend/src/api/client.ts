@@ -39,6 +39,7 @@ import type {
   StorageDraft,
   SessionInfo,
   SignedInUser,
+  SignInPolicy,
   SwitchableAccount,
   SqlPreview,
 } from './types.ts'
@@ -438,6 +439,17 @@ export const api = {
    * back to an account you left is the case it exists for.
    */
   switchableAccounts: () => req<SwitchableAccount[]>('/account/accounts'),
+  /** Whether this installation asks people to sign in: what it does now, and what it will do next. */
+  signInRequired: () => req<SignInPolicy>('/account/sign-in-required'),
+  /**
+   * Turns sign-in on or off for the next start. Turning it on names the account that will be able
+   * to sign in — otherwise the next launch is a login screen with nobody behind it.
+   */
+  setSignInRequired: (required: boolean, adminEmail?: string, adminPassword?: string) =>
+    req<SignInPolicy>('/account/sign-in-required', {
+      method: 'POST',
+      body: JSON.stringify({ required, adminEmail, adminPassword }),
+    }),
   /** Becomes one of them. Allowed only because this browser signed into it once, with its own password or provider. */
   useAccount: (userId: string) =>
     req<SignedInUser>(`/account/accounts/${userId}/use`, { method: 'POST' }),
