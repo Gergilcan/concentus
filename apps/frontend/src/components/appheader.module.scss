@@ -67,6 +67,122 @@
   }
 }
 
+/**
+ * Who is signed in, as the header's last item.
+ *
+ * The address is the label rather than a generic "Account": on a screen whose whole job is to
+ * behave differently for different people, the useful thing to have in the corner is which person
+ * this window is.
+ */
+.account {
+  position: relative;
+}
+
+.accountBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  background: transparent;
+  border: 1px solid t.$border;
+  color: t.$muted;
+  min-height: var(--control-h);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover,
+  &[aria-expanded='true'] {
+    color: t.$text;
+    border-color: t.$accent;
+  }
+}
+
+.accountEmail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roleChip {
+  flex: none;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$accent;
+  border: 1px solid t.$accent-soft;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.accountMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 280px;
+  background: t.$panel;
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 35%);
+  padding: 6px;
+
+  button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: t.$text;
+    font-size: 12.5px;
+    padding: 8px 10px;
+    cursor: pointer;
+
+    &:hover {
+      background: t.$panel-2;
+    }
+
+    small {
+      display: block;
+      color: t.$muted;
+      font-size: 11px;
+      line-height: 1.45;
+      margin-top: 3px;
+    }
+  }
+}
+
+.accountWho {
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid t.$border;
+  margin-bottom: 6px;
+}
+
+.accountWhoEmail {
+  display: block;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.accountWhoRole {
+  display: block;
+  color: t.$muted;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.accountSignOut {
+  color: t.$danger;
+}
+
+.accountNote {
+  margin: 6px 10px 4px;
+  color: t.$danger;
+  font-size: 11px;
+}
+
 .signOut {
   background: transparent;
   border: 1px solid t.$border;

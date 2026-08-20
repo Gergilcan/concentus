@@ -38,6 +38,14 @@ if (process.platform === 'win32') app.setAppUserModelId('com.concentus.desktop')
 
 let backend: RunningBackend | null = null
 let mainWindow: BrowserWindow | null = null
+/**
+ * Windows signed in as somebody else.
+ *
+ * Each gets its own session partition, which means its own cookie jar, which means its own signed
+ * -in account — the session is a cookie, so two accounts in one jar is not a thing that can exist.
+ * Kept in a list only to number the next partition and to close them on quit.
+ */
+const altWindows: BrowserWindow[] = []
 let failureWindow: BrowserWindow | null = null
 let onboardingWindow: BrowserWindow | null = null
 /** The splash for the launch in progress; noSplash outside one, so callers never null-check. */
@@ -215,6 +223,51 @@ async function uiSource(port: number): Promise<string> {
   return baked
 }
 
+/**
+ * Another window, signed out, with a session of its own.
+ *
+ * For running two accounts at once — an admin and a viewer, side by side — which is the only
+ * honest way to see what a role actually permits: the interface hides what you may not do, so the
+ * way to check is to be that person. A second window starts at the sign-in screen because a fresh
+ * cookie jar has nobody in it, and the two windows stay independent from there.
+ *
+ * Deliberately not "switch account": switching would sign the first one out, and the comparison
+ * that makes this useful is having both on screen.
+ */
+async function openAccountWindow(): Promise<{ ok: boolean; error?: string }> {
+  if (!backend) return { ok: false, error: 'The backend is not running yet.' }
+  try {
+    const partition = `persist:concentus-account-${altWindows.length + 2}`
+    const win = new BrowserWindow({
+      width: 1280,
+      height: 860,
+      minWidth: 960,
+      minHeight: 600,
+      title: 'Concentus — another account',
+      icon: appIcon(),
+      autoHideMenuBar: true,
+      backgroundColor: '#0b0e14',
+      webPreferences: {
+        preload: path.join(__dirname, 'preload-main.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        partition,
+      },
+    })
+    altWindows.push(win)
+    win.on('closed', () => {
+      const at = altWindows.indexOf(win)
+      if (at >= 0) altWindows.splice(at, 1)
+    })
+    const url = await uiSource(backend.port)
+    openExternalLinksInBrowser(win, new URL(url).origin)
+    await win.loadURL(url)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
 async function showMainWindow(port: number): Promise<void> {
   failureWindow?.close()
   failureWindow = null
@@ -389,6 +442,10 @@ function registerIpc(): void {
   ipcMain.handle('updates:status', () => updateStatus())
   ipcMain.handle('updates:check', () => checkForUpdatesNow())
   ipcMain.handle('updates:install', () => installUpdateNow())
+
+  // A window for another account. See openAccountWindow: a second cookie jar is the only place
+  // a second signed-in account can exist, and only the shell can make one.
+  ipcMain.handle('accounts:open-window', () => openAccountWindow())
 
   ipcMain.on('failure:retry', () => {
     failureWindow?.close()

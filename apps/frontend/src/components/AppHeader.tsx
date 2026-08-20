@@ -1,3 +1,4 @@
+import { AccountMenu } from './AccountMenu.tsx'
 import { AuthBadge } from './AuthBadge.tsx'
 import { nextTheme, setTheme, THEMES, useTheme } from '../utils/theme.ts'
 import styles from './appheader.module.scss'
@@ -58,11 +59,7 @@ export function AppHeader({ view, onView, signedInAs, onSignOut }: Props) {
       <div className={styles.spacer} />
       <ThemeSwitch />
       <AuthBadge />
-      {signedInAs && (
-        <button type="button" className={styles.signOut} onClick={onSignOut} title={signedInAs}>
-          Sign out
-        </button>
-      )}
+      {signedInAs && onSignOut && <AccountMenu signedInAs={signedInAs} onSignOut={onSignOut} />}
     </header>
   )
 }

@@ -35,6 +35,14 @@ export interface ShellBridge {
     check: () => Promise<ShellUpdateState>
     install: () => Promise<{ ok: boolean; error?: string }>
   }
+  /**
+   * Absent in a shell older than this feature — the UI is served by the backend and can be newer
+   * than the window around it, so the menu asks before it offers.
+   */
+  accounts?: {
+    /** Opens a second window with its own session, signed out, for another account. */
+    openWindow: () => Promise<{ ok: boolean; error?: string }>
+  }
 }
 
 export function shellBridge(): ShellBridge | null {
