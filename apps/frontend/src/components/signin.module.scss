@@ -107,3 +107,27 @@
     border-radius: 4px;
   }
 }
+
+/* The seam between the password form and a directory sign-in. */
+.or {
+  text-align: center;
+  color: t.$muted;
+  font-size: 11px;
+  margin: 12px 0 8px;
+}
+
+.provider {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  background: t.$panel-2;
+  border: 1px solid t.$border;
+  border-radius: 8px;
+  color: t.$text;
+  padding: 9px 12px;
+  font-size: 13px;
+
+  &:hover {
+    border-color: t.$accent;
+  }
+}

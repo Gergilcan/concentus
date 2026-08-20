@@ -8,6 +8,8 @@ interface Props {
   onSignedIn: (user: SignedInUser) => void
   /** True when the backend reported that its account store is unreachable. */
   storeUnavailable?: boolean
+  /** True when this deployment has a Microsoft Entra registration configured. */
+  microsoftSignIn?: boolean
 }
 
 /**
@@ -18,7 +20,11 @@ interface Props {
  * reaches the server first claim the organization. The first administrator comes from the
  * deployment's configuration, and further members are invited by an existing one.
  */
-export function SignIn({ onSignedIn, storeUnavailable }: Props) {
+export function SignIn({ onSignedIn, storeUnavailable, microsoftSignIn }: Props) {
+  // A refusal from the directory comes back as a top-level navigation, so it arrives in the URL
+  // rather than in a response this screen awaited. Usually it is a domain this deployment does not
+  // admit, which is a sentence somebody needs to read — not a silent bounce back to the form.
+  const redirected = new URLSearchParams(window.location.search).get('signin_error')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -74,15 +80,26 @@ export function SignIn({ onSignedIn, storeUnavailable }: Props) {
           />
         </label>
 
-        {error && (
+        {(error ?? redirected) && (
           <p className={styles.error} role="alert">
-            {error}
+            {error ?? redirected}
           </p>
         )}
 
         <button type="submit" className={styles.submit} disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
+
+        {microsoftSignIn && (
+          <>
+            <p className={styles.or}>or</p>
+            {/* A link, not a fetch: the destination is another origin, and the browser has to go
+                there itself. */}
+            <a className={styles.provider} href="/api/account/oidc/microsoft/start">
+              Sign in with Microsoft
+            </a>
+          </>
+        )}
 
         <p className={styles.hint}>
           The first administrator is created from <code>CONCENTUS_ADMIN_EMAIL</code> and{' '}

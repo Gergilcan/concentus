@@ -48,14 +48,21 @@ public class AccountController {
     private final AccountStore accounts;
     private final PasswordEncoder encoder;
     private final OrgContext orgContext;
+    private final MicrosoftSignIn microsoft;
+    /** Issues the cookie that survives a restart of this backend. */
+    private final org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe;
     private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
 
     public AccountController(AuthenticationManager authManager, AccountStore accounts,
-                             PasswordEncoder encoder, OrgContext orgContext) {
+                             PasswordEncoder encoder, OrgContext orgContext,
+                             MicrosoftSignIn microsoft,
+                             org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe) {
         this.authManager = authManager;
         this.accounts = accounts;
         this.encoder = encoder;
         this.orgContext = orgContext;
+        this.microsoft = microsoft;
+        this.rememberMe = rememberMe;
     }
 
     public record LoginRequest(String email, String password) {
@@ -80,6 +87,9 @@ public class AccountController {
             out.put("organizationId", u.organizationId());
             out.put("role", u.role());
         });
+        // Whether the button should exist at all. Asked rather than assumed: a deployment with no
+        // Entra registration must not offer a sign-in path that fails at the redirect.
+        out.put("microsoftSignIn", microsoft.isConfigured());
         out.put("signedIn", me.isPresent());
         return out;
     }
@@ -109,6 +119,9 @@ public class AccountController {
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
         contextRepository.saveContext(context, request, response);
+        // Signing in once means signing in once: the cookie outlives this process, so an update or
+        // a reboot is an invisible reconnection rather than a login screen.
+        rememberMe.loginSuccess(request, response, authentication);
 
         ConcentusUserDetails user = (ConcentusUserDetails) authentication.getPrincipal();
         return Map.of("userId", user.userId(), "email", user.email(),

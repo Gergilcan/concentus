@@ -44,7 +44,13 @@ export default function App() {
 
   if (loading) return null
   if (session?.authEnabled && !session.signedIn) {
-    return <SignIn onSignedIn={onSignedIn} storeUnavailable={!session.storeAvailable} />
+    return (
+      <SignIn
+        onSignedIn={onSignedIn}
+        storeUnavailable={!session.storeAvailable}
+        microsoftSignIn={session.microsoftSignIn}
+      />
+    )
   }
   // The role wraps the whole workspace rather than being threaded through it: what an account may
   // do is asked in a dozen unrelated places — a Save button, a Run button, a delete — and passing

@@ -18,6 +18,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.rememberme.JdbcTokenRepositoryImpl;
+import org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
@@ -56,6 +58,42 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * Staying signed in across restarts of this backend.
+     *
+     * <p>A session lived only in the servlet container, so every update, reboot or crash signed
+     * everyone out. On a desktop install that is a shrug; on a deployment a team shares, it is a
+     * login screen after every deploy — and the thing people do about a login screen they see too
+     * often is choose a password they can type quickly.
+     *
+     * <p>Always remembered rather than behind a "keep me signed in" tick: the tick is a question
+     * about a shared computer, and this application already answers that question with sign-out.
+     *
+     * <p>The key signs the cookies. Generated per start when unset, which is right for one machine
+     * and wrong for two — with several instances behind a load balancer, a cookie minted by one is
+     * refused by the next unless they share it.
+     */
+    @Bean
+    public PersistentTokenBasedRememberMeServices rememberMeServices(
+            AccountUserDetailsService uds, javax.sql.DataSource dataSource,
+            @Value("${app.auth.remember-me-secret:}") String secret,
+            @Value("${app.auth.remember-me-days:30}") int days) {
+        JdbcTokenRepositoryImpl tokens = new JdbcTokenRepositoryImpl();
+        tokens.setDataSource(dataSource);
+        String key = secret == null || secret.isBlank()
+                ? java.util.UUID.randomUUID().toString()
+                : secret;
+        PersistentTokenBasedRememberMeServices services =
+                new PersistentTokenBasedRememberMeServices(key, uds, tokens);
+        services.setAlwaysRemember(true);
+        services.setTokenValiditySeconds((int) java.time.Duration.ofDays(Math.max(1, days)).toSeconds());
+        // Sent only over HTTPS where the request arrived over HTTPS. Not hardcoded true: the
+        // desktop app and local development are plain http on loopback, and a cookie the browser
+        // refuses to send is a sign-in that silently never persists.
+        services.setUseSecureCookie(false);
+        return services;
+    }
+
     @Bean
     public AuthenticationManager authenticationManager(AccountUserDetailsService uds, PasswordEncoder encoder) {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider(uds);
@@ -72,7 +110,8 @@ public class SecurityConfig {
      */
     @Bean
     @ConditionalOnProperty(name = "app.auth.enabled", havingValue = "true", matchIfMissing = true)
-    public SecurityFilterChain apiSecurity(HttpSecurity http, ObjectMapper mapper) throws Exception {
+    public SecurityFilterChain apiSecurity(HttpSecurity http, ObjectMapper mapper,
+                                          PersistentTokenBasedRememberMeServices rememberMe) throws Exception {
         CsrfTokenRequestAttributeHandler csrfHandler = new CsrfTokenRequestAttributeHandler();
         // The SPA reads the XSRF-TOKEN cookie and echoes it in a header, so the raw token — not a
         // BREACH-masked one — is what arrives; tell the handler to compare it as-is.
@@ -95,6 +134,7 @@ public class SecurityConfig {
                     // client (Claude Code) driving this app, with a configured token instead of a
                     // session. It refuses every request unless one is set — see McpStudioController.
                     .ignoringRequestMatchers("/api/webhooks/**", "/api/internal/**",
+                            "/api/account/oidc/**",
                             "/api/runs/*/tools", "/api/runs/*/workers/*/tools", "/api/runs/*/plan",
                             "/api/runs/*/verdict", "/api/mcp/studio"))
             .authorizeHttpRequests(auth -> auth
@@ -105,6 +145,12 @@ public class SecurityConfig {
                     // Signing in, and asking whether you are signed in, cannot themselves require
                     // a session.
                     .requestMatchers("/api/account/login", "/api/account/session").permitAll()
+                    // Both ends of a directory sign-in are top-level browser navigations: the
+                    // first leaves for Microsoft, the second arrives from it carrying none of this
+                    // application's headers. Neither can require the session they exist to create.
+                    // The callback is not an open door — it accepts only a state this process
+                    // issued minutes earlier and holds in memory.
+                    .requestMatchers("/api/account/oidc/**").permitAll()
                     // An OAuth redirect arrives as a plain top-level navigation from the
                     // authorization server, carrying none of our cookies, so it cannot require a
                     // session. It is not an open door: the callback only accepts a `state` this
@@ -149,6 +195,9 @@ public class SecurityConfig {
             .logout(l -> l.logoutUrl("/api/account/logout")
                     .logoutSuccessHandler((req, res, a) -> res.setStatus(HttpStatus.NO_CONTENT.value()))
                     .deleteCookies("JSESSIONID"))
+            // The cookie is checked on every request that arrives without a session, which is
+            // what turns a restart from a sign-out into an invisible reconnection.
+            .rememberMe(r -> r.rememberMeServices(rememberMe))
             .httpBasic(b -> b.disable())
             .formLogin(f -> f.disable());
         return http.build();

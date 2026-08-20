@@ -843,6 +843,8 @@ export interface Member {
 
 export interface SessionInfo {
   authEnabled: boolean
+  /** Whether this deployment has a Microsoft Entra registration, so the button should exist. */
+  microsoftSignIn?: boolean
   storeAvailable: boolean
   signedIn: boolean
   userId?: string
