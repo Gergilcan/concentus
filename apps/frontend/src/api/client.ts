@@ -394,6 +394,19 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   signOut: () => req<void>('/account/logout', { method: 'POST' }),
+  /** Everyone in the caller's own organization. Password hashes never leave the backend. */
+  listMembers: () => req<import('./types.ts').Member[]>('/account/members'),
+  addMember: (email: string, password: string, role: string) =>
+    req<import('./types.ts').Member>('/account/members', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, role }),
+    }),
+  /** Changes what one member may do. Admin only; the backend refuses the last admin's demotion. */
+  changeMemberRole: (userId: string, role: string) =>
+    req<import('./types.ts').Member>(`/account/members/${userId}/role`, {
+      method: 'POST',
+      body: JSON.stringify({ role }),
+    }),
   listModels: () => req<ModelCatalog>('/models'),
 
   // stored credentials (write-only: nothing here ever returns a secret)

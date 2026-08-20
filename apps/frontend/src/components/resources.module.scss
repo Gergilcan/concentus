@@ -793,3 +793,40 @@
     min-width: 0;
   }
 }
+
+/* One account and what it may do. The role sits next to the address, because the pair is the
+   whole row: who, and how much. */
+.memberRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+
+  &:hover {
+    background: t.$panel-2;
+  }
+
+  select {
+    background: t.$bg;
+    border: 1px solid t.$border;
+    color: t.$text;
+    border-radius: 6px;
+    padding: 3px 6px;
+    font-size: 11px;
+  }
+}
+
+.memberEmail {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memberMeta {
+  color: t.$muted;
+  font-size: 10px;
+  white-space: nowrap;
+}

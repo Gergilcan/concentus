@@ -24,6 +24,7 @@ import { useFlowStore } from './state/store.ts'
 import { useFlowActions } from './state/useFlowActions.ts'
 import { useFlowsAndRuns } from './state/useFlowsAndRuns.ts'
 import { useSelectedRun } from './state/useSelectedRun.ts'
+import { PermissionsProvider } from './state/permissions.tsx'
 import { useSession } from './state/useSession.ts'
 import { TOAST_DURATION_MS } from './constants.ts'
 import { cx } from './utils/cx.ts'
@@ -45,7 +46,14 @@ export default function App() {
   if (session?.authEnabled && !session.signedIn) {
     return <SignIn onSignedIn={onSignedIn} storeUnavailable={!session.storeAvailable} />
   }
-  return <Workspace signedInAs={session?.email ?? null} onSignOut={signOut} />
+  // The role wraps the whole workspace rather than being threaded through it: what an account may
+  // do is asked in a dozen unrelated places — a Save button, a Run button, a delete — and passing
+  // it down by hand would mean the one component that forgot is the one that offers a 403.
+  return (
+    <PermissionsProvider role={session?.role} authEnabled={session?.authEnabled ?? false}>
+      <Workspace signedInAs={session?.email ?? null} onSignOut={signOut} />
+    </PermissionsProvider>
+  )
 }
 
 /**

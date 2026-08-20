@@ -111,7 +111,34 @@ public class SecurityConfig {
                     // process issued minutes earlier and holds in memory, and that value is what
                     // carries the organization — nothing is taken from the request itself.
                     .requestMatchers("/api/mcp/oauth/callback").permitAll()
-                    .anyRequest().authenticated())
+
+                    // ---- what each role may do ----
+                    //
+                    // Expressed here, by method and path, rather than as annotations spread over
+                    // thirty controllers. One place to read means one place to audit, and the
+                    // question an operator actually asks — "what can a VIEWER do?" — has an answer
+                    // that fits on a screen.
+
+                    // Changing your own password is not a privilege; it is how you keep an account.
+                    .requestMatchers("/api/account/password", "/api/account/logout").authenticated()
+                    // Reading is every signed-in role: flows, runs, transcripts, costs. Someone who
+                    // wants to know what the automation did last night should not need the power to
+                    // make it do anything tonight.
+                    .requestMatchers(HttpMethod.GET, "/api/**").authenticated()
+                    .requestMatchers("/ws/**").authenticated()
+                    // Running, and steering a run in flight. The person who runs the daily cycle is
+                    // rarely the person who should be free to rewrite what it does.
+                    .requestMatchers(HttpMethod.POST,
+                            "/api/flows/*/run", "/api/runs", "/api/runs/*/commands",
+                            "/api/runs/*/approve", "/api/runs/*/reject", "/api/runs/*/stop",
+                            "/api/runs/*/retry", "/api/runs/*/nodes/*/rerun",
+                            "/api/runs/*/golden", "/api/runs/*/golden/rerun")
+                            .hasAnyRole(Accounts.ROLE_OPERATOR, Accounts.ROLE_MEMBER, Accounts.ROLE_ADMIN)
+                    // Everything left changes what the work IS — flows, agents, servers,
+                    // credentials, knowledge. Denied by default rather than listed: a route added
+                    // next month is a write until someone says otherwise, which is the direction
+                    // this list has to fail in.
+                    .anyRequest().hasAnyRole(Accounts.ROLE_MEMBER, Accounts.ROLE_ADMIN))
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                     .sessionFixation(f -> f.migrateSession()))
             .exceptionHandling(e -> e

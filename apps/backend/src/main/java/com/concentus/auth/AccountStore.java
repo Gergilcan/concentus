@@ -118,6 +118,25 @@ public class AccountStore {
         jdbc.update("update users set password_hash = ? where id = ?", passwordHash, userId);
     }
 
+    public Optional<Accounts.UserAccount> findById(String userId) {
+        if (userId == null || userId.isBlank()) return Optional.empty();
+        return jdbc.query("select * from users where id = ?", USER_MAPPER, userId).stream().findFirst();
+    }
+
+    /** Scoped to one organization, so a mistyped id can never reach another tenant's account. */
+    public void updateRole(String userId, String organizationId, String role) {
+        jdbc.update("update users set role = ? where id = ? and organization_id = ?",
+                role, userId, organizationId);
+    }
+
+    /** How many accounts in this organization hold a role — used to refuse the last admin's demotion. */
+    public long countByRole(String organizationId, String role) {
+        Long n = jdbc.queryForObject(
+                "select count(*) from users where organization_id = ? and upper(role) = ? and enabled",
+                Long.class, organizationId, role.toUpperCase(Locale.ROOT));
+        return n == null ? 0 : n;
+    }
+
     private static String normalizeEmail(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
     }

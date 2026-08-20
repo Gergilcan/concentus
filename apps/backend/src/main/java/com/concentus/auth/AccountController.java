@@ -14,6 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -130,10 +131,51 @@ public class AccountController {
             throw new IllegalArgumentException("An email address is required.");
         }
         Accounts.requireStrongPassword(body.password());
-        String role = Accounts.ROLE_ADMIN.equalsIgnoreCase(body.role())
-                ? Accounts.ROLE_ADMIN : Accounts.ROLE_MEMBER;
+        // An unrecognised name is refused rather than quietly downgraded: an admin who typed
+        // "editor" meaning MEMBER should be told, not handed an account that cannot do the job and
+        // a puzzle to solve next week.
+        String role = body.role() == null || body.role().isBlank()
+                ? Accounts.ROLE_MEMBER
+                : Accounts.normalizeRole(body.role());
+        if (role == null) {
+            throw new IllegalArgumentException("Unknown role '" + body.role() + "'. Use one of: "
+                    + String.join(", ", Accounts.ROLES) + ".");
+        }
         return accounts.createUser(orgContext.requireOrganizationId(), body.email(),
                 encoder.encode(body.password()), role).redacted();
+    }
+
+    /**
+     * Changes what a member of this organization may do.
+     *
+     * <p>Admin only, and the organization is never a parameter — it comes from the caller's own
+     * session, so a mistyped id cannot reach another tenant's account.
+     *
+     * <p>The last admin cannot be demoted. Not a courtesy: the alternative is an organization
+     * nobody can administer, whose only fix is editing the database by hand.
+     */
+    @PostMapping("/members/{userId}/role")
+    public Accounts.UserAccount changeRole(@PathVariable String userId,
+                                           @RequestBody NewMemberRequest body) {
+        orgContext.requireAdmin();
+        String organizationId = orgContext.requireOrganizationId();
+        String role = Accounts.normalizeRole(body == null ? null : body.role());
+        if (role == null) {
+            throw new IllegalArgumentException("Unknown role. Use one of: "
+                    + String.join(", ", Accounts.ROLES) + ".");
+        }
+        Accounts.UserAccount target = accounts.findById(userId)
+                .filter(u -> organizationId.equals(u.organizationId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No such member of this organization."));
+        boolean demotingAnAdmin = Accounts.ROLE_ADMIN.equalsIgnoreCase(target.role())
+                && !Accounts.ROLE_ADMIN.equals(role);
+        if (demotingAnAdmin && accounts.countByRole(organizationId, Accounts.ROLE_ADMIN) <= 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This is the organization's only admin. Promote someone else first.");
+        }
+        accounts.updateRole(userId, organizationId, role);
+        return accounts.findById(userId).orElseThrow().redacted();
     }
 
     @PostMapping("/password")

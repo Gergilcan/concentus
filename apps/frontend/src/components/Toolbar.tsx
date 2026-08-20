@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '../api/client.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import type { RunSummary } from '../api/types.ts'
+import { deniedReason, usePermissions } from '../state/permissions.tsx'
 import { useFlowStore } from '../state/store.ts'
 import { cx } from '../utils/cx.ts'
 import { DoctorModal } from './DoctorModal.tsx'
@@ -16,6 +17,7 @@ interface Props {
 
 export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError }: Props) {
   const name = useFlowStore((s) => s.name)
+  const permissions = usePermissions()
   const setName = useFlowStore((s) => s.setName)
   const mode = useFlowStore((s) => s.mode)
   const setMode = useFlowStore((s) => s.setMode)
@@ -82,13 +84,23 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
       >
         ⚕ Check
       </button>
-      <button className={styles.btn} onClick={newFlow}>
+      <button className={styles.btn} onClick={newFlow} disabled={!permissions.canEdit}>
         New
       </button>
-      <button className={styles.btn} onClick={save}>
+      <button
+        className={styles.btn}
+        onClick={save}
+        disabled={!permissions.canEdit}
+        title={permissions.canEdit ? undefined : deniedReason(permissions, 'edit')}
+      >
         Save
       </button>
-      <button className={cx(styles.btn, styles.run)} onClick={run}>
+      <button
+        className={cx(styles.btn, styles.run)}
+        onClick={run}
+        disabled={!permissions.canRun}
+        title={permissions.canRun ? undefined : deniedReason(permissions, 'run')}
+      >
         ▶ Run
       </button>
 

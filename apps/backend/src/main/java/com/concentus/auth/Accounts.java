@@ -15,9 +15,58 @@ public final class Accounts {
     private Accounts() {
     }
 
-    /** Roles, ordered least to most privileged. */
+    /**
+     * Roles, ordered least to most privileged.
+     *
+     * <p>The two at the bottom were added under the two that existed rather than beside them, so
+     * nobody's account changed meaning the day they appeared: every existing MEMBER still edits and
+     * every ADMIN still administers. What is new is that an account can now be given LESS.
+     *
+     * <ul>
+     *   <li>{@code VIEWER} — reads. Flows, runs, transcripts, costs. Changes nothing and starts
+     *       nothing, which is the right shape for the person who wants to know what the automation
+     *       did last night without being able to make it do anything tonight.</li>
+     *   <li>{@code OPERATOR} — the above, plus running flows and answering them: start, stop,
+     *       approve, retry, re-run a block. Cannot change what a flow IS. This is the split that
+     *       matters in an organization — the person who runs the daily cycle is rarely the person
+     *       who should be free to rewrite what it does to the ad account.</li>
+     *   <li>{@code MEMBER} — edits flows, agents, servers, credentials, everything the work is
+     *       made of.</li>
+     *   <li>{@code ADMIN} — the above, plus the organization itself: who is in it, and as what.</li>
+     * </ul>
+     */
+    public static final String ROLE_VIEWER = "VIEWER";
+    public static final String ROLE_OPERATOR = "OPERATOR";
     public static final String ROLE_MEMBER = "MEMBER";
     public static final String ROLE_ADMIN = "ADMIN";
+
+    /** Least privileged first. The order IS the ladder — {@link #rank} reads it. */
+    public static final java.util.List<String> ROLES =
+            java.util.List.of(ROLE_VIEWER, ROLE_OPERATOR, ROLE_MEMBER, ROLE_ADMIN);
+
+    /**
+     * Where a role sits on the ladder; -1 for a name nothing recognises.
+     *
+     * <p>Unknown means -1 rather than "treat it as the lowest", so a typo in configuration cannot
+     * quietly hand someone a working account with fewer powers than intended — it hands them one
+     * that fails the first check and gets fixed.
+     */
+    public static int rank(String role) {
+        if (role == null) return -1;
+        return ROLES.indexOf(role.trim().toUpperCase(java.util.Locale.ROOT));
+    }
+
+    /** Whether {@code role} is at least {@code minimum} on the ladder. */
+    public static boolean atLeast(String role, String minimum) {
+        int have = rank(role);
+        return have >= 0 && have >= rank(minimum);
+    }
+
+    /** The role to store for a requested name, or null when it is not one we have. */
+    public static String normalizeRole(String requested) {
+        int index = rank(requested);
+        return index < 0 ? null : ROLES.get(index);
+    }
 
     /**
      * Minimum password length, applied everywhere a password is set.

@@ -9,6 +9,7 @@ import { KnowledgePanel } from './KnowledgePanel.tsx'
 import { McpCatalog, type CatalogSetup } from './McpCatalog.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import { McpServerJson } from './McpServerJson.tsx'
+import { MembersPanel } from './MembersPanel.tsx'
 import { ModelField } from './ModelField.tsx'
 import { PluginsPanel } from './PluginsPanel.tsx'
 import { SkillsPanel } from './SkillsPanel.tsx'
@@ -17,13 +18,19 @@ import { UpdatesPanel } from './UpdatesPanel.tsx'
 import { shellBridge } from '../api/shell.ts'
 import styles from './resources.module.scss'
 
-type Tab = 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
+type Tab = 'members' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
 
 /**
  * The tab strip, in display order. `desktopOnly` keeps Updates out of a browser tab, which has no
  * app to update — the shell bridge is absent there.
  */
 const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolean }> = [
+  {
+    id: 'members',
+    label: 'Members',
+    title:
+      'Who is in this organization and what each of them may do: read, run, edit, or administer. Enforced on every request, not only in the interface.',
+  },
   { id: 'agents', label: 'Agents' },
   { id: 'mcp', label: 'MCP Servers' },
   {
@@ -81,6 +88,8 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
       </div>
 
       <div className={styles.tabBody}>
+        {tab === 'members' && <MembersPanel pushError={pushError} />}
+
         {tab === 'agents' && (
           <CrudPanel<LibraryAgent>
             title="Agents"

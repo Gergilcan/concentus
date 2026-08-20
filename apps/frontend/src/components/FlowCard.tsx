@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import type { BackendFlow, GoldenStatus, RunSummary } from '../api/types.ts'
+import { deniedReason, usePermissions } from '../state/permissions.tsx'
 import { cx } from '../utils/cx.ts'
 import { hueOf } from '../utils/hueOf.ts'
 import { KIND_LABEL, compact, countsOf, decided, kindOf, money, timeAgo, triggerOf } from './flowFormat.ts'
@@ -51,6 +52,7 @@ export function FlowCard({
 }) {
   // Copy-as-template feedback: a ✓ for a moment, then back. Clipboard writes are invisible,
   // and a button that seems to do nothing gets clicked five times.
+  const permissions = usePermissions()
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => {
@@ -198,13 +200,19 @@ export function FlowCard({
         <button className={styles.open} onClick={() => flow.id && onOpen(flow.id)}>
           Open
         </button>
-        <button className={styles.run} onClick={() => flow.id && onRun(flow.id)}>
+        <button
+          className={styles.run}
+          onClick={() => flow.id && onRun(flow.id)}
+          disabled={!permissions.canRun}
+          title={permissions.canRun ? undefined : deniedReason(permissions, 'run')}
+        >
           ▶ Run
         </button>
         {trigger.scheduled && (
           <button
             className={styles.icon}
             title={paused ? 'Resume schedule' : 'Pause schedule'}
+            disabled={!permissions.canEdit}
             onClick={() => void patch(flow, { enabled: paused })}
           >
             {paused ? '▶' : '❚❚'}
@@ -223,7 +231,12 @@ export function FlowCard({
         <button className={styles.icon} title="Version history" onClick={() => setVersionsFor(flow)}>
           ⟲
         </button>
-        <button className={styles.icon} title="Settings" onClick={() => setSettingsFor(flow)}>
+        <button
+          className={styles.icon}
+          title={permissions.canEdit ? 'Settings' : deniedReason(permissions, 'edit')}
+          disabled={!permissions.canEdit}
+          onClick={() => setSettingsFor(flow)}
+        >
           ⚙
         </button>
         <button className={styles.icon} title="Export JSON" onClick={() => exportFlow(flow)}>
@@ -236,7 +249,12 @@ export function FlowCard({
         >
           {copied ? '✓' : '⎘'}
         </button>
-        <button className={styles.icon} title="Duplicate" onClick={() => onDuplicate(flow)}>
+        <button
+          className={styles.icon}
+          title={permissions.canEdit ? 'Duplicate' : deniedReason(permissions, 'edit')}
+          disabled={!permissions.canEdit}
+          onClick={() => onDuplicate(flow)}
+        >
           ⧉
         </button>
         {onSandbox && (
@@ -250,7 +268,8 @@ export function FlowCard({
         )}
         <button
           className={cx(styles.icon, styles.danger)}
-          title="Delete"
+          title={permissions.canEdit ? 'Delete' : deniedReason(permissions, 'edit')}
+          disabled={!permissions.canEdit}
           onClick={() => flow.id && onDelete(flow.id)}
         >
           ✕

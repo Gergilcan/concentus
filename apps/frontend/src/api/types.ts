@@ -830,6 +830,17 @@ export interface SignedInUser {
  * `authEnabled: false` is the escape hatch for local development, in which case the API is open
  * and every request resolves to the default organization.
  */
+/** One account in the organization, as the members screen reads it. Never carries a hash. */
+export interface Member {
+  id: string
+  organizationId: string
+  email: string
+  /** VIEWER | OPERATOR | MEMBER | ADMIN — the ladder enforced on every request. */
+  role: string
+  enabled: boolean
+  createdAt: number
+}
+
 export interface SessionInfo {
   authEnabled: boolean
   storeAvailable: boolean
