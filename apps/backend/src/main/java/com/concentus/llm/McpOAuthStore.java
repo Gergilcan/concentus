@@ -102,12 +102,36 @@ public class McpOAuthStore {
         cache.put(normalize(mcpUrl), session.tokens());
     }
 
+    /**
+     * The stored authorization for this server, or empty.
+     *
+     * <p>Empty covers "unreadable" as well as "absent", and that is the whole point of the catch.
+     * {@code reveal} decrypts, so a credential sealed with a master key this installation does not
+     * have throws — which happens for real the moment a second machine connects to a database the
+     * first one filled. Left to propagate, that exception travelled out of here, out of the run's
+     * workspace preparation, and killed the run from a stack nobody could see: the flow reported
+     * COMPLETED with no output, no error and no log line, and from the outside it simply "did not
+     * start".
+     *
+     * <p>Degrading to empty is also the honest answer. A grant that cannot be decrypted is a
+     * grant this installation does not have, and the caller already knows what to do with that —
+     * it configures the server without a header, and the UI says "sign in". Same shape as
+     * {@code CredentialResolver.resolve}, which has always treated an unreadable credential as an
+     * absent one.
+     */
     public Optional<Session> load(String organizationId, String mcpUrl) {
         String label = labelFor(mcpUrl);
-        return filedUnder(organizationId, label)
-                .findFirst()
-                .flatMap(c -> credentials.reveal(organizationId, c.id()))
-                .flatMap(this::parse);
+        try {
+            return filedUnder(organizationId, label)
+                    .findFirst()
+                    .flatMap(c -> credentials.reveal(organizationId, c.id()))
+                    .flatMap(this::parse);
+        } catch (RuntimeException e) {
+            log.warn("Stored MCP authorization for {} could not be read ({}); treating this server "
+                    + "as not authorized. Re-authorize it, or point this installation at the master "
+                    + "key the credential was saved with.", mcpUrl, e.getMessage());
+            return Optional.empty();
+        }
     }
 
     private Optional<Session> parse(String json) {

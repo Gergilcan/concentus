@@ -24,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
@@ -201,6 +202,39 @@ class RunServiceTest {
         while (System.currentTimeMillis() < deadline && svc.hasActiveRun("f1")) Thread.sleep(20);
         assertThat(svc.get(summary.id()).orElseThrow().status).isEqualTo("COMPLETED");
         assertThat(svc.hasActiveRun("f1")).isFalse();
+    }
+
+    /**
+     * A turn that dies on an unexpected exception must say so.
+     *
+     * <p>It used to do the opposite. The task runs on a pool nobody calls {@code get()} on, so the
+     * throw was dropped — and {@code runLocalTurn}'s finally had already moved the run out of IDLE
+     * on the way past, which for a run with no output means COMPLETED. The result was a flow that
+     * reported success having done nothing, with no error on the run and not a line in the log:
+     * from the outside, pressing Run did nothing at all, and there was nowhere to look.
+     */
+    @Test
+    void aTurnThatDiesOnAnUnexpectedErrorSaysSoInsteadOfReportingSuccess() throws Exception {
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        doThrow(new IllegalStateException("Could not decrypt the credential."))
+                .when(localExecutor).runTurn(any(), any(), any());
+        RunService svc = newService(4, 8, 10);
+
+        RunSummary summary = svc.start(flowWithPrompt("f1", "prompt", "go"));
+        verify(localExecutor, timeout(2000)).runTurn(any(), any(), eq("go"));
+
+        long deadline = System.currentTimeMillis() + 2000;
+        while (System.currentTimeMillis() < deadline
+                && !"ERROR".equals(svc.get(summary.id()).orElseThrow().status)) {
+            Thread.sleep(20);
+        }
+        AgentRun run = svc.get(summary.id()).orElseThrow();
+        assertThat(run.status).isEqualTo("ERROR");
+        // The reason, on the run itself, in the words the exception used — the whole point is that
+        // somebody reading the execution can act on it.
+        assertThat(run.error).contains("Could not decrypt the credential.");
+        verify(notifier, timeout(2000)).runFailed(any());
     }
 
     @Test

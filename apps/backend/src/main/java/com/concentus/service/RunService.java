@@ -442,6 +442,18 @@ public class RunService {
                         task.run();
                     } catch (RuntimeException e) {
                         span.failed(e);
+                        // Nothing ever calls get() on this Future, so rethrowing here used to be
+                        // the end of the story: the exception was dropped, and the run was left
+                        // in whatever state it had reached — for a local turn that is COMPLETED,
+                        // set by runLocalTurn's finally on the way out. A run that died reading
+                        // as one that finished, with no output, no error and not a line in the
+                        // log, is the worst shape a failure can take: from the outside the flow
+                        // simply "does not start", and there is nothing to act on.
+                        log.error("Run {} ('{}') stopped on an unhandled error.",
+                                run.id, run.flowName, e);
+                        fail(run, "The run stopped on an unexpected error: "
+                                + e.getClass().getSimpleName()
+                                + (e.getMessage() == null ? "" : ": " + e.getMessage()));
                         throw e;
                     }
                 }
