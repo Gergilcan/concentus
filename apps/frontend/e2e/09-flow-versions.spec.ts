@@ -34,12 +34,13 @@ async function save(page: Page): Promise<void> {
 }
 
 /**
- * Clears the selection so the inspector shows the flow's own tabs. Near a corner rather than the
- * pane's centre, which the nodes themselves sit on — a click there lands on a node and reselects
- * exactly what this is trying to clear.
+ * Opens the flow's history.
+ *
+ * <p>It used to live in the inspector panel, which meant clearing the selection first to get at
+ * the flow's own tabs. The panel is gone and Versions is a toolbar button, so this is one click
+ * on something that is always there — which is the point of having moved it.
  */
-async function deselect(page: Page): Promise<void> {
-  await page.locator('.react-flow__pane').click({ position: { x: 8, y: 8 } })
+async function openVersions(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Versions' }).click()
 }
 
@@ -56,7 +57,7 @@ test('two saves produce two revisions, credited to the local user', async ({ pag
   await save(page)
   await expect(nodes(page)).toHaveCount(2)
 
-  await deselect(page)
+  await openVersions(page)
 
   await expect(versionRows(page)).toHaveCount(2)
   await expect(page.getByText('v2', { exact: true })).toBeVisible()

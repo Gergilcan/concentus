@@ -11,7 +11,7 @@ test('a schedule builds from natural choices, and custom cron still exists', asy
   await page.getByLabel('Flow name').fill('E2E cron flow')
 
   await page.getByRole('button', { name: '▶ Input / trigger' }).click()
-  await page.locator('.react-flow__node').first().click()
+  await page.locator('.react-flow__node').first().dblclick()
   await page.getByLabel('Execution type').selectOption('cron')
 
   // The builder recognises the palette's default (0 9 * * *) and the canvas node says it in
@@ -40,6 +40,7 @@ test('a schedule builds from natural choices, and custom cron still exists', asy
 
   // An existing expression is recognised when the flow is saved and reopened from scratch.
   await page.getByRole('textbox', { name: 'Cron expression' }).fill('0 7 * * 1-5')
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await page.getByRole('button', { name: '← Flows' }).click()
   await page
@@ -47,12 +48,13 @@ test('a schedule builds from natural choices, and custom cron still exists', asy
     .filter({ hasText: 'E2E cron flow' })
     .getByRole('button', { name: 'Open' })
     .click()
-  await page.locator('.react-flow__node').first().click()
+  await page.locator('.react-flow__node').first().dblclick()
   await expect(page.getByLabel(/^Schedule/)).toHaveValue('daily')
   await expect(page.getByLabel('At', { exact: true })).toHaveValue('07:00')
   await expect(page.getByLabel(/^On which days/)).toHaveValue('weekdays')
 
-  // Clean up through the dashboard.
+  // Clean up through the dashboard, with the dialog out of the way first.
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
   await page.getByRole('button', { name: '← Flows' }).click()
   page.on('dialog', (d) => void d.accept())
   const card = page.getByRole('article').filter({ hasText: 'E2E cron flow' })

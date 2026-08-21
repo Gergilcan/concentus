@@ -63,10 +63,13 @@ test('makes a sandbox copy that is paused, tagged, and in plan mode', async ({ p
   // Saved through the real API: the copy really carries plan mode on its coordinator, which is
   // the value the backend actually honours.
   await sandbox.getByRole('button', { name: 'Open' }).click()
-  await page.locator('.react-flow__node').filter({ hasText: 'Coordinator' }).first().click()
+  // Double-click: a block's properties open in a dialog now, not in a panel beside the canvas.
+  await page.locator('.react-flow__node').filter({ hasText: 'Coordinator' }).first().dblclick()
   await page.getByText('Fine-tuning').click()
   await expect(page.getByLabel(/Permissions for this flow/)).toHaveValue('plan')
 
+  // The properties are a dialog now, and a dialog covers the toolbar behind it.
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
   await page.getByRole('button', { name: '← Flows' }).click()
   for (const name of [`${SANDBOXED} (sandbox)`, SANDBOXED]) {
     await flowCard(page, name).getByTitle('Delete').click()
