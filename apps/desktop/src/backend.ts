@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import { ChildProcess, spawn } from 'node:child_process'
+import * as crypto from 'node:crypto'
 import * as fs from 'node:fs'
 import * as http from 'node:http'
 import * as net from 'node:net'
@@ -37,6 +38,15 @@ export interface RunningBackend {
   /** Null when the backend was ADOPTED — found already running (a dev `mvn spring-boot:run`
    *  with devtools), used but never owned: quitting the shell must not kill it. */
   process: ChildProcess | null
+  /**
+   * What the shell authenticates its own calls with — the first-run wizard's storage endpoints,
+   * which it has to reach before any account exists. Generated per launch and handed to the child
+   * on its environment, so it never touches disk and never outlives the process it belongs to.
+   *
+   * Null for an adopted backend, for the same reason its process is: the shell did not start it,
+   * so it could not tell it the token, and there is nothing here that would make it accept one.
+   */
+  shellToken: string | null
 }
 
 /**
@@ -229,7 +239,7 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
     if (await probeReady(preferred)) {
       log.info(`Adopting the backend already running on 127.0.0.1:${preferred} (devtools dev loop).`)
       advance(85, 'Using the running dev backend')
-      return { port: preferred, process: null }
+      return { port: preferred, process: null, shellToken: null }
     }
   }
 
@@ -257,6 +267,10 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
   const claude = await resolveClaudeCli(settings.claudeCommand)
   advance(6, 'Starting the Java runtime…')
 
+  // 32 bytes from the CSPRNG, new on every start: the backend only ever compares it to what the
+  // shell sends, so there is nothing to keep and nothing to invalidate when the process ends.
+  const shellToken = crypto.randomBytes(32).toString('base64url')
+
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     // The login shell's PATH, so the backend can reach the same tools the user can — claude, git,
@@ -264,6 +278,9 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
     PATH: claude.path,
     APP_DATA_DIR: data,
     CONCENTUS_SECRET_KEY: masterSecret(),
+    // Lets the first-run wizard read, test and save the database setting before there is an
+    // account to sign into. Narrow by design — see ShellTokenFilter in the backend.
+    CONCENTUS_SHELL_TOKEN: shellToken,
     // MCP_OAUTH_REDIRECT_BASE is deliberately NOT set: the backend derives the OAuth callback
     // from each request's own Host, which is right both here (the window loads the UI from the
     // backend's port) and in desktop:dev (the browser sits on Vite's port, which proxies /api).
@@ -327,7 +344,7 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
   // Once the app is up and the user is being served, not before: training is a whole second
   // application start of its own, and it must never sit between the click and the window.
   if (packagedRun && !fs.existsSync(archive)) trainCdsArchive(java, backendDir, archive, env)
-  return { port, process: child }
+  return { port, process: child, shellToken }
 }
 
 // --------------------------------------------------------------------- class-data sharing

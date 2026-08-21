@@ -17,6 +17,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.authentication.rememberme.JdbcTokenRepositoryImpl;
 import org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
@@ -47,6 +48,11 @@ import java.util.Map;
  * <p>Everything else under {@code /api} and {@code /ws} requires an authenticated session, which
  * is the change that puts the pre-existing flow, run, agent, MCP and database endpoints behind
  * sign-in rather than leaving them open.
+ *
+ * <p>One caller has neither a session nor an exemption: the desktop shell's first-run wizard, which
+ * asks which database to use before the first account exists. It presents a token generated for the
+ * launch it started, and {@link ShellTokenFilter} turns that into a principal for the three storage
+ * routes it may use — so the rules above are unchanged rather than relaxed.
  */
 @Configuration
 @EnableWebSecurity
@@ -109,11 +115,16 @@ public class SecurityConfig {
      */
     @Bean
     public SecurityFilterChain apiSecurity(HttpSecurity http, ObjectMapper mapper,
-                                          PersistentTokenBasedRememberMeServices rememberMe) throws Exception {
+                                          PersistentTokenBasedRememberMeServices rememberMe,
+                                          @Value("${app.shell-token:}") String shellToken) throws Exception {
         CsrfTokenRequestAttributeHandler csrfHandler = new CsrfTokenRequestAttributeHandler();
         // The SPA reads the XSRF-TOKEN cookie and echoes it in a header, so the raw token — not a
         // BREACH-masked one — is what arrives; tell the handler to compare it as-is.
         csrfHandler.setCsrfRequestAttributeName(null);
+
+        // Built here rather than as a bean on purpose: Spring Boot registers every Filter bean with
+        // the servlet container as well, which would run it on requests this chain never sees.
+        ShellTokenFilter shell = new ShellTokenFilter(shellToken);
 
         http
             .securityMatcher("/api/**", "/ws/**")
@@ -134,7 +145,12 @@ public class SecurityConfig {
                     .ignoringRequestMatchers("/api/webhooks/**", "/api/internal/**",
                             "/api/account/oidc/**",
                             "/api/runs/*/tools", "/api/runs/*/workers/*/tools", "/api/runs/*/plan",
-                            "/api/runs/*/verdict", "/api/mcp/studio"))
+                            "/api/runs/*/verdict", "/api/mcp/studio")
+                    // And the desktop shell's first-run wizard, which asks which database to use
+                    // before the first account exists and so has no session to protect either. Not
+                    // a path exemption: the matcher only holds for a request that already carries
+                    // the token this launch generated — see ShellTokenFilter.
+                    .ignoringRequestMatchers(shell::authenticates))
             .authorizeHttpRequests(auth -> auth
                     .requestMatchers("/api/webhooks/**", "/api/internal/**").permitAll()
                     .requestMatchers("/api/runs/*/tools", "/api/runs/*/workers/*/tools",
@@ -195,6 +211,10 @@ public class SecurityConfig {
                     // next month is a write until someone says otherwise, which is the direction
                     // this list has to fail in.
                     .anyRequest().hasAnyRole(Accounts.ROLE_MEMBER, Accounts.ROLE_ADMIN))
+            // Before the session's own authentication, and after the context is restored: a signed-in
+            // browser keeps the principal it arrived with, and only a request that has none can be
+            // answered for by the shell's token.
+            .addFilterBefore(shell, UsernamePasswordAuthenticationFilter.class)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                     .sessionFixation(f -> f.migrateSession()))
             .exceptionHandling(e -> e

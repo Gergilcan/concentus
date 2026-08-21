@@ -424,7 +424,7 @@ function showOnboardingWindow(): void {
       mode: 'embedded', url: '', username: '', hasPassword: false, activeMode: 'embedded',
     }
     try {
-      if (backend) storage = await backendApi.getStorage(backend.port)
+      if (backend) storage = await backendApi.getStorage(backend.port, backend.shellToken)
     } catch (err) {
       log.warn(`Could not read the storage settings: ${err instanceof Error ? err.message : String(err)}`)
     }
@@ -546,18 +546,18 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('onboarding:storage-get', async () => {
-    if (!backend) throw new Error('The backend is not running.')
-    return backendApi.getStorage(backend.port)
+    const { port, token } = storageCall()
+    return backendApi.getStorage(port, token)
   })
 
   ipcMain.handle('onboarding:storage-test', async (_event, draft: StorageDraft) => {
-    if (!backend) throw new Error('The backend is not running.')
-    return backendApi.testStorage(backend.port, draft)
+    const { port, token } = storageCall()
+    return backendApi.testStorage(port, token, draft)
   })
 
   ipcMain.handle('onboarding:storage-save', async (_event, draft: StorageDraft) => {
-    if (!backend) throw new Error('The backend is not running.')
-    const saved = await backendApi.saveStorage(backend.port, draft)
+    const { port, token } = storageCall()
+    const saved = await backendApi.saveStorage(port, token, draft)
     // Applied immediately rather than at the next launch, which is the difference between a wizard
     // and a form: the rest of this first run — and the app the user is about to open — should be on
     // the database they just chose, not on the one that happened to start first.
@@ -577,6 +577,24 @@ function registerIpc(): void {
     // The 'closed' handler opens the main window, so both routes out of this page agree.
     onboardingWindow?.close()
   })
+}
+
+/**
+ * Where the wizard's storage calls go, and what authenticates them.
+ *
+ * <p>The token is what makes these three calls possible at all: they happen before the first
+ * account exists, so there is no session to present. An adopted dev backend never received one —
+ * the shell did not start it — and saying so is better than the backend's own answer, which is a
+ * flat "You do not have permission to do that" with nothing to act on.
+ */
+function storageCall(): { port: number; token: string } {
+  if (!backend) throw new Error('The backend is not running.')
+  if (!backend.shellToken) {
+    throw new Error('This wizard is using a backend it did not start (the development one on '
+      + `127.0.0.1:${backend.port}), so it cannot authenticate to it. Stop that backend and `
+      + 'relaunch to choose a database here, or change it from Settings once signed in.')
+  }
+  return { port: backend.port, token: backend.shellToken }
 }
 
 /**

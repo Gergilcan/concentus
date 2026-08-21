@@ -25,7 +25,8 @@ export interface StorageDraft {
   password: string | null
 }
 
-function request<T>(port: number, path: string, method: string, body?: unknown): Promise<T> {
+function request<T>(port: number, path: string, method: string, body?: unknown,
+                    token?: string | null): Promise<T> {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? undefined : JSON.stringify(body)
     const req = http.request(
@@ -37,9 +38,14 @@ function request<T>(port: number, path: string, method: string, body?: unknown):
         // Generous: a connection test against an unreachable host waits out its own timeout in the
         // backend, and cutting it short here would report a failure the backend never saw.
         timeout: 30_000,
-        headers: payload
-          ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
-          : {},
+        headers: {
+          ...(payload
+            ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+            : {}),
+          // The wizard runs before anyone is signed in, so these calls carry the launch token
+          // instead of a session cookie. See ShellTokenFilter in the backend.
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       },
       (res) => {
         let data = ''
@@ -87,9 +93,10 @@ export interface RunLite {
 
 export const backendApi = {
   listRuns: (port: number) => request<RunLite[]>(port, '/api/runs', 'GET'),
-  getStorage: (port: number) => request<StorageConfig>(port, '/api/storage', 'GET'),
-  testStorage: (port: number, draft: StorageDraft) =>
-    request<{ ok: boolean; detail: string }>(port, '/api/storage/test', 'POST', draft),
-  saveStorage: (port: number, draft: StorageDraft) =>
-    request<StorageConfig>(port, '/api/storage', 'PUT', draft),
+  getStorage: (port: number, token: string | null) =>
+    request<StorageConfig>(port, '/api/storage', 'GET', undefined, token),
+  testStorage: (port: number, token: string | null, draft: StorageDraft) =>
+    request<{ ok: boolean; detail: string }>(port, '/api/storage/test', 'POST', draft, token),
+  saveStorage: (port: number, token: string | null, draft: StorageDraft) =>
+    request<StorageConfig>(port, '/api/storage', 'PUT', draft, token),
 }

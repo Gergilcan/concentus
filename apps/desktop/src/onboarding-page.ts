@@ -151,6 +151,10 @@ export function onboardingPage(claude: OnboardingState, storage: StorageState): 
       <button class="primary" id="next" disabled>Continue</button>
       <span class="spacer"></span>
     </div>
+    <!-- Outside #extFields on purpose. Saving can fail on either choice, and #extFields is hidden
+         whenever the built-in database is selected — which is how a refused save came to look like
+         a Continue button that did nothing at all: the reason was on the page, in a hidden div. -->
+    <p class="msg" id="saveMsg"></p>
     <p class="foot" id="step1Foot"></p>
   </section>
 
@@ -266,6 +270,8 @@ claude
     tested = false;
     $('testMsg').textContent = '';
     $('testMsg').className = 'msg';
+    $('saveMsg').textContent = '';
+    $('saveMsg').className = 'msg';
     renderStep1();
   }
 
@@ -296,12 +302,13 @@ claude
 
   $('next').addEventListener('click', function () {
     busy = true; renderStep1();
-    var btn = this; btn.textContent = 'Saving…';
+    var btn = this; btn.textContent = 'Saving\u2026';
+    $('saveMsg').textContent = ''; $('saveMsg').className = 'msg';
     window.concentus.saveStorage(draft()).then(function () {
       showStep(2);
     }).catch(function (e) {
-      $('testMsg').textContent = '✗ ' + (e && e.message ? e.message : String(e));
-      $('testMsg').className = 'msg bad';
+      $('saveMsg').textContent = '\u2717 ' + (e && e.message ? e.message : String(e));
+      $('saveMsg').className = 'msg bad';
     }).then(function () {
       busy = false; btn.textContent = 'Continue'; renderStep1();
     });
