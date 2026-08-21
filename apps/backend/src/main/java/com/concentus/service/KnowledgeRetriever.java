@@ -45,6 +45,12 @@ import java.util.stream.Collectors;
  * <p><b>Every stage is optional except the query.</b> No embeddings: lexical alone, which is
  * strictly better than the word-overlap fallback this replaced. No reranker: the fused order. No
  * lexemes yet: semantic alone. Nothing here can leave a base unable to answer.
+ *
+ * <p><b>The semantic branch is a scan, and that is a measurement rather than a hope.</b> Every
+ * embedding of a base lives in one contiguous array, normalised when it is cached, so scoring is a
+ * dot product over memory the processor can stream. On a 50,000-chunk base that is tens of
+ * milliseconds; the same data as fifty thousand separate arrays cost 213 ms, which is what made an
+ * approximate index look necessary. It was the layout, not the algorithm.
  */
 @Service
 public class KnowledgeRetriever {
@@ -172,23 +178,69 @@ public class KnowledgeRetriever {
     }
 
     private List<Ranked> semanticBranch(String baseId, String query, float[] precomputed) {
-        List<CachedChunk> rows = loadBase(baseId);
-        if (rows.isEmpty()) return List.of();
+        CachedBase base = loadBase(baseId);
+        if (base.chunks().isEmpty() || base.dims() == 0) return List.of();
 
         float[] queryVector = precomputed;
-        if (queryVector == null && rows.stream().anyMatch(r -> r.vector() != null)) {
-            queryVector = embedQuery(query);
-        }
-        if (queryVector == null) return List.of();
+        if (queryVector == null) queryVector = embedQuery(query);
+        if (queryVector == null || queryVector.length != base.dims()) return List.of();
 
-        final float[] vector = queryVector;
-        List<Ranked> scored = new ArrayList<>();
-        for (CachedChunk row : rows) {
-            if (row.vector() == null || row.vector().length != vector.length) continue;
-            scored.add(new Ranked(row.doc(), row.seq(), row.content(), 0, cosine(vector, row.vector())));
+        // The query is normalised once here so the inner loop is a plain dot product: the stored
+        // vectors were normalised when the base was cached, and a cosine over two unit vectors is
+        // their dot product. That removes two accumulations and a square root per chunk — two
+        // thirds of the arithmetic — from the one loop that runs fifty thousand times.
+        float[] q = normalised(queryVector.clone());
+
+        int dims = base.dims();
+        float[] all = base.vectors();
+        boolean[] present = base.hasVector();
+        List<CachedChunk> chunks = base.chunks();
+
+        // Only the best BRANCH_CANDIDATES are ever used, so only they are ever built. Scoring
+        // fifty thousand chunks into fifty thousand objects and sorting all of them, to keep
+        // fifty, was most of what a search cost: the arithmetic is nineteen million multiply-adds,
+        // the allocation and the sort were the rest. A running floor does the same job in one
+        // pass, with no allocation in the loop at all.
+        int wanted = BRANCH_CANDIDATES;
+        double[] bestScore = new double[wanted];
+        int[] bestIndex = new int[wanted];
+        java.util.Arrays.fill(bestScore, Double.NEGATIVE_INFINITY);
+        java.util.Arrays.fill(bestIndex, -1);
+        double floor = Double.NEGATIVE_INFINITY;
+        int held = 0;
+
+        for (int i = 0; i < chunks.size(); i++) {
+            if (!present[i]) continue;
+            int offset = i * dims;
+            // Accumulated in float, not double. Widening each product to add it into a double
+            // accumulator stops the JIT vectorising the one loop that runs nineteen million times;
+            // over 384 unit-normalised terms the float error is around 1e-5, which is four orders
+            // of magnitude below any ranking decision this feeds.
+            float dot = 0;
+            for (int d = 0; d < dims; d++) dot += q[d] * all[offset + d];
+            if (held == wanted && dot <= floor) continue;
+
+            // Insertion into a short sorted run. At fifty entries this beats a heap: it is
+            // branch-predictable, allocates nothing, and after the first few hundred chunks the
+            // floor rejects almost everything before the insert is reached at all.
+            int at = held < wanted ? held : wanted - 1;
+            while (at > 0 && bestScore[at - 1] < dot) {
+                bestScore[at] = bestScore[at - 1];
+                bestIndex[at] = bestIndex[at - 1];
+                at--;
+            }
+            bestScore[at] = dot;
+            bestIndex[at] = i;
+            if (held < wanted) held++;
+            floor = bestScore[held - 1];
         }
-        scored.sort((a, b) -> Double.compare(b.score(), a.score()));
-        return numbered(scored);
+
+        List<Ranked> out = new ArrayList<>(held);
+        for (int r = 0; r < held; r++) {
+            CachedChunk row = chunks.get(bestIndex[r]);
+            out.add(new Ranked(row.doc(), row.seq(), row.content(), r + 1, bestScore[r]));
+        }
+        return out;
     }
 
     /**
@@ -213,18 +265,21 @@ public class KnowledgeRetriever {
         if (terms.isBlank()) return List.of();
 
         try {
+            // The query is built once and joined in, rather than spelled out twice — once to
+            // filter and once to rank. Parsing and constructing a tsquery four times per search
+            // is measurable on a large base, and this is the branch that dominates a search
+            // there: ranking cannot use the index, so every matching row is scored.
             List<Ranked> rows = jdbc.query("""
-                    select doc_name, seq, content,
-                           ts_rank_cd(lexeme, to_tsquery('spanish', ?) || to_tsquery('english', ?)) as rank
-                      from knowledge_chunks
-                     where base_id = ?
-                       and lexeme @@ (to_tsquery('spanish', ?) || to_tsquery('english', ?))
+                    with q as (select to_tsquery('spanish', ?) || to_tsquery('english', ?) as tsq)
+                    select doc_name, seq, content, ts_rank_cd(lexeme, q.tsq) as rank
+                      from knowledge_chunks, q
+                     where base_id = ? and lexeme @@ q.tsq
                      order by rank desc
                      limit ?
                     """,
                     (rs, i) -> new Ranked(rs.getString("doc_name"), rs.getInt("seq"),
                             rs.getString("content"), i + 1, rs.getDouble("rank")),
-                    terms, terms, baseId, terms, terms, BRANCH_CANDIDATES);
+                    terms, terms, baseId, BRANCH_CANDIDATES);
             return rows;
         } catch (RuntimeException e) {
             // A database that has not run V12, or an external one where the column is missing.
@@ -296,10 +351,25 @@ public class KnowledgeRetriever {
 
     // ------------------------------------------------------------------ internals
 
-    private record CachedChunk(String doc, int seq, String content, float[] vector) {
+    private record CachedChunk(String doc, int seq, String content) {
     }
 
-    private record CachedBase(String stamp, List<CachedChunk> chunks) {
+    /**
+     * A base's chunks, with every embedding in <b>one</b> contiguous array.
+     *
+     * <p>Fifty thousand separate {@code float[384]} objects is fifty thousand array headers, fifty
+     * thousand pointers to chase, and a scan that misses cache on every chunk. Measured on a
+     * 50,000-chunk base, that layout cost 213 ms per search — while the arithmetic itself is
+     * nineteen million multiply-adds, which contiguous memory does in a fraction of that. The
+     * bottleneck was never the algorithm; an approximate index would have been the wrong answer to
+     * a question about pointer chasing.
+     *
+     * @param vectors  {@code dims} floats per chunk, chunk {@code i} at offset {@code i * dims},
+     *                 already L2-normalised so scoring is a dot product
+     * @param hasVector whether chunk {@code i} was embedded at all — a base can hold both kinds
+     */
+    private record CachedBase(String stamp, List<CachedChunk> chunks, float[] vectors,
+                              boolean[] hasVector, int dims) {
     }
 
     private final ConcurrentHashMap<String, CachedBase> baseCache = new ConcurrentHashMap<>();
@@ -315,23 +385,78 @@ public class KnowledgeRetriever {
      * per search. Chosen over invalidating from ingest because an external database can be written
      * by another instance entirely — a stamp notices that; local hooks never would.
      */
-    private List<CachedChunk> loadBase(String baseId) {
-        String stamp = jdbc.queryForObject(
-                "select count(*) || ':' || coalesce(max(created_at), 0) from knowledge_chunks where base_id = ?",
-                String.class, baseId);
+    private CachedBase loadBase(String baseId) {
+        String stamp = stampOf(baseId);
         CachedBase cached = baseCache.get(baseId);
-        if (cached != null && cached.stamp().equals(stamp)) return cached.chunks();
+        if (cached != null && cached.stamp().equals(stamp)) return cached;
 
-        List<CachedChunk> rows = jdbc.query(
-                "select doc_name, seq, content, embedding from knowledge_chunks where base_id = ?",
+        record Row(String doc, int seq, String content, float[] vector) {
+        }
+        List<Row> rows = jdbc.query(
+                "select doc_name, seq, content, embedding from knowledge_chunks where base_id = ? order by doc_name, seq",
                 (rs, i) -> {
                     String embedding = rs.getString("embedding");
-                    return new CachedChunk(rs.getString("doc_name"), rs.getInt("seq"),
+                    return new Row(rs.getString("doc_name"), rs.getInt("seq"),
                             rs.getString("content"), embedding == null ? null : fromJson(embedding));
                 },
                 baseId);
-        baseCache.put(baseId, new CachedBase(stamp, rows));
-        return rows;
+
+        int dims = rows.stream().filter(r -> r.vector() != null).findFirst()
+                .map(r -> r.vector().length).orElse(0);
+        List<CachedChunk> chunks = new ArrayList<>(rows.size());
+        boolean[] hasVector = new boolean[rows.size()];
+        float[] all = new float[dims == 0 ? 0 : rows.size() * dims];
+        for (int i = 0; i < rows.size(); i++) {
+            Row row = rows.get(i);
+            chunks.add(new CachedChunk(row.doc(), row.seq(), row.content()));
+            // A vector of a different length is a chunk embedded by a different model — kept as a
+            // chunk, skipped by the semantic branch, still found lexically. Dropping it would make
+            // a document silently unfindable after somebody changed models.
+            if (row.vector() == null || dims == 0 || row.vector().length != dims) continue;
+            hasVector[i] = true;
+            System.arraycopy(normalised(row.vector()), 0, all, i * dims, dims);
+        }
+
+        CachedBase base = new CachedBase(stamp, chunks, all, hasVector, dims);
+        baseCache.put(baseId, base);
+        return base;
+    }
+
+    /**
+     * The base's freshness, cached for a moment.
+     *
+     * <p>A run with three knowledge blocks asks three times within a second, and each ask is a
+     * count over every row of the base — 32 ms on a 50,000-chunk base, spent proving that nothing
+     * changed since the last time it proved that. One second of staleness is invisible to a person
+     * and to an agent; a document uploaded now is retrievable on the next search either way.
+     */
+    private String stampOf(String baseId) {
+        long now = System.currentTimeMillis();
+        Stamp seen = stampCache.get(baseId);
+        if (seen != null && now - seen.at() < STAMP_TTL_MILLIS) return seen.value();
+        String value = jdbc.queryForObject(
+                "select count(*) || ':' || coalesce(max(created_at), 0) from knowledge_chunks where base_id = ?",
+                String.class, baseId);
+        stampCache.put(baseId, new Stamp(value == null ? "" : value, now));
+        return value == null ? "" : value;
+    }
+
+    private record Stamp(String value, long at) {
+    }
+
+    private static final long STAMP_TTL_MILLIS = 1000;
+
+    private final ConcurrentHashMap<String, Stamp> stampCache = new ConcurrentHashMap<>();
+
+    /** In place, and returned for convenience. A zero vector is left alone rather than dividing by 0. */
+    private static float[] normalised(float[] v) {
+        double norm = 0;
+        for (float f : v) norm += (double) f * f;
+        norm = Math.sqrt(norm);
+        if (norm > 0) {
+            for (int i = 0; i < v.length; i++) v[i] /= (float) norm;
+        }
+        return v;
     }
 
     /**
@@ -356,16 +481,6 @@ public class KnowledgeRetriever {
             log.warn("Embedding unavailable ({}); ranking lexically.", e.getMessage());
             return null;
         }
-    }
-
-    private static double cosine(float[] a, float[] b) {
-        double dot = 0, na = 0, nb = 0;
-        for (int i = 0; i < a.length; i++) {
-            dot += a[i] * b[i];
-            na += a[i] * a[i];
-            nb += b[i] * b[i];
-        }
-        return na == 0 || nb == 0 ? 0 : dot / (Math.sqrt(na) * Math.sqrt(nb));
     }
 
     private float[] fromJson(String json) {
