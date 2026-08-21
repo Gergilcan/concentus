@@ -806,6 +806,30 @@ a data migration that breaks existing installs.
 > The same material laid out to be looked things up in rather than read through is on the site,
 > at **/docs** — the source is [apps/website/docs/index.html](apps/website/docs/index.html).
 
+## Paying for runs
+
+The setup screen asks once, before anything is installed, because the answer decides whether
+anything needs to be.
+
+**Your Claude subscription** is the default and the cheaper one: flows run through Claude Code on
+this machine, with no second bill and no key to look after. One button runs Anthropic's official
+installer, puts the binary **on your PATH**, and opens a terminal on `claude auth login` — the
+sign-in itself, not a prompt where the next thing to know is that you type `/login`.
+
+On Windows the PATH entry is written straight into the per-user registry value, never through
+`setx`: that truncates a long PATH at 1024 characters, silently and permanently, and a developer's
+PATH is routinely longer than that. On Linux and macOS it is one line in whichever startup files
+exist, marked so a second install does not add a second copy.
+
+**An Anthropic API key** is the other answer: nothing installed, no sign-in, right for a machine
+nobody sits at. It is kept in the operating system's keyring; where there is none — a server with
+no desktop session — it is a file readable by that account alone, and the screen says so rather
+than pretending otherwise.
+
+Either can be changed later: the setup screen is under **Setup…** on the tray icon. A key already
+in the environment as `ANTHROPIC_API_KEY` still works, and one saved in the app takes precedence
+over it.
+
 ## Retrieval: how a passage is found
 
 Every query runs **two searches**, and they are fused rather than chosen between.

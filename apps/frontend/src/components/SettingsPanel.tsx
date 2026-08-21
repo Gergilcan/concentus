@@ -2,9 +2,47 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client.ts'
 import type { SettingEntry } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
+import { setTheme, THEMES, useTheme } from '../utils/theme.ts'
 import { Spinner } from './Spinner.tsx'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
+
+/**
+ * The theme, where the rest of the preferences are.
+ *
+ * <p>It used to be a button in the header, cycling through three values one click at a time — a
+ * control in the most valuable corner of the screen for something a person sets once and never
+ * touches again. That corner now belongs to the thing that changes without being asked.
+ *
+ * <p>Above the saved settings and not among them, because it is not one of them: it lives in this
+ * browser rather than in the database, applies the instant it is chosen, and has no Save.
+ */
+function ThemeSetting() {
+  const theme = useTheme()
+  return (
+    <div className={styles.themeRow}>
+      <div>
+        <label className={styles.themeLabel}>Appearance</label>
+        <p className={panels.hint}>
+          This browser only, and immediately — it is not saved with the settings below.
+        </p>
+      </div>
+      <div className={styles.themeChoices}>
+        {THEMES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={t.id === theme ? styles.themeOn : styles.themeOff}
+            aria-pressed={t.id === theme}
+            onClick={() => setTheme(t.id)}
+          >
+            <span aria-hidden="true">{t.icon}</span> {t.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 /** What a value's origin means, in the words somebody reading the screen would use. */
 const SOURCE_LABEL: Record<string, string> = {
@@ -101,6 +139,8 @@ export function SettingsPanel({ pushError }: { pushError: (m: string) => void })
           {busy ? 'Saving…' : pending ? `Save ${pending} change${pending > 1 ? 's' : ''}` : 'Save'}
         </button>
       </div>
+
+      <ThemeSetting />
 
       {saved && (
         <p className={styles.savedNote}>

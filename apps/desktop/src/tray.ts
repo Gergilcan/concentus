@@ -22,6 +22,15 @@ let tray: Tray | null = null
 export interface TrayActions {
   /** Show (or recreate) the main window. */
   openWindow: () => void
+  /**
+   * Reopen the first-run screen.
+   *
+   * <p>It used to be reachable exactly once, on a launch that decided it was due — which made
+   * everything settled there permanent by accident: the database, the sign-in, and now how this
+   * machine pays. A screen that answers "which of these two do you want" has to be reachable the
+   * day somebody changes their mind.
+   */
+  openSetup: () => void
   /** Really quit, backend included. */
   quit: () => void
 }
@@ -45,6 +54,7 @@ function rebuildMenu(actions: TrayActions): void {
     // ships to it was invisible text making the menu template longer than the menu. The menu
     // hangs off the Concentus tray icon, so repeating the name in every item earns nothing.
     { label: 'Open', click: actions.openWindow },
+    { label: 'Setup…', click: actions.openSetup },
     { type: 'separator' },
     {
       label: 'Run in background',

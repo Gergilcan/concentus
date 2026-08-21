@@ -7,6 +7,7 @@ import * as net from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { backendJar, backendLogFile, dataDir, isPackaged, javaBinary } from './paths'
+import { loadApiKey } from './api-key'
 import { resolveClaudeCli } from './claude-cli'
 import { killOrphans } from './orphans'
 import { legacyMasterSecret } from './secret'
@@ -271,6 +272,7 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
   // shell sends, so there is nothing to keep and nothing to invalidate when the process ends.
   const shellToken = crypto.randomBytes(32).toString('base64url')
   const legacyKey = legacyMasterSecret()
+  const storedApiKey = loadApiKey()
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -291,6 +293,9 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
     // backend's port) and in desktop:dev (the browser sits on Vite's port, which proxies /api).
     // Blank is meaningful and safe: the backend then falls back to its own PATH resolution.
     CLAUDE_COMMAND: claude.command ?? '',
+    // A stored key beats an inherited one: somebody who typed it into this app expects the app to
+    // use it, and would not think to look for a variable their shell had set years ago.
+    ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}),
     // What the header's version chip shows. Packaged only: a dev run's package.json version is
     // a placeholder, and showing it would label every dev build as some unrelated release.
     CONCENTUS_APP_VERSION: isPackaged() ? app.getVersion() : '',

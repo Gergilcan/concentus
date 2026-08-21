@@ -4,6 +4,8 @@ import { RunningBackend, backendLogTail, startBackend, stopBackend } from './bac
 import { StorageDraft, backendApi } from './backend-api'
 import { resolveClaudeCli } from './claude-cli'
 import { installClaude, installCommand, openLoginTerminal } from './claude-install'
+import { hasApiKey, saveApiKey } from './api-key'
+import { ensureOnPath } from './path-setup'
 import { failurePage } from './failure-page'
 import { OnboardingState, StorageState, onboardingPage } from './onboarding-page'
 import { backendLogFile, isPackaged, shellLogFile } from './paths'
@@ -100,7 +102,11 @@ async function main(): Promise<void> {
   // and the one menu item that did something specific — opening the logs folder — is still on the
   // failure window, which is when it is actually needed.
   Menu.setApplicationMenu(null)
-  createTray({ openWindow: openMainWindow, quit: () => { quitting = true; app.quit() } })
+  createTray({
+    openWindow: openMainWindow,
+    openSetup: showOnboardingWindow,
+    quit: () => { quitting = true; app.quit() },
+  })
   // Re-assert on every start: an update can move the installed binary, and a login item pointing
   // at last version's path launches nothing.
   if (loadSettings().startWithSystem) applyStartWithSystem(true)
@@ -437,7 +443,7 @@ function showOnboardingWindow(): void {
     } catch (err) {
       log.warn(`Could not read the storage settings: ${err instanceof Error ? err.message : String(err)}`)
     }
-    const html = onboardingPage(claude, storage)
+    const html = onboardingPage(claude, storage, hasApiKey())
     try {
       await onboardingWindow?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
     } finally {
@@ -504,6 +510,20 @@ function registerIpc(): void {
 
   ipcMain.handle('onboarding:install-command', () => installCommand())
 
+  /**
+   * Stores (or clears) the Anthropic API key, and restarts the backend so it takes effect.
+   *
+   * <p>The restart is the point. The key is read when the backend process starts, so saving it
+   * without one would leave the wizard reporting success over a backend that goes on refusing to
+   * run anything — the exact shape of failure this wizard exists to prevent.
+   */
+  ipcMain.handle('onboarding:save-api-key', async (_event, key: string | null) => {
+    const result = saveApiKey(key)
+    if (!result.ok) return { ...result, hasKey: hasApiKey() }
+    await restartBackend()
+    return { ...result, hasKey: hasApiKey() }
+  })
+
   ipcMain.handle('onboarding:install', async (event) => {
     const result = await installClaude((line) => {
       // Streamed to the window that asked, so a long install shows progress rather than freezing.
@@ -516,13 +536,25 @@ function registerIpc(): void {
     // CLI path once at startup.
     const state = await claudeState()
     await adoptClaudeCommand(state.command)
+
+    // And onto the PATH, which is the difference between "Concentus can use it" and "you have
+    // the command". An app that installs a command line tool and does not give the person the
+    // command has done half a job — and the half it skipped is the half they will notice.
+    let pathDetail = ''
+    if (state.command) {
+      const onPath = await ensureOnPath(path.dirname(state.command))
+      // Only worth saying when it failed: on the happy path this is plumbing, and a wizard that
+      // narrates its plumbing buries the one line that matters.
+      pathDetail = onPath.ok ? '' : onPath.detail
+    }
+
     // Fresh install, no login yet: open the sign-in right away, in a terminal already running
     // the just-installed binary. The wizard polls until the login lands.
     let loginOpened = false
     if (state.command && !state.loggedIn) {
       loginOpened = (await openLoginTerminal(state.command)).ok
     }
-    return { ...result, state, loginOpened }
+    return { ...result, state, loginOpened, pathDetail }
   })
 
   ipcMain.handle('onboarding:open-login', async () => {

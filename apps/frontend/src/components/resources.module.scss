@@ -1395,3 +1395,43 @@
     max-width: 62ch;
   }
 }
+
+/* ---- appearance: a preference, above the settings it is not one of ---- */
+.themeRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 12px 0 16px;
+  border-bottom: 1px solid t.$border;
+  margin-bottom: 8px;
+}
+.themeLabel {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.themeChoices {
+  display: flex;
+  gap: 6px;
+}
+.themeOn,
+.themeOff {
+  border-radius: 6px;
+  padding: 5px 11px;
+  font-size: 12.5px;
+  cursor: pointer;
+  border: 1px solid t.$border;
+  background: transparent;
+  color: t.$muted;
+
+  &:hover {
+    border-color: t.$accent;
+    color: t.$text;
+  }
+}
+.themeOn {
+  border-color: t.$accent;
+  color: t.$text;
+  background: t.$accent-soft;
+}

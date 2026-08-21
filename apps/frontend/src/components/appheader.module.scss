@@ -295,3 +295,106 @@
     border-color: t.$accent;
   }
 }
+
+/* ---- updates: a mark in the corner, and what it opens ---- */
+.updateWrap {
+  position: relative;
+}
+.updateBtn {
+  position: relative;
+  background: transparent;
+  border: 1px solid t.$border;
+  color: t.$muted;
+  min-height: var(--control-h);
+  padding: 0 8px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  &:hover {
+    border-color: t.$accent;
+    color: t.$text;
+  }
+}
+/* The mark. Positioned over the icon's own corner rather than beside it, so the control keeps
+   its width whether or not there is news — a row that reflows when an update lands moves
+   everything next to it. */
+.updateDot,
+.updateWorking {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  /* Ringed in the header's own background so it reads as a badge on the icon rather than a
+     speck of dirt on the screen. */
+  box-shadow: 0 0 0 2px t.$panel;
+}
+.updateDot {
+  background: t.$ok;
+}
+.updateWorking {
+  background: t.$accent;
+  animation: updatePulse 1.4s ease-in-out infinite;
+}
+@keyframes updatePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .updateWorking { animation: none; }
+}
+
+.updatePop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: 300px;
+  background: t.$panel;
+  border: 1px solid t.$border;
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  text-align: left;
+}
+.updateVersion {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.updateLine {
+  color: t.$muted;
+  font-size: 12.5px;
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+.updateError {
+  color: t.$danger;
+  font-size: 12.5px;
+  margin: 0 0 10px;
+}
+.updateActions {
+  display: flex;
+  gap: 8px;
+}
+.updatePrimary {
+  background: t.$accent;
+  color: t.$on-accent;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 11px;
+  font-size: 12.5px;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+}

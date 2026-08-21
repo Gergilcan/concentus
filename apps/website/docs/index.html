@@ -247,6 +247,7 @@
     <a href="#what">What it is</a>
     <a href="#install">Install</a>
     <a href="#first-run">First run</a>
+    <a href="#paying">Paying for runs</a>
 
     <h4>Build</h4>
     <a href="#canvas">The canvas</a>
@@ -271,6 +272,7 @@
     <a href="#teams">Teams and sign-in</a>
     <a href="#storage">Storage</a>
     <a href="#settings">Settings</a>
+    <a href="#updates">Updates</a>
     <a href="#telemetry">Traces and metrics</a>
     <a href="#cli">Headless CLI</a>
 
@@ -320,10 +322,11 @@
         key, and asks for a first account on <code>http://localhost:8080</code>.
       </p>
       <div class="note">
-        <b>Running agents needs the Claude CLI</b>
+        <b>Running agents needs the Claude CLI — or a key</b>
         <p>
-          Flows execute through Claude Code on the machine running the backend. A deployment without
-          it can still design, store and serve flows; it cannot run them.
+          Flows execute through Claude Code on the machine running the backend, or against the
+          Anthropic API with a key. The setup screen asks which, and installs and signs in for you
+          if you pick the first. See <a href="#paying">Paying for runs</a>.
         </p>
       </div>
     </section>
@@ -347,6 +350,49 @@
           <code>CONCENTUS_ADMIN_PASSWORD</code> before the first launch. Otherwise the window
           between the port opening and you reaching it is a window in which somebody else could
           claim the installation.
+        </p>
+      </div>
+    </section>
+
+    <section id="paying">
+      <h2>Paying for runs</h2>
+      <p class="sub">A subscription you already have, or a key billed per token.</p>
+      <p>
+        The setup screen asks once, before anything is installed — because the answer decides
+        whether anything needs to be.
+      </p>
+
+      <h3>Your Claude subscription</h3>
+      <p>
+        The default, and the cheaper one: flows run through Claude Code on this machine, on the
+        subscription you already pay for. There is no second bill and no key to look after. It
+        needs the CLI installed and signed in once, and Concentus does both from the setup screen:
+        one button runs Anthropic's official installer, and a terminal opens <em>on the sign-in
+        itself</em> — not on a prompt where the next thing to know is that you type
+        <code>/login</code>.
+      </p>
+      <p>
+        The installed binary is put on your PATH as well, so <code>claude</code> is a command you
+        have from then on rather than something only Concentus can find. On Windows that is the
+        per-user Path in the registry, written directly — never through <code>setx</code>, which
+        truncates a long PATH at 1024 characters and takes half your tooling with it. On Linux and
+        macOS it is a line in the startup files that exist, written once and marked so a second
+        install does not add a second copy.
+      </p>
+
+      <h3>An Anthropic API key</h3>
+      <p>
+        Nothing to install and no sign-in: right for a machine nobody sits at. Paste the key into
+        the setup screen and it is kept in the operating system's keyring, on that machine only.
+        Where there is no keyring — a server with no desktop session — it is a file readable by
+        that account alone, and the screen says so rather than pretending otherwise.
+      </p>
+      <div class="note">
+        <b>Changing your mind</b>
+        <p>
+          The setup screen is reachable again from <b>Setup…</b> on the Concentus tray icon. A key
+          already in the environment as <code>ANTHROPIC_API_KEY</code> still works; one saved in the
+          app takes precedence over it.
         </p>
       </div>
     </section>
@@ -920,6 +966,30 @@ semantic (cosine,      top 50) ─┘</code></pre>
       </div>
     </section>
 
+    <section id="updates">
+      <h2>Updates</h2>
+      <p class="sub">A mark in the corner, not a dialog.</p>
+      <p>
+        The desktop app updates itself: it checks every four hours, downloads in the background, and
+        installs when you quit. None of that interrupts anything, which also made it invisible — so
+        the state now sits in the top right of the window. Silent while there is nothing to say, a
+        green dot when a version is downloaded and waiting. Clicking it says what state things are
+        in and offers the one action that state has: check now, or restart and install.
+      </p>
+      <p>
+        An update dialog that interrupts work teaches people to dismiss update dialogs. A mark that
+        waits to be noticed costs nothing and is still there tomorrow.
+      </p>
+      <div class="note">
+        <b>Where it does not apply</b>
+        <p>
+          A development run has no packaged app to update, and a <code>.deb</code> install is
+          updated by the system's package manager. Both say so and stand down rather than failing
+          on a loop.
+        </p>
+      </div>
+    </section>
+
     <section id="settings">
       <h2>Settings</h2>
       <p class="sub">The things that used to be environment variables.</p>
@@ -940,6 +1010,13 @@ semantic (cosine,      top 50) ─┘</code></pre>
       <p>
         Clearing a field removes the override rather than storing an empty one. Secrets are sealed
         with the same key that protects stored credentials and are never read back out of the API.
+      </p>
+      <p>
+        <strong>Appearance</strong> sits at the top of the same screen — dark, light, or high
+        contrast. It is not one of the settings below it: it lives in this browser, applies the
+        instant it is chosen, and has no Save. It used to be a button in the header, cycling one
+        click at a time through three values, which is a lot of the most valuable corner of the
+        screen for something a person sets once.
       </p>
     </section>
 

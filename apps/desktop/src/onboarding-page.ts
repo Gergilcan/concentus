@@ -30,11 +30,16 @@ export interface StorageState {
   activeMode: 'embedded' | 'external'
 }
 
-export function onboardingPage(claude: OnboardingState, storage: StorageState): string {
+export function onboardingPage(
+  claude: OnboardingState,
+  storage: StorageState,
+  /** Whether an API key is already stored, so the page opens on the answer already given. */
+  hasKey: boolean,
+): string {
   // Entities are literal text inside <script>, so HTML-escaping would corrupt this rather than
   // protect it. `<` is what could close the element early, and these values include a JDBC URL and
   // a filesystem path the user controls.
-  const initial = JSON.stringify({ claude, storage }).replace(/</g, '\\u003c')
+  const initial = JSON.stringify({ claude, storage, hasKey }).replace(/</g, '\\u003c')
 
   return `<!doctype html>
 <html lang="en">
@@ -55,6 +60,12 @@ export function onboardingPage(claude: OnboardingState, storage: StorageState): 
     background: var(--bg); color: var(--text);
   }
   .mark { width: 36px; height: 36px; display: block; margin-bottom: .75rem; }
+  .opt { display: flex; gap: .6rem; align-items: flex-start; padding: .6rem .7rem; margin: .4rem 0;
+         border: 1px solid var(--line); border-radius: 9px; cursor: pointer; }
+  .opt:hover { border-color: var(--accent); }
+  .opt input { margin-top: .25rem; }
+  .opt .sub { color: var(--muted); font-size: 13px; }
+  #apikey input[type=password] { width: 100%; }
   .steps { display: flex; gap: .5rem; align-items: center; color: var(--muted); font-size: 12.5px; margin-bottom: 1rem; }
   .steps b { color: var(--text); }
   .steps .sep { opacity: .5; }
@@ -161,6 +172,36 @@ export function onboardingPage(claude: OnboardingState, storage: StorageState): 
   <!-- ---------------------------------------------------------------- step 2 -->
   <section id="step2" class="hidden">
     <h1 id="title">One step before you can run flows</h1>
+
+    <!-- Asked first, because it decides whether anything below is relevant. Somebody paying per
+         token has no use for a CLI login, and installing one before asking would be doing work
+         on their behalf that they did not want. -->
+    <div id="billing">
+      <p class="lede">How should Concentus pay for what it runs?</p>
+      <label class="opt"><input type="radio" name="billing" value="subscription" checked>
+        <span><b>Your Claude subscription</b><br>
+        <span class="sub">Runs through Claude Code on this machine. No second bill, and no key to
+        look after. Needs a one-time sign-in.</span></span></label>
+      <label class="opt"><input type="radio" name="billing" value="apikey">
+        <span><b>An Anthropic API key</b><br>
+        <span class="sub">Billed per token to your Anthropic account. Nothing to install and no
+        sign-in — right for a machine nobody sits at.</span></span></label>
+    </div>
+
+    <!-- The key, and only when it was asked for. -->
+    <div id="apikey" class="hidden">
+      <label for="apiKeyInput">API key</label>
+      <input id="apiKeyInput" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+      <div class="actions">
+        <button class="primary" id="saveKey">Save the key</button>
+        <button id="clearKey">Remove it</button>
+      </div>
+      <p class="msg" id="keyMsg"></p>
+      <p class="lede">Kept in your operating system's keyring, on this machine only. It is never
+        sent anywhere except to Anthropic, and never stored in a flow.</p>
+    </div>
+
+    <div id="claudeSetup">
     <p class="lede" id="lede"></p>
 
     <div class="status" id="status"></div>
@@ -185,12 +226,10 @@ export function onboardingPage(claude: OnboardingState, storage: StorageState): 
         <button class="primary" id="doLogin">Sign in now</button>
       </div>
       <p class="msg" id="loginMsg"></p>
-      <p class="lede" id="howLede">Or do it yourself in a terminal. Once installed, run
-        <code>claude</code> and sign in — it opens a browser once, and Concentus picks it up from
-        there. You never paste a key.</p>
-      <pre><span class="c"># then, inside it:</span>
-claude
-/login</pre>
+      <p class="lede" id="howLede">A terminal opens on the sign-in itself and your browser follows.
+        Concentus picks it up from there — you never paste a key. To do it by hand:</p>
+      <pre>claude auth login</pre>
+    </div>
     </div>
 
     <div class="actions">
@@ -204,8 +243,9 @@ claude
     <label class="ask"><input type="checkbox" id="dontask"> Don't check on future launches</label>
 
     <p class="foot">
-      Prefer Anthropic's cloud API? Set <code>ANTHROPIC_API_KEY</code> in your environment and flows
-      run in a hosted sandbox instead — no local sign-in needed.
+      Either can be changed later: this screen is under <b>Setup…</b> on the Concentus tray icon. A
+      key already in your environment as <code>ANTHROPIC_API_KEY</code> still works; one saved here
+      takes precedence over it.
     </p>
   </section>
 
@@ -213,6 +253,7 @@ claude
   var s = ${initial};
   var claude = s.claude;
   var storage = s.storage;
+  var hasKey = !!s.hasKey;
   // An external connection must prove itself before Continue unlocks. Reset by any edit, so
   // changing the host after a successful test does not carry the old verdict forward.
   var tested = false;
@@ -315,7 +356,28 @@ claude
   });
 
   // ---------------------------------------------------------------- step 2
+  /** Which way this machine pays. Remembered only for the length of the wizard. */
+  function billingChoice() {
+    var picked = document.querySelector('input[name=billing]:checked');
+    return picked ? picked.value : 'subscription';
+  }
+
   function renderStep2() {
+    var apiKey = billingChoice() === 'apikey';
+    $('apikey').className = apiKey ? '' : 'hidden';
+    // Everything about the CLI hides when it is not the way this machine pays. Leaving it on
+    // screen would be asking somebody to install a tool their answer just made irrelevant.
+    $('claudeSetup').className = apiKey ? 'hidden' : '';
+    // Checking for a CLI and locating one are questions about the half that is hidden.
+    $('recheck').className = apiKey ? 'hidden' : 'primary';
+    $('locate').className = apiKey ? 'hidden' : '';
+    if (apiKey) {
+      $('title').textContent = hasKey ? "You're ready to go" : 'One step before you can run flows';
+      $('finish').textContent = hasKey ? 'Open Concentus' : 'Continue without it';
+      $('finish').className = hasKey ? 'primary' : '';
+      return;
+    }
+
     var hasCli = !!claude.command;
     $('status').innerHTML =
       row(hasCli, 'Claude Code CLI',
@@ -336,11 +398,36 @@ claude
     // step is signing in, and offering to install it again would be noise.
     $('install').className = hasCli ? 'hidden' : '';
     $('howLede').textContent = hasCli
-      ? 'Run claude in a terminal and sign in — it opens a browser once, and Concentus picks it up from there. You never paste a key.'
-      : 'Or do it yourself in a terminal. Once installed, run claude and sign in.';
+      ? 'A terminal opens on the sign-in itself and your browser follows. Concentus picks it up from there — you never paste a key. To do it by hand:'
+      : 'Or do it yourself, once it is installed:';
     $('finish').textContent = ready ? 'Open Concentus' : 'Continue without it';
     $('finish').className = ready ? 'primary' : '';
   }
+
+  Array.prototype.forEach.call(document.querySelectorAll('input[name=billing]'), function (el) {
+    el.addEventListener('change', renderStep2);
+  });
+
+  $('saveKey').addEventListener('click', function () {
+    var btn = this; btn.disabled = true; btn.textContent = 'Saving…';
+    window.concentus.saveApiKey($('apiKeyInput').value).then(function (r) {
+      hasKey = r.hasKey;
+      $('keyMsg').textContent = r.detail;
+      // The field is cleared on success and kept on failure: a rejected key is usually a typo,
+      // and making somebody paste it again to fix one character is a small cruelty.
+      if (r.ok) $('apiKeyInput').value = '';
+      btn.disabled = false; btn.textContent = 'Save the key';
+      renderStep2();
+    });
+  });
+
+  $('clearKey').addEventListener('click', function () {
+    window.concentus.saveApiKey(null).then(function (r) {
+      hasKey = r.hasKey;
+      $('keyMsg').textContent = r.detail;
+      renderStep2();
+    });
+  });
 
   $('recheck').addEventListener('click', function () {
     var btn = this; btn.disabled = true; btn.textContent = 'Checking…';
@@ -455,6 +542,9 @@ claude
   }
 
   // Prefill from what is already configured.
+  // Opening on the answer already given: somebody who saved a key and came back is not being
+  // asked the question again, they are being shown what they chose.
+  if (hasKey) document.querySelector('input[name=billing][value=apikey]').checked = true;
   document.querySelector('input[name=mode][value=' + (storage.mode === 'external' ? 'external' : 'embedded') + ']').checked = true;
   $('url').value = storage.url || '';
   $('username').value = storage.username || '';

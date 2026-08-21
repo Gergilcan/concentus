@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process'
+import * as fs from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import { log } from './log'
 
 /**
@@ -96,39 +99,62 @@ export function installClaude(onOutput: (line: string) => void): Promise<Install
 }
 
 /**
- * Opens a real terminal running the claude CLI, so the person signs in where the sign-in lives.
+ * The CLI's own sign-in, rather than the interactive session that has one inside it.
+ *
+ * <p>Opening a bare `claude` starts a chat and leaves the person to discover that the next thing
+ * to type is `/login` — which is what the wizard used to have to tell them, in a code block, next
+ * to a terminal that had already opened. `auth login` <em>is</em> the sign-in: it prints a URL,
+ * opens the browser, and exits when it is done.
+ */
+const LOGIN_ARGS = ['auth', 'login']
+
+/**
+ * Quotes a path for cmd.exe. Windows paths carry the user's name, and names have spaces in them.
+ */
+function cmdQuote(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`
+}
+
+/**
+ * Opens a real terminal already signing in, so the person signs in where the sign-in lives.
  *
  * The CLI's login is interactive by design — it walks you through an OAuth hop in the browser —
- * and no amount of piping can do it on someone's behalf. What the app CAN do is remove the step
- * where a person who has never opened a terminal is told to open one, find the freshly-installed
- * binary that is not on their PATH yet, and run it. So: after an install (and from the wizard's
- * sign-in button), a terminal opens already running the right binary by its full path; the CLI
- * takes it from there, and the wizard polls until the login appears.
+ * and no amount of piping can do it on someone's behalf. What the app CAN do is remove every step
+ * around it: a person who has never opened a terminal is not told to open one, nor to find a
+ * freshly-installed binary that their shell does not know about yet, nor which command to type
+ * once they are there. A terminal opens, already running the sign-in, by absolute path.
+ *
+ * <p>The window is kept open after it finishes. A console that closes the instant the command
+ * exits takes the outcome with it, and "did that work?" is the one question this flow must not
+ * leave open.
  */
 export async function openLoginTerminal(command: string): Promise<InstallResult> {
-  log.info(`Opening a terminal for the claude sign-in: ${command}`)
+  log.info(`Opening a terminal for the claude sign-in: ${command} ${LOGIN_ARGS.join(' ')}`)
+  const full = `${cmdQuote(command)} ${LOGIN_ARGS.join(' ')}`
   try {
     if (process.platform === 'win32') {
-      if (command.toLowerCase().endsWith('.exe')) {
-        // A console-subsystem exe spawned detached and unhidden gets its own console window —
-        // no cmd/start quoting gymnastics, which matter because the path has the user's name in it.
-        spawn(command, [], { detached: true, stdio: 'ignore', windowsHide: false }).unref()
-      } else {
-        // A .cmd/.bat shim needs a console host to run in.
-        spawn('cmd.exe', ['/c', 'start', 'Claude sign-in', 'cmd', '/k', command],
-          { detached: true, stdio: 'ignore', windowsHide: false }).unref()
-      }
+      // /k rather than /c for both shapes now: the sign-in exits when it is done, and a window
+      // that vanishes at that moment is a window that never showed whether it worked.
+      spawn('cmd.exe', ['/c', 'start', 'Claude sign-in', 'cmd', '/k', full],
+        { detached: true, stdio: 'ignore', windowsHide: false }).unref()
       return { ok: true, detail: '' }
     }
     if (process.platform === 'darwin') {
-      spawn('open', ['-a', 'Terminal', command], { detached: true, stdio: 'ignore' }).unref()
+      // Terminal.app runs a script file, not a command, so the command becomes one: `open -a
+      // Terminal <path>` would open the binary, not run it with arguments.
+      const script = `#!/bin/sh\n'${command}' ${LOGIN_ARGS.join(' ')}\n`
+      const file = path.join(os.tmpdir(), 'concentus-claude-login.sh')
+      fs.writeFileSync(file, script, { mode: 0o755 })
+      spawn('open', ['-a', 'Terminal', file], { detached: true, stdio: 'ignore' }).unref()
       return { ok: true, detail: '' }
     }
     // Linux has no single terminal; try the conventional ones in order and keep the first that
-    // starts. `-e` is the one flag they all understand.
+    // starts. `-e` is the one flag they all understand — and it needs the command as one string
+    // with its arguments, run under a shell that keeps the window alive afterwards.
+    const shellCommand = `'${command}' ${LOGIN_ARGS.join(' ')}; echo; echo "Press enter to close."; read _`
     for (const terminal of ['x-terminal-emulator', 'gnome-terminal', 'konsole', 'xfce4-terminal', 'xterm']) {
       const started = await new Promise<boolean>((resolve) => {
-        const child = spawn(terminal, ['-e', command], { detached: true, stdio: 'ignore' })
+        const child = spawn(terminal, ['-e', 'sh', '-c', shellCommand], { detached: true, stdio: 'ignore' })
         child.on('error', () => resolve(false))
         // No error within a beat means the terminal is launching.
         setTimeout(() => resolve(child.exitCode === null || child.exitCode === 0), 400)
@@ -136,7 +162,7 @@ export async function openLoginTerminal(command: string): Promise<InstallResult>
       })
       if (started) return { ok: true, detail: '' }
     }
-    return { ok: false, detail: 'No terminal emulator found — run the command by hand.' }
+    return { ok: false, detail: `No terminal emulator found — run ${full} by hand.` }
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err)
     log.warn(`Could not open a sign-in terminal: ${detail}`)
