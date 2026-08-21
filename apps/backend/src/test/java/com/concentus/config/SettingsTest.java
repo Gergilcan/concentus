@@ -1,7 +1,7 @@
 package com.concentus.config;
 
 import com.concentus.auth.OrgContext;
-import com.concentus.secrets.SecretCipher;
+import com.concentus.secrets.LegacySecrets;
 import com.concentus.store.SchemaMigrator;
 import com.concentus.store.TestDatabase;
 import org.junit.jupiter.api.Test;
@@ -24,10 +24,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SettingsTest {
 
-    private static SecretCipher cipher() {
+    private static LegacySecrets cipher() {
         byte[] raw = new byte[32];
         for (int i = 0; i < raw.length; i++) raw[i] = (byte) i;
-        return new SecretCipher(Base64.getEncoder().encodeToString(raw));
+        return new LegacySecrets(Base64.getEncoder().encodeToString(raw));
     }
 
     private record Fixture(Settings settings, SettingsStore store, MockEnvironment environment) {
@@ -85,8 +85,16 @@ class SettingsTest {
         assertThat(f.settings().number("runs.max-concurrent", 4)).isEqualTo(9);
     }
 
+    /**
+     * A secret setting is stored as it was typed.
+     *
+     * <p>It used to be encrypted here, and the assertion below used to say so. The reversal is
+     * deliberate and its cost is the assertion's whole point: what protects this value now is who
+     * can reach the database, and nothing else — so the test states the exposure rather than
+     * leaving somebody to infer it from an absence.
+     */
     @Test
-    void a_secret_is_sealed_in_the_table_and_still_reads_back_here() {
+    void a_secret_is_stored_as_typed_and_reads_back_here() {
         DataSource ds = TestDatabase.freshDatabase("settings_5");
         assertThat(SchemaMigrator.migrate(ds)).isTrue();
         JdbcTemplate jdbc = new JdbcTemplate(ds);
@@ -96,11 +104,14 @@ class SettingsTest {
         store.put("default", "pricing.input-usd-per-mtok", "sk-not-a-real-key", true, null);
 
         assertThat(store.get("default", "pricing.input-usd-per-mtok")).contains("sk-not-a-real-key");
-        // What is on disk is not the key: a client secret filed under "settings" is still a
-        // credential.
         assertThat(jdbc.queryForObject(
                 "select value from settings where key = 'pricing.input-usd-per-mtok'", String.class))
-                .isNotEqualTo("sk-not-a-real-key");
+                .isEqualTo("sk-not-a-real-key");
+        // Still FLAGGED secret, which is what keeps it out of the API's responses and the UI's
+        // fields. The flag was never about the encryption.
+        assertThat(jdbc.queryForObject(
+                "select secret from settings where key = 'pricing.input-usd-per-mtok'", Boolean.class))
+                .isTrue();
     }
 
     @Test

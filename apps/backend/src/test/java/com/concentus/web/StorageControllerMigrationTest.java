@@ -2,7 +2,7 @@ package com.concentus.web;
 
 import com.concentus.auth.OrgContext;
 import com.concentus.model.StorageSettings;
-import com.concentus.secrets.SecretCipher;
+import com.concentus.secrets.LegacySecrets;
 import com.concentus.store.SchemaMigrator;
 import com.concentus.store.StorageSettingsStore;
 import com.concentus.store.TestDatabase;
@@ -50,10 +50,10 @@ class StorageControllerMigrationTest {
     }
 
     /** A key of no consequence: nothing in this test reads a sealed value back. */
-    private static SecretCipher cipher() {
+    private static LegacySecrets cipher() {
         byte[] raw = new byte[32];
         for (int i = 0; i < raw.length; i++) raw[i] = (byte) i;
-        return new SecretCipher(java.util.Base64.getEncoder().encodeToString(raw));
+        return new LegacySecrets(java.util.Base64.getEncoder().encodeToString(raw));
     }
 
     private static StorageController controllerOn(DataSource live, String mode, Path dataDir) {

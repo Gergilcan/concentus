@@ -34,12 +34,12 @@ public class CredentialStore {
     private static final Logger log = LoggerFactory.getLogger(CredentialStore.class);
 
     private final JdbcTemplate jdbc;
-    private final SecretCipher cipher;
+    private final LegacySecrets legacy;
     private volatile boolean available;
 
-    public CredentialStore(JdbcTemplate jdbc, SecretCipher cipher) {
+    public CredentialStore(JdbcTemplate jdbc, LegacySecrets legacy) {
         this.jdbc = jdbc;
-        this.cipher = cipher;
+        this.legacy = legacy;
     }
 
     @PostConstruct
@@ -48,17 +48,23 @@ public class CredentialStore {
         try {
             jdbc.queryForObject("select count(*) from credentials", Integer.class);
             available = true;
-            log.info("Credential store ready (PostgreSQL){}.",
-                    cipher.isAvailable() ? "" : " — but CONCENTUS_SECRET_KEY is unset, so it is unusable");
+            log.info("Credential store ready (PostgreSQL). Values are stored in the clear: "
+                    + "anyone who can read this database can read them.");
         } catch (Exception e) {
             available = false;
             log.error("Credential store unavailable: {}", e.getMessage());
         }
     }
 
-    /** Usable only when both the table exists and a master key is configured. */
+    /**
+     * Usable as soon as the table is there.
+     *
+     * <p>It used to also require a master key, which is what made a missing key present itself as
+     * "the credential store is unavailable" — a sentence that described the symptom and hid the
+     * cause. There is no key any more, so the table is the whole condition.
+     */
     public boolean isAvailable() {
-        return available && cipher.isAvailable();
+        return available;
     }
 
     /**
@@ -94,7 +100,7 @@ public class CredentialStore {
                       created_at, updated_at)
                     values (?,?,?,?,?,?,?,?)
                     """,
-                    id, organizationId, label.trim(), kind, cipher.seal(plaintext),
+                    id, organizationId, label.trim(), kind, plaintext,
                     hintFor(plaintext), now, now);
         } catch (org.springframework.dao.DuplicateKeyException e) {
             throw new IllegalStateException("A credential named '" + label.trim() + "' already exists.");
@@ -132,7 +138,7 @@ public class CredentialStore {
                     on conflict (id) do nothing
                     """,
                     id, organizationId, label.trim(), kind,
-                    cipher.seal("re-enter-after-import-" + java.util.UUID.randomUUID()),
+                    "re-enter-after-import-" + java.util.UUID.randomUUID(),
                     "re-enter", now, now);
             if (inserted > 0) log.info("Imported credential '{}' as a placeholder — value must be re-entered.", label.trim());
             return inserted > 0;
@@ -160,7 +166,7 @@ public class CredentialStore {
                 update credentials set secret = ?, hint = ?, updated_at = ?
                 where id = ? and organization_id = ?
                 """,
-                cipher.seal(plaintext), hintFor(plaintext), System.currentTimeMillis(),
+                plaintext, hintFor(plaintext), System.currentTimeMillis(),
                 id, organizationId);
         if (updated == 0) throw new IllegalArgumentException("No such credential.");
     }
@@ -207,23 +213,21 @@ public class CredentialStore {
                 "select secret from credentials where id = ? and organization_id = ?",
                 String.class, id, organizationId);
         if (sealed.isEmpty()) return Optional.empty();
-        String plaintext = cipher.open(sealed.get(0));
+        // Stored in the clear now; `legacy` is what still opens a row written before that change,
+        // and reads as absent when this installation does not have the key that sealed it.
+        Optional<String> plaintext = legacy.read(sealed.get(0));
+        if (plaintext.isEmpty()) return Optional.empty();
         // Recorded so an operator can see which credentials are actually in use, and spot one that
         // silently stopped being reached.
         jdbc.update("update credentials set last_used_at = ? where id = ?",
                 System.currentTimeMillis(), id);
-        return Optional.of(plaintext);
+        return plaintext;
     }
 
     private void requireUsable() {
         if (!available) {
             throw new IllegalStateException("The credential store is unavailable; the database "
                     + "could not be reached.");
-        }
-        if (!cipher.isAvailable()) {
-            throw new IllegalStateException("Credentials cannot be stored because "
-                    + "CONCENTUS_SECRET_KEY is not set. Generate one with `openssl rand -base64 32` "
-                    + "and restart the backend.");
         }
     }
 

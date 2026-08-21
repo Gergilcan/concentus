@@ -9,7 +9,7 @@ import * as path from 'node:path'
 import { backendJar, backendLogFile, dataDir, isPackaged, javaBinary } from './paths'
 import { resolveClaudeCli } from './claude-cli'
 import { killOrphans } from './orphans'
-import { masterSecret } from './secret'
+import { legacyMasterSecret } from './secret'
 import { loadSettings, saveSettings } from './settings'
 import { log } from './log'
 
@@ -270,6 +270,7 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
   // 32 bytes from the CSPRNG, new on every start: the backend only ever compares it to what the
   // shell sends, so there is nothing to keep and nothing to invalidate when the process ends.
   const shellToken = crypto.randomBytes(32).toString('base64url')
+  const legacyKey = legacyMasterSecret()
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -277,7 +278,11 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
     // node — none of which a desktop launcher's environment necessarily contains.
     PATH: claude.path,
     APP_DATA_DIR: data,
-    CONCENTUS_SECRET_KEY: masterSecret(),
+    // Only while something in the database is still encrypted. Nothing is ever encrypted with
+    // it again — it is handed over so the backend can convert those values to plain text and be
+    // done with them. Absent once this installation never had a key, or its file has been
+    // removed, and the backend is perfectly happy without one.
+    ...(legacyKey ? { CONCENTUS_SECRET_KEY: legacyKey } : {}),
     // Lets the first-run wizard read, test and save the database setting before there is an
     // account to sign into. Narrow by design — see ShellTokenFilter in the backend.
     CONCENTUS_SHELL_TOKEN: shellToken,

@@ -1,6 +1,6 @@
 package com.concentus.config;
 
-import com.concentus.secrets.SecretCipher;
+import com.concentus.secrets.LegacySecrets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -29,14 +29,14 @@ public class SettingsStore {
     private static final Logger log = LoggerFactory.getLogger(SettingsStore.class);
 
     private final JdbcTemplate jdbc;
-    private final SecretCipher cipher;
+    private final LegacySecrets legacy;
     /** organization -> key -> value, already unsealed. Rebuilt on write, not on read. */
     private volatile Map<String, Map<String, String>> snapshot = Map.of();
     private volatile boolean available;
 
-    public SettingsStore(JdbcTemplate jdbc, SecretCipher cipher) {
+    public SettingsStore(JdbcTemplate jdbc, LegacySecrets legacy) {
         this.jdbc = jdbc;
-        this.cipher = cipher;
+        this.legacy = legacy;
     }
 
     @jakarta.annotation.PostConstruct
@@ -47,16 +47,17 @@ public class SettingsStore {
                 String organizationId = rs.getString("organization_id");
                 String value = rs.getString("value");
                 if (rs.getBoolean("secret") && value != null && !value.isBlank()) {
-                    try {
-                        value = cipher.open(value);
-                    } catch (RuntimeException e) {
-                        // A value sealed with a key this process does not have. Dropped rather than
-                        // handed on as ciphertext, which would reach a provider as a wrong secret
-                        // and fail somewhere far from here.
-                        log.error("Setting {} cannot be decrypted with this installation's key; "
-                                + "treating it as unset.", rs.getString("key"));
-                        value = null;
+                    // Stored in the clear now. A value still carrying the old encryption is opened
+                    // when this installation has the key that sealed it, and dropped when it does
+                    // not — handing ciphertext on would reach a provider as a wrong secret and
+                    // fail somewhere far from here.
+                    String opened = legacy.read(value).orElse(null);
+                    if (opened == null) {
+                        log.error("Setting {} is still encrypted and this installation cannot open "
+                                + "it; treating it as unset. Enter it again to store it in the "
+                                + "clear.", rs.getString("key"));
                     }
+                    value = opened;
                 }
                 next.computeIfAbsent(organizationId, k -> new LinkedHashMap<>())
                         .put(rs.getString("key"), value);
@@ -106,7 +107,7 @@ public class SettingsStore {
                     on conflict (organization_id, key) do update
                     set value = excluded.value, secret = excluded.secret,
                         updated_at = excluded.updated_at, updated_by = excluded.updated_by
-                    """, organizationId, key, isSecret ? cipher.seal(value) : value, isSecret,
+                    """, organizationId, key, value, isSecret,
                     System.currentTimeMillis(), updatedBy);
         }
         load();
