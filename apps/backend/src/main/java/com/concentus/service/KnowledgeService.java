@@ -48,6 +48,7 @@ public class KnowledgeService {
 
     private final JdbcTemplate jdbc;
     private final AttachmentExtractionService extraction;
+    private final WebPageFetcher web;
     private final KnowledgeRetriever retriever;
     private final LocalModelClient models;
     private final BuiltInEmbedder builtIn;
@@ -56,11 +57,13 @@ public class KnowledgeService {
     private final String embeddingModel;
 
     public KnowledgeService(JdbcTemplate jdbc, AttachmentExtractionService extraction,
-                            KnowledgeRetriever retriever, LocalModelClient models,
-                            BuiltInEmbedder builtIn, BuiltInReranker reranker, ObjectMapper mapper,
+                            WebPageFetcher web, KnowledgeRetriever retriever,
+                            LocalModelClient models, BuiltInEmbedder builtIn,
+                            BuiltInReranker reranker, ObjectMapper mapper,
                             @Value("${local-model.embedding-model:bge-m3}") String embeddingModel) {
         this.jdbc = jdbc;
         this.extraction = extraction;
+        this.web = web;
         this.retriever = retriever;
         this.models = models;
         this.builtIn = builtIn;
@@ -73,11 +76,41 @@ public class KnowledgeService {
     public record IngestResult(String docName, int chunks, boolean embedded, String detail) {
     }
 
-    public record DocInfo(String name, int chunks, boolean embedded, long createdAt) {
+    /**
+     * @param sourceUrl where it came from, when it came from a page. Null for an upload — a file
+     *                  somebody chose has no address to go back to, and pretending otherwise
+     *                  would put a refresh button on a document that cannot be refreshed
+     */
+    public record DocInfo(String name, int chunks, boolean embedded, long createdAt,
+                          String sourceUrl, String ingestedBy) {
+    }
+
+    /**
+     * Reads a page and files it in the base under its own address.
+     *
+     * <p>A manual, a policy or a runbook lives on an internal wiki as often as it lives in a PDF,
+     * and asking somebody to print one to PDF first is asking them to keep a second copy that
+     * starts going out of date immediately. Named by its URL rather than its title: the URL is
+     * what makes re-ingesting it a replacement rather than a duplicate, and a citation naming the
+     * address is one the reader can open.
+     */
+    public IngestResult ingestUrl(String baseId, String url, String ingestedBy) {
+        WebPageFetcher.Page page = web.fetch(url);
+        String name = url.trim();
+        return store(baseId, name, page.bytes(), name, ingestedBy);
     }
 
     /** Extracts, chunks, embeds when possible, and replaces any previous version of the document. */
     public IngestResult ingest(String baseId, String filename, byte[] bytes) {
+        return ingest(baseId, filename, bytes, null);
+    }
+
+    public IngestResult ingest(String baseId, String filename, byte[] bytes, String ingestedBy) {
+        return store(baseId, filename, bytes, null, ingestedBy);
+    }
+
+    private IngestResult store(String baseId, String filename, byte[] bytes, String sourceUrl,
+                               String ingestedBy) {
         var extracted = extraction.extractAll(List.of(new RawAttachment(filename, bytes)));
         // The per-file text, not combinedText(): the combined form carries "=== attachment ==="
         // framing meant for a mail-triggered prompt, which here would pollute every chunk.
@@ -109,9 +142,13 @@ public class KnowledgeService {
         // The lexeme is computed in SQL rather than in Java because the query side computes its
         // half in SQL too, and the two only match if the same PostgreSQL configuration produced
         // both. Two stemmers agreeing today is not a property anybody could keep true.
+        String detectedType = extracted.files().stream().findFirst()
+                .map(f -> f.type() == null ? null : f.type().name())
+                .orElse(null);
         jdbc.batchUpdate("""
-                insert into knowledge_chunks (base_id, doc_name, seq, content, embedding, created_at, lexeme)
-                values (?, ?, ?, ?, ?, ?, to_tsvector('spanish', ?) || to_tsvector('english', ?))
+                insert into knowledge_chunks (base_id, doc_name, seq, content, embedding, created_at,
+                                              lexeme, source_url, content_type, ingested_by)
+                values (?, ?, ?, ?, ?, ?, to_tsvector('spanish', ?) || to_tsvector('english', ?), ?, ?, ?)
                 """, new org.springframework.jdbc.core.BatchPreparedStatementSetter() {
             @Override
             public void setValues(java.sql.PreparedStatement ps, int i) throws java.sql.SQLException {
@@ -124,6 +161,9 @@ public class KnowledgeService {
                 ps.setLong(6, now);
                 ps.setString(7, content);
                 ps.setString(8, content);
+                ps.setString(9, sourceUrl);
+                ps.setString(10, detectedType);
+                ps.setString(11, ingestedBy);
             }
 
             @Override
@@ -146,13 +186,25 @@ public class KnowledgeService {
         return jdbc.query("""
                 select doc_name, count(*) as chunks,
                        bool_and(embedding is not null) as embedded,
-                       max(created_at) as created_at
+                       max(created_at) as created_at,
+                       max(source_url) as source_url,
+                       max(ingested_by) as ingested_by
                   from knowledge_chunks where base_id = ?
                  group by doc_name order by doc_name
                 """,
                 (rs, i) -> new DocInfo(rs.getString("doc_name"), rs.getInt("chunks"),
-                        rs.getBoolean("embedded"), rs.getLong("created_at")),
+                        rs.getBoolean("embedded"), rs.getLong("created_at"),
+                        rs.getString("source_url"), rs.getString("ingested_by")),
                 baseId);
+    }
+
+    /** Every document in this base that came from a page, so a refresh knows what to re-fetch. */
+    public List<String> refreshableUrls(String baseId) {
+        return jdbc.queryForList("""
+                select distinct source_url from knowledge_chunks
+                 where base_id = ? and source_url is not null
+                 order by source_url
+                """, String.class, baseId);
     }
 
     public boolean deleteDocument(String baseId, String docName) {

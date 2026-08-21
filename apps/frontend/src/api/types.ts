@@ -1110,6 +1110,10 @@ export type KnowledgeDef = {
 
 export type KnowledgeDoc = {
   name: string
+  /** Where it came from, when it came from a page. Absent for an upload, which has no way back. */
+  sourceUrl?: string | null
+  /** Who added it, kept as an email so the answer survives the account being deleted. */
+  ingestedBy?: string | null
   chunks: number
   embedded: boolean
   createdAt: number

@@ -155,10 +155,55 @@ function Documents({ baseId }: { baseId: string }) {
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const fileRef = useRef<HTMLInputElement>(null)
   const folderRef = useRef<HTMLInputElement>(null)
+  const [addingUrl, setAddingUrl] = useState(false)
+  const [url, setUrl] = useState('')
 
   const refresh = useCallback(() => {
     api.knowledgeDocs(baseId).then(setDocs).catch(() => setDocs([]))
   }, [baseId])
+
+  /** Whether anything here can be re-fetched. Uploads cannot: they have no address to go back to. */
+  const hasPages = docs.some((d) => !!d.sourceUrl)
+
+  const addPage = async () => {
+    const address = url.trim()
+    if (!address) return
+    setBusy(true)
+    setNote(null)
+    try {
+      const result = await api.addKnowledgeUrl(baseId, address)
+      setNote(`${result.docName} — ${result.chunks} passage(s). ${result.detail}`)
+      setUrl('')
+      setAddingUrl(false)
+      refresh()
+    } catch (e) {
+      setNote(errMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const refreshPages = async () => {
+    setBusy(true)
+    setNote(null)
+    try {
+      const { refreshed } = await api.refreshKnowledgeUrls(baseId)
+      const failed = refreshed.filter((r) => !r.ok)
+      // Both halves, always. Saying only "4 pages refreshed" when one moved is how a base ends up
+      // answering from a page that has not existed for a month.
+      setNote(
+        failed.length === 0
+          ? `${refreshed.length} page(s) re-fetched.`
+          : `${refreshed.length - failed.length} of ${refreshed.length} re-fetched. Failed: ` +
+            failed.map((f) => `${f.url} (${f.error})`).join('; '),
+      )
+      refresh()
+    } catch (e) {
+      setNote(errMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   useEffect(() => {
     refresh()
@@ -433,6 +478,21 @@ function Documents({ baseId }: { baseId: string }) {
         <button className={styles.newBtn} disabled={busy} onClick={() => folderRef.current?.click()}>
           Upload folder
         </button>
+        {/* A manual on a wiki is a document too, and asking somebody to print it to PDF first is
+            asking them to keep a second copy that starts going out of date immediately. */}
+        <button className={styles.newBtn} disabled={busy} onClick={() => setAddingUrl((v) => !v)}>
+          Add a page
+        </button>
+        {hasPages && (
+          <button
+            className={styles.textLink}
+            disabled={busy}
+            title="Fetches every page in this base again. Uploaded files are untouched — a file somebody chose has no address to go back to."
+            onClick={() => void refreshPages()}
+          >
+            Refresh pages
+          </button>
+        )}
         <input
           ref={fileRef}
           type="file"
@@ -461,6 +521,23 @@ function Documents({ baseId }: { baseId: string }) {
           }}
         />
       </div>
+      {addingUrl && (
+        <div className={styles.kbSearch}>
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void addPage()
+            }}
+            placeholder="https://wiki.example.com/onboarding"
+            aria-label="Page address"
+          />
+          <button className={styles.newBtn} disabled={busy || !url.trim()} onClick={() => void addPage()}>
+            Add
+          </button>
+        </div>
+      )}
+
       {note && <p className={panels.hint}>{note}</p>}
 
       <h4 className={styles.h4}>Try a search</h4>

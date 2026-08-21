@@ -318,6 +318,20 @@ export const api = {
     req<{ deleted: number }>(`/knowledge/${id}/folders${query({ path })}`, {
       method: 'DELETE',
     }),
+  /** Files a page into the base under its own address, so re-adding it replaces rather than duplicates. */
+  addKnowledgeUrl: (id: string, url: string) =>
+    req<{ docName: string; chunks: number; embedded: boolean; detail: string }>(
+      `/knowledge/${id}/urls`,
+      { method: 'POST', body: JSON.stringify({ url }) },
+      120_000,
+    ),
+  /** Re-fetches every page in the base. Uploads are untouched — they have no address to go back to. */
+  refreshKnowledgeUrls: (id: string) =>
+    req<{ refreshed: Array<{ url: string; ok: boolean; chunks?: number; error?: string }> }>(
+      `/knowledge/${id}/refresh`,
+      { method: 'POST' },
+      300_000,
+    ),
   /** Extensions the backend can actually extract — the picker's source of truth. */
   knowledgeCapabilities: () => req<{ extensions: string[] }>('/knowledge/capabilities'),
   // The built-in embedding model: no server, no Docker — the backend runs it in-process.

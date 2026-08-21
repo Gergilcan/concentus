@@ -4,7 +4,6 @@ import com.concentus.config.AgentSpec.SqlSourceSpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.net.InetAddress;
 import java.net.URI;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -36,9 +35,6 @@ public class SqlRagRetriever {
     private static final int HARD_ROW_CAP = 500;
     private static final int QUERY_TIMEOUT_SECONDS = 20;
     private static final int MAX_CELL_CHARS = 200;
-
-    /** Cloud-metadata IPs blocked regardless of allowlist config (AWS/GCP/Azure/etc). */
-    private static final Set<String> ALWAYS_BLOCKED_HOSTS = Set.of("169.254.169.254");
 
     private final Set<String> allowedDrivers;
     private final Set<String> allowedHosts;
@@ -119,34 +115,9 @@ public class SqlRagRetriever {
         if (host == null || host.isBlank()) {
             throw new IllegalArgumentException("`jdbcUrl` must include a host.");
         }
-        String lowerHost = host.toLowerCase(Locale.ROOT);
-        // ALWAYS_BLOCKED_HOSTS must hold no matter what — checked before, and independently of,
-        // the allowedHosts allowlist below. Otherwise an operator adding a host to
-        // rag.allowed-jdbc-hosts that happens to be the cloud metadata IP would silently bypass
-        // this block, contradicting the "regardless of allowlist config" guarantee documented on
-        // ALWAYS_BLOCKED_HOSTS.
-        if (ALWAYS_BLOCKED_HOSTS.contains(lowerHost)) {
-            throw new IllegalArgumentException(
-                    "Host '" + host + "' is not allowed (cloud metadata hosts are always blocked).");
-        }
-        if (!allowedHosts.contains(lowerHost) && isBlockedHost(host)) {
-            throw new IllegalArgumentException(
-                    "Host '" + host + "' is not allowed (localhost, link-local and cloud metadata hosts are "
-                            + "blocked by default — see rag.allowed-jdbc-hosts).");
-        }
-    }
-
-    /** Loopback / link-local / cloud-metadata hosts are blocked unless explicitly allowlisted. */
-    private boolean isBlockedHost(String host) {
-        String h = host.toLowerCase(Locale.ROOT);
-        if (h.equals("localhost") || ALWAYS_BLOCKED_HOSTS.contains(h)) return true;
-        try {
-            InetAddress addr = InetAddress.getByName(host);
-            return addr.isLoopbackAddress() || addr.isLinkLocalAddress() || addr.isAnyLocalAddress();
-        } catch (Exception e) {
-            // Unresolvable host — fail closed rather than risk a surprising SSRF target.
-            return true;
-        }
+        // The rule itself lives in OutboundHosts, shared with every other feature that fetches
+        // an address somebody typed. Two copies of an SSRF guard is one copy that gets fixed.
+        com.concentus.support.OutboundHosts.require(host, allowedHosts, "rag.allowed-jdbc-hosts");
     }
 
     /** Enforces read-only, single-statement queries (defense in depth alongside DB-level grants). */

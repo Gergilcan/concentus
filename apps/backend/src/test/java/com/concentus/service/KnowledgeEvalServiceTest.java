@@ -48,9 +48,14 @@ class KnowledgeEvalServiceTest {
                 new ObjectMapper(), Telemetry.none(), "bge-m3");
         var extraction = new AttachmentExtractionService(
                 List.of(new PlainTextExtractor()), new AttachmentPolicy(10_485_760, 31_457_280, 15));
-        ingest = new KnowledgeService(TestDatabase.jdbc(), extraction, retriever, models, builtIn,
+        ingest = new KnowledgeService(TestDatabase.jdbc(), extraction, webPage(), retriever, models, builtIn,
                 reranker, new ObjectMapper(), "bge-m3");
         evals = new KnowledgeEvalService(TestDatabase.jdbc(), retriever, new ObjectMapper());
+    }
+
+    /** A fetcher no test uses: every suite here ingests bytes it already holds. */
+    private static com.concentus.service.WebPageFetcher webPage() {
+        return new com.concentus.service.WebPageFetcher("");
     }
 
     private void put(String doc, String text) {

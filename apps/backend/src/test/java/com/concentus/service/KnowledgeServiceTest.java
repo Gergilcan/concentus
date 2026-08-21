@@ -43,8 +43,13 @@ class KnowledgeServiceTest {
         // the in-process model has its own suite.
         var retriever = new KnowledgeRetriever(TestDatabase.jdbc(), models, builtIn, reranker,
                 new ObjectMapper(), com.concentus.telemetry.Telemetry.none(), "bge-m3");
-        service = new KnowledgeService(TestDatabase.jdbc(), extraction, retriever, models,
+        service = new KnowledgeService(TestDatabase.jdbc(), extraction, webPage(), retriever, models,
                 builtIn, reranker, new ObjectMapper(), "bge-m3");
+    }
+
+    /** A fetcher no test uses: every suite here ingests bytes it already holds. */
+    private static com.concentus.service.WebPageFetcher webPage() {
+        return new com.concentus.service.WebPageFetcher("");
     }
 
     @Test

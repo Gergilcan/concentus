@@ -30,6 +30,7 @@ public class KnowledgeController {
     private final com.concentus.llm.BuiltInEmbedder embedder;
     private final com.concentus.llm.BuiltInReranker reranker;
     private final com.concentus.service.KnowledgeEvalService evals;
+    private final com.concentus.auth.OrgContext orgContext;
     private final com.concentus.integration.content.AttachmentExtractionService extraction;
 
     public KnowledgeController(KnowledgeStore store, KnowledgeService service,
@@ -37,6 +38,7 @@ public class KnowledgeController {
                                com.concentus.llm.BuiltInEmbedder embedder,
                                com.concentus.llm.BuiltInReranker reranker,
                                com.concentus.service.KnowledgeEvalService evals,
+                               com.concentus.auth.OrgContext orgContext,
                                com.concentus.integration.content.AttachmentExtractionService extraction) {
         this.store = store;
         this.service = service;
@@ -44,6 +46,7 @@ public class KnowledgeController {
         this.embedder = embedder;
         this.reranker = reranker;
         this.evals = evals;
+        this.orgContext = orgContext;
         this.extraction = extraction;
     }
 
@@ -157,7 +160,52 @@ public class KnowledgeController {
         requireBase(id);
         String name = file.getOriginalFilename();
         if (name == null || name.isBlank()) name = "document";
-        return service.ingest(id, name, file.getBytes());
+        return service.ingest(id, name, file.getBytes(), who());
+    }
+
+    /**
+     * Adds a page by its address.
+     *
+     * <p>The document is named by the URL, so ingesting the same page again replaces it rather
+     * than filing a second copy — which is what makes {@code POST …/refresh} below mean something.
+     */
+    @PostMapping("/{id}/urls")
+    public KnowledgeService.IngestResult addUrl(@PathVariable String id,
+                                                @RequestBody Map<String, Object> body) {
+        requireBase(id);
+        String url = String.valueOf(body.getOrDefault("url", "")).trim();
+        if (url.isEmpty()) throw new IllegalArgumentException("An address is required.");
+        return service.ingestUrl(id, url, who());
+    }
+
+    /**
+     * Re-fetches every page in this base.
+     *
+     * <p>A page copied into a base starts going out of date the moment it is copied. Uploads are
+     * untouched — a file somebody chose has no address to go back to — and a page that has since
+     * moved or gone reports its failure beside the ones that worked rather than stopping them.
+     */
+    @PostMapping("/{id}/refresh")
+    public Map<String, Object> refresh(@PathVariable String id) {
+        requireBase(id);
+        List<Map<String, Object>> results = new java.util.ArrayList<>();
+        for (String url : service.refreshableUrls(id)) {
+            try {
+                var result = service.ingestUrl(id, url, who());
+                results.add(Map.of("url", url, "ok", true, "chunks", result.chunks()));
+            } catch (RuntimeException e) {
+                results.add(Map.of("url", url, "ok", false,
+                        "error", e.getMessage() == null ? "failed" : e.getMessage()));
+            }
+        }
+        return Map.of("refreshed", results);
+    }
+
+    /** Who is doing this, for the record a document keeps of how it got here. */
+    private String who() {
+        return orgContext.currentUser()
+                .map(com.concentus.auth.ConcentusUserDetails::email)
+                .orElse(null);
     }
 
     /**

@@ -30,6 +30,7 @@ public class AttachmentExtractionService {
             DetectedType.PDF, java.util.List.of(".pdf"),
             DetectedType.DOCX, java.util.List.of(".docx"),
             DetectedType.XLSX, java.util.List.of(".xlsx"),
+            DetectedType.PPTX, java.util.List.of(".pptx"),
             DetectedType.TEXT, java.util.List.of(".txt", ".md", ".html"),
             DetectedType.CSV, java.util.List.of(".csv"),
             DetectedType.IMAGE, java.util.List.of(".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff"));
