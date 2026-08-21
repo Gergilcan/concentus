@@ -83,6 +83,15 @@ if (!app.requestSingleInstanceLock()) {
 
 async function main(): Promise<void> {
   await app.whenReady()
+  // macOS takes the Dock icon from the app BUNDLE, not from any window — so `icon` on a
+  // BrowserWindow, which is what dresses the window and the taskbar entry everywhere else, does
+  // nothing here. Unpackaged, the bundle is Electron's own, and Concentus sits in the Dock
+  // wearing Electron's logo. This is the only way to say otherwise from inside the process.
+  //
+  // Unconditional rather than dev-only: a packaged macOS build would carry its own icon and this
+  // would merely re-assert it, and there is no packaged macOS build today (see the note at the
+  // foot of electron-builder.yml) — so the case this fixes is the only case there is.
+  if (process.platform === 'darwin') app.dock?.setIcon(appIcon())
   registerIpc()
   // No application menu. The UI has its own navigation, and a File/View/Edit bar above it is a
   // second, emptier navigation that belongs to a different application — the window should look
