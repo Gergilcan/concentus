@@ -537,3 +537,63 @@ describe('addNode placement', () => {
     expect(b.position).not.toEqual(a.position)
   })
 })
+
+describe('adding a block places it and wires the obvious edge', () => {
+  beforeEach(() => {
+    useFlowStore.getState().newFlow()
+  })
+
+  it('does not drop the second block on top of the first', () => {
+    const { addNode } = useFlowStore.getState()
+    addNode('input')
+    addNode('agent')
+
+    const [input, agent] = useFlowStore.getState().nodes
+    // A card is 190px wide. Two clicks used to produce two boxes 60px apart, which is a pile
+    // the user has to drag apart before they can read either of them.
+    expect(agent.position.x - input.position.x).toBeGreaterThanOrEqual(190)
+  })
+
+  it('wires an input into the agent it was obviously added for', () => {
+    const { addNode } = useFlowStore.getState()
+    addNode('input')
+    addNode('agent')
+
+    const [input, agent] = useFlowStore.getState().nodes
+    const { edges } = useFlowStore.getState()
+    expect(edges).toHaveLength(1)
+    expect(edges[0]).toMatchObject({ source: input.id, target: agent.id })
+  })
+
+  it('hangs a capability under the agent, pointing at it', () => {
+    const { addNode } = useFlowStore.getState()
+    addNode('agent')
+    addNode('mcp')
+
+    const [agent, mcp] = useFlowStore.getState().nodes
+    // A server feeds an agent, so the wire runs that way and the box sits below rather than
+    // further along the chain: the drawing reads left to right, capabilities hang underneath.
+    expect(useFlowStore.getState().edges[0]).toMatchObject({ source: mcp.id, target: agent.id })
+    expect(mcp.position.y).toBeGreaterThan(agent.position.y)
+  })
+
+  it('draws nothing when there is nothing it could legally attach to', () => {
+    const { addNode } = useFlowStore.getState()
+    addNode('mcp')
+    addNode('knowledge')
+
+    // Two capabilities and no consumer: neither can feed the other, and inventing a wire the
+    // canvas would refuse is worse than leaving them apart.
+    expect(useFlowStore.getState().edges).toHaveLength(0)
+  })
+
+  it('leaves a dropped block exactly where it was dropped', () => {
+    const { addNode } = useFlowStore.getState()
+    addNode('agent')
+    addNode('mcp', { x: 640, y: 480 })
+
+    const dropped = useFlowStore.getState().nodes[1]
+    // Nudging a dropped node moves it out from under the cursor that placed it.
+    expect(dropped.position).toEqual({ x: 640, y: 480 })
+  })
+})

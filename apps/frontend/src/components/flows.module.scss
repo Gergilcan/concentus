@@ -137,6 +137,13 @@
 
 /* ---------------- kpis ---------------- */
 
+/* Before the first run: the one fact the strip would have carried, in a line. */
+.kpisQuiet {
+  color: t.$muted;
+  font-size: 12.5px;
+  margin: 2px 0 14px;
+}
+
 .kpis {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -1116,8 +1123,13 @@
  * `height` AND `max-height`: max-height caps height, so setting only the first would still leave
  * the dialog bounded by the 80/86vh above and never reach this.
  */
+/* Tall enough that the tabs sit in the same place on every visit, and no taller than what it
+   holds. A fixed 90vh was right for an agent — a system prompt is a paragraph — and made every
+   three-line block look like a page that failed to load: one select floating at the top of eight
+   hundred pixels of nothing. The floor keeps the aiming target still; the cap gives the small
+   ones their size back. */
 .modalTall {
-  height: 90vh;
+  min-height: min(420px, 90vh);
   max-height: 90vh;
   display: flex;
   flex-direction: column;

@@ -59,7 +59,10 @@ describe('the canvas refuses a wire the rules reject', () => {
 
     onConnect({ source: agent.id, target: mcp.id, sourceHandle: null, targetHandle: null })
 
-    expect(useFlowStore.getState().edges).toHaveLength(0)
+    // Scoped to the pair rather than counting every edge: adding a server beside a lone agent
+    // now wires the one that means something, and this test is about the one that does not.
+    expect(useFlowStore.getState().edges.filter((e) => e.source === agent.id && e.target === mcp.id))
+      .toHaveLength(0)
   })
 
   it('keeps the same pair drawn the way round that means something', () => {

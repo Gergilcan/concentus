@@ -26,10 +26,28 @@ import panels from './panels.module.scss'
  * not worth unifying from here. Falling back to "Block" rather than the kind on purpose: the kind
  * is already the first thing the inspector says, one line below.
  */
+const KIND_NAMES: Record<string, string> = {
+  input: 'Input / trigger',
+  agent: 'Agent',
+  verifier: 'Verifier',
+  merge: 'Merge',
+  mcp: 'MCP server',
+  repo: 'Repository',
+  sql: 'SQL source',
+  api: 'API endpoint',
+  flow: 'Sub-flow',
+  knowledge: 'Knowledge base',
+  gate: 'Condition',
+  foreach: 'For each',
+}
+
 function blockName(data: AppNodeData): string {
   if ('name' in data && data.name) return data.name
   if ('label' in data && data.label) return data.label
-  return 'Block'
+  // Its kind, never the word "Block". Input, Condition and For each carry neither a name nor a
+  // label, so the most prominent line on the dialog was the only one saying nothing — while the
+  // line directly beneath it already read INPUT / TRIGGER.
+  return KIND_NAMES[data.kind] ?? 'Block'
 }
 
 export function NodeDetailsDialog() {

@@ -89,3 +89,50 @@
   font-family: monospace;
   font-size: 11.5px;
 }
+
+/* ---- seven days, side by side ---- */
+.chart {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+  max-width: 900px;
+  margin-bottom: 8px;
+}
+.bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.barValue {
+  font-size: 11.5px;
+  color: t.$muted;
+  font-variant-numeric: tabular-nums;
+  height: 16px;
+}
+.barTrack {
+  /* The track is drawn whether or not the day has a bar: an empty day that renders as nothing
+     makes a quiet week and a busy one look the same. */
+  width: 100%;
+  height: 120px;
+  background: t.$panel-2;
+  border-radius: 4px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+.barFill {
+  width: 100%;
+  background: t.$accent-soft;
+  border-top: 2px solid t.$accent;
+}
+.barToday {
+  background: t.$accent;
+  border-top-color: t.$accent;
+}
+.barLabel {
+  font-size: 11.5px;
+  color: t.$muted;
+}

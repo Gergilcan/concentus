@@ -86,6 +86,7 @@ public class ClaudeUsageService {
                 "today", window(samples, startOfToday()),
                 "week", window(samples, now - 7L * 24 * 60 * 60 * 1000)));
         out.put("models", perModel(samples, now - 7L * 24 * 60 * 60 * 1000));
+        out.put("days", perDay(samples));
         cached = out;
         cachedAt = now;
         return out;
@@ -181,6 +182,40 @@ public class ClaudeUsageService {
         totals.putTokensInto(w);
         w.put("messages", totals.messages);
         return w;
+    }
+
+    /**
+     * The last seven days, one entry each, oldest first.
+     *
+     * <p>Three totals answer "how much"; they cannot answer "is today unusual", which is the
+     * question a total raises and the reason anybody opens this page twice. Days are calendar
+     * days in the machine's own zone, not rolling 24-hour windows: the comparison people make is
+     * with yesterday, and yesterday ends at midnight where they are.
+     *
+     * <p>Empty days are present with zeros rather than absent. A chart that omits them draws a
+     * quiet week and a busy one identically.
+     */
+    private List<Map<String, Object>> perDay(List<Sample> samples) {
+        java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+        java.time.LocalDate today = java.time.LocalDate.now(zone);
+        Map<java.time.LocalDate, Totals> byDay = new LinkedHashMap<>();
+        for (int back = 6; back >= 0; back--) {
+            byDay.put(today.minusDays(back), new Totals());
+        }
+        for (Sample s : samples) {
+            java.time.LocalDate day = Instant.ofEpochMilli(s.at()).atZone(zone).toLocalDate();
+            Totals totals = byDay.get(day);
+            if (totals != null) totals.add(s);
+        }
+        return byDay.entrySet().stream()
+                .map(e -> {
+                    Map<String, Object> d = new LinkedHashMap<>();
+                    d.put("date", e.getKey().toString());
+                    e.getValue().putTokensInto(d);
+                    d.put("messages", e.getValue().messages);
+                    return d;
+                })
+                .toList();
     }
 
     private List<Map<String, Object>> perModel(List<Sample> samples, long since) {

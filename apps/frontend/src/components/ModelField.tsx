@@ -144,10 +144,12 @@ export function ModelField({
         </p>
       )}
 
-      {catalog?.localError && !isLocal && localModels.length === 0 && (
-        <p className={styles.hint}>
-          No self-hosted model available: {catalog.localError}
-        </p>
+      {/* Only where somebody asked. This used to render for every visitor of every agent form,
+          reporting that an address they never typed is not answering — a failure of a feature
+          they had not opted into, phrased as if something were wrong. It belongs on the local
+          option itself, which is where the question "can I run this on my own machine" is asked. */}
+      {isLocal && catalog?.localError && localModels.length === 0 && (
+        <p className={styles.hint}>{catalog.localError}</p>
       )}
 
       {currentRate && !isLocal && (

@@ -1229,8 +1229,15 @@ export interface UsageWindow {
   estimatedUsd: number
   messages: number
 }
+/** One calendar day in the machine's own zone. Present with zeros when nothing ran. */
+export interface UsageDay extends UsageWindow {
+  date: string
+}
+
 export interface UsageSummary {
   available: boolean
   windows: { last5h: UsageWindow; today: UsageWindow; week: UsageWindow }
   models: Array<{ model: string } & Omit<UsageWindow, 'messages'>>
+  /** The last seven days, oldest first — what turns three totals into a shape. */
+  days?: UsageDay[]
 }

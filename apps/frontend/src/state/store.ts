@@ -20,11 +20,10 @@ import type {
   RunEvent,
 } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL } from '../constants.ts'
-import { canConnect } from '../flow/wiring.ts'
+import { canConnect, wiringRoleOf } from '../flow/wiring.ts'
 
 export type AppNode = Node<AppNodeData>
 
-let spawnCount = 0
 /** Successive pastes of the same clipboard cascade instead of stacking. */
 let pasteCount = 0
 
@@ -33,6 +32,29 @@ function uid(prefix: string): string {
 }
 
 /** Canvas offset applied to each successive paste so copies never land on the original. */
+/** A node card's width, from nodes.module.scss. Placement has to know it to leave a real gap. */
+const NODE_W = 214
+
+/**
+ * How many capabilities already hang under this box, so the next does not land on top of them.
+ *
+ * Counting every incoming edge counted the trigger too, which does not hang underneath — it sits
+ * to the left, in the chain — and the first capability was pushed a whole column further right
+ * than it should have been, off the edge of the canvas.
+ */
+function attached(
+  s: { nodes: AppNode[]; edges: { source: string; target: string }[] },
+  id: string,
+): number {
+  return s.edges.filter((e) => {
+    if (e.target !== id) return false
+    const source = s.nodes.find((n) => n.id === e.source)
+    // A trigger feeds too, and it is the one feeder that belongs in the chain rather than
+    // under the box — counting it pushed the first capability a whole column off the canvas.
+    return !!source && source.data.kind !== 'input' && wiringRoleOf(source.data.kind) === 'feeds'
+  }).length
+}
+
 const PASTE_OFFSET = 40
 
 /** Cap on retained console events; the backend keeps the authoritative buffer. */
@@ -392,20 +414,48 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   addNode: (kind, at) =>
     set((s) => {
       const isFirstAgent = kind === 'agent' && !s.nodes.some((n) => n.data.kind === 'agent')
-      // The cascade is only for nodes with nowhere in particular to go. A dropped node has a
-      // position the user chose, and nudging it would move it out from under their cursor.
+
+      // Who this box would obviously attach to: the most recent one the canvas would let it
+      // connect to. Most recent rather than any, because building a flow is building a chain and
+      // the last box drawn is the one still in mind. Ambiguity is not a problem to solve here —
+      // every wire this draws is one the canvas would have accepted, and an edge drawn for you
+      // takes one click to remove, while an edge nobody drew has to be discovered.
+      const feeds = wiringRoleOf(kind) === 'feeds'
+      const partner = [...s.nodes]
+        .reverse()
+        .find((n) => (feeds ? canConnect(kind, n.data.kind) : canConnect(n.data.kind, kind)))
+
+      // A dropped node has a position the user chose; nudging it would move it out from under
+      // their cursor. Everything else is placed so the drawing reads: the chain runs left to
+      // right, and the capabilities an agent is given hang underneath it.
       let position = at
-      if (!position) {
-        spawnCount += 1
-        position = { x: 120 + (spawnCount % 5) * 60, y: 80 + (spawnCount % 7) * 50 }
+      if (!position && partner) {
+        position = feeds
+          ? { x: partner.position.x + attached(s, partner.id) * (NODE_W + 20), y: partner.position.y + 150 }
+          : { x: partner.position.x + NODE_W + 90, y: partner.position.y }
       }
+      if (!position) {
+        const right = s.nodes.reduce((max, n) => Math.max(max, n.position.x), -Infinity)
+        position = s.nodes.length
+          ? { x: right + NODE_W + 90, y: 120 }
+          : { x: 120, y: 120 }
+      }
+
       const node: AppNode = {
         id: uid(kind),
         type: kind,
         position,
         data: defaultData(kind, isFirstAgent),
       }
-      return { nodes: [...s.nodes, node], selectedId: node.id }
+      const edges = partner
+        ? addEdge(
+            feeds
+              ? { id: uid('e'), source: node.id, target: partner.id }
+              : { id: uid('e'), source: partner.id, target: node.id },
+            s.edges,
+          )
+        : s.edges
+      return { nodes: [...s.nodes, node], edges, selectedId: node.id }
     }),
 
   updateNodeData: (id, patch) =>

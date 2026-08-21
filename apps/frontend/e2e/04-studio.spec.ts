@@ -51,8 +51,9 @@ test('a click selects a node, a double-click opens it; the canvas survives a rel
   await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 
-  // The runs panel sits under the canvas, honestly empty on a flow never run.
-  await expect(page.getByText(/No executions/)).toBeVisible()
+  // The runs panel sits under the canvas, folded until this installation has run something —
+  // its whole content before that is a sentence saying so, and the canvas wants the room.
+  await expect(page.getByRole('button', { name: 'Show the executions panel' })).toBeVisible()
 })
 
 test('the pre-run check reports on the saved flow', async ({ page }) => {
@@ -85,11 +86,12 @@ test('every studio panel folds away and comes back', async ({ page }) => {
   // double-clicking it, so there is no panel there to fold.
   await expect(page.getByRole('button', { name: /the node properties/ })).toHaveCount(0)
 
-  // Executions (console) → a bottom bar.
-  await page.getByRole('button', { name: 'Hide the executions panel' }).click()
-  await expect(page.getByText(/No executions/)).toHaveCount(0)
+  // Executions (console) → a bottom bar. It starts folded on an installation with no runs, so
+  // this one unfolds first and folds after.
   await page.getByRole('button', { name: 'Show the executions panel' }).click()
   await expect(page.getByText(/No executions/)).toBeVisible()
+  await page.getByRole('button', { name: 'Hide the executions panel' }).click()
+  await expect(page.getByText(/No executions/)).toHaveCount(0)
 })
 
 test('cleans up its flow', async ({ page }) => {

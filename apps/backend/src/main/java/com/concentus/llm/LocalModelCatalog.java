@@ -125,7 +125,15 @@ public class LocalModelCatalog {
                             client.baseUrl(), e.getMessage());
                 }
                 models = Set.of();
-                lastError = e.getMessage();
+                // Not the exception's own words. This is shown in a model picker to people who
+                // never asked for a local model, and "Could not reach http://localhost:11434/v1
+                // /models: null" tells them nothing they can act on — it does not even say that
+                // running one is optional.
+                String why = e.getMessage() == null || e.getMessage().isBlank()
+                        ? e.getClass().getSimpleName()
+                        : e.getMessage();
+                lastError = why + " Running a local model server is optional — Claude models "
+                        + "work without one.";
             } finally {
                 checkedAt = Instant.now();
             }

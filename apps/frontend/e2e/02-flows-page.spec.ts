@@ -6,18 +6,13 @@ import { expect, flowCard, openApp, test } from './fixtures'
  * CRUD spec that follows creates its own flows regardless.
  */
 
-test('shows the dashboard: KPIs and toolbar', async ({ page }) => {
+test('shows the dashboard: the headline numbers and the toolbar', async ({ page }) => {
   await openApp(page)
 
-  // By the KPI class, not by text: "Flows" is also the nav button, and a text lookup trips over
-  // both. The order is the component's own render order.
-  await expect(page.locator('[class*="kpiLabel"]')).toHaveText([
-    'Flows',
-    'Executions',
-    'Success rate',
-    'Running now',
-    'Est. cost',
-  ])
+  // Before anything has run, the strip is one line rather than five tiles reporting zero: on a
+  // fresh installation four of the five said only that nothing had happened.
+  await expect(page.locator('[class*="kpisQuiet"]')).toContainText('nothing has run yet')
+  await expect(page.locator('[class*="kpiLabel"]')).toHaveCount(0)
 
   await expect(page.getByLabel('Search flows')).toBeVisible()
   await expect(page.getByLabel('Sort flows')).toBeVisible()
@@ -93,18 +88,20 @@ test('search filters the cards and clearing brings them back', async ({ page }) 
 test('the samples live in a folder you enter and leave — and search reaches inside', async ({ page }) => {
   await openApp(page)
 
-  // A fresh database seeds the bundled flows into "Samples": the first launch shows one folder
-  // tile, an invitation instead of a wall of cards.
-  const samples = page.getByRole('button', { name: 'Folder Samples' })
-  await expect(samples).toBeVisible()
-  await expect(page.getByRole('article')).toHaveCount(0)
-
-  // Entering shows the flows and the way back; the breadcrumb returns to the root.
-  await samples.click()
+  // A fresh database seeds the bundled flows into "Samples", and the dashboard opens inside it:
+  // the six flows shipped to help somebody start are the first thing on the screen, not the
+  // folder they are filed in.
   expect(await page.getByRole('article').count()).toBeGreaterThan(0)
+
+  // The way out is the breadcrumb, and from the root the folder is a tile again.
+  const samples = page.getByRole('button', { name: 'Folder Samples' })
   await page.getByRole('button', { name: 'All flows' }).click()
   await expect(page.getByRole('article')).toHaveCount(0)
   await expect(samples).toBeVisible()
+
+  // And entering it goes back in.
+  await samples.click()
+  expect(await page.getByRole('article').count()).toBeGreaterThan(0)
 
   // Searching suspends the tree and shows matches flat, wherever they live — a filter that hid
   // its matches inside folders would be broken search.
@@ -113,10 +110,23 @@ test('the samples live in a folder you enter and leave — and search reaches in
   await page.getByLabel('Search flows').fill('')
 })
 
+/**
+ * The root of the explorer.
+ *
+ * A fresh installation opens INSIDE its only folder — the samples are what the first screen is
+ * for — so a test about the tree itself has to climb out first. Clicking the breadcrumb is also
+ * what retires the automatic navigation, which is the behaviour being relied on here.
+ */
+async function atRoot(page: import('@playwright/test').Page): Promise<void> {
+  const up = page.getByRole('button', { name: 'All flows' })
+  if (await up.count()) await up.click()
+}
+
 test('drag and drop: a card into a folder, a folder into a folder, a card back out', async ({
   page,
 }) => {
   await openApp(page)
+  await atRoot(page)
 
   /**
    * A folder, made where folders are made.
@@ -186,6 +196,7 @@ test('drag and drop: a card into a folder, a folder into a folder, a card back o
 
 test('a folder can be born empty, filled by drag, and removed when empty again', async ({ page }) => {
   await openApp(page)
+  await atRoot(page)
   // Only the delete step confirms via a dialog now — creation is an inline input (window.prompt
   // does not exist in Electron, which is exactly why the tile grew its own field).
   page.on('dialog', (d) => void d.accept())

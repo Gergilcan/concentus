@@ -194,11 +194,16 @@ export function CrudPanel<T extends Record<string, unknown>>({
 
         <div className={styles.crudActions}>
           <button className={styles.saveBtn} onClick={() => void onSave()}>
-            Save
+            {idOf(draft) ? 'Save' : 'Create'}
           </button>
-          <button className={styles.delBtn} onClick={() => void onDelete()}>
-            Delete
-          </button>
+          {/* Delete acted on nothing while the form held an unsaved draft, which is also the
+              state the page opens in — so the first thing anybody saw was a blank form offering
+              to delete itself. */}
+          {idOf(draft) && (
+            <button className={styles.delBtn} onClick={() => void onDelete()}>
+              Delete
+            </button>
+          )}
           {status && <span className={styles.status}>{status}</span>}
         </div>
 

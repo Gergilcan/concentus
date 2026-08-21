@@ -80,8 +80,11 @@ export default function App() {
  * screen and habits, not about any flow — a laptop wants the palette folded, a big monitor
  * doesn't, and neither preference belongs in a shared flow definition.
  */
-function usePanelOpen(key: string): [boolean, () => void] {
-  const [open, setOpen] = useState(() => localStorage.getItem(key) !== 'closed')
+function usePanelOpen(key: string, defaultOpen = true): [boolean, () => void] {
+  const [open, setOpen] = useState(() => {
+    const remembered = localStorage.getItem(key)
+    return remembered === null ? defaultOpen : remembered !== 'closed'
+  })
   const toggle = () =>
     setOpen((o) => {
       localStorage.setItem(key, o ? 'closed' : 'open')
@@ -208,7 +211,11 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
   const [toast, setToast] = useState<string | null>(null)
   // Every Studio panel folds away: on a laptop the canvas is the work and the chrome is the tax.
   const [paletteOpen, togglePalette] = usePanelOpen('studio.palette')
-  const [runsOpen, toggleRuns] = usePanelOpen('studio.runs')
+  // Folded until this installation has run something. Open, its whole content on a flow that
+  // has never run is "No executions yet" and "Select a run" — a quarter of the height spent
+  // saying nothing, taken from the canvas, which is the thing that is short of room. It is a
+  // default, not a rule: the first toggle is remembered and this never overrides it again.
+  const [runsOpen, toggleRuns] = usePanelOpen('studio.runs', false)
   // Every Studio panel resizes by dragging its inner edge, and keeps its size across sessions.
   const [paletteW, dragPalette] = usePanelSize('studio.palette.width', 260, 180, 480)
   const [runsH, dragRuns] = usePanelSize('studio.runs.height', 260, 140, 600)

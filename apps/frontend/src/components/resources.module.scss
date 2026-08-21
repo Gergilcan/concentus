@@ -8,6 +8,14 @@
   background: t.$bg;
 }
 
+/* Between the things a flow uses and the way the installation is run. */
+.tabDivider {
+  width: 1px;
+  align-self: stretch;
+  background: t.$border;
+  margin: 4px 6px;
+}
+
 .tabs {
   display: flex;
   gap: 4px;

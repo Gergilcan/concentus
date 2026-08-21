@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type DragEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { api } from '../api/client.ts'
 import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -70,13 +70,26 @@ export function FlowsPage({
    * it open, a laptop wants the width for the flows — and re-deciding it on every visit is the
    * thing that makes a fold not worth using.
    */
-  const [runsOpen, setRunsOpen] = useState(
-    () => localStorage.getItem('concentus.recentRuns') !== 'closed',
-  )
+  const [runsOpen, setRunsOpen] = useState(() => {
+    const remembered = localStorage.getItem('concentus.recentRuns')
+    if (remembered) return remembered !== 'closed'
+    // Nothing remembered yet: start folded, because on a fresh installation the column's whole
+    // content is the sentence "Nothing has run yet." It opens itself below once there is a run,
+    // and after that this is the person's own decision to make.
+    return false
+  })
 
   useEffect(() => {
     localStorage.setItem('concentus.recentRuns', runsOpen ? 'open' : 'closed')
   }, [runsOpen])
+
+  /** The first run is what the column is for, so it opens itself for it — once, not on every run. */
+  const openedForFirstRun = useRef(false)
+  useEffect(() => {
+    if (openedForFirstRun.current || runs.length === 0) return
+    openedForFirstRun.current = true
+    if (!localStorage.getItem('concentus.recentRuns')) setRunsOpen(true)
+  }, [runs.length])
   const [settingsFor, setSettingsFor] = useState<BackendFlow | null>(null)
   const [versionsFor, setVersionsFor] = useState<BackendFlow | null>(null)
   const [describing, setDescribing] = useState(false)
@@ -142,7 +155,53 @@ export function FlowsPage({
   // shows one "Samples" tile instead of six sample cards. Searching or tag-filtering suspends the
   // tree and shows every match flat — a filter that hid its matches inside folders would just be
   // broken search.
-  const [path, setPath] = useState('')
+  const [path, setPathState] = useState('')
+  /**
+   * Any navigation the person makes themselves retires the automatic one — permanently.
+   *
+   * A single "where did we put them" flag was not enough: clearing it on a click made the very
+   * next render eligible to open the folder again, so leaving Samples bounced straight back in.
+   * Two facts, because they are two facts: where this put them, and whether they have since
+   * taken the wheel.
+   */
+  const navigatedByHand = useRef(false)
+  const setPath = (next: string) => {
+    navigatedByHand.current = true
+    autoPath.current = null
+    setPathState(next)
+  }
+
+  /**
+   * On a first launch, start inside the folder everything is in — and leave when it stops being
+   * everything.
+   *
+   * Six sample flows shipped to help somebody begin were behind a click, and the screen meant to
+   * show them off showed a folder tile and an empty page. So the dashboard opens inside, but only
+   * while the root holds nothing else: the moment a flow of their own exists outside that folder,
+   * staying in would hide the thing they just made. Both halves are conditional on the person not
+   * having navigated themselves — {@link autoPath} remembers where this put them, and any click
+   * on a tile or a breadcrumb ends the arrangement for good.
+   */
+  const autoPath = useRef<string | null>(null)
+  useEffect(() => {
+    if (flows.length === 0) return
+    const roots = childFolders(flows, '')
+    const loose = flowsAt(flows, '')
+    const onlyFolder = roots.length === 1 && loose.length === 0
+
+    if (navigatedByHand.current) return
+
+    if (onlyFolder && path === '' && autoPath.current === null) {
+      // At the root a folder's name IS its path.
+      autoPath.current = roots[0].name
+      setPathState(roots[0].name)
+      return
+    }
+    if (!onlyFolder && autoPath.current !== null && path === autoPath.current) {
+      autoPath.current = null
+      setPathState('')
+    }
+  }, [flows, path])
   const filtering = query.trim() !== ''
   const tiles = useMemo(() => childFolders(visible, path), [visible, path])
   const here = useMemo(() => flowsAt(visible, path), [visible, path])

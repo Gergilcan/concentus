@@ -3,8 +3,21 @@ import type { DashboardStats } from './flowsDashboard.ts'
 import { money } from './flowFormat.ts'
 import styles from './flows.module.scss'
 
-/** The row of headline numbers (flow/run counts, success rate, cost) atop the flows dashboard. */
+/**
+ * The row of headline numbers atop the dashboard — once there are numbers.
+ *
+ * On an installation that has never run anything, four of the five tiles report zero, a dash and
+ * a dollar sign: the most prominent thing on the first screen, carrying one fact. So before the
+ * first run it collapses to that one fact in a line, and the space goes to the flows.
+ */
 export function FlowsKpis({ stats }: { stats: DashboardStats }) {
+  if (stats.executions === 0 && stats.active === 0) {
+    return (
+      <div className={styles.kpisQuiet}>
+        {stats.flows} flow{stats.flows === 1 ? '' : 's'} · nothing has run yet
+      </div>
+    )
+  }
   return (
     <div className={styles.kpis}>
       <Kpi label="Flows" value={String(stats.flows)} />

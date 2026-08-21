@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { api } from '../api/client.ts'
 import type { DatabaseDef, FacadeProfile, LibraryAgent, McpDef } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, EFFORT_OPTIONS } from '../constants.ts'
@@ -25,13 +25,15 @@ type Tab = 'settings' | 'members' | 'agents' | 'mcp' | 'facades' | 'databases' |
  * The tab strip, in display order. `desktopOnly` keeps Updates out of a browser tab, which has no
  * app to update — the shell bridge is absent there.
  */
-const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolean }> = [
-  {
-    id: 'members',
-    label: 'Members',
-    title:
-      'Who is in this organization and what each of them may do: read, run, edit, or administer. Enforced on every request, not only in the interface.',
-  },
+/**
+ * The tab strip, in display order, in two groups.
+ *
+ * The first nine are things a flow uses; the last four are how the installation is run. They sat
+ * in one undifferentiated row of twelve, which asks somebody looking for a knowledge base to read
+ * past "Members" and "Storage" to find it. The divider is the whole treatment — a second row or a
+ * nested menu would cost more attention than the distinction is worth.
+ */
+const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolean; startsAdmin?: boolean }> = [
   { id: 'agents', label: 'Agents' },
   { id: 'mcp', label: 'MCP Servers' },
   {
@@ -56,6 +58,13 @@ const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolea
       "Values substituted into every flow's prompts as {{NAME}} when a run starts. A flow can override any of them — or add its own — in its settings.",
   },
   { id: 'credentials', label: 'Credentials' },
+  {
+    id: 'members',
+    label: 'Members',
+    startsAdmin: true,
+    title:
+      'Who is in this organization and what each of them may do: read, run, edit, or administer. Enforced on every request, not only in the interface.',
+  },
   {
     id: 'settings',
     label: 'Settings',
@@ -83,14 +92,16 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
     <div className={styles.resources}>
       <div className={styles.tabs}>
         {TABS.filter((t) => !t.desktopOnly || shellBridge()).map((t) => (
-          <button
-            key={t.id}
-            className={tab === t.id ? styles.active : ''}
-            onClick={() => setTab(t.id)}
-            title={t.title}
-          >
-            {t.label}
-          </button>
+          <Fragment key={t.id}>
+            {t.startsAdmin && <span className={styles.tabDivider} aria-hidden="true" />}
+            <button
+              className={tab === t.id ? styles.active : ''}
+              onClick={() => setTab(t.id)}
+              title={t.title}
+            >
+              {t.label}
+            </button>
+          </Fragment>
         ))}
       </div>
 

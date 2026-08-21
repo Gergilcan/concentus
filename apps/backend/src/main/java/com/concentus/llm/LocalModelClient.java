@@ -389,8 +389,26 @@ public class LocalModelClient {
             Thread.currentThread().interrupt();
             throw new LlmException(ID, "Interrupted contacting the local model server");
         } catch (Exception e) {
-            throw new LlmException(ID, "Could not reach " + baseUrl + path + ": " + e.getMessage());
+            throw new LlmException(ID, "Could not reach " + baseUrl + path + ": " + reason(e));
         }
     }
 
+    /**
+     * Why a call failed, in words, for a message somebody will read.
+     *
+     * <p>{@code e.getMessage()} is null on exactly the exceptions this path throws most —
+     * {@link java.net.ConnectException} carries its detail in its class, not its message — and a
+     * message ending in the word "null" is how a user learns that nobody checked. The class name
+     * is the fallback because "ConnectException" at least names the failure; "null" names nothing.
+     */
+    private static String reason(Exception e) {
+        String message = e.getMessage();
+        if (message != null && !message.isBlank()) return message;
+        return switch (e) {
+            case java.net.ConnectException ignored -> "nothing is listening there";
+            case java.net.UnknownHostException ignored -> "the host name does not resolve";
+            case java.net.http.HttpTimeoutException ignored -> "it did not answer in time";
+            default -> e.getClass().getSimpleName();
+        };
+    }
 }

@@ -1,11 +1,51 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.ts'
-import type { UsageSummary } from '../api/types.ts'
+import type { UsageDay, UsageSummary } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { money } from '../utils/format.ts'
 import styles from './usage.module.scss'
 
 const REFRESH_MS = 60_000
+
+/** The weekday letter a person reads a chart by. Locale's own, so it is not English-only. */
+function weekday(date: string): string {
+  return new Date(date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short' })
+}
+
+/**
+ * Seven days beside each other, today last and emphasised.
+ *
+ * Three totals say how much; only the days say whether today is unusual, which is the question a
+ * total raises. Bars rather than a line: these are seven discrete amounts, not a continuous
+ * quantity sampled seven times, and a line drawn between them implies values in between that
+ * nobody measured.
+ */
+function SevenDays({ days }: { days: UsageDay[] }) {
+  const peak = Math.max(...days.map((d) => d.estimatedUsd), 0.01)
+  return (
+    <>
+      <h3 className={styles.h3}>Day by day</h3>
+      <div className={styles.chart}>
+        {days.map((d, i) => {
+          const last = i === days.length - 1
+          const height = Math.max(2, Math.round((d.estimatedUsd / peak) * 100))
+          return (
+            <div key={d.date} className={styles.bar} title={`${d.date} — ${d.messages} message(s)`}>
+              <div className={styles.barValue}>{d.estimatedUsd > 0 ? money(d.estimatedUsd) : ''}</div>
+              <div className={styles.barTrack}>
+                <div
+                  className={last ? `${styles.barFill} ${styles.barToday}` : styles.barFill}
+                  style={{ height: `${height}%` }}
+                />
+              </div>
+              <div className={styles.barLabel}>{last ? 'Today' : weekday(d.date)}</div>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+}
 
 function tokens(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
@@ -87,6 +127,8 @@ export function UsagePage() {
           )
         })}
       </div>
+
+      {data.days && data.days.length > 0 && <SevenDays days={data.days} />}
 
       <h3 className={styles.h3}>By model — last 7 days</h3>
       <div className={styles.tableWrap}>

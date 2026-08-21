@@ -149,14 +149,13 @@ export async function openApp(page: Page): Promise<void> {
   const flows = (await page.request.get('/api/flows').then((r) => r.json())) as { folder?: string }[]
   if (flows.length === 0) {
     await expect(page.getByText('No flows yet')).toBeVisible()
-  } else if (flows.some((f) => !(f.folder ?? '').trim())) {
-    // .first() on the CARDS alone: an install can legitimately have both root flows and folder
-    // tiles, and asserting on a locator that matches both trips strict mode the moment it does.
-    await expect(page.getByRole('article').first()).toBeVisible()
   } else {
-    // Every flow lives in a folder (a fresh install: the samples), so the root of the explorer
-    // shows folder tiles — the tiles ARE the settled state.
-    await expect(page.getByRole('button', { name: /^Folder / }).first()).toBeVisible()
+    // Cards either way. When every flow lives under one folder — a fresh install, where that
+    // folder is Samples — the dashboard now opens inside it rather than showing the cabinet the
+    // samples are filed in, so the settled state is the flows themselves in both cases.
+    // .first() on the CARDS alone: an install can legitimately have both cards and folder tiles,
+    // and asserting on a locator that matches both trips strict mode the moment it does.
+    await expect(page.getByRole('article').first()).toBeVisible()
   }
 }
 

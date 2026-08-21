@@ -206,7 +206,9 @@ export function FlowCanvas() {
       defaultEdgeOptions={{ type: 'deletable', animated: true }}
     >
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
-      <MiniMap pannable zoomable nodeColor={(n) => nodeColor(n.type)} />
+      {/* A minimap over a graph you can already see whole navigates nothing, and it takes a
+          200x150 bite out of the canvas to do it. It arrives when the graph outgrows the screen. */}
+      {allNodes.length > 8 && <MiniMap pannable zoomable nodeColor={(n) => nodeColor(n.type)} />}
       <Controls />
     </ReactFlow>
   )

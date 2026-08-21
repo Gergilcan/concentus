@@ -5,7 +5,10 @@
   border: 1px solid t.$border;
   border-radius: t.$radius;
   padding: 8px 10px;
-  width: 190px;
+  /* 190px clipped the one name every flow has: "Coordinator" arrived as "Coordina…" next to
+     its own COORDINATOR badge. A box whose default content does not fit it is a box that is
+     slightly the wrong size. */
+  width: 214px;
   color: t.$text;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   font-size: 12px;
