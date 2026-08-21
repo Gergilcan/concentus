@@ -579,10 +579,24 @@ export function KnowledgePanel() {
       fields={[
         { key: 'name', label: 'Name' },
         { key: 'description', label: 'Description', placeholder: 'What lives here' },
+        {
+          key: 'minRole',
+          label: 'Who may read it',
+          type: 'select' as const,
+          // A knowledge base is not configuration, it is the documents. Salary bands, an incident
+          // post-mortem, a contract — material where "anybody who can edit a flow" is plainly the
+          // wrong audience, and where the leak arrives disguised as an agent answering well.
+          options: [
+            { value: '', label: 'Anybody in the organization' },
+            { value: 'OPERATOR', label: 'Operators and above' },
+            { value: 'MEMBER', label: 'Members and above' },
+            { value: 'ADMIN', label: 'Admins only' },
+          ],
+        },
       ]}
       labelOf={(k) => k.name}
       idOf={(k) => k.id}
-      empty={() => ({ name: '', description: '' })}
+      empty={() => ({ name: '', description: '', minRole: '' })}
       load={api.listKnowledge}
       save={api.saveKnowledge}
       remove={api.deleteKnowledge}

@@ -20,12 +20,14 @@ public class RagContextInjector {
     private final SqlRagRetriever retriever;
     private final KnowledgeRetriever knowledge;
     private final ContextAssembler assembler;
+    private final KnowledgeAccess access;
 
     public RagContextInjector(SqlRagRetriever retriever, KnowledgeRetriever knowledge,
-                              ContextAssembler assembler) {
+                              ContextAssembler assembler, KnowledgeAccess access) {
         this.retriever = retriever;
         this.knowledge = knowledge;
         this.assembler = assembler;
+        this.access = access;
     }
 
     public void inject(AgentSpec spec, Consumer<String> emit) {
@@ -104,6 +106,13 @@ public class RagContextInjector {
                 ne.input = com.concentus.support.Texts.brief(query, 400);
             }
             try {
+                // Judged by whoever pressed Run, not by whoever drew the flow. A flow outlives its
+                // author's session, and inheriting the author's reach would make every restricted
+                // base readable by anybody who could run the right flow.
+                if (access != null && run != null && !access.mayRunRead(source.baseId, run.startedBy)) {
+                    throw new SecurityException("You do not have access to the documents in '"
+                            + source.label() + "'.");
+                }
                 var hits = knowledge.search(source.baseId, query, queryVector, source.topK);
                 var assembled = assembler.assemble(hits);
                 ctx.append("\n\n# Retrieved context — ").append(source.label()).append('\n')

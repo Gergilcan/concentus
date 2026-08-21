@@ -24,7 +24,7 @@ class RagContextInjectorTest {
 
     private final SqlRagRetriever retriever = mock(SqlRagRetriever.class);
     private final KnowledgeRetriever knowledge = mock(KnowledgeRetriever.class);
-    private final RagContextInjector injector = new RagContextInjector(retriever, knowledge, new ContextAssembler(12000));
+    private final RagContextInjector injector = new RagContextInjector(retriever, knowledge, new ContextAssembler(12000), null);
 
     private static SqlSourceSpec sqlSource(String nodeId, String label, String query) {
         SqlSourceSpec s = new SqlSourceSpec();

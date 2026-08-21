@@ -564,6 +564,21 @@
         </p>
       </div>
 
+      <h3>Who may read a base</h3>
+      <p>
+        Every other resource here is reachable by anybody who may edit flows, and for an agent
+        definition that is right — it is configuration. A knowledge base is not configuration; it is
+        <em>the documents themselves</em>. So a base can name the lowest role that may read it, on
+        the same ladder everything else uses.
+      </p>
+      <p>
+        <strong>Absent means everybody</strong>, which is what every base created before this
+        existed meant and must go on meaning. It is enforced at the API, and again when a run
+        injects a base — against the role of <em>whoever started the run</em>, not whoever drew the
+        flow. A flow outlives its author&rsquo;s session, and inheriting their reach would make every
+        restricted base readable by anybody who could press Run on the right flow.
+      </p>
+
       <h3>Chunking</h3>
       <p>
         Documents are split on paragraph boundaries at about 1,500 characters, with 200 characters

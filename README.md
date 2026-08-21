@@ -831,6 +831,23 @@ can check against its sources is the failure this subsystem exists to avoid.
 Traces carry it: a `concentus.retrieval` span per search, with candidate counts per branch and
 whether a rerank happened. Identifiers and counts, never the text.
 
+### Who may read a base
+
+Every other resource here is reachable by anybody who may edit flows, and for an agent definition
+or a webhook that is right — they are configuration. A knowledge base is not configuration; it is
+**the documents themselves**. Salary bands, an incident post-mortem, a contract: material where
+"anybody who can edit a flow" is plainly the wrong audience, and where the leak does not look like
+a leak. It looks like an agent answering a question well.
+
+So a base can name the lowest role that may read it. **Absent means everybody** — which is what
+every base created before this existed meant, and an upgrade that silently locked people out of
+their own documents would be a worse failure than the one this prevents.
+
+Enforced twice. Once at the API, and once when a run injects a base, against the role of **whoever
+started the run** rather than whoever drew the flow. A flow outlives its author’s session, and
+inheriting the author’s reach would make every restricted base readable by anybody who could press
+Run on the right flow.
+
 ### Measuring it, rather than feeling it
 
 Every change to ranking sounds like an improvement, and the usual evidence is three queries typed

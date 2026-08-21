@@ -9,7 +9,23 @@ package com.concentus.model;
  * policies, past reports. Only the passages relevant to the task at hand are injected.
  *
  * @param description shown in the picker, and worth writing: it is how a person with twelve bases
- *                    remembers which one holds the shipping policies
+ *                    remembers which one holds the shipping policies — and it is what an agent
+ *                    reads to decide whether to search this base at all
+ * @param minRole     the lowest role that may read this base, from the same ladder everything else
+ *                    uses. Blank or absent means everybody, which is what every base created
+ *                    before this field existed meant and must go on meaning
  */
-public record KnowledgeDef(String id, String name, String description) {
+public record KnowledgeDef(String id, String name, String description, String minRole) {
+
+    /**
+     * A base with no restriction stated.
+     *
+     * <p>Kept because {@code KnowledgeDef} is deserialised from rows written before this field
+     * existed, and because a two-argument constructor is what most callers want. Jackson fills the
+     * missing component with null, and every read of {@link #minRole()} treats null as "anybody" —
+     * so an upgrade cannot silently lock somebody out of a base they could read yesterday.
+     */
+    public KnowledgeDef(String id, String name, String description) {
+        this(id, name, description, null);
+    }
 }

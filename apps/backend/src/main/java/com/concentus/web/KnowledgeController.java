@@ -31,6 +31,7 @@ public class KnowledgeController {
     private final com.concentus.llm.BuiltInReranker reranker;
     private final com.concentus.service.KnowledgeEvalService evals;
     private final com.concentus.auth.OrgContext orgContext;
+    private final com.concentus.service.KnowledgeAccess access;
     private final com.concentus.integration.content.AttachmentExtractionService extraction;
 
     public KnowledgeController(KnowledgeStore store, KnowledgeService service,
@@ -39,6 +40,7 @@ public class KnowledgeController {
                                com.concentus.llm.BuiltInReranker reranker,
                                com.concentus.service.KnowledgeEvalService evals,
                                com.concentus.auth.OrgContext orgContext,
+                               com.concentus.service.KnowledgeAccess access,
                                com.concentus.integration.content.AttachmentExtractionService extraction) {
         this.store = store;
         this.service = service;
@@ -47,6 +49,7 @@ public class KnowledgeController {
         this.reranker = reranker;
         this.evals = evals;
         this.orgContext = orgContext;
+        this.access = access;
         this.extraction = extraction;
     }
 
@@ -121,7 +124,7 @@ public class KnowledgeController {
 
     @GetMapping
     public List<KnowledgeDef> list() {
-        return store.list();
+        return access.readable();
     }
 
     /** What ranking is available, and exactly which piece is missing when it is not all of it. */
@@ -285,9 +288,17 @@ public class KnowledgeController {
         return evals.run(id, topK, rerank);
     }
 
+    /**
+     * The base exists and this caller may read it.
+     *
+     * <p>Both checks in the one method every read already calls, rather than a second guard
+     * somebody has to remember to add: an endpoint that forgets an access check is indisting-
+     * uishable, in review, from an endpoint that does not need one.
+     */
     private void requireBase(String id) {
         if (store.get(id).isEmpty()) {
             throw new IllegalArgumentException("No knowledge base '" + id + "'.");
         }
+        access.requireRead(id);
     }
 }

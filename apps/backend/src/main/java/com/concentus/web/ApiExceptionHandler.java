@@ -44,6 +44,18 @@ public class ApiExceptionHandler {
     }
 
     /**
+     * A knowledge base restricted to a higher role.
+     *
+     * <p>Unlike the case above, this one names the restriction rather than hiding it. The base is
+     * visible on a canvas the caller is allowed to look at, so pretending it does not exist would
+     * confuse rather than protect — and the name was never the secret; the documents are.
+     */
+    @ExceptionHandler(com.concentus.service.KnowledgeAccess.AccessDenied.class)
+    public ResponseEntity<Map<String, String>> restricted(com.concentus.service.KnowledgeAccess.AccessDenied e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", safe(e)));
+    }
+
+    /**
      * A method the endpoint doesn't support — routine, not an incident. The MCP Streamable HTTP
      * transport GETs the run-tools endpoints (with {@code Accept: text/event-stream}) probing for
      * a server-initiated stream; answering 405 is the spec's own "no stream here", and the CLI

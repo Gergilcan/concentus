@@ -8,7 +8,13 @@ interface FieldSpec {
   key: string
   label: string
   type?: 'text' | 'number' | 'textarea' | 'select'
-  options?: string[]
+  /**
+   * Choices for a select. A bare string is both the stored value and the label, which is right
+   * when the value is already a word a person would recognise. Where it is not — a role name, an
+   * empty string meaning "anybody" — the pair says which is which, rather than making the label
+   * do a job it cannot do.
+   */
+  options?: Array<string | { value: string; label: string }>
   placeholder?: string
   /**
    * Renders this field with a real component instead of a bare input.
@@ -174,11 +180,15 @@ export function CrudPanel<T extends Record<string, unknown>>({
               />
             ) : f.type === 'select' ? (
               <select value={String(draft[f.key] ?? '')} onChange={(e) => set(f.key, e.target.value)}>
-                {(f.options ?? []).map((o) => (
-                  <option key={o} value={o}>
-                    {o}
-                  </option>
-                ))}
+                {(f.options ?? []).map((o) => {
+                  const value = typeof o === 'string' ? o : o.value
+                  const label = typeof o === 'string' ? o : o.label
+                  return (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  )
+                })}
               </select>
             ) : (
               <input

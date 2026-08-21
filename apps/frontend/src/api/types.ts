@@ -1106,6 +1106,11 @@ export type KnowledgeDef = {
   id?: string
   name: string
   description?: string
+  /**
+   * The lowest role that may read this base. Blank means everybody, which is what every base
+   * created before this field existed meant and must go on meaning.
+   */
+  minRole?: string
 }
 
 export type KnowledgeDoc = {

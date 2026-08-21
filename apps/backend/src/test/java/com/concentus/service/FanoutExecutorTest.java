@@ -53,7 +53,7 @@ class FanoutExecutorTest {
     private FanoutExecutor executor(FanoutExecutor.ProcessStarter starter, int timeoutSeconds,
                                     int retries) {
         return new FanoutExecutor(new LocalClaudeSupport("claude"),
-                new RagContextInjector(null, null, new ContextAssembler(12000)), new PreRunSubflows(null), new ContextFolderResolver(""),
+                new RagContextInjector(null, null, new ContextAssembler(12000), null), new PreRunSubflows(null), new ContextFolderResolver(""),
                 new com.fasterxml.jackson.databind.ObjectMapper(), profiles, null, null, null,
                 dataDir.toString(), "bypassPermissions", 8734, 4, timeoutSeconds, retries, starter);
     }

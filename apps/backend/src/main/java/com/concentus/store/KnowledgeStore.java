@@ -25,7 +25,10 @@ public class KnowledgeStore extends JsonStore<KnowledgeDef> {
 
     @Override
     protected KnowledgeDef withId(KnowledgeDef k, String id) {
-        return new KnowledgeDef(id, k.name(), k.description());
+        // Every component, every time. A record rebuilt here without one of its fields loses
+        // that field on every save, silently — which is how a permission that was set once
+        // becomes a permission nobody has.
+        return new KnowledgeDef(id, k.name(), k.description(), k.minRole());
     }
 
     @Override
