@@ -74,6 +74,7 @@ public class RunService {
     private final ConcurrentHashMap<String, AgentRun> runs = new ConcurrentHashMap<>();
     /** What this service says about itself: a span per unit of work, and counters per outcome. */
     private final com.concentus.telemetry.Telemetry telemetry;
+    private final ToolCallLoopGuard loops;
 
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
                       ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
@@ -84,7 +85,8 @@ public class RunService {
                       SubflowService subflows,
                       com.concentus.store.VariableStore variableStore,
                       com.concentus.config.Settings settings,
-                      com.concentus.telemetry.Telemetry telemetry) {
+                      com.concentus.telemetry.Telemetry telemetry,
+                      ToolCallLoopGuard loops) {
         this.clientProvider = clientProvider;
         this.compiler = compiler;
         this.launcher = launcher;
@@ -99,6 +101,7 @@ public class RunService {
         this.remoteApprovals = remoteApprovals;
         this.variableStore = variableStore;
         this.telemetry = telemetry;
+        this.loops = loops;
         // Read here rather than injected as placeholders, so what somebody set under Settings is
         // what this pool is sized with. Still read once — a thread pool cannot be resized under a
         // run in flight — which is why the settings screen says these wait for a restart.
@@ -480,7 +483,13 @@ public class RunService {
                 .sorted(Comparator.comparingLong(r -> r.createdAt))
                 .limit(overflow)
                 .map(r -> r.id)
-                .forEach(runs::remove);
+                .forEach(id -> {
+                    runs.remove(id);
+                    // The loop guard keeps one small entry per box per run. Evicting the run
+                    // without evicting those is a leak that only shows up on a backend that has
+                    // been up for a month.
+                    loops.forget(id);
+                });
     }
 
     private static boolean isTerminal(String status) {

@@ -82,7 +82,7 @@ class RunServiceTest {
                         "runs.max-concurrent", String.valueOf(maxConcurrent),
                         "runs.queue-capacity", String.valueOf(queueCapacity),
                         "runs.max-retained", String.valueOf(maxRetainedRuns))),
-                com.concentus.telemetry.Telemetry.none());
+                com.concentus.telemetry.Telemetry.none(), new ToolCallLoopGuard());
         created.add(s);
         return s;
     }
@@ -887,7 +887,7 @@ class RunServiceTest {
                         "runs.max-concurrent", "4",
                         "runs.queue-capacity", "8",
                         "runs.max-retained", "10")),
-                com.concentus.telemetry.Telemetry.none());
+                com.concentus.telemetry.Telemetry.none(), new ToolCallLoopGuard());
         created.add(s);
         return s;
     }

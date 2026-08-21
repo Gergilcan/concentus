@@ -654,6 +654,18 @@ public class FanoutExecutor {
                 + "larger flow. Do only the task you are given, in your own workspace, and end "
                 + "with a plain report of what you found or produced — another step merges the "
                 + "workers' reports, so write yours to be read next to the others.\n");
+        if (facade) {
+            md.append("""
+
+                    You are not alone and you are not in touch: the others are working at the same
+                    time, in their own workspaces, and cannot see yours. Two tools bridge that.
+                    Call read_findings before starting anything that sounds like it may already
+                    have been done, and again whenever you are stuck. Call share_finding when you
+                    establish something the others would otherwise spend time establishing
+                    themselves — a fact, a dead end, a source that turned out to be wrong. A
+                    sentence or two. Not progress updates, and not your report.
+                    """);
+        }
         // Only when something is actually withheld. Telling a worker its writes might be
         // simulated when they are not is the same defect in reverse: it reports a real change as
         // a proposal, and the next run does it again.
@@ -1318,7 +1330,7 @@ public class FanoutExecutor {
         Path workdir = runWorkspace(run, "merge");
         Path workersRoot = runWorkspace(run, "workers");
 
-        String prompt = mergePrompt(userText, outcomes, workersRoot);
+        String prompt = mergePrompt(userText, outcomes, workersRoot, run.sharedNotes);
         if (exec != null) {
             exec.appendInput(prompt);
             exec.status = "running";
@@ -1385,7 +1397,8 @@ public class FanoutExecutor {
     }
 
     /** The merge's input: the goal, each worker's outcome, and where their real files sit. */
-    private static String mergePrompt(String userText, List<Outcome> outcomes, Path workersRoot) {
+    private static String mergePrompt(String userText, List<Outcome> outcomes, Path workersRoot,
+                                      List<AgentRun.SharedNote> notes) {
         StringBuilder p = new StringBuilder();
         p.append("# Task the workers were given\n\n").append(userText).append("\n\n");
         p.append("# Worker outcomes\n");
@@ -1397,6 +1410,17 @@ public class FanoutExecutor {
                         ? "(finished without a final message)" : o.finalText()).append('\n');
             } else {
                 p.append("Failed: ").append(o.error()).append('\n');
+            }
+        }
+        if (!notes.isEmpty()) {
+            // What they told each other while working, which is often the reason a report says
+            // what it says — and sometimes says a thing no report mentions, because the worker who
+            // found it moved on and the worker who used it did not know where it came from.
+            p.append("\n# What they told each other while working\n");
+            synchronized (notes) {
+                for (AgentRun.SharedNote n : notes) {
+                    p.append("\n- ").append(n.author()).append(": ").append(n.text()).append('\n');
+                }
             }
         }
         p.append("\nTheir full workspaces (files they wrote, one folder per worker) are under: ")

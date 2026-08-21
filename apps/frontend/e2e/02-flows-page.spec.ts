@@ -143,11 +143,24 @@ test('drag and drop: a card into a folder, a folder into a folder, a card back o
     // .first(): a folder is a tile in the grid and, once you are inside it, a breadcrumb too.
     await expect(page.getByRole('button', { name: `Folder ${name}` }).first()).toBeVisible()
   }
+  /**
+   * Creates a flow and waits for its card to actually be on the dashboard.
+   *
+   * <p>Returning as soon as the header button was clicked left the next step dragging a card the
+   * list had not rendered yet. It passed alone and failed under parallel load, which is the shape
+   * of a race rather than of a slow machine — and a suite that fails once in three runs is a suite
+   * people stop believing.
+   */
   const newFlow = async (name: string) => {
     await page.getByRole('button', { name: '+ New flow' }).first().click()
     await page.getByLabel('Flow name').fill(name)
+    const saved = page.waitForResponse(
+      (r) => r.url().includes('/api/flows') && r.request().method() === 'POST',
+    )
     await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await saved
     await page.getByRole('button', { name: '← Flows' }).click()
+    await expect(flowCard(page, name)).toHaveCount(1)
   }
   const folder = (name: string) => page.getByRole('button', { name: `Folder ${name}` }).first()
 

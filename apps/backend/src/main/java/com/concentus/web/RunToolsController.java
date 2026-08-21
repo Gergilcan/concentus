@@ -62,11 +62,13 @@ public class RunToolsController {
     private final SubflowService subflows;
     private final com.concentus.service.KnowledgeRetriever knowledge;
     private final com.concentus.service.ContextAssembler assembler;
+    private final com.concentus.service.ToolCallLoopGuard loops;
 
     public RunToolsController(RunService runs, OpenApiCatalog catalog, ApiCaller caller,
                               ObjectMapper mapper, FlowMemoryStore memory, SubflowService subflows,
                               com.concentus.service.KnowledgeRetriever knowledge,
-                              com.concentus.service.ContextAssembler assembler) {
+                              com.concentus.service.ContextAssembler assembler,
+                              com.concentus.service.ToolCallLoopGuard loops) {
         this.runs = runs;
         this.catalog = catalog;
         this.caller = caller;
@@ -75,6 +77,7 @@ public class RunToolsController {
         this.subflows = subflows;
         this.knowledge = knowledge;
         this.assembler = assembler;
+        this.loops = loops;
     }
 
     @PostMapping
@@ -411,16 +414,28 @@ public class RunToolsController {
         if (tool == null) {
             return callResult(true, "Unknown tool '" + name + "'. Call tools/list for the current set.");
         }
+        String argsJson = params.path("arguments").toString();
+        String callerKey = com.concentus.service.ToolCallLoopGuard.key(run.id, tool.spec().nodeId);
+        var stuck = loops.refuse(callerKey, name, argsJson);
+        if (stuck.isPresent()) {
+            run.emit(com.concentus.model.RunEvent.of("system", "Called " + name + " repeatedly "
+                    + "with the same arguments for the same answer — told to try something else."));
+            return callResult(true, stuck.get());
+        }
+
         try {
             ApiCaller.Result result = caller.call(tool.spec(), tool.op(), tool.baseUrl(),
                     params.path("arguments"));
             String text = "HTTP " + result.status() + "\n" + result.body();
+            loops.record(callerKey, name, argsJson, text);
             run.emit(com.concentus.model.RunEvent.of("tool_use",
                     "API " + tool.spec().label + ": " + tool.op().key() + " → "
                             + (result.status() == 0 ? "rejected before sending" : "HTTP " + result.status())));
             return callResult(!result.ok(), text);
         } catch (Exception e) {
-            return callResult(true, "The call failed before a response arrived: " + e.getMessage());
+            String message = "The call failed before a response arrived: " + e.getMessage();
+            loops.record(callerKey, name, argsJson, message);
+            return callResult(true, message);
         }
     }
 

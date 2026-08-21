@@ -150,6 +150,18 @@ concentus/
     prompt are injected into the connected agent, numbered and cited, recorded per node. The agent
     also gets a `search_knowledge` tool, so it can go back and ask a second question the preload
     could not have anticipated. See [Retrieval](#retrieval-how-a-passage-is-found).
+- **Workers talk to each other** — each independent worker gets `share_finding` and
+  `read_findings`. They are separate processes with separate context windows, which is what makes
+  them independent and also what makes five of them research the same thing five times. A worker
+  that establishes something the others would have to establish themselves says so; the others read
+  it before starting anything that sounds done. Notes are scratch — they belong to this attempt,
+  not to the flow — and the merge step reads them alongside the reports, because a note is often
+  the reason a report says what it says.
+- **A loop is interrupted, not waited out** — an agent calling the same tool with the same
+  arguments for the same answer three times running is refused once, and told what it has been
+  doing. Same tool, same arguments *and* same result: a status poll whose answer changes is never
+  touched, which is the difference between waiting and looping. It resets after refusing, so an
+  agent genuinely waiting is delayed rather than stopped.
 - **Permissions** — set on the coordinator, because one CLI process runs the whole flow. Modes:
   bypass (default, the only one that works unattended), plan-only, and **"Ask me to approve the
   plan, then act"** — the run stops after planning, raises a desktop notification, and the console

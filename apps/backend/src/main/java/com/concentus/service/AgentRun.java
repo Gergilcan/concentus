@@ -167,6 +167,75 @@ public class AgentRun {
      * sessions on the server. Keyed by server name, which is unique within a flow.
      */
     public final Map<String, com.concentus.llm.McpClient> mcpClients = new ConcurrentHashMap<>();
+
+    /**
+     * What the workers of this run have told each other.
+     *
+     * <p>Independent workers each get their own process and their own context window, which is
+     * what makes them independent and also what makes five of them research the same thing five
+     * times. Nothing reached from one worker to another: the coordinator's plan went out, the
+     * reports came back, and in between they were blind to each other.
+     *
+     * <p>Append-only, and shared. A worker that learns something the others would waste time
+     * re-learning says so, and the others can read it. It costs one tool call and saves whatever
+     * the duplicated work would have cost — which in a fan-out is the largest avoidable expense
+     * there is.
+     *
+     * <p>On the run rather than in the database, because it is scratch: it belongs to this
+     * attempt, not to the flow, and a note that outlived its run would be read next time as a
+     * fact about a different question. Each note is also emitted as an event, so the run report
+     * keeps a record without a table that has to be cleaned up.
+     */
+    public final java.util.List<SharedNote> sharedNotes =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
+    /**
+     * One thing a worker told the others.
+     *
+     * @param author the worker's name, because "somebody found this" is not usable by a reader
+     *               deciding whether to trust it
+     */
+    public record SharedNote(String author, String text, long at) {
+    }
+
+    /** Notes kept. Past this a worker is narrating rather than sharing, and the rest go unread. */
+    public static final int MAX_SHARED_NOTES = 60;
+    /** Characters per note. A finding that needs more than this is a report, not a note. */
+    public static final int MAX_SHARED_NOTE_CHARS = 600;
+
+    /**
+     * Records a note, or says why it was not.
+     *
+     * @return null when it was recorded, or the reason to hand back to the worker
+     */
+    public String shareNote(String author, String text) {
+        String note = text == null ? "" : text.strip();
+        if (note.isEmpty()) return "A note needs something in it.";
+        if (note.length() > MAX_SHARED_NOTE_CHARS) {
+            note = note.substring(0, MAX_SHARED_NOTE_CHARS) + "…";
+        }
+        synchronized (sharedNotes) {
+            if (sharedNotes.size() >= MAX_SHARED_NOTES) {
+                return "The shared notes for this run are full (" + MAX_SHARED_NOTES + "). Keep "
+                        + "the rest for your final report.";
+            }
+            // A worker repeating itself adds nothing and costs every sibling a read.
+            for (SharedNote existing : sharedNotes) {
+                if (existing.text().equalsIgnoreCase(note)) {
+                    return "That note is already there — no need to say it twice.";
+                }
+            }
+            sharedNotes.add(new SharedNote(author, note, System.currentTimeMillis()));
+        }
+        return null;
+    }
+
+    /** Every note except the reader's own: a worker does not need to be told what it just said. */
+    public java.util.List<SharedNote> notesFor(String author) {
+        synchronized (sharedNotes) {
+            return sharedNotes.stream().filter(n -> !n.author().equals(author)).toList();
+        }
+    }
     /**
      * Whether SQL/RAG context has been injected for this run.
      *

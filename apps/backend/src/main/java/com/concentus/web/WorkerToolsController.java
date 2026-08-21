@@ -52,13 +52,16 @@ public class WorkerToolsController {
     private final ObjectMapper mapper;
     private final McpOAuthStore mcpOAuth;
     private final OrgContext orgContext;
+    private final com.concentus.service.ToolCallLoopGuard loops;
 
     public WorkerToolsController(RunService runs, ObjectMapper mapper,
-                                 McpOAuthStore mcpOAuth, OrgContext orgContext) {
+                                 McpOAuthStore mcpOAuth, OrgContext orgContext,
+                                 com.concentus.service.ToolCallLoopGuard loops) {
         this.runs = runs;
         this.mapper = mapper;
         this.mcpOAuth = mcpOAuth;
         this.orgContext = orgContext;
+        this.loops = loops;
     }
 
     @PostMapping
@@ -162,12 +165,83 @@ public class WorkerToolsController {
                         + e.getMessage(), worker.name, worker.nodeId));
             }
         }
+        appendNoteTools(tools);
         return result;
+    }
+
+    /** The name a worker calls to tell its siblings something, and the one to hear them. */
+    static final String SHARE_TOOL = "share_finding";
+    static final String READ_TOOL = "read_findings";
+
+    /**
+     * Two tools every worker gets, wired to nothing on the canvas.
+     *
+     * <p>Workers are independent processes with their own context windows, which is what makes
+     * them independent and also what makes five of them research the same thing five times. These
+     * are the only channel between them, and they are deliberately narrow: short notes, no
+     * conversation, no way to ask a sibling a question and wait. A worker that could block on
+     * another worker would be a worker that can deadlock with it.
+     */
+    private void appendNoteTools(ArrayNode tools) {
+        ObjectNode share = tools.addObject();
+        share.put("name", SHARE_TOOL);
+        share.put("description", "Tell the other workers on this task something they would "
+                + "otherwise have to find out for themselves: a fact you established, a dead end "
+                + "not worth repeating, a source that turned out to be wrong. One or two "
+                + "sentences. Not a progress update and not your final report — this is for "
+                + "things that change what somebody else should do.");
+        ObjectNode shareSchema = share.putObject("inputSchema");
+        shareSchema.put("type", "object");
+        shareSchema.putObject("properties").putObject("note")
+                .put("type", "string")
+                .put("description", "The finding, in at most "
+                        + com.concentus.service.AgentRun.MAX_SHARED_NOTE_CHARS + " characters.");
+        shareSchema.putArray("required").add("note");
+
+        ObjectNode read = tools.addObject();
+        read.put("name", READ_TOOL);
+        read.put("description", "Read what the other workers on this task have found so far. "
+                + "Worth calling before starting something that sounds like it might already be "
+                + "done, and again if you get stuck. Returns their notes, not their reports.");
+        ObjectNode readSchema = read.putObject("inputSchema");
+        readSchema.put("type", "object");
+        readSchema.putObject("properties");
+    }
+
+    private ObjectNode shareFinding(AgentRun run, AgentSpec worker, JsonNode arguments) {
+        String note = arguments.path("note").asText("");
+        String refused = run.shareNote(worker.name, note);
+        if (refused != null) return callResult(true, refused);
+        run.emit(RunEvent.of("tool_use", "Shared with the other workers: "
+                + com.concentus.support.Texts.brief(note.strip(), 160),
+                worker.name, worker.nodeId));
+        return callResult(false, "Shared. The other workers will see it when they next look.");
+    }
+
+    private ObjectNode readFindings(AgentRun run, AgentSpec worker) {
+        var notes = run.notesFor(worker.name);
+        run.emit(RunEvent.of("tool_use", "Read the other workers' findings (" + notes.size() + ")",
+                worker.name, worker.nodeId));
+        if (notes.isEmpty()) {
+            return callResult(false, "Nobody has shared anything yet. Carry on, and share what you "
+                    + "find so the others do not repeat it.");
+        }
+        StringBuilder text = new StringBuilder(notes.size() + " note(s) from the other workers:\n");
+        for (var n : notes) {
+            text.append("\n- ").append(n.author()).append(": ").append(n.text()).append('\n');
+        }
+        return callResult(false, text.toString());
     }
 
     private ObjectNode toolsCall(AgentRun run, AgentSpec worker, FacadeProfile profile,
                                  JsonNode params) {
         String fullName = params.path("name").asText("");
+        // Before the server split: these two carry no server prefix, because they do not belong to
+        // a server. They are also outside the facade profile deliberately — a profile decides what
+        // a worker may do to the world, and a note to a sibling does nothing to the world.
+        if (SHARE_TOOL.equals(fullName)) return shareFinding(run, worker, params.path("arguments"));
+        if (READ_TOOL.equals(fullName)) return readFindings(run, worker);
+
         int sep = fullName.indexOf("__");
         if (sep <= 0) {
             return callResult(true, "Unknown tool '" + fullName
@@ -194,6 +268,17 @@ public class WorkerToolsController {
         }
 
         String argsJson = params.path("arguments").toString();
+
+        // Before the call is made, not after: the point is not to spend it.
+        String caller = com.concentus.service.ToolCallLoopGuard.key(run.id, worker.nodeId);
+        var stuck = loops.refuse(caller, fullName, argsJson);
+        if (stuck.isPresent()) {
+            run.emit(RunEvent.of("system", "Facade: " + worker.name + " has called " + fullName
+                    + " repeatedly with the same arguments for the same answer — told to try "
+                    + "something else.", worker.name, worker.nodeId));
+            return callResult(true, stuck.get());
+        }
+
         switch (FacadeToolGate.decide(toolName, profile)) {
             case BLOCK -> {
                 run.emit(RunEvent.of("tool_use", "Facade BLOCKED " + fullName + " (read-only)",
@@ -220,9 +305,15 @@ public class WorkerToolsController {
             McpClient client = clientFor(run, server);
             run.emit(RunEvent.of("tool_use", server.name + " · " + toolName,
                     worker.name, worker.nodeId));
-            return callResult(false, client.callTool(toolName, argsJson));
+            String result = client.callTool(toolName, argsJson);
+            loops.record(caller, fullName, argsJson, result);
+            return callResult(false, result);
         } catch (RuntimeException e) {
-            return callResult(true, "The call failed: " + e.getMessage());
+            // Failures count too: a tool erroring identically forty times is the same waste as
+            // one answering identically forty times, and there is as little to learn from it.
+            String message = "The call failed: " + e.getMessage();
+            loops.record(caller, fullName, argsJson, message);
+            return callResult(true, message);
         }
     }
 

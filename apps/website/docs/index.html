@@ -500,6 +500,36 @@
         call and whether writes are blocked (read-only) or simulated (dry-run) — enforced by the
         backend on every call, not by asking the model nicely.
       </p>
+      <h3>What passes between them</h3>
+      <p>
+        Two tools, and nothing else. <code>share_finding</code> tells the other workers something
+        they would otherwise have to find out for themselves — a fact established, a dead end not
+        worth repeating, a source that turned out to be wrong. <code>read_findings</code> reads
+        what they have said. Worth calling before starting anything that sounds like it may already
+        be done.
+      </p>
+      <p>
+        Deliberately narrow: short notes, no conversation, and no way to ask a sibling something and
+        wait for an answer. A worker that could block on another worker would be a worker that can
+        deadlock with it. The notes are scratch — they belong to this run, not to the flow — and the
+        merge step reads them beside the reports, because a note is often the reason a report says
+        what it says.
+      </p>
+
+      <h3>When an agent stops getting anywhere</h3>
+      <p>
+        An agent that calls the same tool with the same arguments and gets the same answer three
+        times running is refused once, and told what it has been doing. The rule is same tool, same
+        arguments <em>and</em> same result: a status poll whose answer changes is never touched,
+        which is the difference between waiting and looping. Failures count too — there is as
+        little to learn from the fortieth identical error as from the fortieth identical success.
+      </p>
+      <p>
+        It is a speed bump rather than a wall. The count resets after a refusal, so an agent that
+        really is waiting on something is delayed rather than stopped; refusing forever would turn
+        a way to save money into a way to break a run that was about to succeed.
+      </p>
+
       <div class="warn">
         <b>stdio servers are launched by the worker</b>
         <p>

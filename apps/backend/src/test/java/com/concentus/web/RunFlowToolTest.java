@@ -52,7 +52,8 @@ class RunFlowToolTest {
         when(memory.isAvailable()).thenReturn(false);
         return new RunToolsController(runs, new OpenApiCatalog(MAPPER), new ApiCaller(MAPPER),
                 MAPPER, memory, subflows, mock(com.concentus.service.KnowledgeRetriever.class),
-                new com.concentus.service.ContextAssembler(12000));
+                new com.concentus.service.ContextAssembler(12000),
+                new com.concentus.service.ToolCallLoopGuard());
     }
 
     private static AgentSpec.SubflowSpec spec(String label, String flowId) {

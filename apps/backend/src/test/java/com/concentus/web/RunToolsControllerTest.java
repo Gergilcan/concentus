@@ -66,7 +66,8 @@ class RunToolsControllerTest {
                 new ApiCaller(MAPPER), MAPPER, memory,
                 mock(com.concentus.service.SubflowService.class),
                 mock(com.concentus.service.KnowledgeRetriever.class),
-                new com.concentus.service.ContextAssembler(12000));
+                new com.concentus.service.ContextAssembler(12000),
+                new com.concentus.service.ToolCallLoopGuard());
     }
 
     private static JsonNode rpc(String method, String params) {

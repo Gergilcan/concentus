@@ -79,7 +79,8 @@ class WorkerToolsControllerTest {
         when(oauth.accessToken(anyString(), anyString())).thenReturn(Optional.empty());
         OrgContext org = mock(OrgContext.class);
         when(org.defaultOrganizationId()).thenReturn("default");
-        return new WorkerToolsController(runs, MAPPER, oauth, org);
+        return new WorkerToolsController(runs, MAPPER, oauth, org,
+                new com.concentus.service.ToolCallLoopGuard());
     }
 
     private static JsonNode rpc(String method, String params) {
@@ -118,23 +119,53 @@ class WorkerToolsControllerTest {
 
     // ------------------------------------------------------------------ listing
 
+    /**
+     * The tools that came from an MCP server, which is what a facade profile decides about.
+     *
+     * <p>Every worker also carries the two it uses to talk to its siblings. Those are not a
+     * server's, they carry no {@code server__} prefix, and a profile has no opinion about them:
+     * it decides what a worker may do to the world, and a note to a sibling does nothing to the
+     * world. Counting them here would be counting the wrong thing.
+     */
+    private static List<JsonNode> serverTools(JsonNode tools) {
+        List<JsonNode> out = new java.util.ArrayList<>();
+        tools.forEach(t -> {
+            if (t.path("name").asText("").contains("__")) out.add(t);
+        });
+        return out;
+    }
+
     @Test
     void theListingIsTheProfileNotTheServer() {
         WorkerToolsController c = controller(profile(List.of(), true, null));
 
         ResponseEntity<JsonNode> res = c.rpc("run-1", "n1", "tok-worker", rpc("tools/list", null));
 
-        JsonNode tools = res.getBody().path("result").path("tools");
+        List<JsonNode> tools = serverTools(res.getBody().path("result").path("tools"));
         assertThat(tools).hasSize(1); // read-only: create_contact is not even advertised
         assertThat(tools.get(0).path("name").asText()).isEqualTo("holded__list_contacts");
+    }
+
+    @Test
+    void everyWorkerCanReachItsSiblings() {
+        WorkerToolsController c = controller(profile(List.of(), true, null));
+
+        JsonNode tools = c.rpc("run-1", "n1", "tok-worker", rpc("tools/list", null))
+                .getBody().path("result").path("tools");
+
+        // Even under the strictest profile: the point of the channel is that a worker which may
+        // change nothing can still stop the others repeating what it has already found out.
+        List<String> names = new java.util.ArrayList<>();
+        tools.forEach(t -> names.add(t.path("name").asText()));
+        assertThat(names).contains("share_finding", "read_findings");
     }
 
     @Test
     void underDryRunWritesAreListedAndLabelled() {
         WorkerToolsController c = controller(profile(List.of(), false, true));
 
-        JsonNode tools = c.rpc("run-1", "n1", "tok-worker", rpc("tools/list", null))
-                .getBody().path("result").path("tools");
+        List<JsonNode> tools = serverTools(c.rpc("run-1", "n1", "tok-worker", rpc("tools/list", null))
+                .getBody().path("result").path("tools"));
 
         assertThat(tools).hasSize(2);
         JsonNode create = tools.get(1);
