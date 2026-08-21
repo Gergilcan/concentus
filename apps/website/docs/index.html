@@ -1,0 +1,1111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Concentus documentation</title>
+<meta name="description" content="How Concentus works: the canvas and its blocks, knowledge bases and hybrid retrieval, triggers, teams and roles, settings, traces, and the HTTP API." />
+<meta name="theme-color" content="#0b0e14" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Concentus documentation" />
+<meta property="og:description" content="The canvas, knowledge bases and retrieval, triggers, teams, settings and the API — everything the app actually does." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cpath d='M25 16 L20.5 23.8 L11.5 23.8 L7 16 L11.5 8.2 L20.5 8.2 Z' fill='none' stroke='%236ea8fe' stroke-width='2.6' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0e14;
+    --bg-grid: #141a26;
+    --panel: #141a24;
+    --panel-2: #1a2130;
+    --line: #232c3b;
+    --line-2: #313d51;
+    --text: #e9eff8;
+    --muted: #93a0b4;
+    --faint: #5c6879;
+
+    --accent: #6ea8fe;
+    --coord: #b98cff;
+    --mcp: #63e6be;
+    --repo: #ffd43b;
+    --sql: #ff922b;
+    --gate: #ffa8a8;
+    --subflow: #74c0fc;
+    --api: #a9e34b;
+    --danger: #ff8787;
+
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+    --r: 12px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 86px; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16.5px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+  .bg {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background-color: var(--bg);
+    background-image: radial-gradient(var(--bg-grid) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  /* ------------------------------ top bar ------------------------------ */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(12px);
+    /* Nearly opaque: at 78% the headings scrolling under it were still legible through
+       the bar, which reads as a rendering fault rather than as translucency. */
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-in {
+    display: flex; align-items: center; gap: 18px; height: 62px;
+    max-width: 1380px; margin: 0 auto; padding: 0 24px;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; letter-spacing: -0.01em; color: var(--text); }
+  .brand:hover { text-decoration: none; }
+  .hex { color: var(--accent); font-size: 18px; }
+  .badge {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted); border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 9px;
+  }
+  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 14.5px; }
+  .nav-right a { color: var(--muted); }
+  .nav-right a:hover { color: var(--text); text-decoration: none; }
+  .menu-btn {
+    display: none; background: var(--panel); color: var(--text); border: 1px solid var(--line-2);
+    border-radius: 8px; padding: 6px 11px; font: inherit; font-size: 14px; cursor: pointer;
+  }
+
+  /* ------------------------------ layout ------------------------------ */
+  .shell {
+    display: grid;
+    grid-template-columns: 252px minmax(0, 1fr) 208px;
+    gap: 40px;
+    max-width: 1380px;
+    margin: 0 auto;
+    padding: 0 24px 120px;
+  }
+
+  /* ------------------------------ sidebar ------------------------------ */
+  .side {
+    position: sticky; top: 62px; align-self: start;
+    max-height: calc(100vh - 62px);
+    overflow-y: auto;
+    padding: 26px 0 40px;
+    font-size: 14.5px;
+  }
+  .filter {
+    width: 100%; background: var(--panel); color: var(--text);
+    border: 1px solid var(--line-2); border-radius: 8px;
+    padding: 7px 11px; font: inherit; font-size: 14px; margin-bottom: 18px;
+  }
+  .filter::placeholder { color: var(--faint); }
+  .side h4 {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--faint); margin: 22px 0 8px; font-weight: 600;
+  }
+  .side h4:first-of-type { margin-top: 0; }
+  .side a {
+    display: block; color: var(--muted); padding: 4px 10px; border-radius: 7px;
+    border-left: 2px solid transparent; margin-left: -2px;
+  }
+  .side a:hover { color: var(--text); background: var(--panel); text-decoration: none; }
+  .side a.on { color: var(--text); border-left-color: var(--accent); background: var(--panel); }
+  .side a.hidden { display: none; }
+
+  /* ------------------------------ content ------------------------------ */
+  main { padding: 40px 0 0; min-width: 0; }
+  .lede { max-width: 70ch; }
+  .lede h1 {
+    font-size: clamp(32px, 4.4vw, 42px); line-height: 1.08; letter-spacing: -0.025em;
+    margin: 0 0 14px; text-wrap: balance;
+  }
+  .lede p { color: var(--muted); font-size: 18px; margin: 0 0 10px; }
+
+  section { padding-top: 52px; max-width: 74ch; scroll-margin-top: 86px; }
+  section > h2 {
+    font-size: 27px; letter-spacing: -0.02em; margin: 0 0 6px; text-wrap: balance;
+    scroll-margin-top: 86px;
+  }
+  section > h2 + .sub { color: var(--muted); margin: 0 0 18px; }
+  h3 { font-size: 18.5px; letter-spacing: -0.01em; margin: 28px 0 8px; }
+  p { margin: 0 0 14px; }
+  ul, ol { margin: 0 0 14px; padding-left: 22px; }
+  li { margin: 5px 0; }
+  strong { color: var(--text); font-weight: 650; }
+  em { color: var(--text); }
+
+  code {
+    font-family: var(--mono); font-size: 0.87em;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 5px; padding: 1px 5px;
+  }
+  pre {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--r); padding: 14px 16px; overflow-x: auto; margin: 0 0 16px;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: 13.5px; line-height: 1.6; }
+
+  .tablewrap { overflow-x: auto; margin: 0 0 18px; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--faint); font-weight: 600; border-bottom-color: var(--line-2);
+  }
+  td code { white-space: nowrap; }
+
+  .note, .warn {
+    border: 1px solid var(--line-2); border-radius: var(--r);
+    padding: 14px 16px; margin: 0 0 18px; background: var(--panel);
+  }
+  .note b, .warn b {
+    display: block; font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; margin-bottom: 5px;
+  }
+  .note b { color: var(--accent); }
+  .warn { border-color: color-mix(in srgb, var(--danger) 45%, var(--line-2)); }
+  .warn b { color: var(--danger); }
+  .note p:last-child, .warn p:last-child { margin-bottom: 0; }
+
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; border: 1px solid var(--line-2); border-radius: 999px;
+    padding: 1px 8px; color: var(--muted); vertical-align: middle;
+  }
+
+  /* ------------------------------ on this page ------------------------------ */
+  .toc {
+    position: sticky; top: 62px; align-self: start;
+    max-height: calc(100vh - 62px); overflow-y: auto;
+    padding: 46px 0 40px; font-size: 13.5px;
+  }
+  .toc h4 {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--faint); margin: 0 0 10px; font-weight: 600;
+  }
+  .toc a { display: block; color: var(--faint); padding: 3px 0; }
+  .toc a:hover { color: var(--text); text-decoration: none; }
+  .toc a.on { color: var(--accent); }
+
+  footer {
+    border-top: 1px solid var(--line); margin-top: 72px; padding-top: 22px;
+    color: var(--faint); font-size: 14px; max-width: 74ch;
+  }
+
+  @media (max-width: 1180px) {
+    .shell { grid-template-columns: 236px minmax(0, 1fr); }
+    .toc { display: none; }
+  }
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .menu-btn { display: block; }
+    .side {
+      display: none; position: static; max-height: none; padding: 18px 0 6px;
+      border-bottom: 1px solid var(--line);
+    }
+    .side.open { display: block; }
+    main { padding-top: 28px; }
+  }
+</style>
+</head>
+<body>
+<div class="bg"></div>
+
+<header class="nav">
+  <div class="nav-in">
+    <a class="brand" href="/"><span class="hex">⬡</span> Concentus</a>
+    <span class="badge">Docs</span>
+    <div class="nav-right">
+      <button class="menu-btn" id="menu">Contents</button>
+      <a href="/#features">Features</a>
+      <a href="/#download">Download</a>
+      <a href="https://github.com/Gergilcan/concentus">GitHub</a>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+
+  <!-- ============================ sidebar ============================ -->
+  <nav class="side" id="side">
+    <input class="filter" id="filter" type="search" placeholder="Filter…" aria-label="Filter the contents" />
+
+    <h4>Start</h4>
+    <a href="#what">What it is</a>
+    <a href="#install">Install</a>
+    <a href="#first-run">First run</a>
+
+    <h4>Build</h4>
+    <a href="#canvas">The canvas</a>
+    <a href="#blocks">Blocks</a>
+    <a href="#triggers">Triggers</a>
+    <a href="#subflows">Sub-flows</a>
+    <a href="#workers">Independent workers</a>
+
+    <h4>Data</h4>
+    <a href="#knowledge">Knowledge bases</a>
+    <a href="#retrieval">Retrieval</a>
+    <a href="#measuring">Measuring retrieval</a>
+    <a href="#sql">SQL sources</a>
+    <a href="#apis">APIs and MCP</a>
+
+    <h4>Run</h4>
+    <a href="#runs">Runs and the console</a>
+    <a href="#approvals">Approvals</a>
+    <a href="#versions">Versions and golden runs</a>
+
+    <h4>Operate</h4>
+    <a href="#teams">Teams and sign-in</a>
+    <a href="#storage">Storage</a>
+    <a href="#settings">Settings</a>
+    <a href="#telemetry">Traces and metrics</a>
+    <a href="#cli">Headless CLI</a>
+
+    <h4>Reference</h4>
+    <a href="#api">HTTP API</a>
+    <a href="#environment">Environment</a>
+  </nav>
+
+  <!-- ============================ content ============================ -->
+  <main>
+    <div class="lede">
+      <h1>Concentus documentation</h1>
+      <p>
+        What the application does, why it does it that way, and where to click. Written against the
+        app as it ships — where something is a limitation it says so rather than leaving you to
+        find out.
+      </p>
+    </div>
+
+    <section id="what">
+      <h2>What it is</h2>
+      <p class="sub">A desktop app for building and running teams of AI agents.</p>
+      <p>
+        You draw a flow on a canvas: a trigger, one or more agents, and the tools and data they may
+        reach. Concentus runs it on the Claude login already on your machine — no server to deploy,
+        no database to provision, no API key to paste.
+      </p>
+      <p>
+        The flow you draw is the flow that runs. There is no configuration file behind the picture
+        that could disagree with it, which is the property that makes a canvas worth having at all.
+      </p>
+    </section>
+
+    <section id="install">
+      <h2>Install</h2>
+      <p class="sub">Windows and Linux. One installer, nothing else.</p>
+      <p>
+        Download from the <a href="/#download">releases page</a> and open it. The app carries its
+        own Java runtime and its own PostgreSQL, so there is nothing to install alongside it.
+      </p>
+      <p>
+        To run the backend on its own — a server, a container, a machine nobody sits at:
+      </p>
+      <pre><code>java -jar concentus-backend.jar</code></pre>
+      <p>
+        With no environment at all, that starts an embedded PostgreSQL, generates its own encryption
+        key, and asks for a first account on <code>http://localhost:8080</code>.
+      </p>
+      <div class="note">
+        <b>Running agents needs the Claude CLI</b>
+        <p>
+          Flows execute through Claude Code on the machine running the backend. A deployment without
+          it can still design, store and serve flows; it cannot run them.
+        </p>
+      </div>
+    </section>
+
+    <section id="first-run">
+      <h2>First run</h2>
+      <p class="sub">Create the account that owns the installation.</p>
+      <p>
+        The first launch shows a setup screen. Create an account with an email and a password, or
+        sign in with Google, Microsoft or Discord if you have registered one — either way, the
+        first identity through the door administers the installation.
+      </p>
+      <p>
+        Everybody after that arrives as a <strong>Viewer</strong>. Arriving with a valid company
+        account proves who somebody is, not what they should be allowed to change.
+      </p>
+      <div class="warn">
+        <b>Servers reachable before anybody claims them</b>
+        <p>
+          On a deployment nobody sits in front of, set <code>CONCENTUS_ADMIN_EMAIL</code> and
+          <code>CONCENTUS_ADMIN_PASSWORD</code> before the first launch. Otherwise the window
+          between the port opening and you reaching it is a window in which somebody else could
+          claim the installation.
+        </p>
+      </div>
+    </section>
+
+    <section id="canvas">
+      <h2>The canvas</h2>
+      <p class="sub">Where a flow is drawn, and what the drawing means.</p>
+      <p>
+        Blocks are added from the palette on the left. A new block is placed against the one it
+        attaches to — the chain runs left to right, and capabilities hang underneath — and when
+        exactly one existing block could legally take the connection, the wire is drawn for you.
+      </p>
+      <p>
+        Selecting a block rings what feeds it and what it feeds, one hop in each direction.
+        Double-clicking opens its properties.
+      </p>
+
+      <h3>What a wire means</h3>
+      <p>
+        Direction carries meaning, so the canvas refuses a wire that would not: an agent cannot
+        feed its MCP server, and a knowledge base cannot feed a SQL source, because neither has
+        anything to do with what arrives. Only <strong>consumers</strong> — agents, merges,
+        verifiers — can be on the receiving end of a capability.
+      </p>
+
+      <h3>Keyboard</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Keys</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>Ctrl</code> + <code>K</code></td><td>Command palette — reach any view or action</td></tr>
+            <tr><td><code>Ctrl</code> + <code>C</code> / <code>V</code></td><td>Copy and paste blocks. Selected text wins: the canvas stands aside</td></tr>
+            <tr><td><code>Ctrl</code> + <code>D</code></td><td>Duplicate the selected block</td></tr>
+            <tr><td><code>Delete</code></td><td>Remove the selection</td></tr>
+            <tr><td><code>Esc</code></td><td>Close the properties dialog</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="blocks">
+      <h2>Blocks</h2>
+      <p class="sub">Every kind of box, and when to reach for it.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Block</th><th>What it is</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>Input / trigger</strong></td>
+              <td>Where the run's text comes from: typed by you, a schedule, a webhook, or an incoming email.</td>
+            </tr>
+            <tr>
+              <td><strong>Agent</strong></td>
+              <td>A model with a system prompt, an effort level and a token ceiling. The first agent on a canvas becomes the coordinator.</td>
+            </tr>
+            <tr>
+              <td><strong>Verifier</strong></td>
+              <td>Reads a result and returns a verdict. Its endpoint is a verdict, not a conversation.</td>
+            </tr>
+            <tr>
+              <td><strong>Merge</strong></td>
+              <td>Reconciles what several branches produced into one answer. Reaches MCP like an agent does.</td>
+            </tr>
+            <tr>
+              <td><strong>MCP server</strong></td>
+              <td>Tools an agent may call. HTTP servers are proxied; stdio servers are launched by the worker itself.</td>
+            </tr>
+            <tr>
+              <td><strong>Repository</strong></td>
+              <td>A git checkout the agent works in — read the code, change it, open a pull request.</td>
+            </tr>
+            <tr>
+              <td><strong>SQL source</strong></td>
+              <td>A read-only query whose rows are injected as context before the agent starts.</td>
+            </tr>
+            <tr>
+              <td><strong>API / endpoint</strong></td>
+              <td>Any HTTP endpoint as a typed tool — from an OpenAPI document, or from a URL you type.</td>
+            </tr>
+            <tr>
+              <td><strong>Knowledge base</strong></td>
+              <td>Documents the agent can retrieve from. See <a href="#knowledge">Knowledge bases</a>.</td>
+            </tr>
+            <tr>
+              <td><strong>Condition</strong></td>
+              <td>Sends the run one way or the other on what actually came back.</td>
+            </tr>
+            <tr>
+              <td><strong>For each</strong></td>
+              <td>Takes a list and runs the same branch over every item.</td>
+            </tr>
+            <tr>
+              <td><strong>Run another flow</strong></td>
+              <td>A flow inside a flow. See <a href="#subflows">Sub-flows</a>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="triggers">
+      <h2>Triggers</h2>
+      <p class="sub">Four ways a run starts.</p>
+      <ul>
+        <li><strong>Manual</strong> — you type the first message in the console.</li>
+        <li><strong>Schedule</strong> — a cron expression, built from plain choices rather than typed. The canvas card says it in words: <em>every 15 minutes on working days</em>.</li>
+        <li><strong>Webhook</strong> — a URL with a secret. Posting to it starts the flow with the request's body.</li>
+        <li><strong>Mail</strong> — an IMAP folder is polled and each matching message starts a run. IMAP rather than SMTP, because folders, flags and read state are what make "process this once" possible at all.</li>
+      </ul>
+      <div class="note">
+        <b>A duplicated flow arrives paused</b>
+        <p>
+          And without the original's webhook secret. Copying an active schedule would give you two
+          flows firing every morning, which is not what "duplicate" means to anybody.
+        </p>
+      </div>
+    </section>
+
+    <section id="subflows">
+      <h2>Sub-flows</h2>
+      <p class="sub">A flow inside a flow, wired two ways.</p>
+      <p>
+        Wire a flow <em>into</em> an agent and it runs first, with the text this run started from,
+        and its answer arrives as context. Wire it <em>out of</em> an agent and it runs when that
+        agent finishes — a hand-off. The drawing says which, so there is no dropdown to disagree
+        with it.
+      </p>
+      <p>
+        The agent also gets a <code>run_flow</code> tool for the same flow, so it can ask again in
+        its own words when the first answer raises a question. The two are not redundant: one is
+        what the flow always needs, the other is what this particular run turned out to need.
+      </p>
+      <p>
+        A child runs with its own budget and its own permission mode. Cycles are cut by an ancestor
+        chain, and nesting stops at three levels deep.
+      </p>
+    </section>
+
+    <section id="workers">
+      <h2>Independent workers</h2>
+      <p class="sub">A process per agent, with enforced tool access.</p>
+      <p>
+        On the shared-session path a local run is one CLI process for the whole flow, so context
+        folders and delegation rosters are written into each agent's instructions rather than
+        enforced: an agent is told which folders and which agents are its own, and could still
+        reach the others.
+      </p>
+      <p>
+        Independent workers are the real thing. Each agent gets its own process and its own context
+        window, and reaches MCP through a <strong>facade</strong> that decides which tools it may
+        call and whether writes are blocked (read-only) or simulated (dry-run) — enforced by the
+        backend on every call, not by asking the model nicely.
+      </p>
+      <div class="warn">
+        <b>stdio servers are launched by the worker</b>
+        <p>
+          A facade can only mediate HTTP. A profile that withholds a tool from a stdio server
+          withholds the whole server, because nothing can be imposed on a process the facade never
+          sees.
+        </p>
+      </div>
+    </section>
+
+    <section id="knowledge">
+      <h2>Knowledge bases</h2>
+      <p class="sub">Reference material too large to hand over whole.</p>
+      <p>
+        A knowledge base is a named collection of documents an agent retrieves from. It is distinct
+        from a context folder, and the distinction is what to reach for when: a context folder hands
+        the agent the files themselves — right when the files <em>are</em> the work, like a
+        repository. A knowledge base is for manuals, policies and past reports, where only the
+        passages relevant to the task should be injected.
+      </p>
+
+      <h3>What can go in</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Source</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>PDF</td><td>Text layer. A scan with no text layer goes through OCR if it is installed.</td></tr>
+            <tr><td>Word <code>.docx</code></td><td>Paragraphs and tables. Tables come out pipe-delimited so a quote keeps its columns.</td></tr>
+            <tr><td>Excel / CSV</td><td>Sheets as rows.</td></tr>
+            <tr><td>PowerPoint <code>.pptx</code></td><td>Slide by slide, numbered, with speaker notes — which is often where the sentence explaining a four-word slide lives.</td></tr>
+            <tr><td>Text, Markdown, HTML</td><td>As written.</td></tr>
+            <tr><td>Images</td><td>Through OCR, when it is installed.</td></tr>
+            <tr><td>Web pages</td><td>By address. See below.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Whole folders can be uploaded at once, with per-folder exclusions — a real folder always has
+        a <code>.gitignore</code> or a stray image in it somewhere.
+      </p>
+
+      <h3>Pages</h3>
+      <p>
+        <strong>Add a page</strong> takes a URL. The document is filed under that address, so adding
+        it again replaces it rather than filing a second copy — which is what makes
+        <strong>Refresh pages</strong> mean something: one click re-fetches every page in the base
+        when the wiki moves on. Uploads are untouched by a refresh; a file somebody chose has no
+        address to go back to.
+      </p>
+      <p>
+        One address is fetched — the links on the page are not followed. A crawler that wanders
+        ingests the whole intranet because somebody pasted a nav page, and then answers questions
+        from the cafeteria menu.
+      </p>
+      <div class="warn">
+        <b>Fetching on request is a privilege</b>
+        <p>
+          A server that fetches an address you type can reach far more than you can. Loopback,
+          link-local and cloud-metadata addresses are refused, redirects are re-checked at every
+          hop, and a host that does not resolve fails closed. Name hosts in
+          <code>knowledge.allowed-web-hosts</code> to opt into ones that would otherwise be blocked.
+        </p>
+      </div>
+
+      <h3>Chunking</h3>
+      <p>
+        Documents are split on paragraph boundaries at about 1,500 characters, with 200 characters
+        of overlap so a sentence cut at a boundary still appears whole in one of its two chunks. A
+        single document stops at 2,000 chunks, and says so when it does.
+      </p>
+    </section>
+
+    <section id="retrieval">
+      <h2>Retrieval</h2>
+      <p class="sub">How a passage is found. <span class="pill">the important part</span></p>
+      <p>
+        Every query runs <strong>two searches</strong>, and they are fused rather than chosen
+        between.
+      </p>
+      <p>
+        A vector search cannot pick out an exact token. A document reference, an error code, a
+        filename sits in embedding space beside all of its neighbours, so asking for a policy by its
+        number returns twelve other policies. A keyword search finds it first try. The mirror case
+        is just as common: no keyword search matches <em>"what happens when somebody leaves"</em>
+        against a document titled <em>Offboarding</em>, because they share no words. Running both is
+        not hedging — it is the only way to answer both questions.
+      </p>
+      <pre><code>keyword  (ts_rank_cd, top 50) ─┐
+                               ├─ Reciprocal Rank Fusion ─ cross-encoder ─ top k
+semantic (cosine,      top 50) ─┘</code></pre>
+      <p>
+        Fusion is by <strong>rank, not by score</strong>. A cosine similarity and a PostgreSQL text
+        rank are not comparable quantities, and weighting them against each other would mean
+        inventing an exchange rate and then tuning it forever. Reciprocal Rank Fusion asks only how
+        near the top of its own list each branch put a passage — and a passage only one branch found
+        still surfaces, which is the entire point.
+      </p>
+
+      <h3>The reranker</h3>
+      <p>
+        A cross-encoder then reorders the survivors. It reads the question and a passage
+        <em>together</em> and scores the pair, which is what lets it notice that a passage describes
+        the right process for the wrong department — a distinction two separately-computed
+        embeddings cannot express. Too slow for a whole base; exactly right for the fifty candidates
+        a search already found.
+      </p>
+
+      <h3>The two models</h3>
+      <p>
+        Both are optional, both run inside the app, and both are downloaded on demand from
+        <em>Resources → Knowledge</em>. No Ollama, no Docker, no server.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Model</th><th>Size</th><th>Without it</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>multilingual-e5-small <span class="pill">embedding</span></td>
+              <td>~130 MB</td>
+              <td>Keyword search still works; nothing ranks by meaning.</td>
+            </tr>
+            <tr>
+              <td>bge-reranker-base <span class="pill">reranker</span></td>
+              <td>~282 MB</td>
+              <td>The fused order stands, and the panel says what is missing.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        A model server serving <code>bge-m3</code> is picked up automatically if you have one.
+      </p>
+
+      <h3>What reaches the agent</h3>
+      <p>
+        Retrieved passages are assembled, not pasted:
+      </p>
+      <ul>
+        <li><strong>Merged</strong> — adjacent passages are joined without repeating the overlap between chunks, which would otherwise read as emphasis.</li>
+        <li><strong>Ordered by document and position</strong>, never by score. A document is read forwards; score order hands the model step 4, then step 1, then step 7 and asks it to explain the process.</li>
+        <li><strong>Trimmed</strong> to a character budget per source (<code>knowledge.context-chars</code>, 12,000 by default), and the agent is told some were left out.</li>
+        <li><strong>Numbered</strong> with a citation key, and the prompt asks for those markers back. An answer nobody can check against its sources is the failure this whole subsystem exists to avoid.</li>
+      </ul>
+
+      <h3>Asking again</h3>
+      <p>
+        The agent also gets a <code>search_knowledge</code> tool. The preload answers what the flow
+        always needs; the tool answers the question that only exists because of what the first
+        answer said.
+      </p>
+    </section>
+
+    <section id="measuring">
+      <h2>Measuring retrieval</h2>
+      <p class="sub">Because every change to ranking sounds like an improvement.</p>
+      <p>
+        The usual evidence for a retrieval change is three queries typed after making it. Under that
+        regime a base gets quietly worse while everyone agrees it feels sharper.
+      </p>
+      <p>
+        So a base can keep a <strong>golden set</strong>: questions somebody really asks, each with
+        the document that answers it. <em>Resources → Knowledge → Measure this base</em>. Running it
+        gives three numbers, because one number hides the two failures that matter.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Number</th><th>What it means</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>Answered</strong></td>
+              <td>Share of questions where an expected document made the top 5. How often somebody would have got an answer at all.</td>
+            </tr>
+            <tr>
+              <td><strong>Documents found</strong></td>
+              <td>Share of every expected document retrieved. Lower than <em>Answered</em> whenever a question needs two documents and one came back — a half answer the headline would hide.</td>
+            </tr>
+            <tr>
+              <td><strong>Rank quality</strong></td>
+              <td>1.00 when answers come first, 0.50 when second, 0 when never. A passage arriving fifth spends the context budget of four wrong ones getting there.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        It runs the same questions <strong>with and without the reranker</strong>, which is the only
+        honest way to answer "is it worth 282 MB on my documents" — a benchmark on somebody else's
+        corpus is not evidence about yours. A miss shows what came back instead, because that is the
+        explanation rather than the verdict.
+      </p>
+      <div class="note">
+        <b>Retrieval, not the answer</b>
+        <p>
+          What is measured is whether the right document came back. Grading generated text needs a
+          model to judge a model — a second thing to be wrong, and a bill per run — and it answers a
+          different question: a wrong answer over the right passage is a prompt problem, while a
+          right-sounding answer over the wrong passage is this one, and it is the one that ships
+          unnoticed.
+        </p>
+      </div>
+    </section>
+
+    <section id="sql">
+      <h2>SQL sources</h2>
+      <p class="sub">Rows as context, before the agent starts.</p>
+      <p>
+        A SQL block runs a read-only query and injects its rows into the connected agent's context.
+        Generic JDBC; PostgreSQL is bundled and other drivers can be added to the backend. Test the
+        query from the block's properties before running the flow.
+      </p>
+      <p>
+        Only a single <code>SELECT</code> is allowed, as defence in depth alongside whatever grants
+        the database itself enforces. Credentials are referenced by id from
+        <em>Resources → Credentials</em>, never named inline.
+      </p>
+      <div class="warn">
+        <b>Where it may connect</b>
+        <p>
+          Loopback, link-local and cloud-metadata hosts are blocked by default. Add hosts to
+          <code>rag.allowed-jdbc-hosts</code> to permit them — except the metadata address, which is
+          blocked regardless.
+        </p>
+      </div>
+    </section>
+
+    <section id="apis">
+      <h2>APIs and MCP</h2>
+      <p class="sub">Two ways to give an agent something to call.</p>
+      <h3>MCP servers</h3>
+      <p>
+        Any Model Context Protocol server, over HTTP or launched as a local process. A catalogue
+        offers the common ones with their setup — the variables they need, the runtime they need
+        installed — rather than a blank JSON box. OAuth servers keep their tokens in one encrypted
+        credential and renew them mid-run when a call comes back 401.
+      </p>
+      <p>
+        When a server offers a great many tools, the agent gets a search tool instead of a hundred
+        schemas: it asks for what it needs and gets back the few definitions that match.
+      </p>
+      <h3>API endpoints</h3>
+      <p>
+        Paste a URL and it becomes a typed tool — no OpenAPI document required. Placeholders in the
+        path become the arguments, and a body is offered only where one belongs. With an OpenAPI
+        document, the operations are listed and you choose which the agent may call.
+      </p>
+    </section>
+
+    <section id="runs">
+      <h2>Runs and the console</h2>
+      <p class="sub">What happened, block by block.</p>
+      <p>
+        Every run records its events, its per-block input and output, its token counts and an
+        estimated cost. A block can be <strong>re-run on its own</strong>, with exactly the input it
+        was handed — a step that failed at the end of a long run does not cost you the twenty
+        minutes before it — and optionally on a different model.
+      </p>
+      <p>
+        Two runs can be compared side by side. Runs, events and per-block output are persisted; the
+        live handles to a running session are not, so restarting the backend leaves history intact
+        and drops anything mid-flight.
+      </p>
+      <div class="note">
+        <b>What the dollar figure is</b>
+        <p>
+          An estimate at published per-token rates. On a Claude subscription there is no per-token
+          bill, so treat it as equivalent usage; on the API it approximates the real charge.
+        </p>
+      </div>
+    </section>
+
+    <section id="approvals">
+      <h2>Approvals</h2>
+      <p class="sub">When a run should wait for a person.</p>
+      <p>
+        Permission mode is set on the coordinator, because one CLI process runs the whole flow:
+        <strong>bypass</strong> (the only mode that works unattended), <strong>plan only</strong>,
+        and <strong>ask me to approve</strong>. A run waiting for an answer says so, and can be
+        answered from the console — or from Slack or Teams, in the thread the notification arrived
+        in.
+      </p>
+      <p>
+        A run that has already handed its result on is closed to further messages.
+      </p>
+    </section>
+
+    <section id="versions">
+      <h2>Versions and golden runs</h2>
+      <p class="sub">History that is append-only, and a reference to drift from.</p>
+      <p>
+        Every save appends a revision, credited to whoever made it. History is reachable from the
+        dashboard's <strong>History</strong>: preview a revision on the canvas, or restore it — a
+        restore is appended as a new revision rather than erasing what it replaced, so the thing you
+        restored over is still one click away.
+      </p>
+      <p>
+        A run can be marked as a <strong>golden run</strong>: a reference for what this flow should
+        produce. Later runs are compared against it, and a flow whose output has drifted says so on
+        its card.
+      </p>
+    </section>
+
+    <section id="teams">
+      <h2>Teams and sign-in</h2>
+      <p class="sub">Who may change what.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Role</th><th>May</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Viewer</strong></td><td>Read flows and history.</td></tr>
+            <tr><td><strong>Operator</strong></td><td>Run flows and answer approvals.</td></tr>
+            <tr><td><strong>Member</strong></td><td>Create and edit flows and resources.</td></tr>
+            <tr><td><strong>Admin</strong></td><td>Everything, including members, settings and storage.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Enforced on every request by both method and path — not only by what the interface chooses
+        to draw.
+      </p>
+
+      <h3>Signing in with a directory</h3>
+      <p>
+        Microsoft, Google and Discord are registered from inside the app, under
+        <em>Resources → Members → Sign-in providers</em>, and take effect immediately. The sign-in
+        screen shows all three whether or not they are configured: an unregistered one says what it
+        needs rather than sending somebody to a provider that will refuse them after they have typed
+        their password.
+      </p>
+      <p>
+        People are matched by the provider's own immutable id, <strong>never</strong> by their
+        address — addresses are reassigned when people leave, and matching on one would eventually
+        hand a leaver's flows to whoever inherited the mailbox. An address that already has an
+        account is linked to it rather than duplicated.
+      </p>
+      <div class="note">
+        <b>The redirect URI is the whole game</b>
+        <p>
+          Every registration fails the same way the first time. Copy it from the providers screen —
+          it is computed from the request you are making — and register exactly that string. On
+          Microsoft, the field to put it in is <code>web.redirectUris</code> in the manifest, because
+          the portal refuses <code>http://</code> with a loopback address.
+        </p>
+      </div>
+
+      <h3>Several accounts at once</h3>
+      <p>
+        One browser can hold several signed-in accounts and switch between them, with each one's
+        role shown beside it — which is also the practical way to check that a permission actually
+        holds. Two accounts <em>active</em> at once needs two windows, because a session is a cookie.
+      </p>
+    </section>
+
+    <section id="storage">
+      <h2>Storage</h2>
+      <p class="sub">Embedded by default; a company database when you want one.</p>
+      <p>
+        Every build stores its data in an embedded PostgreSQL under the app's data directory. That
+        is not a demo mode — it is the same schema, the same migrations and the same code path as a
+        server deployment.
+      </p>
+      <p>
+        <em>Resources → Storage</em> points the installation at your own PostgreSQL and copies what
+        is already there across, table by table, reporting what moved. The copy is a copy: the
+        embedded data stays where it was until you are satisfied.
+      </p>
+      <div class="warn">
+        <b>Back up the key with the data</b>
+        <p>
+          Credentials are encrypted with a key the installation generates on first start and keeps
+          in <code>secret.key</code> beside its data. A database backup without that file restores
+          rows nobody can decrypt. Set <code>CONCENTUS_SECRET_KEY</code> to hold it elsewhere — a
+          vault, a container secret — instead.
+        </p>
+      </div>
+    </section>
+
+    <section id="settings">
+      <h2>Settings</h2>
+      <p class="sub">The things that used to be environment variables.</p>
+      <p>
+        <em>Resources → Settings</em>. A value is looked up in three places, in order: what somebody
+        set in the application, what the deployment was started with, then the built-in default.
+        That order is what keeps both audiences working — a container started by a pipeline still
+        takes its environment, and the person in front of the app can change the same thing from a
+        form.
+      </p>
+      <p>
+        The screen says <strong>where each value came from</strong>, because "8" means three
+        different things and only one of them is yours to clear, and <strong>whether the change
+        waits for a restart</strong> — most do, because they size a thread pool or a policy when the
+        application starts. Sign-in providers are the deliberate exception: somebody who has just
+        pasted a client id wants to try it.
+      </p>
+      <p>
+        Clearing a field removes the override rather than storing an empty one. Secrets are sealed
+        with the same key that protects stored credentials and are never read back out of the API.
+      </p>
+    </section>
+
+    <section id="telemetry">
+      <h2>Traces and metrics</h2>
+      <p class="sub">OpenTelemetry, in this application's own units of work.</p>
+      <p>
+        The framework already instruments what a framework can see. None of that answers the
+        question anybody actually has here, which is about a <em>run</em>. So there are six span
+        names and one vocabulary of attributes:
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Span</th><th>Covers</th></tr></thead>
+          <tbody>
+            <tr><td><code>concentus.run</code></td><td>One run, from its trigger to its last block</td></tr>
+            <tr><td><code>concentus.node</code></td><td>One block: an agent, a gate, a sub-flow, an API call</td></tr>
+            <tr><td><code>concentus.worker</code></td><td>One independent worker in a fan-out</td></tr>
+            <tr><td><code>concentus.tool</code></td><td>One MCP tool call, refusals included</td></tr>
+            <tr><td><code>concentus.model</code></td><td>One request to a model</td></tr>
+            <tr><td><code>concentus.retrieval</code></td><td>One knowledge search: both branches, the fusion, any reranking</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <b>No prompts, no outputs, no tool arguments</b>
+        <p>
+          Attributes carry identifiers, counts and outcomes. A trace ends up in somebody else's
+          system, usually with a longer retention than anything here and read by people who were
+          never given access to the flows. What is useful for debugging and what is safe to export
+          are different sets, and where they differ the smaller one wins.
+        </p>
+      </div>
+      <p>
+        Nothing is exported until a collector is named, and it is off by a switch rather than by a
+        blank address — an empty endpoint is not "nowhere" to an OTLP exporter, it is an invalid URL.
+        Configure it under Settings, or with <code>OTLP_ENABLED</code> and <code>OTLP_ENDPOINT</code>.
+      </p>
+    </section>
+
+    <section id="cli">
+      <h2>Headless CLI</h2>
+      <p class="sub">Running a flow from a script.</p>
+      <pre><code>pnpm desktop:build                                     # once — builds the jar
+export CONCENTUS_EMAIL=you@company.com
+export CONCENTUS_PASSWORD=…
+node scripts/concentus-run.mjs my-flow.json --input "go"
+echo $?                                                # 0 completed · 1 failed · 2 needs a human</code></pre>
+      <p>
+        It signs in like everything else does. A script that could drive the backend without
+        credentials would be a hole rather than a convenience. Prefer the environment variables over
+        <code>--email</code> / <code>--password</code>: an argument ends up in the job's log and in
+        the process list.
+      </p>
+    </section>
+
+    <section id="api">
+      <h2>HTTP API</h2>
+      <p class="sub">What the interface itself calls.</p>
+      <p>
+        Every write echoes a CSRF token that arrives as a readable cookie on the first GET. A cookie
+        alone would not prove intent, which is the whole point of the header.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Method</th><th>Path</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td>GET</td><td><code>/api/account/session</code></td><td>Who is signed in, which providers exist, whether this installation needs its first account</td></tr>
+            <tr><td>POST</td><td><code>/api/account/setup</code></td><td>Create that first account. Refuses once one exists</td></tr>
+            <tr><td>POST</td><td><code>/api/account/login</code></td><td>Sign in · <code>/logout</code></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/account/members</code></td><td>Organization members <span class="pill">admin</span></td></tr>
+            <tr><td>GET/PUT</td><td><code>/api/account/providers</code></td><td>Register Microsoft / Google / Discord <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/flows</code></td><td>List and save flows · <code>/{id}/versions</code></td></tr>
+            <tr><td>POST</td><td><code>/api/runs</code></td><td>Start a run · <code>/{id}/events</code> streams it</td></tr>
+            <tr><td>GET/POST</td><td><code>/api/knowledge</code></td><td>Knowledge bases · <code>/{id}/documents</code> · <code>/{id}/urls</code> · <code>/{id}/refresh</code></td></tr>
+            <tr><td>POST</td><td><code>/api/knowledge/{id}/search</code></td><td>Try a query against a base</td></tr>
+            <tr><td>GET/POST</td><td><code>/api/knowledge/{id}/evals</code></td><td>The golden set · <code>/evals/run</code> scores it</td></tr>
+            <tr><td>GET</td><td><code>/api/knowledge/embedder</code></td><td>The optional models · <code>/reranker</code> · <code>…/download</code></td></tr>
+            <tr><td>GET/PUT</td><td><code>/api/settings</code></td><td>Everything adjustable, with where each value came from <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/storage</code></td><td>Where data lives · <code>/migrate</code> copies it <span class="pill">admin</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="environment">
+      <h2>Environment</h2>
+      <p class="sub">Nothing is required. These are the exceptions worth knowing.</p>
+      <p>
+        Four things cannot be settings, because they are what has to be known before there is
+        anywhere to keep a setting.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Variable</th><th>When you need it</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>PERSIST_DB_URL</code><br /><code>PERSIST_DB_USER</code><br /><code>PERSIST_DB_PASSWORD</code></td>
+              <td>Pointing at an external PostgreSQL from the start. Otherwise the embedded one is used, and the Storage screen can move you later.</td>
+            </tr>
+            <tr>
+              <td><code>CONCENTUS_SECRET_KEY</code></td>
+              <td>Holding the encryption key somewhere other than <code>secret.key</code> beside the data.</td>
+            </tr>
+            <tr>
+              <td><code>CONCENTUS_ADMIN_EMAIL</code><br /><code>CONCENTUS_ADMIN_PASSWORD</code></td>
+              <td>Bootstrapping the first account on a deployment nobody sits in front of.</td>
+            </tr>
+            <tr>
+              <td><code>APP_DATA_DIR</code> · <code>SERVER_PORT</code></td>
+              <td>Where data lives and which port to bind.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Everything else — queue lengths, timeouts, model prices, allowlists, the OTLP endpoint — is
+        a setting, and the environment is still read as the middle layer of the three.
+      </p>
+    </section>
+
+    <footer>
+      <p>
+        Concentus documentation. Where something here is a limitation rather than a feature, it says
+        so — a document that only lists what works is a document you stop trusting the first time
+        something does not.
+      </p>
+    </footer>
+  </main>
+
+  <!-- ============================ on this page ============================ -->
+  <aside class="toc" id="toc" aria-label="On this page">
+    <h4>On this page</h4>
+    <div id="toc-links"></div>
+  </aside>
+</div>
+
+<script>
+  // Sidebar: highlight the section in view.
+  const links = [...document.querySelectorAll('.side a')]
+  const sections = links
+    .map((a) => document.querySelector(a.getAttribute('href')))
+    .filter(Boolean)
+
+  const spy = new IntersectionObserver(
+    (entries) => {
+      // The topmost intersecting section wins, so scrolling up highlights what you scrolled to
+      // rather than what you scrolled past.
+      const visible = entries.filter((e) => e.isIntersecting)
+      if (!visible.length) return
+      const top = visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0]
+      links.forEach((a) => a.classList.toggle('on', a.getAttribute('href') === '#' + top.target.id))
+      buildToc(top.target)
+    },
+    { rootMargin: '-80px 0px -70% 0px', threshold: 0 },
+  )
+  sections.forEach((s) => spy.observe(s))
+
+  // "On this page" follows the section you are in: a single flat list of every h3 in the document
+  // would be four screens long and useless.
+  const tocLinks = document.getElementById('toc-links')
+  let tocFor = null
+  function buildToc(section) {
+    if (tocFor === section) return
+    tocFor = section
+    const heads = [...section.querySelectorAll('h3')]
+    tocLinks.innerHTML = ''
+    if (!heads.length) {
+      document.getElementById('toc').style.visibility = 'hidden'
+      return
+    }
+    document.getElementById('toc').style.visibility = 'visible'
+    heads.forEach((h, i) => {
+      if (!h.id) h.id = section.id + '-' + i
+      const a = document.createElement('a')
+      a.href = '#' + h.id
+      a.textContent = h.textContent
+      tocLinks.appendChild(a)
+    })
+  }
+
+  // Filter: hides the entries that do not match, and any group heading left with nothing under it.
+  const filter = document.getElementById('filter')
+  filter.addEventListener('input', () => {
+    const q = filter.value.trim().toLowerCase()
+    let group = null
+    let groupHasMatch = false
+    const flush = () => {
+      if (group) group.style.display = groupHasMatch ? '' : 'none'
+    }
+    for (const node of document.getElementById('side').children) {
+      if (node.tagName === 'H4') {
+        flush()
+        group = node
+        groupHasMatch = false
+      } else if (node.tagName === 'A') {
+        const hit = !q || node.textContent.toLowerCase().includes(q)
+        node.classList.toggle('hidden', !hit)
+        if (hit) groupHasMatch = true
+      }
+    }
+    flush()
+  })
+
+  // Contents on a narrow screen.
+  document.getElementById('menu').addEventListener('click', () => {
+    document.getElementById('side').classList.toggle('open')
+  })
+  document.querySelectorAll('.side a').forEach((a) =>
+    a.addEventListener('click', () => document.getElementById('side').classList.remove('open')),
+  )
+</script>
+</body>
+</html>

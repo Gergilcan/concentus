@@ -791,6 +791,9 @@ Pre-existing resources (flows, agents, MCP definitions, databases) are behind si
 shared across the deployment rather than partitioned per organization; repartitioning them would be
 a data migration that breaks existing installs.
 
+> The same material laid out to be looked things up in rather than read through is on the site,
+> at **/docs** — the source is [apps/website/docs/index.html](apps/website/docs/index.html).
+
 ## Retrieval: how a passage is found
 
 Every query runs **two searches**, and they are fused rather than chosen between.

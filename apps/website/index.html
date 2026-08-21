@@ -295,6 +295,7 @@
       <a href="#features">Features</a>
       <a href="#run">Run anywhere</a>
       <a href="#how">How it works</a>
+      <a href="/docs">Docs</a>
       <a href="#download">Download</a>
       <a href="#" data-gh>GitHub</a>
     </nav>
@@ -512,6 +513,25 @@
           <div class="k">Teams</div>
           <h3>Who may change what</h3>
           <p>Sign in with a Microsoft or Google work account — or a password — and give each person a rung: read, run, edit, or administer. Enforced on every request, not only on screen. Point the app at your own PostgreSQL and the whole team works against the same flows and the same history, with a one-click copy to move what you already have.</p>
+        </div>
+
+        <div class="card wide" data-reveal style="--cc:var(--sql)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/><path d="M8 10.5h5M10.5 8v5"/></svg></div>
+          <div class="k">Retrieval</div>
+          <h3>Two searches, not one</h3>
+          <p>Every question runs a keyword search and a meaning search, fused by rank. An exact reference number and a paraphrase both land — a vector search alone cannot pick out <em>ISO-27001</em> from twelve neighbouring policies, and keywords alone never match "when somebody leaves" against a page titled Offboarding. A reranker then reads question and passage together and reorders what survived.</p>
+        </div>
+        <div class="card" data-reveal style="--cc:var(--knowledge, var(--coord))">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M8 7.5h7M8 11h5"/></svg></div>
+          <div class="k">Ingestion</div>
+          <h3>PDFs, decks, sheets — and pages</h3>
+          <p>Word, Excel, CSV, plain text, scanned images through OCR, PowerPoint with its slide numbers and speaker notes, and any web page by its address. Pages keep their URL, so one click re-fetches every one of them when the wiki moves on.</p>
+        </div>
+        <div class="card" data-reveal style="--cc:var(--mcp)">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 19V7M9 19V4M14 19v-8M19 19v-5"/></svg></div>
+          <div class="k">Evidence</div>
+          <h3>Answers you can check</h3>
+          <p>Retrieved passages arrive numbered, and the answer is asked to cite them. Keep a handful of questions whose answers you know and the base scores itself — with the reranker and without — so a change to how it ranks is something you measure rather than something you feel.</p>
         </div>
 
         <div class="card wide" data-reveal style="--cc:var(--accent)">
@@ -748,7 +768,7 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
       <a href="#">Managed Agents</a>
     </div>
   </div>
-  <div class="wrap"><p class="fine">Concentus · <span id="yr"></span></p></div>
+  <div class="wrap"><p class="fine">Concentus · <a href="/docs">Documentation</a> · <a href="https://github.com/Gergilcan/concentus">GitHub</a> · <span id="yr"></span></p></div>
 </footer>
 
 <script>
