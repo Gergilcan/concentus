@@ -16,6 +16,8 @@ import type {
   DatabaseDef,
   DoctorFinding,
   EmbedderStatus,
+  EvalCase,
+  EvalRun,
   RerankerStatus,
   FlowMemoryView,
   KnowledgeDef,
@@ -325,6 +327,22 @@ export const api = {
   rerankerStatus: () => req<RerankerStatus>('/knowledge/reranker'),
   rerankerDownload: () => req<void>('/knowledge/reranker/download', { method: 'POST' }),
   deleteReranker: () => req<void>('/knowledge/reranker', { method: 'DELETE' }),
+  // The golden set: questions with known answers, so a ranking change can be falsified.
+  listEvals: (id: string) => req<EvalCase[]>(`/knowledge/${id}/evals`),
+  addEval: (id: string, question: string, expectedDocs: string[]) =>
+    req<EvalCase>(`/knowledge/${id}/evals`, {
+      method: 'POST',
+      body: JSON.stringify({ question, expectedDocs }),
+    }),
+  deleteEval: (id: string, caseId: string) =>
+    req<void>(`/knowledge/${id}/evals/${caseId}`, { method: 'DELETE' }),
+  /** Runs the golden set. 5 minutes: the reranker scores every candidate of every case. */
+  runEvals: (id: string, topK = 5, rerank = true) =>
+    req<EvalRun>(
+      `/knowledge/${id}/evals/run`,
+      { method: 'POST', body: JSON.stringify({ topK, rerank }) },
+      300_000,
+    ),
   searchKnowledge: (id: string, query: string, topK = 5) =>
     req<KnowledgeHit[]>(`/knowledge/${id}/search`, {
       method: 'POST',

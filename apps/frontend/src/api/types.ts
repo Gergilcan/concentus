@@ -1134,6 +1134,38 @@ export interface EmbedderStatus {
   detail: string
 }
 
+/** One question with a known answer, kept so a retrieval change can be falsified rather than felt. */
+export interface EvalCase {
+  id: string
+  question: string
+  expectedDocs: string[]
+  createdAt: number
+}
+
+/** What retrieval did with one case. `rank` is 1-based; 0 means the answer never came back. */
+export interface EvalCaseResult {
+  id: string
+  question: string
+  expectedDocs: string[]
+  rank: number
+  found: string[]
+  returned: string[]
+}
+
+/** A whole pass over the golden set, and the three numbers it produced. */
+export interface EvalRun {
+  topK: number
+  reranked: boolean
+  cases: number
+  /** Share of questions where an expected document made the top k. */
+  hitRate: number
+  /** Share of all expected documents retrieved — lower than hitRate on a half-answered case. */
+  recall: number
+  /** Mean reciprocal rank: 1 for an answer at the top, 0.5 for second, 0 for a miss. */
+  mrr: number
+  results: EvalCaseResult[]
+}
+
 /** The cross-encoder that reorders results by reading the question and the passage together. */
 export interface RerankerStatus {
   state: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'READY' | 'ERROR'

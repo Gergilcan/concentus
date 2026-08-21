@@ -3,6 +3,7 @@ import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { KnowledgeDef, KnowledgeDoc, KnowledgeHit } from '../api/types.ts'
 import { CrudPanel } from './CrudPanel.tsx'
+import { EvaluationPanel } from './EvaluationPanel.tsx'
 import { RetrievalModelsPanel } from './RetrievalModelsPanel.tsx'
 import panels from './panels.module.scss'
 import styles from './resources.module.scss'
@@ -485,6 +486,11 @@ function Documents({ baseId }: { baseId: string }) {
           <div className={styles.kbHitBody}>{h.content.slice(0, 400)}</div>
         </div>
       ))}
+
+      {/* Below "try a search" on purpose: trying one query is how anybody starts, and writing it
+          down as a question with a known answer is the next thought — not a separate feature in a
+          separate place that has to be discovered on its own. */}
+      <EvaluationPanel baseId={baseId} docs={docs.map((d) => d.name)} />
     </div>
   )
 }

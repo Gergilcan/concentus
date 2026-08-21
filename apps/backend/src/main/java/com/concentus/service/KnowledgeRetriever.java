@@ -105,6 +105,16 @@ public class KnowledgeRetriever {
      *                    nodes embeds its prompt once rather than three times; null re-embeds here
      */
     public List<Hit> search(String baseId, String query, float[] precomputed, int topK) {
+        return search(baseId, query, precomputed, topK, true);
+    }
+
+    /**
+     * @param rerank whether the cross-encoder may reorder the result. Only the evaluation harness
+     *               passes false, and only so a person can see what the reranker is actually worth
+     *               on their own documents before deciding to keep 282 MB of it on disk. Retrieval
+     *               itself always wants it when it is there.
+     */
+    public List<Hit> search(String baseId, String query, float[] precomputed, int topK, boolean rerank) {
         int k = Math.max(1, Math.min(topK, 20));
         if (query == null || query.isBlank()) return List.of();
 
@@ -119,7 +129,7 @@ public class KnowledgeRetriever {
             List<Ranked> fused = fuse(List.of(semantic, lexical));
             if (fused.isEmpty()) return List.of();
 
-            List<Ranked> ordered = rerank(query, fused, span);
+            List<Ranked> ordered = rerank ? rerank(query, fused, span) : fused;
             return ordered.stream().limit(k)
                     .map(r -> new Hit(r.doc(), r.seq(), r.content(), r.score()))
                     .toList();

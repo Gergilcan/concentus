@@ -828,6 +828,30 @@ can check against its sources is the failure this subsystem exists to avoid.
 Traces carry it: a `concentus.retrieval` span per search, with candidate counts per branch and
 whether a rerank happened. Identifiers and counts, never the text.
 
+### Measuring it, rather than feeling it
+
+Every change to ranking sounds like an improvement, and the usual evidence is three queries typed
+after the change. Under that regime a base gets quietly worse while everyone agrees it feels
+sharper.
+
+So a base can keep a **golden set** — questions somebody really asks, each with the document that
+answers it — under *Resources → Knowledge → Measure this base*. Running it gives three numbers:
+
+| | What it means |
+|---|---|
+| **Answered** | Share of questions where an expected document made the top 5. How often somebody would have got an answer at all. |
+| **Documents found** | Share of every expected document retrieved. Lower than *Answered* whenever a question needs two documents and one came back — a half answer the headline would hide. |
+| **Rank quality** | Mean reciprocal rank: 1.00 when answers come first, 0.50 when second, 0 when never. A passage at rank 5 spends the context budget of four wrong ones getting there. |
+
+It runs the same questions **with and without the reranker**, which is the only honest way to
+answer "is it worth 282 MB on my documents" — a benchmark on somebody else's corpus cannot. And a
+miss shows what came back instead, because that is the explanation, not just the verdict.
+
+What is measured is retrieval, not the answer. Judging generated text needs a model grading a
+model — a second thing to be wrong and a bill per run — and it answers a different question: a
+wrong answer built on the right passage is a prompt problem, while a right-sounding answer built
+on the wrong passage is this one, and it is the one that ships without anybody noticing.
+
 ## Settings
 
 Almost everything adjustable here used to be an environment variable. On a server that means
@@ -1093,6 +1117,7 @@ onto a valid delivery.
 | GET/PUT | `/api/account/providers` | register Microsoft / Google / Discord, and the redirect URI to give them (admin only) |
 | GET/PUT | `/api/settings` | everything adjustable, with where each value came from (admin only) |
 | GET | `/api/knowledge/embedder` · `/api/knowledge/reranker` | the two optional retrieval models: state, progress, size · POST `…/download` |
+| GET/POST | `/api/knowledge/{id}/evals` · POST `…/evals/run` | the golden set for a base, and what retrieval scores against it |
 | GET/POST | `/api/storage`, `/api/storage/migrate` | where this installation keeps its data, and copying it to another PostgreSQL (admin only) |
 
 Flows persist as JSON under `apps/backend/data/flows` (override with `APP_DATA_DIR`).

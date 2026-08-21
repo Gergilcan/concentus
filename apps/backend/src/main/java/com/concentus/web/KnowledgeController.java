@@ -29,18 +29,21 @@ public class KnowledgeController {
     private final com.concentus.service.KnowledgeRetriever retriever;
     private final com.concentus.llm.BuiltInEmbedder embedder;
     private final com.concentus.llm.BuiltInReranker reranker;
+    private final com.concentus.service.KnowledgeEvalService evals;
     private final com.concentus.integration.content.AttachmentExtractionService extraction;
 
     public KnowledgeController(KnowledgeStore store, KnowledgeService service,
                                com.concentus.service.KnowledgeRetriever retriever,
                                com.concentus.llm.BuiltInEmbedder embedder,
                                com.concentus.llm.BuiltInReranker reranker,
+                               com.concentus.service.KnowledgeEvalService evals,
                                com.concentus.integration.content.AttachmentExtractionService extraction) {
         this.store = store;
         this.service = service;
         this.retriever = retriever;
         this.embedder = embedder;
         this.reranker = reranker;
+        this.evals = evals;
         this.extraction = extraction;
     }
 
@@ -138,6 +141,7 @@ public class KnowledgeController {
         // Chunks first: a base that fails to delete half-way must not strand orphaned text that
         // no UI lists any more.
         service.deleteAll(id);
+        evals.deleteAll(id);
         store.delete(id);
     }
 
@@ -182,6 +186,55 @@ public class KnowledgeController {
         if (query.isEmpty()) throw new IllegalArgumentException("A query is required.");
         int topK = body.get("topK") instanceof Number n ? n.intValue() : 5;
         return retriever.search(id, query, topK);
+    }
+
+    // ------------------------------------------------------------------ evaluation
+
+    /**
+     * The golden set: questions somebody will really ask, and which document answers them.
+     *
+     * <p>Separate endpoints from search on purpose. A search is a thing you try; these are a thing
+     * you keep, and the difference is the whole point — a retrieval change is only falsifiable
+     * against questions written down before it was made.
+     */
+    @GetMapping("/{id}/evals")
+    public List<com.concentus.service.KnowledgeEvalService.EvalCase> evals(@PathVariable String id) {
+        requireBase(id);
+        return evals.list(id);
+    }
+
+    @PostMapping("/{id}/evals")
+    public com.concentus.service.KnowledgeEvalService.EvalCase addEval(@PathVariable String id,
+                                                                      @RequestBody Map<String, Object> body) {
+        requireBase(id);
+        String question = String.valueOf(body.getOrDefault("question", "")).trim();
+        List<String> docs = body.get("expectedDocs") instanceof List<?> list
+                ? list.stream().map(String::valueOf).toList()
+                : List.of();
+        return evals.save(id, question, docs);
+    }
+
+    @DeleteMapping("/{id}/evals/{caseId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteEval(@PathVariable String id, @PathVariable String caseId) {
+        evals.delete(id, caseId);
+    }
+
+    /**
+     * Runs the golden set and reports what retrieval did with it.
+     *
+     * <p>{@code rerank=false} runs the same questions with the cross-encoder switched off, which is
+     * the only honest way to answer "is it worth keeping on my documents" — a benchmark on someone
+     * else's corpus cannot.
+     */
+    @PostMapping("/{id}/evals/run")
+    public com.concentus.service.KnowledgeEvalService.EvalRun runEvals(@PathVariable String id,
+                                                                      @RequestBody(required = false) Map<String, Object> body) {
+        requireBase(id);
+        Map<String, Object> input = body == null ? Map.of() : body;
+        int topK = input.get("topK") instanceof Number n ? n.intValue() : 5;
+        boolean rerank = !(input.get("rerank") instanceof Boolean b) || b;
+        return evals.run(id, topK, rerank);
     }
 
     private void requireBase(String id) {

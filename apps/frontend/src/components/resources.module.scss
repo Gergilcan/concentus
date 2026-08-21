@@ -769,6 +769,93 @@
   }
 }
 
+/* ---- measuring a base: the golden set and what it scored ---- */
+.evalBox {
+  border: 1px solid t.$border;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 12px 0 4px;
+}
+.evalHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.evalAdd {
+  display: grid;
+  /* The question takes what is left: it is the long field, and the two controls beside it have
+     fixed content. A three-column 1fr grid gave a select as wide as the sentence it qualifies. */
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  margin: 8px 0;
+}
+.evalChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.evalChip {
+  background: t.$panel;
+  border: 1px solid t.$border;
+  border-radius: 999px;
+  color: t.$text;
+  cursor: pointer;
+  font-size: 11.5px;
+  padding: 2px 9px;
+
+  &:hover {
+    border-color: t.$danger;
+    color: t.$danger;
+  }
+}
+.evalCase {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  border-top: 1px solid t.$border;
+  font-size: 12.5px;
+}
+.evalQuestion {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evalResults {
+  margin-top: 12px;
+  border-top: 1px solid t.$border;
+  padding-top: 10px;
+}
+.evalScores {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.evalScore {
+  min-width: 96px;
+}
+.evalScoreValue {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.evalRows {
+  margin-top: 10px;
+}
+.evalRow {
+  display: grid;
+  /* The verdict column is fixed so every rank lines up: a column that sizes to its content puts
+     "#1" and "miss" at different offsets, and the eye reads that as two different tables. */
+  grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12.5px;
+}
+
 /* ---- folder import: which folders to leave out ---- */
 .excludeBox {
   border: 1px solid t.$border;
