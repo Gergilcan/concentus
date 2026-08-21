@@ -16,6 +16,7 @@ import type { NodeKind } from '../api/types.ts'
 import { NODE_DRAG_TYPE } from '../components/Palette.tsx'
 import { type AppNode, useFlowStore } from '../state/store.ts'
 import { DeletableEdge } from './DeletableEdge.tsx'
+import { edgeKinClass, kinClass, kinship } from './kinship.ts'
 import { nodeTypes } from './nodeTypes.ts'
 
 // Minimap swatch per node kind, read straight from the shared table. The if-chain this replaces
@@ -56,6 +57,8 @@ export function FlowCanvas() {
   const nodes = useFlowStore((s) => s.nodes)
   const edges = useFlowStore((s) => s.edges)
   const runExecByNode = useFlowStore((s) => s.runExecByNode)
+  const selectedId = useFlowStore((s) => s.selectedId)
+  const openNodeDetails = useFlowStore((s) => s.openNodeDetails)
 
   // Plan-born workers: boxes that exist in the run report but were never drawn. Synthesized
   // here rather than inserted into the store, so they can never be saved with the flow, and
@@ -78,10 +81,33 @@ export function FlowCanvas() {
 
   // The cast is the price of keeping 'worker' out of NodeKind (it must never be addable,
   // clonable or saved); React Flow only needs the id/type/position/data shape.
-  const allNodes = useMemo(
+  const baseNodes = useMemo(
     () => (workerNodes.length ? ([...nodes, ...workerNodes] as AppNode[]) : nodes),
     [nodes, workerNodes],
   )
+
+  // Which boxes the selected one is wired to. Written onto the node rather than read inside each
+  // node component: every kind would otherwise need the same three lines, and a kind added next
+  // month would silently not highlight. React Flow puts className on the node's wrapper — the
+  // rings themselves are in canvas-overrides.css.
+  const kin = useMemo(() => kinship(edges, selectedId), [edges, selectedId])
+
+  const allNodes = useMemo(() => {
+    if (kin.inbound.size === 0 && kin.outbound.size === 0) return baseNodes
+    return baseNodes.map((n) => {
+      const className = kinClass(kin, n.id)
+      // The same object back when nothing applies, so untouched nodes do not re-render.
+      return className || n.className ? { ...n, className } : n
+    })
+  }, [baseNodes, kin])
+
+  const shownEdges = useMemo(() => {
+    if (!selectedId) return edges
+    return edges.map((e) => {
+      const className = edgeKinClass(e, selectedId)
+      return className || e.className ? { ...e, className } : e
+    })
+  }, [edges, selectedId])
   const onNodesChange = useFlowStore((s) => s.onNodesChange)
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange)
   const onConnect = useFlowStore((s) => s.onConnect)
@@ -122,13 +148,20 @@ export function FlowCanvas() {
   return (
     <ReactFlow
       nodes={allNodes}
-      edges={edges}
+      edges={shownEdges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       onNodeClick={(_, node) => selectNode(node.id)}
+      // A prompt is not editable in a 300px column, and the side panel is the wrong shape for
+      // one. Double-click opens the same inspector in a dialog with room to write in — the
+      // gesture people already try on a diagram when they want "open this properly".
+      onNodeDoubleClick={(_, node) => {
+        selectNode(node.id)
+        openNodeDetails()
+      }}
       // Grabbing a node makes it the active one even when the gesture turns into a real drag —
       // otherwise moving a node never opened its inspector, because only click selected.
       onNodeDragStart={(_, node) => selectNode(node.id)}

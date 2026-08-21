@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { cx } from '../utils/cx.ts'
 import styles from './flows.module.scss'
 
 /**
@@ -13,12 +14,18 @@ export function Modal({
   onClose,
   children,
   wide = false,
+  className,
 }: {
   title: string
   onClose: () => void
   children: ReactNode
   /** Roomier, for a dialog that is a task rather than a confirmation. */
   wide?: boolean
+  /**
+   * Extra class on the dialog box. For the shape a particular dialog needs and no other — a fixed
+   * height, say — which cannot be set from inside `children`: the box is their parent.
+   */
+  className?: string
 }) {
   // Read through a ref so the listener below can register once, on mount: re-registering on a
   // new onClose identity would push this dialog back to the top of the stack while a nested one
@@ -46,7 +53,7 @@ export function Modal({
   return (
     <div className={styles.backdrop} onClick={onClose}>
       <div
-        className={wide ? `${styles.modal} ${styles.modalWide}` : styles.modal}
+        className={cx(styles.modal, wide && styles.modalWide, className)}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

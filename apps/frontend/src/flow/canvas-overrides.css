@@ -23,3 +23,49 @@
 .react-flow__node-input.selectable.selected {
   box-shadow: none;
 }
+
+/*
+ * What the selected block is wired to.
+ *
+ * Selecting a box already outlines it in the accent colour; these two say which way its wires
+ * run — warm for what feeds it, cool for what it feeds. On a graph of any size that is the
+ * difference between reading the diagram and tracing it with a finger.
+ *
+ * The ring goes on the wrapper's child rather than the wrapper, because the child IS the node
+ * card: that is where the border radius lives, and an outline on the wrapper would sit square
+ * around rounded corners. `outline` rather than `border` for the same reason `.selected` uses
+ * it — a border would change the box's size and nudge every handle attached to it.
+ */
+.react-flow__node.kin-in > *,
+.react-flow__node.kin-out > * {
+  outline-offset: 2px;
+}
+
+.react-flow__node.kin-in > * {
+  outline: 2px solid var(--kin-in);
+}
+
+.react-flow__node.kin-out > * {
+  outline: 2px solid var(--kin-out);
+}
+
+/*
+ * The selected node keeps its own accent outline. Stated rather than left to source order: a
+ * node can be both selected and its own neighbour in a cycle, and the answer people need there
+ * is "this is the one you picked".
+ */
+.react-flow__node.selected.kin-in > *,
+.react-flow__node.selected.kin-out > * {
+  outline-color: var(--accent);
+}
+
+/* The wires themselves, so a long edge across the canvas is followable to its far end. */
+.react-flow__edge.kin-in .react-flow__edge-path {
+  stroke: var(--kin-in);
+  stroke-width: 2.5;
+}
+
+.react-flow__edge.kin-out .react-flow__edge-path {
+  stroke: var(--kin-out);
+  stroke-width: 2.5;
+}

@@ -235,6 +235,16 @@ interface FlowState {
   nodes: AppNode[]
   edges: Edge[]
   selectedId: string | null
+  /**
+   * Whether the selected node's properties are open in a dialog rather than only in the side
+   * panel. Kept here rather than in the canvas because two components need it — the canvas opens
+   * it on double-click, App renders it — and it belongs to the selection either way.
+   *
+   * Never forced back to false when the selection changes: the dialog is only rendered for a
+   * node that exists, so deleting the node it was opened for closes it on its own. One rule in
+   * one place beats the same reset repeated in delete, load, and new-flow.
+   */
+  detailsOpen: boolean
 
   // Live execution overlay for the currently-inspected run.
   activeRunId: string | null
@@ -261,6 +271,8 @@ interface FlowState {
   updateNodeData: (id: string, patch: Record<string, unknown>) => void
   deleteNode: (id: string) => void
   selectNode: (id: string | null) => void
+  openNodeDetails: () => void
+  closeNodeDetails: () => void
 
   // Copy / paste / duplicate of canvas blocks.
   clipboard: Clipboard | null
@@ -308,6 +320,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   nodes: [],
   edges: [],
   selectedId: null,
+  detailsOpen: false,
 
   activeRunId: null,
   ...emptyOverlay(),
@@ -442,6 +455,8 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     }),
 
   selectNode: (id) => set({ selectedId: id }),
+  openNodeDetails: () => set({ detailsOpen: true }),
+  closeNodeDetails: () => set({ detailsOpen: false }),
   setName: (name) => set({ name }),
   setMode: (mode) => set({ mode }),
 

@@ -15,6 +15,43 @@
   border-right: 1px solid t.$border;
 }
 
+/*
+ * The same inspector, in a dialog instead of a column.
+ *
+ * The side panel is 300px by default and a system prompt is six rows in it, which is a fine
+ * shape for checking a model name and a poor one for writing the paragraph that decides what an
+ * agent does. Here the panel chrome comes off — no border, no background of its own, the dialog
+ * supplies both — and every text area gets room. `resize: vertical` stays, because a prompt long
+ * enough to need more than this is exactly when someone wants to drag it taller.
+ */
+.inspectorDialog {
+  /* The scrolling half of a fixed-height dialog. `min-height: 0` is what actually allows it to
+     shrink: a flex child's default floor is its content, so without this the box grows past the
+     dialog instead of scrolling inside it. */
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+
+  .inspector {
+    background: none;
+    border-left: 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  textarea {
+    min-height: 220px;
+    resize: vertical;
+  }
+
+  /* Not the prompt: the short ones read as broken when stretched to match it. */
+  input + textarea,
+  textarea[rows='2'],
+  textarea[rows='3'] {
+    min-height: 0;
+  }
+}
+
 .h3 {
   margin: 0 0 10px;
   font-size: 12px;

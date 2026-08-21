@@ -37,6 +37,18 @@
   --ok: #51cf66;
   --warn: #ffd43b;
 
+  /*
+   * Which way the wires run, for the block you have selected: --kin-in rings whatever FEEDS it,
+   * --kin-out whatever it feeds. Two hues rather than one, because the question people actually
+   * ask of a graph is directional — "what does this depend on" and "what breaks if I change it"
+   * are different questions and deserve different answers at a glance.
+   *
+   * Deliberately not near --accent: that colour already means "this is the selected one", and a
+   * ring in the same blue would say the neighbours are selected too.
+   */
+  --kin-in: #f0a13c;
+  --kin-out: #38d9d3;
+
   --accent-soft: rgba(110, 168, 254, 0.12);
   --accent-strong: rgba(110, 168, 254, 0.3);
   --on-accent: #08111f;
@@ -93,6 +105,9 @@
   --ok: #1a7f37;
   --warn: #9a6700;
 
+  --kin-in: #b35309;
+  --kin-out: #0b7285;
+
   --accent-soft: rgba(9, 105, 218, 0.1);
   --accent-strong: rgba(9, 105, 218, 0.3);
   --on-accent: #ffffff;
@@ -126,6 +141,9 @@
   --danger: #ff8383;
   --ok: #6ee787;
   --warn: #ffd75e;
+
+  --kin-in: #ffb865;
+  --kin-out: #5ceee6;
 
   --accent-soft: rgba(130, 199, 255, 0.22);
   --accent-strong: rgba(130, 199, 255, 0.5);

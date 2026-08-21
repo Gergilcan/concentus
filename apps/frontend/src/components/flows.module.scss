@@ -1104,6 +1104,25 @@
   overflow: hidden;
 }
 
+/*
+ * A dialog that is always the same height, whatever it happens to contain.
+ *
+ * For the ones people open over and over — the block properties, opened by double-clicking a box
+ * on the canvas. Sized to content, that dialog changed height with every node kind and every
+ * collapsed section, so the field you were aiming at moved between two visits to the same screen.
+ * A constant frame with a scrolling interior is the boring answer, and boring is what a surface
+ * you use fifty times a day should be.
+ *
+ * `height` AND `max-height`: max-height caps height, so setting only the first would still leave
+ * the dialog bounded by the 80/86vh above and never reach this.
+ */
+.modalTall {
+  height: 90vh;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
 /* The only scrolling region in the tool dialog, so search and actions stay anchored. */
 .toolList {
   flex: 1;

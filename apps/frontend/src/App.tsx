@@ -12,7 +12,7 @@ import { type Command } from './components/commandPalette.ts'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { timeAgo } from './components/flowFormat.ts'
 import { FlowsPage } from './components/FlowsPage.tsx'
-import { Inspector } from './components/Inspector.tsx'
+import { NodeDetailsDialog } from './components/NodeDetailsDialog.tsx'
 import { Palette } from './components/Palette.tsx'
 import { ResourcesPage } from './components/ResourcesPage.tsx'
 import { UsagePage } from './components/UsagePage.tsx'
@@ -148,7 +148,12 @@ interface SidePanelProps {
  * One of Studio's two side panels: open, the panel itself with a collapse chevron and a drag
  * handle on the edge facing the canvas; folded, a slim rail naming what it will bring back.
  *
- * The palette and the inspector are the same object mirrored, so `side` decides which way the
+ * The palette is the only one of these left — the node properties moved into a dialog opened by
+ * double-clicking a block, because a 300px column is the wrong shape for writing a prompt in.
+ * `side` is kept rather than hardcoded: the mirroring is what the component IS, and a second
+ * panel on the right is a layout decision, not a rewrite.
+ *
+ * `side` decides which way the
  * chevrons point, which edge the handle sits on, and which direction a drag grows the panel —
  * rather than each caller spelling out its own half of the mirror.
  */
@@ -203,11 +208,9 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
   const [toast, setToast] = useState<string | null>(null)
   // Every Studio panel folds away: on a laptop the canvas is the work and the chrome is the tax.
   const [paletteOpen, togglePalette] = usePanelOpen('studio.palette')
-  const [inspectorOpen, toggleInspector] = usePanelOpen('studio.inspector')
   const [runsOpen, toggleRuns] = usePanelOpen('studio.runs')
   // Every Studio panel resizes by dragging its inner edge, and keeps its size across sessions.
   const [paletteW, dragPalette] = usePanelSize('studio.palette.width', 260, 180, 480)
-  const [inspectorW, dragInspector] = usePanelSize('studio.inspector.width', 300, 220, 560)
   const [runsH, dragRuns] = usePanelSize('studio.runs.height', 260, 140, 600)
 
   useEffect(() => {
@@ -333,7 +336,7 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
             <div
               className={styles.main}
               style={{
-                gridTemplateColumns: `${paletteOpen ? `${paletteW}px` : '26px'} 1fr ${inspectorOpen ? `${inspectorW}px` : '26px'}`,
+                gridTemplateColumns: `${paletteOpen ? `${paletteW}px` : '26px'} 1fr`,
               }}
             >
               <SidePanel
@@ -349,17 +352,8 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
               <div className={styles.canvas}>
                 <FlowCanvas />
               </div>
-              <SidePanel
-                side="right"
-                label="the node properties"
-                railLabel="Properties"
-                open={inspectorOpen}
-                onToggle={toggleInspector}
-                startDrag={dragInspector}
-              >
-                <Inspector />
-              </SidePanel>
             </div>
+            <NodeDetailsDialog />
             {runsOpen ? (
               <div className={styles.bottomWrap} style={{ '--runs-h': `${runsH}px` } as CSSProperties}>
                 <RunsPanel
