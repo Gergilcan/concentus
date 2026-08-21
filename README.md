@@ -147,10 +147,9 @@ concentus/
     the node inspector before running.
   - **Knowledge** node: pick a knowledge base (Resources → Knowledge — upload PDFs, Word, Excel,
     text, or whole folders with per-folder exclusions), and the passages most relevant to the run's
-    prompt are injected into the connected agent, recorded per node. Semantic ranking runs
-    **inside the app**: a one-click ~130 MB model download (multilingual-e5-small over ONNX), no
-    Ollama and no Docker — though a model server serving `bge-m3` is picked up automatically if
-    you have one. Without either, retrieval falls back to word overlap and the UI says so.
+    prompt are injected into the connected agent, numbered and cited, recorded per node. The agent
+    also gets a `search_knowledge` tool, so it can go back and ask a second question the preload
+    could not have anticipated. See [Retrieval](#retrieval-how-a-passage-is-found).
 - **Permissions** — set on the coordinator, because one CLI process runs the whole flow. Modes:
   bypass (default, the only one that works unattended), plan-only, and **"Ask me to approve the
   plan, then act"** — the run stops after planning, raises a desktop notification, and the console
@@ -792,6 +791,43 @@ Pre-existing resources (flows, agents, MCP definitions, databases) are behind si
 shared across the deployment rather than partitioned per organization; repartitioning them would be
 a data migration that breaks existing installs.
 
+## Retrieval: how a passage is found
+
+Every query runs **two searches**, and they are fused rather than chosen between.
+
+A vector search cannot pick out an exact token. A document reference, an error code, a filename
+sits in embedding space beside all of its neighbours, so asking for a policy by its number returns
+twelve other policies. A keyword search finds it first try. The mirror case is just as common: no
+keyword search matches "what happens when somebody leaves" against a document titled *Offboarding*,
+because they share no words. Running both is not hedging — it is the only way to answer both
+questions.
+
+Fusion is by **rank, not by score**. A cosine similarity and a PostgreSQL text rank are not
+comparable quantities, and weighting them against each other would mean inventing an exchange rate
+and then tuning it forever. Reciprocal Rank Fusion asks only how near the top of its own list each
+branch put a passage, which is comparable by construction — and a passage only one branch found
+still surfaces, which is the entire point.
+
+A **reranker** then reorders the survivors. It reads the question and a passage *together* and
+scores the pair, which is what lets it notice that a passage describes the right process for the
+wrong department — a distinction two separately-computed embeddings cannot express. Too slow for a
+whole base, exactly right for the fifty candidates a search already found.
+
+**Both models are optional and both run inside the app** — no Ollama, no Docker, no server. Under
+Resources → Knowledge: one button downloads the embedding model (~130 MB, multilingual-e5-small),
+another the reranker (~282 MB, bge-reranker-base, multilingual). A model server serving `bge-m3` is
+picked up automatically if you have one. With neither, keyword search still works and the panel
+says what is missing rather than pretending.
+
+What reaches the agent is assembled, not pasted: adjacent passages are **merged** so the overlap
+between chunks is not repeated, ordered **by document and position** rather than by score — a
+document is read forwards — trimmed to a character budget (`knowledge.context-chars`, or Resources → Settings), and
+**numbered with a citation key**, with the prompt asking for those markers back. An answer nobody
+can check against its sources is the failure this subsystem exists to avoid.
+
+Traces carry it: a `concentus.retrieval` span per search, with candidate counts per branch and
+whether a rerank happened. Identifiers and counts, never the text.
+
 ## Settings
 
 Almost everything adjustable here used to be an environment variable. On a server that means
@@ -1056,6 +1092,7 @@ onto a valid delivery.
 | GET | `/api/account/accounts` · POST `…/{userId}/use` | the accounts this browser has signed into, and switching to one |
 | GET/PUT | `/api/account/providers` | register Microsoft / Google / Discord, and the redirect URI to give them (admin only) |
 | GET/PUT | `/api/settings` | everything adjustable, with where each value came from (admin only) |
+| GET | `/api/knowledge/embedder` · `/api/knowledge/reranker` | the two optional retrieval models: state, progress, size · POST `…/download` |
 | GET/POST | `/api/storage`, `/api/storage/migrate` | where this installation keeps its data, and copying it to another PostgreSQL (admin only) |
 
 Flows persist as JSON under `apps/backend/data/flows` (override with `APP_DATA_DIR`).

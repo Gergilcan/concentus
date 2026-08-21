@@ -16,10 +16,10 @@ import java.util.concurrent.Callable;
  * <p>The framework already instruments what a framework can see: an HTTP request, a scheduled
  * task, a WebSocket session. None of that answers the question anybody actually has here, which is
  * about a <em>run</em> — why it took eleven minutes, which block was slow, which tool call hung,
- * how many tokens the third worker spent. Those are this application's own units of work, and only
+ * how many tokens the third worker spent, whether the knowledge base found anything. Those are this application's own units of work, and only
  * this application can name them.
  *
- * <p>So there is one place that knows how: five span names, one vocabulary of attributes, and a
+ * <p>So there is one place that knows how: six span names, one vocabulary of attributes, and a
  * handful of meters. Scattering {@code tracer.spanBuilder(...)} through the services would have
  * produced five spellings of "flow.id" inside a month, and a dashboard is only as good as the
  * agreement between the things it groups.
@@ -48,6 +48,8 @@ public class Telemetry {
     public static final String SPAN_TOOL = "concentus.tool";
     /** One request to a model. */
     public static final String SPAN_MODEL = "concentus.model";
+    /** One search of a knowledge base: both branches, the fusion, and any reranking. */
+    public static final String SPAN_RETRIEVAL = "concentus.retrieval";
 
     // The attribute names, spelled once. A dashboard groups by these, and two spellings of the
     // same idea is a dashboard that quietly shows half the data.
@@ -65,6 +67,11 @@ public class Telemetry {
     public static final String ATTR_ORGANIZATION = "concentus.organization.id";
     public static final String ATTR_TOKENS_IN = "concentus.tokens.input";
     public static final String ATTR_TOKENS_OUT = "concentus.tokens.output";
+    public static final String ATTR_KNOWLEDGE_BASE = "concentus.knowledge.base";
+    public static final String ATTR_RETRIEVAL_K = "concentus.retrieval.k";
+    public static final String ATTR_RETRIEVAL_SEMANTIC = "concentus.retrieval.semantic.candidates";
+    public static final String ATTR_RETRIEVAL_LEXICAL = "concentus.retrieval.lexical.candidates";
+    public static final String ATTR_RETRIEVAL_RERANKED = "concentus.retrieval.reranked";
 
     private final Tracer tracer;
     private final MeterRegistry meters;

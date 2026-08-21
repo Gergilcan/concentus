@@ -37,6 +37,7 @@ public final class SettingsCatalog {
     public static final String GROUP_ATTACHMENTS = "Attachments";
     public static final String GROUP_PRICING = "Pricing";
     public static final String GROUP_TELEMETRY = "Traces and metrics";
+    public static final String GROUP_KNOWLEDGE = "Knowledge";
 
     private static final List<SettingDef> ALL = List.of(
             number("runs.max-concurrent", GROUP_RUNS, "Runs at once",
@@ -49,6 +50,14 @@ public final class SettingsCatalog {
             number("runs.max-retained", GROUP_RUNS, "Runs kept ready to stream",
                     "Older runs stay in the database and are still readable — this is only how many "
                             + "are held in memory for the console to attach to instantly.", true),
+
+            number("knowledge.context-chars", GROUP_KNOWLEDGE, "Retrieved text per source",
+                    "How much of a knowledge base may reach an agent in one run, in characters "
+                            + "(roughly four per token). Retrieval finds more than this; the most "
+                            + "relevant passages are kept and the agent is told some were left "
+                            + "out. Raise it when answers miss context that was clearly in the "
+                            + "documents; lower it when three knowledge sources crowd out the "
+                            + "agent's own instructions.", false),
 
             text("pricing.input-usd-per-mtok", GROUP_PRICING, "Default input price",
                     "What a model with no price of its own is assumed to cost, in dollars per "

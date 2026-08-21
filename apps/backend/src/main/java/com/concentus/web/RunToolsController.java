@@ -60,15 +60,21 @@ public class RunToolsController {
     private final FlowMemoryStore memory;
     /** Runs another flow on request. Present even when the flow draws none — the tool is not. */
     private final SubflowService subflows;
+    private final com.concentus.service.KnowledgeRetriever knowledge;
+    private final com.concentus.service.ContextAssembler assembler;
 
     public RunToolsController(RunService runs, OpenApiCatalog catalog, ApiCaller caller,
-                              ObjectMapper mapper, FlowMemoryStore memory, SubflowService subflows) {
+                              ObjectMapper mapper, FlowMemoryStore memory, SubflowService subflows,
+                              com.concentus.service.KnowledgeRetriever knowledge,
+                              com.concentus.service.ContextAssembler assembler) {
         this.runs = runs;
         this.catalog = catalog;
         this.caller = caller;
         this.mapper = mapper;
         this.memory = memory;
         this.subflows = subflows;
+        this.knowledge = knowledge;
+        this.assembler = assembler;
     }
 
     @PostMapping
@@ -156,7 +162,87 @@ public class RunToolsController {
         });
         if (hasMemory(run)) appendMemoryTools(tools);
         appendRunFlowTool(tools, wiredSubflows(run));
+        appendSearchKnowledgeTool(tools, wiredKnowledge(run));
         return result;
+    }
+
+    // ------------------------------------------------------- knowledge bases
+
+    /** The knowledge bases this run may search, by label. Empty when the graph wires none. */
+    private static Map<String, AgentSpec.KnowledgeSourceSpec> wiredKnowledge(AgentRun run) {
+        Map<String, AgentSpec.KnowledgeSourceSpec> out = new LinkedHashMap<>();
+        if (run.compiled == null) return out;
+        for (AgentSpec agent : run.compiled.allAgents()) {
+            for (AgentSpec.KnowledgeSourceSpec spec : agent.knowledgeSources) {
+                out.putIfAbsent(spec.label().toLowerCase(java.util.Locale.ROOT), spec);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * One tool for every wired knowledge base, with the base named as an argument.
+     *
+     * <p>One rather than one per base, for the reason {@code run_flow} is one tool: a tool list
+     * that grows with the canvas costs another schema in the prompt each time. The argument is an
+     * allowlist, so naming a base that was not drawn into this graph is an error rather than a way
+     * to read whatever the installation happens to hold.
+     *
+     * <p>The agent already received the passages nearest its opening prompt before it started.
+     * This is for the second question — the one that only exists because of what the first answer
+     * said, which no amount of preloading could have anticipated.
+     */
+    private void appendSearchKnowledgeTool(ArrayNode tools,
+                                           Map<String, AgentSpec.KnowledgeSourceSpec> basesByLabel) {
+        if (basesByLabel.isEmpty()) return;
+
+        String names = basesByLabel.values().stream()
+                .map(b -> "\"" + b.label() + "\"")
+                .collect(java.util.stream.Collectors.joining(", "));
+        ObjectNode tool = tools.addObject();
+        tool.put("name", "search_knowledge");
+        tool.put("description", "Search the documents in a knowledge base and get back the "
+                + "passages that answer a question, with citations. Available bases: " + names
+                + ". You were already given the passages matching the prompt this run started "
+                + "from — call this when you need something else: a term that came up, a detail "
+                + "the first passages referred to but did not contain. Ask in your own words; the "
+                + "search reads both keywords and meaning.");
+        ObjectNode schema = tool.putObject("inputSchema");
+        schema.put("type", "object");
+        ObjectNode properties = schema.putObject("properties");
+        properties.putObject("base").put("type", "string")
+                .put("description", "Which knowledge base to search, by name: " + names + ".");
+        properties.putObject("query").put("type", "string")
+                .put("description", "What you want to find. A question or a phrase works better "
+                        + "than a single word.");
+        schema.putArray("required").add("base").add("query");
+    }
+
+    private ObjectNode searchKnowledge(AgentRun run, JsonNode arguments) {
+        Map<String, AgentSpec.KnowledgeSourceSpec> bases = wiredKnowledge(run);
+        String wanted = arguments.path("base").asText("").trim();
+        AgentSpec.KnowledgeSourceSpec spec = bases.get(wanted.toLowerCase(java.util.Locale.ROOT));
+        if (spec == null) {
+            return callResult(true, "No knowledge base named '" + wanted + "' is wired into this "
+                    + "flow. Available: " + String.join(", ", bases.keySet()) + ".");
+        }
+        String query = arguments.path("query").asText("").trim();
+        if (query.isEmpty()) return callResult(true, "A query is required.");
+
+        try {
+            var hits = knowledge.search(spec.baseId, query, null, spec.topK);
+            var assembled = assembler.assemble(hits);
+            run.emit(com.concentus.model.RunEvent.of("tool_use",
+                    "Knowledge: searched '" + spec.label() + "' → " + assembled.passages().size()
+                            + " passage(s)"));
+            if (assembled.isEmpty()) {
+                return callResult(false, "Nothing in '" + spec.label() + "' matches that. Try "
+                        + "different words — the documents may name the thing differently.");
+            }
+            return callResult(false, assembler.asPromptText(spec.label(), assembled));
+        } catch (Exception e) {
+            return callResult(true, "The search failed: " + e.getMessage());
+        }
     }
 
     // -------------------------------------------------------------- sub-flows
@@ -320,6 +406,7 @@ public class RunToolsController {
             if ("memory_append".equals(name)) return memoryAppend(run, params);
         }
         if ("run_flow".equals(name)) return runFlow(run, params.path("arguments"));
+        if ("search_knowledge".equals(name)) return searchKnowledge(run, params.path("arguments"));
         ResolvedTool tool = resolve(run).get(name);
         if (tool == null) {
             return callResult(true, "Unknown tool '" + name + "'. Call tools/list for the current set.");

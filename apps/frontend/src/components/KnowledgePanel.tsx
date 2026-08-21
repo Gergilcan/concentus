@@ -3,7 +3,7 @@ import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { KnowledgeDef, KnowledgeDoc, KnowledgeHit } from '../api/types.ts'
 import { CrudPanel } from './CrudPanel.tsx'
-import { EmbeddingModelPanel } from './EmbeddingModelPanel.tsx'
+import { RetrievalModelsPanel } from './RetrievalModelsPanel.tsx'
 import panels from './panels.module.scss'
 import styles from './resources.module.scss'
 
@@ -339,7 +339,7 @@ function Documents({ baseId }: { baseId: string }) {
   return (
     <div className={styles.kbDocs}>
       <h4 className={styles.h4}>Documents</h4>
-      <EmbeddingModelPanel />
+      <RetrievalModelsPanel />
       {docs.length === 0 && <div className={styles.muted}>No documents yet.</div>}
 
       {docs.length > 0 && (

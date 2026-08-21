@@ -7,16 +7,25 @@ import org.springframework.stereotype.Component;
 
 import java.util.function.Consumer;
 
-/** Runs each attached SQL and knowledge source and appends the results to an agent's context. */
+/**
+ * Runs each attached SQL and knowledge source and appends the results to an agent's context.
+ *
+ * <p>Knowledge passages arrive numbered, with a citation key and an instruction to use it. An
+ * answer nobody can check against its sources is the failure mode this whole subsystem exists to
+ * avoid, and the numbering is what makes checking a matter of looking rather than of trusting.
+ */
 @Component
 public class RagContextInjector {
 
     private final SqlRagRetriever retriever;
-    private final KnowledgeService knowledge;
+    private final KnowledgeRetriever knowledge;
+    private final ContextAssembler assembler;
 
-    public RagContextInjector(SqlRagRetriever retriever, KnowledgeService knowledge) {
+    public RagContextInjector(SqlRagRetriever retriever, KnowledgeRetriever knowledge,
+                              ContextAssembler assembler) {
         this.retriever = retriever;
         this.knowledge = knowledge;
+        this.assembler = assembler;
     }
 
     public void inject(AgentSpec spec, Consumer<String> emit) {
@@ -96,23 +105,19 @@ public class RagContextInjector {
             }
             try {
                 var hits = knowledge.search(source.baseId, query, queryVector, source.topK);
-                ctx.append("\n\n# Retrieved context — ").append(source.label()).append('\n');
-                if (hits.isEmpty()) {
-                    ctx.append("(no matching passages)");
-                } else {
-                    for (var hit : hits) {
-                        ctx.append("\n## ").append(hit.docName()).append(" — passage ")
-                                .append(hit.seq() + 1).append('\n').append(hit.content()).append('\n');
-                    }
-                }
+                var assembled = assembler.assemble(hits);
+                ctx.append("\n\n# Retrieved context — ").append(source.label()).append('\n')
+                        .append(assembler.asPromptText(source.label(), assembled));
                 emit.accept("Knowledge: '" + source.label() + "' → " + hits.size()
                         + " passage(s) injected into agent '" + spec.name + "'.");
                 if (ne != null) {
-                    ne.output = hits.isEmpty()
+                    // The assembled spans, not the raw hits: what the box reports and what the
+                    // agent was handed have to be the same thing, or the box is decoration.
+                    ne.output = assembled.isEmpty()
                             ? "No matching passages"
-                            : hits.stream()
-                                    .map(h -> h.docName() + " #" + (h.seq() + 1))
-                                    .distinct().collect(java.util.stream.Collectors.joining(", "));
+                            : assembled.passages().stream()
+                                    .map(ContextAssembler.Passage::citation)
+                                    .collect(java.util.stream.Collectors.joining(", "));
                     ne.status = "passed";
                     ne.endedAt = System.currentTimeMillis();
                 }

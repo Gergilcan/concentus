@@ -26,15 +26,21 @@ public class KnowledgeController {
 
     private final KnowledgeStore store;
     private final KnowledgeService service;
+    private final com.concentus.service.KnowledgeRetriever retriever;
     private final com.concentus.llm.BuiltInEmbedder embedder;
+    private final com.concentus.llm.BuiltInReranker reranker;
     private final com.concentus.integration.content.AttachmentExtractionService extraction;
 
     public KnowledgeController(KnowledgeStore store, KnowledgeService service,
+                               com.concentus.service.KnowledgeRetriever retriever,
                                com.concentus.llm.BuiltInEmbedder embedder,
+                               com.concentus.llm.BuiltInReranker reranker,
                                com.concentus.integration.content.AttachmentExtractionService extraction) {
         this.store = store;
         this.service = service;
+        this.retriever = retriever;
         this.embedder = embedder;
+        this.reranker = reranker;
         this.extraction = extraction;
     }
 
@@ -54,7 +60,7 @@ public class KnowledgeController {
     public Map<String, Object> embedderStatus() {
         // Carries overall semantic availability too, not only the built-in model's state: with
         // Ollama serving the embedding model, search IS semantic while the built-in model is
-        // absent, and a panel reading only the local state would claim word-overlap wrongly.
+        // absent, and a panel reading only the local state would claim keyword-only wrongly.
         KnowledgeService.EmbeddingStatus overall = service.status();
         return Map.of(
                 "state", embedder.state().name(),
@@ -78,12 +84,41 @@ public class KnowledgeController {
         embedder.delete();
     }
 
+    /**
+     * The reranker: the cross-encoder that reorders results by reading query and passage together.
+     *
+     * <p>Reported separately from the embedder rather than folded into one "models" state, because
+     * they fail independently and the user's next action differs: without the embedder there is no
+     * semantic search at all, while without this one search works and merely ranks less well.
+     */
+    @GetMapping("/reranker")
+    public Map<String, Object> rerankerStatus() {
+        return Map.of(
+                "state", reranker.state().name(),
+                "percent", reranker.progressPercent(),
+                "error", reranker.error(),
+                "sizeMb", com.concentus.llm.BuiltInReranker.SIZE_MB,
+                "model", com.concentus.llm.BuiltInReranker.MODEL_NAME);
+    }
+
+    @PostMapping("/reranker/download")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void downloadReranker() {
+        reranker.download();
+    }
+
+    @DeleteMapping("/reranker")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteReranker() throws IOException {
+        reranker.delete();
+    }
+
     @GetMapping
     public List<KnowledgeDef> list() {
         return store.list();
     }
 
-    /** Semantic vs word-overlap, and exactly which piece is missing when it is not semantic. */
+    /** What ranking is available, and exactly which piece is missing when it is not all of it. */
     @GetMapping("/status")
     public KnowledgeService.EmbeddingStatus status() {
         return service.status();
@@ -140,13 +175,13 @@ public class KnowledgeController {
 
     /** Try a query before wiring the base into a flow — a bad ranking should cost a click here. */
     @PostMapping("/{id}/search")
-    public List<KnowledgeService.Hit> search(@PathVariable String id,
-                                             @RequestBody Map<String, Object> body) {
+    public List<com.concentus.service.KnowledgeRetriever.Hit> search(@PathVariable String id,
+                                                                    @RequestBody Map<String, Object> body) {
         requireBase(id);
         String query = String.valueOf(body.getOrDefault("query", "")).trim();
         if (query.isEmpty()) throw new IllegalArgumentException("A query is required.");
         int topK = body.get("topK") instanceof Number n ? n.intValue() : 5;
-        return service.search(id, query, topK);
+        return retriever.search(id, query, topK);
     }
 
     private void requireBase(String id) {

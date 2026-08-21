@@ -16,6 +16,7 @@ import type {
   DatabaseDef,
   DoctorFinding,
   EmbedderStatus,
+  RerankerStatus,
   FlowMemoryView,
   KnowledgeDef,
   KnowledgeDoc,
@@ -321,6 +322,9 @@ export const api = {
   embedderStatus: () => req<EmbedderStatus>('/knowledge/embedder'),
   embedderDownload: () => req<void>('/knowledge/embedder/download', { method: 'POST' }),
   deleteEmbedder: () => req<void>('/knowledge/embedder', { method: 'DELETE' }),
+  rerankerStatus: () => req<RerankerStatus>('/knowledge/reranker'),
+  rerankerDownload: () => req<void>('/knowledge/reranker/download', { method: 'POST' }),
+  deleteReranker: () => req<void>('/knowledge/reranker', { method: 'DELETE' }),
   searchKnowledge: (id: string, query: string, topK = 5) =>
     req<KnowledgeHit[]>(`/knowledge/${id}/search`, {
       method: 'POST',

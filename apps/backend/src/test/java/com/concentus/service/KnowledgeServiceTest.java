@@ -14,15 +14,14 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
  * Tests for {@link KnowledgeService} against a real embedded PostgreSQL: ingest round-trips,
- * re-upload replaces rather than accumulates, and retrieval ranks — semantically when the
- * embedding client answers, by word overlap when it does not.
+ * re-upload replaces rather than accumulates, folders delete what they should, and the status line
+ * names whichever piece is missing. Ranking moved out with the retriever and is covered by
+ * {@link KnowledgeRetrieverTest}.
  */
 class KnowledgeServiceTest {
 
@@ -38,10 +37,14 @@ class KnowledgeServiceTest {
         var builtIn = mock(com.concentus.llm.BuiltInEmbedder.class);
         when(builtIn.state()).thenReturn(com.concentus.llm.BuiltInEmbedder.State.NOT_DOWNLOADED);
         when(builtIn.isReady()).thenReturn(false);
-        // A built-in embedder that is never ready: these tests cover the model-server and
-        // word-overlap paths, and the in-process model has its own suite.
-        service = new KnowledgeService(TestDatabase.jdbc(), extraction, models,
-                builtIn, new ObjectMapper(), "bge-m3");
+        var reranker = mock(com.concentus.llm.BuiltInReranker.class);
+        when(reranker.isReady()).thenReturn(false);
+        // A built-in embedder that is never ready: these tests cover the model-server path, and
+        // the in-process model has its own suite.
+        var retriever = new KnowledgeRetriever(TestDatabase.jdbc(), models, builtIn, reranker,
+                new ObjectMapper(), com.concentus.telemetry.Telemetry.none(), "bge-m3");
+        service = new KnowledgeService(TestDatabase.jdbc(), extraction, retriever, models,
+                builtIn, reranker, new ObjectMapper(), "bge-m3");
     }
 
     @Test
@@ -68,44 +71,36 @@ class KnowledgeServiceTest {
 
         service.ingest("kb1", "notes.txt", "new content".getBytes(StandardCharsets.UTF_8));
 
-        var hits = service.search("kb1", "content", 10);
-        assertThat(hits).singleElement().satisfies(h ->
-                assertThat(h.content()).contains("new content"));
+        // Read the stored text rather than searching for it: stale chunks of a corrected document
+        // answering beside the new ones is a storage bug, and it should be caught as one.
+        List<String> stored = TestDatabase.jdbc().queryForList(
+                "select content from knowledge_chunks where base_id = ? and doc_name = ?",
+                String.class, "kb1", "notes.txt");
+        assertThat(stored).singleElement().satisfies(c -> assertThat(c).contains("new content"));
     }
 
     @Test
-    void searchRanksByWordOverlapWithoutEmbeddings() {
+    void ingestWritesTheLexemeSoKeywordSearchWorksImmediately() {
         when(models.isConfigured()).thenReturn(false);
         service.ingest("kb1", "a.txt",
-                "Refunds are processed within thirty days of the return arriving.".getBytes(StandardCharsets.UTF_8));
-        service.ingest("kb1", "b.txt",
-                "The cafeteria closes at four on Fridays.".getBytes(StandardCharsets.UTF_8));
+                "Los accesos se revisan cada trimestre.".getBytes(StandardCharsets.UTF_8));
 
-        var hits = service.search("kb1", "how long do refunds take", 1);
-
-        assertThat(hits).singleElement().satisfies(h -> assertThat(h.docName()).isEqualTo("a.txt"));
+        Integer matching = TestDatabase.jdbc().queryForObject("""
+                select count(*) from knowledge_chunks
+                 where base_id = ? and lexeme @@ to_tsquery('spanish', ?)
+                """, Integer.class, "kb1", "acceso");
+        // Stemmed, not merely stored: the query says "acceso" and the document says "accesos".
+        assertThat(matching).isEqualTo(1);
     }
 
     @Test
-    void searchRanksSemanticallyWhenEmbeddingsExist() {
-        when(models.isConfigured()).thenReturn(true);
-        // Orthogonal document vectors; the query aligns with the first.
-        when(models.embed(anyString(), anyList())).thenAnswer(inv -> {
-            List<String> texts = inv.getArgument(1);
-            return texts.stream().map(t ->
-                    t.contains("refund") || t.contains("Refunds")
-                            ? new float[]{1f, 0f}
-                            : new float[]{0f, 1f}).toList();
-        });
-        service.ingest("kb1", "a.txt", "Refunds take thirty days.".getBytes(StandardCharsets.UTF_8));
-        service.ingest("kb1", "b.txt", "The cafeteria closes early.".getBytes(StandardCharsets.UTF_8));
+    void aDocumentIngestedWithoutEmbeddingsSaysSoRatherThanLookingFine() {
+        when(models.isConfigured()).thenReturn(false);
 
-        var hits = service.search("kb1", "refund policy", 1);
+        var result = service.ingest("kb1", "a.txt", "Contenido.".getBytes(StandardCharsets.UTF_8));
 
-        assertThat(hits).singleElement().satisfies(h -> {
-            assertThat(h.docName()).isEqualTo("a.txt");
-            assertThat(h.score()).isGreaterThan(0.9);
-        });
+        assertThat(result.embedded()).isFalse();
+        assertThat(result.detail()).contains("keyword search only");
     }
 
     @Test

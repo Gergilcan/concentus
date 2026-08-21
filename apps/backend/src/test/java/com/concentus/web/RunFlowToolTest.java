@@ -51,7 +51,8 @@ class RunFlowToolTest {
         FlowMemoryStore memory = mock(FlowMemoryStore.class);
         when(memory.isAvailable()).thenReturn(false);
         return new RunToolsController(runs, new OpenApiCatalog(MAPPER), new ApiCaller(MAPPER),
-                MAPPER, memory, subflows);
+                MAPPER, memory, subflows, mock(com.concentus.service.KnowledgeRetriever.class),
+                new com.concentus.service.ContextAssembler(12000));
     }
 
     private static AgentSpec.SubflowSpec spec(String label, String flowId) {

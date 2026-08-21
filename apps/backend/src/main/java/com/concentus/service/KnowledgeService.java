@@ -3,8 +3,8 @@ package com.concentus.service;
 import com.concentus.integration.content.AttachmentExtractionService;
 import com.concentus.integration.content.AttachmentExtractionService.RawAttachment;
 import com.concentus.llm.BuiltInEmbedder;
+import com.concentus.llm.BuiltInReranker;
 import com.concentus.llm.LocalModelClient;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,18 +16,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Ingesting documents into a knowledge base, and finding the passages relevant to a prompt.
+ * Getting documents into a knowledge base, and saying what the base can do once they are in.
  *
  * <p>Assembled from parts that already existed for other features, which is why it is small: the
- * mail pipeline's extractors turn PDF/Word/Excel/images into text, and the local model client's
- * embedding call ranks tool search. This service only adds the chunking in between.
+ * mail pipeline's extractors turn PDF/Word/Excel/images into text, and the embedding runs in
+ * process. This service adds the chunking in between. Finding things again is
+ * {@link KnowledgeRetriever}'s job — ingestion and retrieval share a table and nothing else, and
+ * keeping them in one class meant every change to ranking risked the code that writes documents.
  *
- * <p><b>Degradation is layered, never fatal.</b> No embedding server: chunks are stored without
- * vectors and retrieval ranks by word overlap. Embedding server appears later: re-uploading a
+ * <p><b>Degradation is layered, never fatal.</b> No embedding model: chunks are stored without
+ * vectors and retrieval ranks them lexically. An embedding model appears later: re-uploading a
  * document re-embeds it. Nothing here can make an upload fail for reasons the user cannot see.
  */
 @Service
@@ -45,23 +46,25 @@ public class KnowledgeService {
     /** Ingest ceiling per document, matching the attachment policy's spirit: bounded, stated. */
     private static final int MAX_CHUNKS_PER_DOC = 2000;
 
-    private static final Pattern WORDS = Pattern.compile("[\\p{L}\\p{N}]{3,}");
-
     private final JdbcTemplate jdbc;
     private final AttachmentExtractionService extraction;
+    private final KnowledgeRetriever retriever;
     private final LocalModelClient models;
     private final BuiltInEmbedder builtIn;
+    private final BuiltInReranker reranker;
     private final ObjectMapper mapper;
     private final String embeddingModel;
 
     public KnowledgeService(JdbcTemplate jdbc, AttachmentExtractionService extraction,
-                            LocalModelClient models, BuiltInEmbedder builtIn,
-                            ObjectMapper mapper,
+                            KnowledgeRetriever retriever, LocalModelClient models,
+                            BuiltInEmbedder builtIn, BuiltInReranker reranker, ObjectMapper mapper,
                             @Value("${local-model.embedding-model:bge-m3}") String embeddingModel) {
         this.jdbc = jdbc;
         this.extraction = extraction;
+        this.retriever = retriever;
         this.models = models;
         this.builtIn = builtIn;
+        this.reranker = reranker;
         this.mapper = mapper;
         this.embeddingModel = embeddingModel;
     }
@@ -71,9 +74,6 @@ public class KnowledgeService {
     }
 
     public record DocInfo(String name, int chunks, boolean embedded, long createdAt) {
-    }
-
-    public record Hit(String docName, int seq, String content, double score) {
     }
 
     /** Extracts, chunks, embeds when possible, and replaces any previous version of the document. */
@@ -95,8 +95,8 @@ public class KnowledgeService {
         boolean truncated = chunks.size() > MAX_CHUNKS_PER_DOC;
         if (truncated) chunks = chunks.subList(0, MAX_CHUNKS_PER_DOC);
 
-        Embeddings embedding = tryEmbed(chunks, false);
-        boolean embedded = embedding != null;
+        List<float[]> vectors = retriever.embedPassages(chunks);
+        boolean embedded = vectors != null && vectors.size() == chunks.size();
 
         // Replace-then-insert, so re-uploading a corrected document does not leave stale chunks of
         // the old one answering queries beside the new.
@@ -105,19 +105,25 @@ public class KnowledgeService {
         // One batch, not one round trip per chunk: a document capped at MAX_CHUNKS_PER_DOC was
         // 2000 separate statements, and a folder import runs that back to back per file.
         List<String> finalChunks = chunks;
-        Embeddings finalEmbedding = embedding;
+        List<float[]> finalVectors = embedded ? vectors : null;
+        // The lexeme is computed in SQL rather than in Java because the query side computes its
+        // half in SQL too, and the two only match if the same PostgreSQL configuration produced
+        // both. Two stemmers agreeing today is not a property anybody could keep true.
         jdbc.batchUpdate("""
-                insert into knowledge_chunks (base_id, doc_name, seq, content, embedding, created_at)
-                values (?, ?, ?, ?, ?, ?)
+                insert into knowledge_chunks (base_id, doc_name, seq, content, embedding, created_at, lexeme)
+                values (?, ?, ?, ?, ?, ?, to_tsvector('spanish', ?) || to_tsvector('english', ?))
                 """, new org.springframework.jdbc.core.BatchPreparedStatementSetter() {
             @Override
             public void setValues(java.sql.PreparedStatement ps, int i) throws java.sql.SQLException {
+                String content = finalChunks.get(i);
                 ps.setString(1, baseId);
                 ps.setString(2, filename);
                 ps.setInt(3, i);
-                ps.setString(4, finalChunks.get(i));
-                ps.setString(5, finalEmbedding == null ? null : toJson(finalEmbedding.vectors().get(i)));
+                ps.setString(4, content);
+                ps.setString(5, finalVectors == null ? null : toJson(finalVectors.get(i)));
                 ps.setLong(6, now);
+                ps.setString(7, content);
+                ps.setString(8, content);
             }
 
             @Override
@@ -126,10 +132,11 @@ public class KnowledgeService {
             }
         });
 
+        String model = retriever.embeddingModelName();
         String detail = (embedded
-                ? "Indexed with semantic embeddings (" + embedding.model() + ")."
-                : "Indexed without embeddings — the embedding model is not reachable, so retrieval "
-                        + "ranks by word overlap. Re-upload once it is to upgrade.")
+                ? "Indexed for semantic and keyword search (" + model + ")."
+                : "Indexed for keyword search only — no embedding model is reachable, so nothing "
+                        + "ranks by meaning yet. Re-upload once one is to upgrade.")
                 + (truncated ? " Document was capped at " + MAX_CHUNKS_PER_DOC + " chunks." : "");
         log.info("Knowledge base {}: '{}' -> {} chunk(s), embedded={}", baseId, filename, chunks.size(), embedded);
         return new IngestResult(filename, chunks.size(), embedded, detail);
@@ -185,139 +192,63 @@ public class KnowledgeService {
     }
 
     /**
-     * The chunks most relevant to a query.
+     * What the retrieval pipeline can actually do right now, checked rather than inferred.
      *
-     * <p>A linear scan over the base, on purpose: a desktop knowledge base is thousands of chunks,
-     * not millions, and a scan at that size costs single-digit milliseconds — while an ANN index
-     * would tie the schema to pgvector, which an external database may not have. Chunks without
-     * embeddings (or a query that cannot be embedded) fall back to word overlap, and both kinds
-     * can coexist in one base.
-     */
-    public List<Hit> search(String baseId, String query, int topK) {
-        return search(baseId, query, null, topK);
-    }
-
-    /** The query's vector, or null when nothing can embed. For callers searching several bases. */
-    public float[] embedQuery(String query) {
-        Embeddings embedded = tryEmbed(List.of(query), true);
-        return embedded == null || embedded.vectors().isEmpty() ? null : embedded.vectors().get(0);
-    }
-
-    /**
-     * @param precomputed the query's vector from {@link #embedQuery}, so a run with three
-     *                    knowledge nodes embeds its prompt once, not three times; null re-embeds
-     *                    here (single-base callers, or nothing could embed)
-     */
-    public List<Hit> search(String baseId, String query, float[] precomputed, int topK) {
-        int k = Math.max(1, Math.min(topK, 20));
-        List<CachedChunk> rows = loadBase(baseId);
-        if (rows.isEmpty()) return List.of();
-
-        float[] queryVector = precomputed;
-        if (queryVector == null && rows.stream().anyMatch(r -> r.vector() != null)) {
-            queryVector = embedQuery(query);
-        }
-
-        Set<String> queryWords = words(query);
-        List<Hit> hits = new ArrayList<>(rows.size());
-        for (CachedChunk row : rows) {
-            double score;
-            if (queryVector != null && row.vector() != null && row.vector().length == queryVector.length) {
-                score = cosine(queryVector, row.vector());
-            } else {
-                score = overlap(queryWords, row.content());
-            }
-            hits.add(new Hit(row.doc(), row.seq(), row.content(), score));
-        }
-        hits.sort((a, b) -> Double.compare(b.score(), a.score()));
-        return hits.subList(0, Math.min(k, hits.size()));
-    }
-
-    private record CachedChunk(String doc, int seq, String content, float[] vector) {
-    }
-
-    private record CachedBase(String stamp, List<CachedChunk> chunks) {
-    }
-
-    private final java.util.concurrent.ConcurrentHashMap<String, CachedBase> baseCache =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /**
-     * The base's chunks with their vectors already parsed.
+     * <p>Three questions, and the user is owed a different sentence for each: does anything embed,
+     * does anything rerank, and — when the answer is no — which specific piece is missing. "Start
+     * Ollama" and "the server does not serve that model" are different problems with different
+     * fixes, and a shrug helps with neither.
      *
-     * <p>Every query used to read the whole base — content and all — and Jackson-parse every
-     * embedding again: for a 10k-chunk base that is ~15 MB of text and four million float parses
-     * per search, repeated per knowledge node per run. The parsed form is cached per base.
-     *
-     * <p>Freshness is a stamp, not explicit invalidation: one cheap {@code count + max(created_at)}
-     * query per search. Chosen over invalidating from ingest/delete because an external database
-     * can be written by another instance entirely — a stamp notices that; local invalidation hooks
-     * never would.
-     */
-    private List<CachedChunk> loadBase(String baseId) {
-        String stamp = jdbc.queryForObject(
-                "select count(*) || ':' || coalesce(max(created_at), 0) from knowledge_chunks where base_id = ?",
-                String.class, baseId);
-        CachedBase cached = baseCache.get(baseId);
-        if (cached != null && cached.stamp().equals(stamp)) return cached.chunks();
-
-        List<CachedChunk> rows = jdbc.query(
-                "select doc_name, seq, content, embedding from knowledge_chunks where base_id = ?",
-                (rs, i) -> {
-                    String embedding = rs.getString("embedding");
-                    return new CachedChunk(rs.getString("doc_name"), rs.getInt("seq"),
-                            rs.getString("content"), embedding == null ? null : fromJson(embedding));
-                },
-                baseId);
-        baseCache.put(baseId, new CachedBase(stamp, rows));
-        return rows;
-    }
-
-    /**
-     * The embedding pipeline's actual state, checked rather than inferred.
-     *
-     * <p>Three things must hold for semantic ranking, and telling the user <em>which one</em> is
-     * missing is the difference between "start Ollama" and a shrug: a server must be configured,
-     * it must answer, and it must serve the embedding model.
+     * @param semantic whether meaning-based ranking is available at all; keyword search always is
      */
     public record EmbeddingStatus(boolean semantic, String detail) {
     }
 
     public EmbeddingStatus status() {
+        EmbeddingStatus embedding = embeddingStatus();
+        if (!reranker.isReady()) return embedding;
+        return new EmbeddingStatus(embedding.semantic(),
+                embedding.detail() + " Results are reordered by the "
+                        + BuiltInReranker.MODEL_NAME + " reranker.");
+    }
+
+    private EmbeddingStatus embeddingStatus() {
         // NOT_DOWNLOADED falls through to the model-server checks below; every other state is
         // answered here, so the switch needs no do-nothing branch to say so.
         if (builtIn.state() != BuiltInEmbedder.State.NOT_DOWNLOADED) {
             return switch (builtIn.state()) {
                 case READY -> new EmbeddingStatus(true,
-                        "Semantic ranking with the built-in model (" + BuiltInEmbedder.MODEL_NAME + ").");
+                        "Keyword and semantic search, fused (" + BuiltInEmbedder.MODEL_NAME + ").");
                 case DOWNLOADING -> new EmbeddingStatus(false,
-                        "Downloading the built-in embedding model… " + builtIn.progressPercent() + "%");
-                default -> new EmbeddingStatus(false, "The built-in model download failed: "
-                        + builtIn.error() + ". Try again, or use a model server.");
+                        "Keyword search is working. Downloading the built-in embedding model… "
+                                + builtIn.progressPercent() + "%");
+                default -> new EmbeddingStatus(false, "Keyword search is working, but the built-in "
+                        + "embedding model failed to download: " + builtIn.error());
             };
         }
         if (!models.isConfigured()) {
             return new EmbeddingStatus(false,
-                    "Download the built-in model below for semantic search — or install Ollama "
-                            + "and pull " + embeddingModel + ".");
+                    "Keyword search only. Download the built-in model below to add semantic "
+                            + "search — or install Ollama and pull " + embeddingModel + ".");
         }
         Set<String> served;
         try {
             served = models.listModels();
         } catch (RuntimeException e) {
             return new EmbeddingStatus(false,
-                    "The model server at " + models.baseUrl() + " is not answering. Start it — "
-                            + "or download the built-in model below, which needs no server.");
+                    "Keyword search only: the model server at " + models.baseUrl() + " is not "
+                            + "answering. Start it — or download the built-in model below, which "
+                            + "needs no server.");
         }
         boolean present = served.stream().anyMatch(m ->
                 m.equalsIgnoreCase(embeddingModel)
                         || m.toLowerCase(Locale.ROOT).startsWith(embeddingModel.toLowerCase(Locale.ROOT) + ":"));
         if (!present) {
             return new EmbeddingStatus(false,
-                    "The model server answers but does not serve '" + embeddingModel
-                            + "'. Run: ollama pull " + embeddingModel);
+                    "Keyword search only: the model server answers but does not serve '"
+                            + embeddingModel + "'. Run: ollama pull " + embeddingModel);
         }
-        return new EmbeddingStatus(true, "Semantic ranking with '" + embeddingModel + "'.");
+        return new EmbeddingStatus(true, "Keyword and semantic search, fused ('" + embeddingModel + "').");
     }
 
     // ---------------------------------------------------------------- internals
@@ -348,67 +279,9 @@ public class KnowledgeService {
         return out;
     }
 
-    /** The vectors and which model produced them, so the UI can name it instead of guessing. */
-    private record Embeddings(List<float[]> vectors, String model) {
-    }
-
-    /**
-     * The embeddings, or null when nothing can produce them — never an exception.
-     *
-     * <p>The built-in model wins when ready: it is the one the user explicitly downloaded, it runs
-     * in-process, and it needs no server to be up. Ollama (or any OpenAI-shaped server) remains
-     * the alternative for anyone wanting a larger model such as bge-m3.
-     */
-    private Embeddings tryEmbed(List<String> texts, boolean queries) {
-        if (builtIn.isReady()) {
-            try {
-                return new Embeddings(builtIn.embed(texts, queries), "built-in multilingual-e5-small");
-            } catch (RuntimeException e) {
-                log.warn("Built-in embedding failed ({}); trying the model server.", e.getMessage());
-            }
-        }
-        if (!models.isConfigured()) return null;
-        try {
-            return new Embeddings(models.embed(embeddingModel, texts), embeddingModel);
-        } catch (RuntimeException e) {
-            log.warn("Embedding unavailable ({}); falling back to word overlap.", e.getMessage());
-            return null;
-        }
-    }
-
-    private static double cosine(float[] a, float[] b) {
-        double dot = 0, na = 0, nb = 0;
-        for (int i = 0; i < a.length; i++) {
-            dot += a[i] * b[i];
-            na += a[i] * a[i];
-            nb += b[i] * b[i];
-        }
-        return na == 0 || nb == 0 ? 0 : dot / (Math.sqrt(na) * Math.sqrt(nb));
-    }
-
-    private static Set<String> words(String text) {
-        return WORDS.matcher(text.toLowerCase(Locale.ROOT)).results()
-                .map(m -> m.group()).collect(Collectors.toSet());
-    }
-
-    private static double overlap(Set<String> queryWords, String content) {
-        if (queryWords.isEmpty()) return 0;
-        Set<String> contentWords = words(content);
-        long matches = queryWords.stream().filter(contentWords::contains).count();
-        return (double) matches / queryWords.size();
-    }
-
     private String toJson(float[] vector) {
         try {
             return mapper.writeValueAsString(vector);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private float[] fromJson(String json) {
-        try {
-            return mapper.readValue(json, new TypeReference<float[]>() {});
         } catch (Exception e) {
             return null;
         }

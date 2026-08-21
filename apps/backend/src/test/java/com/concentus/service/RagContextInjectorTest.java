@@ -23,8 +23,8 @@ import static org.mockito.Mockito.when;
 class RagContextInjectorTest {
 
     private final SqlRagRetriever retriever = mock(SqlRagRetriever.class);
-    private final KnowledgeService knowledge = mock(KnowledgeService.class);
-    private final RagContextInjector injector = new RagContextInjector(retriever, knowledge);
+    private final KnowledgeRetriever knowledge = mock(KnowledgeRetriever.class);
+    private final RagContextInjector injector = new RagContextInjector(retriever, knowledge, new ContextAssembler(12000));
 
     private static SqlSourceSpec sqlSource(String nodeId, String label, String query) {
         SqlSourceSpec s = new SqlSourceSpec();

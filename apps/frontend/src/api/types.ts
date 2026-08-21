@@ -1134,6 +1134,15 @@ export interface EmbedderStatus {
   detail: string
 }
 
+/** The cross-encoder that reorders results by reading the question and the passage together. */
+export interface RerankerStatus {
+  state: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'READY' | 'ERROR'
+  percent: number
+  error: string
+  sizeMb: number
+  model: string
+}
+
 /** One operation from a parsed OpenAPI spec, as the API node inspector lists it. */
 export interface ApiOperationView {
   key: string
