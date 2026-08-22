@@ -58,6 +58,29 @@ public class RunController {
                         "This run has no stored flow snapshot."));
     }
 
+    /**
+     * Where this run's path would diverge, walked against the flow as it is saved TODAY.
+     *
+     * <p>Golden runs compare outputs; debugging needs to compare decisions. The recorded per-block
+     * outputs are walked through the current graph's gates without running anything — see
+     * {@link com.concentus.service.RunReplay}.
+     */
+    @GetMapping("/{id}/replay")
+    public com.concentus.service.RunReplay.ReplayReport replay(@PathVariable String id) {
+        AgentRun run = requireRun(id);
+        com.concentus.model.FlowGraph then = runService.flowOf(run)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "This run has no stored flow snapshot."));
+        if (run.flowId == null || run.flowId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This run was launched ad hoc — there is no saved flow to replay it against.");
+        }
+        com.concentus.model.FlowGraph now = flows.get(run.flowId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "The flow this run executed no longer exists."));
+        return com.concentus.service.RunReplay.compare(run, then, now);
+    }
+
     /** Per-node execution state (Input/Output, status, per-box tokens) + run token totals. */
     @GetMapping("/{id}/nodes")
     public NodeExecReport nodes(@PathVariable String id) {
