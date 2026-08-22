@@ -186,6 +186,26 @@ public class AgentRun {
      * fact about a different question. Each note is also emitted as an event, so the run report
      * keeps a record without a table that has to be cleaned up.
      */
+    /**
+     * The label of the first block that failed, or null when none did (or none said so).
+     *
+     * <p>For the branch wired to the error output: "the run failed" is not something a recovery
+     * branch can act on, while "Presupuestos failed: the mailbox refused the credential" is.
+     * Derived from the per-node records the executors already stamp rather than set by them —
+     * every failure site would otherwise have to remember one more field, and the first one that
+     * forgot would produce anonymous failures again.
+     */
+    public String failedNodeLabel() {
+        synchronized (nodeExecs) {
+            for (NodeExec exec : nodeExecs.values()) {
+                if ("failed".equals(exec.status)) {
+                    return exec.label == null || exec.label.isBlank() ? exec.nodeId : exec.label;
+                }
+            }
+        }
+        return null;
+    }
+
     public final java.util.List<SharedNote> sharedNotes =
             java.util.Collections.synchronizedList(new java.util.ArrayList<>());
 

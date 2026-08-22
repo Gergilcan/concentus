@@ -31,6 +31,7 @@ export function FlowRunNode({ id, data, selected }: NodeProps<FlowRunRFNode>) {
 
   return (
     <NodeShell
+      altHandle={{ id: 'error', label: 'on error', tone: 'error' }}
       id={id}
       variant="flow"
       selected={selected}

@@ -150,6 +150,15 @@ concentus/
     prompt are injected into the connected agent, numbered and cited, recorded per node. The agent
     also gets a `search_knowledge` tool, so it can go back and ask a second question the preload
     could not have anticipated. See [Retrieval](#retrieval-how-a-passage-is-found).
+- **Every executing block has two outputs.** The main one carries what it produced. The second
+  is for the other way things can go: on an agent, a sub-flow, an API call, a merge or a verifier
+  it is **on error** — the branch wired there runs only when the block failed, and is handed the
+  failure itself, named by the block that produced it. A run whose failure was handled this way
+  completes: somebody drew what should happen when it goes wrong, and it happened. With nothing
+  wired there, a failure behaves exactly as before. On a **condition** the second output is
+  **else**: the main branch runs when the test holds, the else branch when it does not — one test
+  read from both sides, so the two branches cannot drift apart and no input can fall between them.
+  After a for-each, the else branch receives the rejected items rather than dropping them.
 - **Workers talk to each other** — each independent worker gets `share_finding` and
   `read_findings`. They are separate processes with separate context windows, which is what makes
   them independent and also what makes five of them research the same thing five times. A worker

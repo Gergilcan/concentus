@@ -7,6 +7,7 @@ export function AgentNode({ id, data, selected }: NodeProps<AgentRFNode>) {
   const isCoordinator = data.role === 'coordinator'
   return (
     <NodeShell
+      altHandle={{ id: 'error', label: 'on error', tone: 'error' }}
       id={id}
       variant="agent"
       selected={selected}

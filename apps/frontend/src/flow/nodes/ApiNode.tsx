@@ -14,6 +14,7 @@ export function ApiNode({ id, data, selected }: NodeProps<ApiRFNode>) {
   else summary = 'no spec loaded'
   return (
     <NodeShell
+      altHandle={{ id: 'error', label: 'on error', tone: 'error' }}
       id={id}
       variant="api"
       selected={selected}

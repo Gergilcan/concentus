@@ -161,9 +161,10 @@ class SubflowServiceTest {
     }
 
     @Test
-    void a_run_that_failed_hands_nothing_on() {
-        // A hand-off exists because the first flow's result is the second one's reason. After a
-        // failure there is no result, and passing on the absence would act on nothing.
+    void a_run_that_failed_with_nothing_on_its_error_output_hands_nothing_on() {
+        // A hand-off on the MAIN output exists because the first flow's result is the second
+        // one's reason. After a failure there is no result, and passing on the absence would act
+        // on nothing.
         childExists("flow_child");
         AgentRun parent = parentRun("flow_parent", List.of());
         parent.status = "ERROR";
@@ -175,6 +176,56 @@ class SubflowServiceTest {
         verify(runs, never()).startSubflow(any(), anyString(), any());
         assertThat(parent.bufferedEvents()).anySatisfy(e ->
                 assertThat(e.text()).contains("did not complete"));
+        // And it stays a failure: nothing handled it.
+        assertThat(parent.status).isEqualTo("ERROR");
+    }
+
+    /** agent → hand-off, where the hand-off hangs off the agent's error output. */
+    private static FlowGraph graphWithErrorHandOff(String flowId, String childId) {
+        return new FlowGraph(flowId, "Parent", "local",
+                List.of(
+                        new com.concentus.model.FlowNode("a", "agent", "coordinator", java.util.Map.of()),
+                        new com.concentus.model.FlowNode("sub-1", "flow", null,
+                                java.util.Map.of("flowId", childId))),
+                List.of(new com.concentus.model.FlowEdge("e1", "a", "sub-1",
+                        com.concentus.model.FlowEdge.ERROR)),
+                null, null, null, null, null, null, null, null, null, null, null);
+    }
+
+    @Test
+    void a_failed_run_fires_the_branch_wired_to_its_error_output_and_is_handled() {
+        childExists("flow_child");
+        when(runs.startSubflow(any(), anyString(), any())).thenReturn(summary("run-rescue", "RUNNING"));
+        AgentRun parent = parentRun("flow_parent", List.of());
+        parent.status = "ERROR";
+        parent.error = "the mailbox refused the credential";
+        parent.compiled = new CompiledFlow(new AgentSpec(), List.of(), null, null,
+                List.of(spec("flow_child", true)));
+
+        service().handOffAfter(parent, graphWithErrorHandOff("flow_parent", "flow_child"));
+
+        // The branch is handed the failure itself — the one thing that certainly exists — and
+        // the run completes: somebody drew what should happen when this goes wrong, and it
+        // happened. That is precisely what "handled" means.
+        verify(runs).startSubflow(any(),
+                org.mockito.ArgumentMatchers.contains("the mailbox refused the credential"), any());
+        assertThat(parent.status).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void a_run_that_completed_does_not_fire_the_error_branch() {
+        childExists("flow_child");
+        AgentRun parent = parentRun("flow_parent", List.of());
+        parent.status = "COMPLETED";
+        parent.restoreEvents(List.of(com.concentus.model.RunEvent.of("agent_message", "Done.")));
+        parent.compiled = new CompiledFlow(new AgentSpec(), List.of(), null, null,
+                List.of(spec("flow_child", true)));
+
+        service().handOffAfter(parent, graphWithErrorHandOff("flow_parent", "flow_child"));
+
+        // The recovery branch is FOR failures. Running it on success would send the "it broke"
+        // notification precisely when nothing broke.
+        verify(runs, never()).startSubflow(any(), anyString(), any());
     }
 
     @Test

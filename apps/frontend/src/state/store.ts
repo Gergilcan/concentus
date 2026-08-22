@@ -554,7 +554,12 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         folder: flow.folder,
       },
       nodes,
-      edges: flow.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+      edges: flow.edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle ?? null,
+      })),
       selectedId: null,
       // Any load lands on the saved flow unless the caller says otherwise; Preview re-sets this
       // right after. Clearing it here means no path can leave the banner claiming a revision the
@@ -580,7 +585,14 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       mode: s.mode,
       ...s.flowMeta, // keep tags / favourite / enabled / webhook across canvas saves
       nodes,
-      edges: s.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+      // sourceHandle travels with the wire: a block has two outputs now, and an edge that
+      // forgets which one it left from is an error path that behaves like a success path.
+      edges: s.edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle ?? null,
+      })),
     }
   },
 }))

@@ -1,0 +1,76 @@
+{
+  "id": "support-triage-if-else",
+  "name": "Support triage (if/else)",
+  "mode": "local",
+  "enabled": false,
+  "favorite": false,
+  "tags": ["branching", "support"],
+  "nodes": [
+    {
+      "id": "in-1",
+      "type": "input",
+      "role": null,
+      "data": {
+        "mode": "manual",
+        "prompt": "",
+        "cron": "",
+        "secret": "",
+        "authParam": "",
+        "_pos": { "x": 40, "y": 220 }
+      }
+    },
+    {
+      "id": "agent-1",
+      "type": "agent",
+      "role": "coordinator",
+      "data": {
+        "name": "Triage",
+        "model": "claude-sonnet-5",
+        "effort": "medium",
+        "maxTokens": 8000,
+        "description": "Reads a support message and classifies it before anything else happens.",
+        "systemPrompt": "You triage one support message. Read it and answer with a verdict on the FIRST line: the single word URGENT when the customer is blocked, losing money, or mentions a deadline within 48 hours; otherwise the single word ROUTINE. After the verdict line, add two or three lines summarising the request in your own words: who is affected, what they need, and anything they already tried. Never invent details that are not in the message.",
+        "_pos": { "x": 320, "y": 220 }
+      }
+    },
+    {
+      "id": "if-1",
+      "type": "condition",
+      "role": null,
+      "data": {
+        "label": "urgent?",
+        "test": "contains",
+        "value": "URGENT",
+        "_pos": { "x": 620, "y": 220 }
+      }
+    },
+    {
+      "id": "flow-urgent",
+      "type": "flow",
+      "role": null,
+      "data": {
+        "label": "escalate",
+        "flowId": "",
+        "mode": "after",
+        "_pos": { "x": 900, "y": 120 }
+      }
+    },
+    {
+      "id": "flow-routine",
+      "type": "flow",
+      "role": null,
+      "data": {
+        "label": "queue for tomorrow",
+        "flowId": "",
+        "mode": "after",
+        "_pos": { "x": 900, "y": 320 }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e-in", "source": "in-1", "target": "agent-1" },
+    { "id": "e-if", "source": "agent-1", "target": "if-1" },
+    { "id": "e-yes", "source": "if-1", "target": "flow-urgent" },
+    { "id": "e-no", "source": "if-1", "target": "flow-routine", "sourceHandle": "else" }
+  ]
+}

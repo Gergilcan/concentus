@@ -95,11 +95,13 @@ describe('the recipe manifests', () => {
       'pr-review-crew',
       'docs-from-code',
       'outlook-quote-to-holded',
+      'support-triage-if-else',
+      'report-with-fallback',
     ]
     // The node ids the samples actually use, plus FLOW for an answer about the flow itself. A
     // field pointing anywhere else is a question whose answer lands nowhere — which looks like the
     // recipe worked and produces a flow missing the one thing you were asked for.
-    const targets = [FLOW, 'in-1', 'agent-1', 'repo-1']
+    const targets = [FLOW, 'in-1', 'agent-1', 'repo-1', 'if-1']
     for (const recipe of RECIPES) {
       expect(bundled, recipe.id).toContain(recipe.sampleId)
       for (const field of fieldsOf(recipe)) {

@@ -6,6 +6,7 @@ import styles from './nodes.module.scss'
 export function VerifierNode({ id, data, selected }: NodeProps<VerifierRFNode>) {
   return (
     <NodeShell
+      altHandle={{ id: 'error', label: 'on error', tone: 'error' }}
       id={id}
       variant="verifier"
       selected={selected}

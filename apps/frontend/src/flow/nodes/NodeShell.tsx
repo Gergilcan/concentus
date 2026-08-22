@@ -15,6 +15,7 @@ export function NodeShell({
   badge,
   showTargetHandle = true,
   showSourceHandle = true,
+  altHandle,
   showStatus = false,
   children,
 }: {
@@ -27,6 +28,17 @@ export function NodeShell({
   badge: ReactNode
   showTargetHandle?: boolean
   showSourceHandle?: boolean
+  /**
+   * The block's second output, and what it means.
+   *
+   * <p>Every block that can go wrong has one, and it is not decoration: without it, a failing
+   * block ends the run and a condition that does not hold simply stops, with nowhere on the
+   * canvas to say what should happen instead. The label is drawn beside the handle, because a
+   * second dot on the right edge with no word next to it is a thing people wire by accident.
+   *
+   * <p>{@code id} is what the wire remembers, and it is what the backend routes on.
+   */
+  altHandle?: { id: string; label: string; tone: 'error' | 'else' }
   showStatus?: boolean
   children?: ReactNode
 }) {
@@ -41,6 +53,25 @@ export function NodeShell({
       {children}
       {showStatus && id && <NodeStatusBadge id={id} />}
       {showSourceHandle && <Handle type="source" position={Position.Right} />}
+      {altHandle && (
+        <>
+          {/* Below the main one and named. The two outputs of a block are not interchangeable, so
+              they must not look interchangeable. */}
+          <Handle
+            id={altHandle.id}
+            type="source"
+            position={Position.Right}
+            className={altHandle.tone === 'error' ? styles.handleError : styles.handleElse}
+            style={{ top: 'calc(100% - 14px)' }}
+          />
+          <span
+            className={cx(styles.altLabel, altHandle.tone === 'error' ? styles.altError : styles.altElse)}
+            aria-hidden="true"
+          >
+            {altHandle.label}
+          </span>
+        </>
+      )}
     </div>
   )
 }

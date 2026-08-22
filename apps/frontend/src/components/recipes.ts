@@ -105,6 +105,51 @@ const TELL_ME_WHEN_IT_BREAKS: RecipeQuestion = {
 
 export const RECIPES: Recipe[] = [
   {
+    id: 'support-triage',
+    title: 'Sort what is urgent from what can wait',
+    blurb:
+      'One classifier reads each request; the urgent path and the routine path are two branches of the same if — so no request can fall between them.',
+    sampleId: 'support-triage-if-else',
+    enableHint: 'It runs when you press Run — nothing fires on its own until you wire the two branches to real flows.',
+    questions: [
+      {
+        title: 'What should count as urgent?',
+        fields: [
+          {
+            nodeId: 'if-1',
+            field: 'value',
+            label: 'The word the classifier uses',
+            control: 'text',
+            placeholder: 'URGENT',
+            help: 'The condition checks the classifier\'s verdict for this word. The else branch takes everything that does not carry it — the two branches cannot drift apart, because they are one test read from both sides.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'report-with-net',
+    title: 'A scheduled report that tells you when it breaks',
+    blurb:
+      'The report goes out on the main output; the branch on the error output runs only when something failed — so silence means it worked.',
+    sampleId: 'report-with-fallback',
+    enableHint: 'It runs on the schedule once started. Leave it off to open it on the canvas first.',
+    questions: [
+      {
+        title: 'When should it run?',
+        fields: [
+          {
+            nodeId: 'in-1',
+            field: 'cron',
+            label: 'Schedule',
+            control: 'cron',
+            help: 'Monday at 08:00 by default. The safety net costs nothing on the weeks everything works.',
+          },
+        ],
+      },
+    ],
+  },
+  {
     id: 'inbox-triage',
     title: 'Triage my inbox and draft the replies',
     blurb: 'Reads each new message, says what it needs, and writes a draft answer when one is due.',

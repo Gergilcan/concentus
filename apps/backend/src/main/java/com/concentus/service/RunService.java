@@ -585,13 +585,17 @@ public class RunService {
                 run.status = endsWithQuestion(run.finalOutput()) ? "AWAITING_ANSWER" : "COMPLETED";
                 run.emit(RunEvent.of("status", run.status.toLowerCase()));
             }
+            // Hand-offs BEFORE the failure is persisted or announced, and the order is the
+            // feature: a failure whose error output is wired gets handled there and the run
+            // completes — persisting first would store ERROR and then quietly disagree with it,
+            // and notifying first would page somebody about a failure the flow was drawn to
+            // absorb. The graph, not just the compiled specs: the condition and for-each nodes
+            // on the way to a hand-off are drawn, not compiled, and this is where they are read.
+            subflows.handOffAfter(run, flowOf(run).orElse(null));
             runStore.persist(run);
             if ("ERROR".equals(run.status)) {
                 notifier.runFailed(run);
             }
-            // The graph, not just the compiled specs: the condition and for-each nodes on the way
-            // to a hand-off are drawn, not compiled, and this is where they are read.
-            subflows.handOffAfter(run, flowOf(run).orElse(null));
             // The turn ended with the run stopped, waiting for a human. Once per run: a second
             // command sent while waiting would end the same way, and a second Slack message for
             // the same question reads as two questions.

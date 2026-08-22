@@ -68,21 +68,25 @@ public final class FlowGates {
         List<String> prompts = new ArrayList<>(List.of(text));
         String reason = null;
 
-        for (FlowNode gate : gatesInto(flow, nodeId)) {
+        for (GateHop hop : gatesInto(flow, nodeId)) {
+            FlowNode gate = hop.gate();
             Map<String, Object> data = gate.dataOrEmpty();
             String label = str(data, "label", gate.id());
             if ("condition".equalsIgnoreCase(gate.type())) {
                 // Judged on the text that reached the gate, so after a for-each it judges one item:
                 // "for each repository, and only the private ones" reads left to right and works.
+                // A branch on the gate's else output keeps what the test rejected — the same rule,
+                // read from the other side, which is what an else is.
                 List<String> kept = new ArrayList<>();
                 for (String p : prompts) {
-                    if (passes(data, p)) kept.add(p);
+                    if (passes(data, p) != hop.inverted()) kept.add(p);
                 }
                 if (kept.size() != prompts.size()) {
+                    String side = hop.inverted() ? " (else branch)" : "";
                     reason = kept.isEmpty()
-                            ? "'" + label + "' did not pass, so this branch did not run."
-                            : "'" + label + "' let " + kept.size() + " of " + prompts.size()
-                                    + " through.";
+                            ? "'" + label + "'" + side + " did not pass, so this branch did not run."
+                            : "'" + label + "'" + side + " let " + kept.size() + " of "
+                                    + prompts.size() + " through.";
                 }
                 prompts = kept;
             } else if ("foreach".equalsIgnoreCase(gate.type())) {
@@ -112,6 +116,38 @@ public final class FlowGates {
      * wire agent → condition → flow is one wire with a rule on it, and reading it as two would
      * make drawing the rule detach the branch from the agent it belongs to.
      */
+    /**
+     * Whether the wire that reaches {@code nodeId} left its source's error output.
+     *
+     * <p>Walks through gates the same way {@link #sourceThroughGates} does, because a condition
+     * drawn between an agent and its recovery branch does not change which output the branch hangs
+     * off — it only decides whether it fires.
+     *
+     * <p>A flow drawn before outputs had names has null on every edge, which reads as the main
+     * output. That is the right answer: those hand-offs run when the flow succeeds, exactly as
+     * they always did.
+     */
+    public static boolean reachedByErrorPath(FlowGraph flow, String nodeId) {
+        Map<String, FlowNode> byId = new LinkedHashMap<>();
+        for (FlowNode n : flow.nodesOrEmpty()) byId.put(n.id(), n);
+
+        Set<String> seen = new LinkedHashSet<>();
+        String current = nodeId;
+        while (current != null && seen.add(current)) {
+            String next = null;
+            for (FlowEdge e : flow.edgesOrEmpty()) {
+                if (!current.equals(e.target())) continue;
+                if (e.is(FlowEdge.ERROR)) return true;
+                FlowNode source = byId.get(e.source());
+                if (source == null || !isGate(source.type())) return false;
+                next = source.id();
+                break;
+            }
+            current = next;
+        }
+        return false;
+    }
+
     public static String sourceThroughGates(FlowGraph flow, String nodeId) {
         Map<String, FlowNode> byId = new LinkedHashMap<>();
         for (FlowNode n : flow.nodesOrEmpty()) byId.put(n.id(), n);
@@ -142,11 +178,20 @@ public final class FlowGates {
      * neither of the alternatives, so the walk stays deterministic and the canvas stays honest by
      * not offering that shape.
      */
-    private static List<FlowNode> gatesInto(FlowGraph flow, String nodeId) {
+    /**
+     * A gate on the way to a branch, and which of its outputs the branch hangs from.
+     *
+     * <p>{@code inverted} is a condition wired from its <b>else</b> output: the branch runs when
+     * the test does NOT hold. On a for-each the flag is meaningless and stays false.
+     */
+    record GateHop(FlowNode gate, boolean inverted) {
+    }
+
+    private static List<GateHop> gatesInto(FlowGraph flow, String nodeId) {
         Map<String, FlowNode> byId = new LinkedHashMap<>();
         for (FlowNode n : flow.nodesOrEmpty()) byId.put(n.id(), n);
 
-        List<FlowNode> backwards = new ArrayList<>();
+        List<GateHop> backwards = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         String current = nodeId;
         while (current != null && seen.add(current)) {
@@ -156,7 +201,9 @@ public final class FlowGates {
                 FlowNode source = byId.get(e.source());
                 if (source != null && isGate(source.type())) {
                     previous = source.id();
-                    backwards.add(source);
+                    // The edge OUT of the gate into this hop carries the answer: main means "when
+                    // it holds", else means "when it does not".
+                    backwards.add(new GateHop(source, e.is(FlowEdge.ELSE)));
                     break;
                 }
             }

@@ -175,3 +175,35 @@
 .foreach {
   border-left: 3px solid t.$gate;
 }
+
+/* ---- the second output: what happens when things do not go the main way ---- */
+
+.handleError,
+.handleElse {
+  /* React Flow paints handles from its own stylesheet, so these override rather than define. */
+  border-color: t.$panel-2 !important;
+}
+.handleError {
+  background: t.$danger !important;
+}
+.handleElse {
+  background: t.$muted !important;
+}
+
+/* The word beside the dot. A second handle with nothing next to it is a thing people wire by
+   accident and then cannot explain. */
+.altLabel {
+  position: absolute;
+  right: 10px;
+  bottom: 2px;
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.altError {
+  color: t.$danger;
+}
+.altElse {
+  color: t.$muted;
+}

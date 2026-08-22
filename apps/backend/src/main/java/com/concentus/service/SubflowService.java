@@ -147,15 +147,32 @@ public class SubflowService {
     public void handOffAfter(AgentRun run, com.concentus.model.FlowGraph graph) {
         if (run.compiled == null || run.compiled.afterFlows().isEmpty()) return;
         if (run.handOffsFired) return;
-        if (!"COMPLETED".equals(run.status)) {
-            run.emit(com.concentus.model.RunEvent.of("system", "This run did not complete, so its "
-                    + run.compiled.afterFlows().size() + " hand-off(s) were not started."));
+
+        // A failed run used to start nothing at all, which is what made a failure something you
+        // found out about afterwards. Now the wires say which is which: a branch on the main
+        // output runs when the flow worked, one on the error output runs when it did not.
+        boolean failed = !"COMPLETED".equals(run.status);
+        List<AgentSpec.SubflowSpec> toRun = new ArrayList<>();
+        for (AgentSpec.SubflowSpec drawn : run.compiled.afterFlows()) {
+            boolean onError = graph != null && FlowGates.reachedByErrorPath(graph, drawn.nodeId);
+            if (onError == failed) toRun.add(drawn);
+        }
+
+        if (toRun.isEmpty()) {
+            if (failed) {
+                run.emit(com.concentus.model.RunEvent.of("system", "This run did not complete, and "
+                        + "nothing is wired to its error output, so none of its "
+                        + run.compiled.afterFlows().size() + " hand-off(s) were started."));
+            }
             return;
         }
 
         run.handOffsFired = true;
-        String output = run.finalOutput();
-        for (AgentSpec.SubflowSpec drawn : run.compiled.afterFlows()) {
+        // What the recovery branch is handed. The error and the block that produced it is the one
+        // thing that certainly exists when something has failed — a partial output usually does
+        // not, and the run's original text says nothing about what went wrong.
+        String output = failed ? failureText(run) : run.finalOutput();
+        for (AgentSpec.SubflowSpec drawn : toRun) {
             FlowGates.Decision decision = graph == null
                     ? new FlowGates.Decision(List.of(output == null ? "" : output), null)
                     : FlowGates.decide(graph, drawn.nodeId, output);
@@ -183,6 +200,23 @@ public class SubflowService {
                 if (!result.started()) break;
             }
         }
+
+        // Handled, and therefore not a failure any more. Somebody drew what should happen when
+        // this goes wrong and it happened; leaving the run red would report an unattended failure
+        // and put a flow in the drifted column for working as designed.
+        if (failed) {
+            run.status = "COMPLETED";
+            run.emit(com.concentus.model.RunEvent.of("system",
+                    "The error was handled by the branch wired to this flow's error output, so this "
+                            + "run is reported as completed. The failure itself is above."));
+        }
+    }
+
+    /** The failure, named by the block that produced it, for the branch that has to act on it. */
+    private static String failureText(AgentRun run) {
+        String error = run.error == null || run.error.isBlank() ? "The run failed." : run.error;
+        String where = run.failedNodeLabel();
+        return where == null ? error : where + " failed: " + error;
     }
 
     /**

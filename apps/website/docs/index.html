@@ -471,6 +471,29 @@
         verifiers — can be on the receiving end of a capability.
       </p>
 
+      <h3>Two outputs per block</h3>
+      <p>
+        Every block that executes has a second output below its main one, and the wire remembers
+        which it left from. On an agent, a sub-flow, an API call, a merge or a verifier it is
+        <strong>on error</strong>: the branch wired there runs only when the block failed, and is
+        handed the failure itself, named by the block that produced it — <em>"Presupuestos failed:
+        the mailbox refused the credential"</em> is something a recovery branch can act on, where
+        "the run failed" is not.
+      </p>
+      <p>
+        A run whose failure was handled this way <strong>completes</strong>. Somebody drew what
+        should happen when it goes wrong and it happened; leaving the run red would report an
+        unattended failure for working as designed. With nothing wired to the error output, a
+        failure behaves exactly as it always did.
+      </p>
+      <p>
+        On a <strong>condition</strong> the second output is <strong>else</strong>. The main branch
+        runs when the test holds, the else branch when it does not — one test read from both
+        sides. Before this, "if urgent do X, otherwise Y" took two conditions with opposite tests,
+        and the two could drift until some input fell between them. After a for-each, the else
+        branch receives the rejected items rather than dropping them on the floor.
+      </p>
+
       <h3>Keyboard</h3>
       <div class="tablewrap">
         <table>

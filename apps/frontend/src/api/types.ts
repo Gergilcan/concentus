@@ -579,6 +579,14 @@ interface BackendFlowEdge {
   id: string
   source: string
   target: string
+  /**
+   * Which of the source block's outputs this wire leaves from, or null for the main one.
+   *
+   * A block has two: what it produced, and the other way things can go — it failed, or a
+   * condition did not hold. Null means the main one, which is what every wire drawn before this
+   * existed meant.
+   */
+  sourceHandle?: string | null
 }
 
 export interface BackendFlow {

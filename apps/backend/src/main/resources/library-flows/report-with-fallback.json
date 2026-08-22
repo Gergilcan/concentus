@@ -1,0 +1,64 @@
+{
+  "id": "report-with-fallback",
+  "name": "Report with a safety net (on error)",
+  "mode": "local",
+  "enabled": false,
+  "favorite": false,
+  "tags": ["recovery", "reporting"],
+  "nodes": [
+    {
+      "id": "in-1",
+      "type": "input",
+      "role": null,
+      "data": {
+        "mode": "cron",
+        "prompt": "Produce the weekly report. Gather the numbers from the sources wired to you, compare them with last week, and write the summary per your instructions.",
+        "cron": "0 8 * * 1",
+        "secret": "",
+        "authParam": "",
+        "_pos": { "x": 40, "y": 220 }
+      }
+    },
+    {
+      "id": "agent-1",
+      "type": "agent",
+      "role": "coordinator",
+      "data": {
+        "name": "Weekly report",
+        "model": "claude-sonnet-5",
+        "effort": "medium",
+        "maxTokens": 16000,
+        "description": "Builds the Monday report from whatever sources are wired in. If it fails, the branch on its error output says so instead of nobody finding out until someone asks where the report is.",
+        "systemPrompt": "You write the Monday morning report. Use only the data handed to you by the sources wired to this flow — never invent a number. Structure: three headline figures with week-over-week change, then one short paragraph of what moved and why, then open risks. If a source gave you nothing, name it and carry on with the rest: a report with a hole labelled is better than no report.",
+        "_pos": { "x": 340, "y": 220 }
+      }
+    },
+    {
+      "id": "flow-deliver",
+      "type": "flow",
+      "role": null,
+      "data": {
+        "label": "deliver the report",
+        "flowId": "",
+        "mode": "after",
+        "_pos": { "x": 660, "y": 120 }
+      }
+    },
+    {
+      "id": "flow-alert",
+      "type": "flow",
+      "role": null,
+      "data": {
+        "label": "tell someone it broke",
+        "flowId": "",
+        "mode": "after",
+        "_pos": { "x": 660, "y": 330 }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e-in", "source": "in-1", "target": "agent-1" },
+    { "id": "e-ok", "source": "agent-1", "target": "flow-deliver" },
+    { "id": "e-err", "source": "agent-1", "target": "flow-alert", "sourceHandle": "error" }
+  ]
+}

@@ -6,6 +6,7 @@ import styles from './nodes.module.scss'
 export function MergeNode({ id, data, selected }: NodeProps<MergeRFNode>) {
   return (
     <NodeShell
+      altHandle={{ id: 'error', label: 'on error', tone: 'error' }}
       id={id}
       variant="merge"
       selected={selected}
