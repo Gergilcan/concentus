@@ -437,9 +437,15 @@ jobs:
         run: |
           version="${{ steps.hash.outputs.version }}"
           url="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${version}/Concentus-Setup-${version}.exe"
-          docker run --rm ghcr.io/russellbanks/komac:latest \
-            update Gergilcan.Concentus --version "$version" --urls "$url" \
-            --submit --token "$WINGET_TOKEN" \
+          # The binary from Komac's releases, not its ghcr image: the image answered "denied" on
+          # v0.1.5's run — gone or private, and either way not something to depend on. Pinned, so
+          # a komac release cannot change this step's behavior mid-release.
+          KOMAC_VERSION=2.16.0
+          curl -sfL "https://github.com/russellbanks/Komac/releases/download/v${KOMAC_VERSION}/komac-${KOMAC_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar -xz
+          komac_bin=$(find . -maxdepth 2 -name komac -type f | head -1)
+          [ -n "$komac_bin" ] && chmod +x "$komac_bin" \
+            && "$komac_bin" update Gergilcan.Concentus --version "$version" --urls "$url" \
+              --submit --token "$WINGET_TOKEN" \
             || echo "::warning::winget submission failed — submit by hand with packaging/winget/README.md"
 
       # The tap is the repo this workflow owns (Gergilcan/homebrew-concentus), so publishing to
