@@ -933,6 +933,9 @@
           <span class="eyebrow" style="color:var(--text)">Windows</span>
           <h3>Installer</h3>
           <p>A per-user install — no administrator rights needed.</p>
+          <p class="note">SmartScreen showing a warning is normal: the Windows installer is not
+          code-signed yet. Click <em>More info → Run anyway</em> — or install through scoop,
+          winget or <code>npx concentus</code>, which skip the warning entirely.</p>
           <div class="actions">
             <!-- href is the releases page, and the script below swaps in the file itself once it
                  knows the current version. That order matters: the link works before the script

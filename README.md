@@ -265,7 +265,7 @@ Download the installer for your platform from
 
 | Platform | File | Notes |
 |---|---|---|
-| **Windows** | `Concentus Setup <version>.exe` | Per-user install; no administrator rights needed |
+| **Windows** | `Concentus Setup <version>.exe` | Per-user install; no admin rights. SmartScreen warning is normal (unsigned) — "More info → Run anyway", or install via scoop/winget below |
 | **macOS** | `Concentus-<version>-arm64.dmg` (Apple Silicon) or `-x64.dmg` (Intel) | Signed and notarized; drag into Applications |
 | **Linux** | `Concentus-<version>.AppImage` | `chmod +x` and run it — nothing to install |
 | **Linux (Debian/Ubuntu)** | `concentus_<version>_amd64.deb` | `sudo apt install ./concentus_<version>_amd64.deb` |

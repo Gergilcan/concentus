@@ -392,6 +392,13 @@ npx concentus</code></pre>
         Updating: winget, brew and the plain installers keep the in-app updater; a scoop install
         updates with <code>scoop update concentus</code> instead.
       </p>
+      <p>
+        On Windows, SmartScreen warning about the downloaded <code>.exe</code> is <em>normal</em>:
+        the installer is not code-signed yet, and Windows says so about every unsigned download.
+        <em>More info → Run anyway</em> proceeds; the package managers above avoid the warning
+        altogether. The macOS build has no equivalent wall — it is signed and notarized, so
+        Gatekeeper opens it like any App Store-adjacent app.
+      </p>
 
       <h3>The bare backend</h3>
       <pre><code>java -jar concentus-backend.jar</code></pre>
