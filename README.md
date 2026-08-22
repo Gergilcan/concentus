@@ -266,15 +266,12 @@ Download the installer for your platform from
 | Platform | File | Notes |
 |---|---|---|
 | **Windows** | `Concentus Setup <version>.exe` | Per-user install; no administrator rights needed |
+| **macOS** | `Concentus-<version>-arm64.dmg` (Apple Silicon) or `-x64.dmg` (Intel) | Signed and notarized; drag into Applications |
 | **Linux** | `Concentus-<version>.AppImage` | `chmod +x` and run it — nothing to install |
 | **Linux (Debian/Ubuntu)** | `concentus_<version>_amd64.deb` | `sudo apt install ./concentus_<version>_amd64.deb` |
 
 There are no prerequisites. Java and PostgreSQL are inside the installer — the app does **not** use
 or interfere with any Java or PostgreSQL you already have.
-
-macOS is not built. The code runs there, but shipping a Mac build requires an Apple Developer
-account for notarization, without which Gatekeeper blocks the app outright — so a build would only
-produce something that refuses to open.
 
 ### First run
 
@@ -828,12 +825,12 @@ scoop install concentus          # update later with: scoop update concentus
 # Windows — winget (after the first winget-pkgs approval; see packaging/winget/README.md)
 winget install concentus
 
+# macOS — Homebrew (after the first macOS release lands in the tap; see packaging/macos.md)
+brew tap gergilcan/concentus && brew install --cask concentus
+
 # Any platform with Node — downloads the right installer from Releases and runs it
 npx concentus
 ```
-
-Homebrew is prepared in `packaging/homebrew` and activates the day a notarized macOS build
-exists — a cask for a build that Gatekeeper would block would only install disappointment.
 
 > **License** — free for personal and other noncommercial use under
 > [PolyForm Noncommercial 1.0.0](LICENSE.md). Commercial use needs a license from the author.

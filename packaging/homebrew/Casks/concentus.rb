@@ -1,19 +1,15 @@
-# The Homebrew cask, written ahead of the build it needs.
+# The Homebrew cask — the TEMPLATE the release workflow stamps, not the published file.
 #
-# Casks are macOS-only, and there is no macOS build yet — shipping one means an Apple Developer
-# account and notarization, because Gatekeeper blocks unsigned apps outright (see
-# electron-builder.yml, where the target is deliberately absent). This file exists so that the day
-# the notarized build lands, publishing to brew is a version bump and a repo push, not a research
-# project.
+# On every stable tag, the "Update the Homebrew tap" step in release.yml takes this file, fills
+# version and both sha256 lines from the release's dmgs, and commits the result to the tap
+# repository (github.com/Gergilcan/homebrew-concentus — created once, by hand, public). The
+# cask's shape is edited HERE; the tap only ever receives stamped copies.
 #
-# To activate, once mac artifacts exist in a release:
-#   1. Create the tap repository: github.com/Gergilcan/homebrew-concentus (public, empty).
-#   2. Copy this file into it under Casks/concentus.rb, with version and sha256 filled from the
-#      release (shasum -a 256 Concentus-<version>-arm64.dmg).
-#   3. Users then run:  brew tap gergilcan/concentus && brew install --cask concentus
+# The placeholders below are load-bearing: the workflow replaces the `version` line and the two
+# REPLACE_WITH_* tokens with sed. Renaming them means the tap silently publishes a cask pointing
+# at nothing.
 #
-# Nothing here is guessed: the artifact names match what electron-builder produces for a dmg
-# target with the artifactName conventions already used on Windows and Linux.
+# Users: brew tap gergilcan/concentus && brew install --cask concentus
 cask "concentus" do
   arch arm: "arm64", intel: "x64"
 

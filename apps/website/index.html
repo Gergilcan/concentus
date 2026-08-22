@@ -922,7 +922,9 @@
           <p class="note" id="release-line" style="margin-top:8px"></p>
           <p class="note" style="margin-top:10px">Or from a package manager — no SmartScreen wall:
           <code>scoop bucket add concentus https://github.com/Gergilcan/concentus &amp;&amp; scoop install concentus</code>
-          · <code>winget install concentus</code> · <code>npx concentus</code></p>
+          · <code>winget install concentus</code>
+          · <code>brew tap gergilcan/concentus &amp;&amp; brew install --cask concentus</code>
+          · <code>npx concentus</code></p>
         </div>
       </div>
 
@@ -937,6 +939,18 @@
                  runs, with the script blocked, and if the API is unreachable. -->
             <a class="btn go" href="#" data-gh="/releases/latest" data-dl=".exe">Download for Windows</a>
             <span class="note" data-size-for=".exe"></span>
+          </div>
+        </div>
+
+        <div class="method panel" data-reveal>
+          <span class="eyebrow" style="color:var(--text)">macOS</span>
+          <h3>Disk image</h3>
+          <p>Signed and notarized — opens without the Gatekeeper dance. Drag Concentus into Applications.</p>
+          <div class="actions">
+            <!-- Suffix-matched by the script below, same as the others: the two dmgs differ only
+                 in the arch their names end with. -->
+            <a class="btn go" href="#" data-gh="/releases/latest" data-dl="-arm64.dmg">Apple Silicon</a>
+            <a class="btn" href="#" data-gh="/releases/latest" data-dl="-x64.dmg">Intel</a>
           </div>
         </div>
 
@@ -982,7 +996,6 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
       </div>
 
       <p class="note" data-reveal style="text-align:center;margin-top:24px">
-        macOS is not built yet — shipping one needs an Apple Developer account for notarization.
         Everything else, including the webhook setup, is in the
         <a href="#" data-gh="/blob/HEAD/README.md">README</a> and the <a href="/docs">documentation</a>.
       </p>

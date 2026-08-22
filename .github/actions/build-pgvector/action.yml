@@ -108,6 +108,44 @@ runs:
         (Get-ChildItem $dest -Filter *.sql).Name | Set-Content -Encoding ascii "$dest\sql-files.txt"
         Get-ChildItem $dest | Format-Table Name, Length
 
+    # brew, because PGDG has no macOS repository and the runner's Xcode toolchain is already the
+    # right compiler. postgresql@17 is keg-only, so pg_config is addressed through brew --prefix
+    # rather than found on PATH — which also guarantees the major version is the one asked for,
+    # not whatever else is installed.
+    - name: Install PostgreSQL ${{ inputs.pg-major }} headers (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        brew install --quiet postgresql@${{ inputs.pg-major }}
+        "$(brew --prefix postgresql@${{ inputs.pg-major }})/bin/pg_config" --version
+
+    # One build per runner arch: the arm64 runner produces the arm64 dylib, the Intel runner the
+    # x64 one — same rule as the backend jar, whose PostgreSQL binaries are arch-specific too.
+    - name: Build pgvector (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        git clone --branch "v${{ inputs.pgvector-version }}" --depth 1 \
+          https://github.com/pgvector/pgvector.git "$RUNNER_TEMP/pgvector"
+        make -C "$RUNNER_TEMP/pgvector" \
+          PG_CONFIG="$(brew --prefix postgresql@${{ inputs.pg-major }})/bin/pg_config" OPTFLAGS=""
+        # PgVectorInstaller's names: darwin-arm64 on Apple Silicon, darwin-amd64 on Intel.
+        case "$(uname -m)" in
+          arm64)  dest="apps/backend/src/main/resources/pgvector/darwin-arm64" ;;
+          x86_64) dest="apps/backend/src/main/resources/pgvector/darwin-amd64" ;;
+          *) echo "::error::unexpected macOS arch $(uname -m)"; exit 1 ;;
+        esac
+        mkdir -p "$dest"
+        # .dylib, not .so — PostgreSQL 16+ switched the module suffix on macOS.
+        cp "$RUNNER_TEMP/pgvector/vector.dylib" "$dest/"
+        cp "$RUNNER_TEMP/pgvector/vector.control" "$dest/"
+        cp "$RUNNER_TEMP/pgvector/sql/"*.sql "$dest/"
+        # PgVectorInstaller reads this: a jar is not a directory it can list portably.
+        (cd "$dest" && ls *.sql > sql-files.txt)
+        ls -la "$dest"
+
     # Checks that what was staged is what it claims to be.
     #
     # This exists because the build reported success while producing files that held each other's
@@ -120,6 +158,14 @@ runs:
         set -euo pipefail
         if [ "${RUNNER_OS}" = "Windows" ]; then
           dir="apps/backend/src/main/resources/pgvector/windows-amd64"; lib="vector.dll"; magic="4d5a"
+        elif [ "${RUNNER_OS}" = "macOS" ]; then
+          case "$(uname -m)" in
+            arm64) dir="apps/backend/src/main/resources/pgvector/darwin-arm64" ;;
+            *)     dir="apps/backend/src/main/resources/pgvector/darwin-amd64" ;;
+          esac
+          # Single-arch 64-bit Mach-O, which begins cf fa ed fe on disk. A universal binary
+          # (ca fe ba be) would mean the build stopped being per-arch — also worth failing on.
+          lib="vector.dylib"; magic="cffaedfe"
         else
           dir="apps/backend/src/main/resources/pgvector/linux-amd64"; lib="vector.so"; magic="7f454c46"
         fi

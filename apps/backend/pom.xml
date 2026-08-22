@@ -299,10 +299,31 @@
                 </dependency>
             </dependencies>
         </profile>
+        <!--
+            macOS splits by architecture where the others do not: the release builds on two mac
+            runners (Apple Silicon and Intel), and zonky publishes a distinct artifact for each.
+            Activation reads os.arch from the JVM running Maven — "aarch64" on an arm64 JDK,
+            "x86_64" on Intel — which is the same rule as the OS split: binaries that run on the
+            machine doing the building.
+        -->
         <profile>
-            <id>pg-binaries-mac</id>
+            <id>pg-binaries-mac-arm</id>
             <activation>
-                <os><family>mac</family></os>
+                <os><family>mac</family><arch>aarch64</arch></os>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>io.zonky.test.postgres</groupId>
+                    <artifactId>embedded-postgres-binaries-darwin-arm64v8</artifactId>
+                    <version>${embedded-postgres-binaries.version}</version>
+                    <scope>runtime</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+        <profile>
+            <id>pg-binaries-mac-intel</id>
+            <activation>
+                <os><family>mac</family><arch>x86_64</arch></os>
             </activation>
             <dependencies>
                 <dependency>

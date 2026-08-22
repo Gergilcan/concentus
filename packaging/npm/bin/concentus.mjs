@@ -8,12 +8,14 @@
  * verifies nothing less than HTTPS + the published size, and runs it. One artifact per release,
  * however many doors lead to it.
  *
- * Honest limits, stated rather than discovered: macOS has no build yet (say so and exit), and on
- * Linux the AppImage is downloaded and made executable but sandbox quirks belong to the distro.
+ * Honest limits, stated rather than discovered: on macOS the dmg is downloaded and opened, but
+ * dragging Concentus into Applications is the user's move — a CLI has no business installing an
+ * app bundle. On Linux the AppImage is downloaded and made executable, but sandbox quirks belong
+ * to the distro.
  */
 import { createWriteStream, existsSync, mkdirSync, chmodSync, statSync } from 'node:fs'
 import { get } from 'node:https'
-import { homedir, platform, tmpdir } from 'node:os'
+import { arch, homedir, platform } from 'node:os'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 
@@ -78,13 +80,7 @@ function download(url, to, expectedSize) {
 }
 
 const os = platform()
-if (os === 'darwin') {
-  fail(
-    'There is no macOS build yet — it needs Apple notarization, which is on the roadmap.\n' +
-    'Windows and Linux installers: https://github.com/' + REPO + '/releases/latest',
-  )
-}
-if (os !== 'win32' && os !== 'linux') {
+if (os !== 'win32' && os !== 'linux' && os !== 'darwin') {
   fail('Unsupported platform: ' + os)
 }
 
@@ -93,11 +89,21 @@ const release = await getJson('https://api.github.com/repos/' + REPO + '/release
   fail('Could not reach GitHub Releases: ' + e.message),
 )
 
-const wanted = os === 'win32' ? /^Concentus-Setup-.*\.exe$/ : /^Concentus-.*\.AppImage$/
+// macOS dmgs are per-architecture, named by the same convention the brew cask reads:
+// Concentus-<version>-<arm64|x64>.dmg.
+const wanted =
+  os === 'win32' ? /^Concentus-Setup-.*\.exe$/
+  : os === 'darwin' ? (arch() === 'arm64' ? /^Concentus-.*-arm64\.dmg$/ : /^Concentus-.*-x64\.dmg$/)
+  : /^Concentus-.*\.AppImage$/
 const asset = release.assets.find((a) => wanted.test(a.name))
 if (!asset) fail('The latest release (' + release.tag_name + ') has no installer for this platform.')
 
-const cacheDir = join(os === 'win32' ? join(homedir(), 'AppData', 'Local') : join(homedir(), '.cache'), 'concentus-launcher')
+const cacheDir = join(
+  os === 'win32' ? join(homedir(), 'AppData', 'Local')
+  : os === 'darwin' ? join(homedir(), 'Library', 'Caches')
+  : join(homedir(), '.cache'),
+  'concentus-launcher',
+)
 mkdirSync(cacheDir, { recursive: true })
 const target = join(cacheDir, asset.name)
 
@@ -111,6 +117,9 @@ if (existsSync(target) && statSync(target).size === asset.size) {
 if (os === 'win32') {
   console.log('Starting the installer — it asks where to install and takes it from there.')
   spawn(target, [], { detached: true, stdio: 'ignore' }).unref()
+} else if (os === 'darwin') {
+  console.log('Opening the disk image — drag Concentus into Applications to install it.')
+  spawn('open', [target], { detached: true, stdio: 'ignore' }).unref()
 } else {
   chmodSync(target, 0o755)
   console.log('Starting ' + asset.name + ' — it runs in place; move it wherever you keep AppImages.')
