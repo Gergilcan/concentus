@@ -39,7 +39,10 @@ curl -O https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
 
 openssl x509 -inform DER -in developerID_application.cer -out developerid.pem
 openssl x509 -inform DER -in DeveloperIDG2CA.cer -out intermediate.pem
-openssl pkcs12 -export -out developerid.p12 \
+# -legacy is NOT optional: OpenSSL 3 otherwise writes a p12 whose MAC macOS's `security import`
+# rejects with "MAC verification failed during PKCS12 import (wrong password?)" — the message
+# blames the password, the cause is the format. Found the hard way, on the first signing run.
+openssl pkcs12 -export -legacy -out developerid.p12 \
   -inkey developerid.key -in developerid.pem -certfile intermediate.pem
 # It asks for an export password — that password is MAC_CERT_PASSWORD.
 ```
