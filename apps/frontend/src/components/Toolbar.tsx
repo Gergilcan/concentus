@@ -28,6 +28,12 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
   const flowId = useFlowStore((s) => s.flowId)
   const [checking, setChecking] = useState(false)
   const [versions, setVersions] = useState(false)
+  const undo = useFlowStore((s) => s.undo)
+  const redo = useFlowStore((s) => s.redo)
+  const canUndo = useFlowStore((s) => s.past.length > 0)
+  const canRedo = useFlowStore((s) => s.future.length > 0)
+  const autoLayout = useFlowStore((s) => s.autoLayout)
+  const canTidy = useFlowStore((s) => s.nodes.length > 1)
 
   const save = async () => {
     try {
@@ -72,6 +78,35 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
       </select>
 
       <div className={styles.spacer} />
+
+      {/* Undo/redo live on the drawing, not the flow record: they exist because Delete used to be
+          irreversible short of reloading without saving. Ctrl+Z / Ctrl+Y work too. */}
+      <button
+        className={styles.btn}
+        onClick={undo}
+        disabled={!canUndo || !permissions.canEdit}
+        title="Undo the last canvas change (Ctrl+Z)"
+        aria-label="Undo"
+      >
+        ↶
+      </button>
+      <button
+        className={styles.btn}
+        onClick={redo}
+        disabled={!canRedo || !permissions.canEdit}
+        title="Redo what was just undone (Ctrl+Y)"
+        aria-label="Redo"
+      >
+        ↷
+      </button>
+      <button
+        className={styles.btn}
+        onClick={autoLayout}
+        disabled={!canTidy || !permissions.canEdit}
+        title="Tidy up: lay the chain out left to right, capabilities under their agents. One Ctrl+Z away from undone."
+      >
+        ⌗ Tidy
+      </button>
 
       {/* Checks the SAVED flow, so an unsaved canvas has nothing to check yet — the button says
           that rather than disappearing, which would read as a missing feature. */}

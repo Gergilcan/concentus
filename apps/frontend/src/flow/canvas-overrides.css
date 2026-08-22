@@ -69,3 +69,99 @@
   stroke: var(--kin-out);
   stroke-width: 2.5;
 }
+
+/*
+ * Which OUTPUT a wire left from. The on-error / else handle is already named on the card, but the
+ * wire itself was drawn like every other — at three steps' distance the path of failure and the
+ * path of success were indistinguishable, which is exactly the distinction the drawing exists to
+ * make. Dashed as well as tinted: color alone disappears for a colorblind reader.
+ */
+.react-flow__edge.edge-error .react-flow__edge-path {
+  stroke: var(--danger);
+  stroke-dasharray: 7 4;
+}
+
+.react-flow__edge.edge-else .react-flow__edge-path {
+  stroke: var(--kin-in);
+  stroke-dasharray: 7 4;
+}
+
+/* Kin highlighting still wins while a block is selected: the question being asked then is
+   "what is wired to this", and the answer needs its own colours. */
+.react-flow__edge.kin-in .react-flow__edge-path,
+.react-flow__edge.kin-out .react-flow__edge-path {
+  stroke-dasharray: none;
+}
+
+/*
+ * Replay: where the recorded run and the current flow disagree. Amber ring for a block whose
+ * fate flips (ran-then/would-skip-now or the reverse); dimmed for a block the current routing
+ * would skip either way. The chip with the words sits inside the card (NodeReplayBadge).
+ */
+.react-flow__node.replay-divergent > :first-child {
+  outline: 2px dashed var(--kin-in);
+  outline-offset: 3px;
+}
+
+.react-flow__node.replay-skip > :first-child {
+  opacity: 0.55;
+}
+
+/* The replay banner, floated over the canvas by React Flow's Panel. */
+.replay-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 640px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel, #1c2230);
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.replay-banner-detail {
+  color: var(--muted);
+}
+
+.replay-banner-close {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+/* Alignment guides while dragging. 100000px long and centred by the -50000px translate, so the
+   line covers any drawing without measuring it. */
+.helper-line {
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+  background: var(--accent);
+  opacity: 0.7;
+}
+
+.helper-line-v {
+  width: 1px;
+  height: 100000px;
+}
+
+.helper-line-h {
+  height: 1px;
+  width: 100000px;
+}
+
+/* One breath of movement after "Tidy up" — and none for people who asked for none. */
+.react-flow.layout-animating .react-flow__node {
+  transition: transform 320ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .react-flow.layout-animating .react-flow__node {
+    transition: none;
+  }
+}

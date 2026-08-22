@@ -5,8 +5,11 @@ import {
   type Edge,
   type EdgeTypes,
   MiniMap,
+  type NodeChange,
+  Panel,
   ReactFlow,
   type ReactFlowInstance,
+  ViewportPortal,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './canvas-overrides.css'
@@ -15,7 +18,9 @@ import { NODE_COLORS } from '../constants.ts'
 import type { NodeKind } from '../api/types.ts'
 import { NODE_DRAG_TYPE } from '../components/Palette.tsx'
 import { type AppNode, useFlowStore } from '../state/store.ts'
+import { cx } from '../utils/cx.ts'
 import { DeletableEdge } from './DeletableEdge.tsx'
+import { applyHelperLines, type HelperLines, NO_LINES } from './helperLines.ts'
 import { edgeKinClass, kinClass, kinship } from './kinship.ts'
 import { nodeTypes } from './nodeTypes.ts'
 
@@ -52,6 +57,14 @@ function useCanvasColorMode(): 'dark' | 'light' {
   return mode
 }
 
+/** The class an edge wears for the output it left from — the wire itself says error/else now,
+ * not only the handle it hangs from, because at three steps' distance the handle is a dot. */
+function edgeHandleClass(e: Edge): string | null {
+  if (e.sourceHandle === 'error') return 'edge-error'
+  if (e.sourceHandle === 'else') return 'edge-else'
+  return null
+}
+
 export function FlowCanvas() {
   const colorMode = useCanvasColorMode()
   const nodes = useFlowStore((s) => s.nodes)
@@ -59,6 +72,12 @@ export function FlowCanvas() {
   const runExecByNode = useFlowStore((s) => s.runExecByNode)
   const selectedId = useFlowStore((s) => s.selectedId)
   const openNodeDetails = useFlowStore((s) => s.openNodeDetails)
+  const replay = useFlowStore((s) => s.replay)
+  const setReplay = useFlowStore((s) => s.setReplay)
+  const layoutAnimating = useFlowStore((s) => s.layoutAnimating)
+
+  // Alignment guides while dragging — flow coordinates, drawn inside the viewport below.
+  const [helperLines, setHelperLines] = useState<HelperLines>(NO_LINES)
 
   // Plan-born workers: boxes that exist in the run report but were never drawn. Synthesized
   // here rather than inserted into the store, so they can never be saved with the flow, and
@@ -92,27 +111,43 @@ export function FlowCanvas() {
   // rings themselves are in canvas-overrides.css.
   const kin = useMemo(() => kinship(edges, selectedId), [edges, selectedId])
 
+  // The replay verdicts by node, when a replay is being read on this canvas.
+  const replayByNode = useMemo(() => {
+    if (!replay) return null
+    const byNode: Record<string, string> = {}
+    for (const n of replay.nodes) {
+      if (n.divergent) byNode[n.nodeId] = 'replay-divergent'
+      else if (n.now === 'would-skip') byNode[n.nodeId] = 'replay-skip'
+    }
+    return byNode
+  }, [replay])
+
   const allNodes = useMemo(() => {
-    if (kin.inbound.size === 0 && kin.outbound.size === 0) return baseNodes
+    if (kin.inbound.size === 0 && kin.outbound.size === 0 && !replayByNode) return baseNodes
     return baseNodes.map((n) => {
-      const className = kinClass(kin, n.id)
+      const className = cx(kinClass(kin, n.id), replayByNode?.[n.id]) || undefined
       // The same object back when nothing applies, so untouched nodes do not re-render.
       return className || n.className ? { ...n, className } : n
     })
-  }, [baseNodes, kin])
+  }, [baseNodes, kin, replayByNode])
 
-  const shownEdges = useMemo(() => {
-    if (!selectedId) return edges
-    return edges.map((e) => {
-      const className = edgeKinClass(e, selectedId)
-      return className || e.className ? { ...e, className } : e
-    })
-  }, [edges, selectedId])
+  const shownEdges = useMemo(
+    () =>
+      edges.map((e) => {
+        const className =
+          cx(edgeHandleClass(e), selectedId ? edgeKinClass(e, selectedId) : null) || undefined
+        return className || e.className ? { ...e, className } : e
+      }),
+    [edges, selectedId],
+  )
   const onNodesChange = useFlowStore((s) => s.onNodesChange)
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange)
   const onConnect = useFlowStore((s) => s.onConnect)
   const selectNode = useFlowStore((s) => s.selectNode)
   const addNode = useFlowStore((s) => s.addNode)
+  const checkpoint = useFlowStore((s) => s.checkpoint)
+  const undo = useFlowStore((s) => s.undo)
+  const redo = useFlowStore((s) => s.redo)
   const rf = useRef<ReactFlowInstance<AppNode, Edge> | null>(null)
   const copySelection = useFlowStore((s) => s.copySelection)
   const paste = useFlowStore((s) => s.paste)
@@ -120,6 +155,19 @@ export function FlowCanvas() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Enter on a focused node opens its properties — the canvas is Tab-navigable, and a block
+      // you can reach but not open is half a feature. The node wrappers are React Flow's, so
+      // this reads the focused element rather than wiring a handler into every node component.
+      if (e.key === 'Enter' && !isTextEntry(e.target)) {
+        const el = document.activeElement as HTMLElement | null
+        const id = el?.classList.contains('react-flow__node') ? el.getAttribute('data-id') : null
+        if (id) {
+          selectNode(id)
+          openNodeDetails()
+          e.preventDefault()
+          return
+        }
+      }
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return
       if (isTextEntry(e.target)) return
       switch (e.key.toLowerCase()) {
@@ -139,19 +187,33 @@ export function FlowCanvas() {
           duplicateSelection()
           e.preventDefault() // Ctrl+D would otherwise bookmark the page
           break
+        case 'z':
+          if (e.shiftKey) redo()
+          else undo()
+          e.preventDefault()
+          break
+        case 'y':
+          redo()
+          e.preventDefault()
+          break
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [copySelection, paste, duplicateSelection])
+  }, [copySelection, paste, duplicateSelection, undo, redo, selectNode, openNodeDetails])
 
   return (
     <ReactFlow
+      className={layoutAnimating ? 'layout-animating' : undefined}
       nodes={allNodes}
       edges={shownEdges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
-      onNodesChange={onNodesChange}
+      onNodesChange={(changes: NodeChange<AppNode>[]) => {
+        // The guides mutate the in-flight position change so the node truly sticks to the line.
+        setHelperLines(applyHelperLines(changes, nodes))
+        onNodesChange(changes)
+      }}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       onNodeClick={(_, node) => selectNode(node.id)}
@@ -164,7 +226,14 @@ export function FlowCanvas() {
       }}
       // Grabbing a node makes it the active one even when the gesture turns into a real drag —
       // otherwise moving a node never opened its inspector, because only click selected.
-      onNodeDragStart={(_, node) => selectNode(node.id)}
+      // The checkpoint is here rather than in the position changes because a drag is hundreds
+      // of them and exactly one undo step.
+      onNodeDragStart={(_, node) => {
+        checkpoint()
+        selectNode(node.id)
+      }}
+      onSelectionDragStart={() => checkpoint()}
+      onNodeDragStop={() => setHelperLines(NO_LINES)}
       // Two distinct knobs, both needed for "clicking with a slightly unsteady hand selects":
       // the drag THRESHOLD keeps the node from micro-moving under a jittery press, and the click
       // DISTANCE keeps d3's click suppression (default 0px — any movement kills the click) from
@@ -201,6 +270,7 @@ export function FlowCanvas() {
       fitViewOptions={{ maxZoom: 1 }}
       colorMode={colorMode}
       nodesDraggable
+      nodesFocusable
       elementsSelectable
       deleteKeyCode={['Backspace', 'Delete']}
       defaultEdgeOptions={{ type: 'deletable', animated: true }}
@@ -210,6 +280,46 @@ export function FlowCanvas() {
           200x150 bite out of the canvas to do it. It arrives when the graph outgrows the screen. */}
       {allNodes.length > 8 && <MiniMap pannable zoomable nodeColor={(n) => nodeColor(n.type)} />}
       <Controls />
+      {/* Alignment guides, drawn in flow coordinates so they pan and zoom with the drawing. */}
+      <ViewportPortal>
+        {helperLines.vertical !== null && (
+          <div
+            className="helper-line helper-line-v"
+            style={{ transform: `translate(${helperLines.vertical}px, -50000px)` }}
+          />
+        )}
+        {helperLines.horizontal !== null && (
+          <div
+            className="helper-line helper-line-h"
+            style={{ transform: `translate(-50000px, ${helperLines.horizontal}px)` }}
+          />
+        )}
+      </ViewportPortal>
+      {replay && (
+        <Panel position="top-center">
+          <div className="replay-banner" role="status">
+            <strong>
+              {replay.divergences === 0
+                ? 'Replay: the current flow would take the same path.'
+                : `Replay: ${replay.divergences} divergence${replay.divergences === 1 ? '' : 's'} against the current flow.`}
+            </strong>
+            <span className="replay-banner-detail">
+              {replay.nodes.some((n) => n.now === 'gone' && n.divergent)
+                ? ' Blocks that ran and no longer exist: ' +
+                  replay.nodes
+                    .filter((n) => n.now === 'gone' && n.divergent)
+                    .map((n) => n.label)
+                    .join(', ') +
+                  '.'
+                : ''}
+              {' Routing only — nothing was executed.'}
+            </span>
+            <button className="replay-banner-close" onClick={() => setReplay(null)}>
+              Close
+            </button>
+          </div>
+        </Panel>
+      )}
     </ReactFlow>
   )
 }

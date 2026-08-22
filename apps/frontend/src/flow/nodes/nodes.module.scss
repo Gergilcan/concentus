@@ -170,6 +170,19 @@
   text-decoration: line-through;
 }
 
+/* Replay chip: where this block's fate flips against the current flow, or cannot be decided.
+   Lower-case on purpose — it is a sentence fragment, not a status word. */
+.rpDivergent {
+  color: t.$warn;
+  border-color: t.$warn;
+  text-transform: none;
+}
+.rpUnknown {
+  color: t.$muted;
+  border-style: dashed;
+  text-transform: none;
+}
+
 /* Decision and iteration: the canvas deciding, rather than an agent being asked to decide. */
 .condition,
 .foreach {

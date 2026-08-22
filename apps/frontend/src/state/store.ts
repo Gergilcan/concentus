@@ -20,7 +20,9 @@ import type {
   RunEvent,
 } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL } from '../constants.ts'
+import { tidyLayout } from '../flow/layout.ts'
 import { canConnect, wiringRoleOf } from '../flow/wiring.ts'
+import type { ReplayReport } from '../api/types.ts'
 
 export type AppNode = Node<AppNodeData>
 
@@ -102,6 +104,23 @@ function cloneData(data: AppNodeData, taken: Set<string>): AppNodeData {
 }
 
 type Clipboard = { nodes: AppNode[]; edges: Edge[] }
+
+/** One undo step: the whole drawing. Snapshots hold references — every mutation in this store
+ * replaces objects rather than editing them, so old arrays stay intact for free. */
+type Snapshot = { nodes: AppNode[]; edges: Edge[] }
+
+/** Undo depth. Beyond this the oldest step falls off; nobody undoes a hundred times on purpose. */
+const UNDO_CAP = 100
+
+/**
+ * Coalescing memo for checkpoints, module-level like the exec signature: it is bookkeeping about
+ * the LAST call, not state anything renders. Typing in an inspector fires updateNodeData per
+ * keystroke, and an undo that removes one letter at a time is worse than none — checkpoints with
+ * the same key inside the window collapse into the first one, and the window slides while the
+ * typing continues, so one pause equals one undo step.
+ */
+let lastCheckpoint: { key: string | null; at: number } = { key: null, at: 0 }
+const COALESCE_MS = 800
 
 /** Nodes the user is acting on: the multi-selection if there is one, else the inspected node. */
 function targetNodes(s: FlowState): AppNode[] {
@@ -284,6 +303,31 @@ interface FlowState {
   addRunEvent: (e: RunEvent) => void
   clearRunEvents: () => void
 
+  // Undo / redo over the drawing (nodes + edges). Deleting a block with Delete was irreversible
+  // short of reloading without saving — the most visible absence next to any editor people know.
+  past: Snapshot[]
+  future: Snapshot[]
+  /**
+   * Pushes the current drawing onto the undo stack. Every mutation calls it BEFORE changing
+   * anything; `coalesceKey` lets a burst of the same edit (typing, a two-part delete) count as
+   * one step.
+   */
+  checkpoint: (coalesceKey?: string) => void
+  undo: () => void
+  redo: () => void
+  /** dagre over the chain, capabilities hung under their agents — behind an undo checkpoint. */
+  autoLayout: () => void
+  /** True for the moment after autoLayout, so the canvas can animate nodes to their new places. */
+  layoutAnimating: boolean
+
+  /**
+   * The replay overlay: where the selected run's path would diverge against the flow as saved
+   * today. Held here for the same reason the exec overlay is — the canvas paints it, the runs
+   * panel sets it, and neither should know the other exists.
+   */
+  replay: ReplayReport | null
+  setReplay: (report: ReplayReport | null) => void
+
   onNodesChange: (changes: NodeChange<AppNode>[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
   onConnect: (conn: Connection) => void
@@ -397,21 +441,101 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     })
   },
 
-  onNodesChange: (changes) => set((s) => ({ nodes: applyNodeChanges(changes, s.nodes) })),
-  onEdgesChange: (changes) => set((s) => ({ edges: applyEdgeChanges(changes, s.edges) })),
-  onConnect: (conn) =>
-    set((s) => {
-      // A wire that means nothing is not drawn. The canvas already greys the handle out, but a
-      // programmatic connect (paste, a generated flow) reaches here without ever touching a handle.
-      const kindOf = (id: string | null) => s.nodes.find((n) => n.id === id)?.data.kind
-      const source = kindOf(conn.source)
-      const target = kindOf(conn.target)
-      if (source && target && !canConnect(source, target)) return {}
-      return { edges: addEdge({ ...conn, id: uid('e') }, s.edges) }
-    }),
-  deleteEdge: (id) => set((s) => ({ edges: s.edges.filter((e) => e.id !== id) })),
+  past: [],
+  future: [],
+  layoutAnimating: false,
 
-  addNode: (kind, at) =>
+  checkpoint: (coalesceKey) =>
+    set((s) => {
+      const now = Date.now()
+      if (coalesceKey && lastCheckpoint.key === coalesceKey && now - lastCheckpoint.at < COALESCE_MS) {
+        lastCheckpoint = { key: coalesceKey, at: now }
+        return {}
+      }
+      lastCheckpoint = { key: coalesceKey ?? null, at: now }
+      const past = [...s.past, { nodes: s.nodes, edges: s.edges }]
+      return { past: past.length > UNDO_CAP ? past.slice(1) : past, future: [] }
+    }),
+
+  undo: () =>
+    set((s) => {
+      const previous = s.past[s.past.length - 1]
+      if (!previous) return {}
+      // The step after an undo is never part of the burst that preceded it.
+      lastCheckpoint = { key: null, at: 0 }
+      return {
+        past: s.past.slice(0, -1),
+        future: [...s.future, { nodes: s.nodes, edges: s.edges }],
+        nodes: previous.nodes,
+        edges: previous.edges,
+        // The node it pointed at may be back, or gone; pointing at nothing is always safe.
+        selectedId: null,
+      }
+    }),
+
+  redo: () =>
+    set((s) => {
+      const next = s.future[s.future.length - 1]
+      if (!next) return {}
+      lastCheckpoint = { key: null, at: 0 }
+      return {
+        future: s.future.slice(0, -1),
+        past: [...s.past, { nodes: s.nodes, edges: s.edges }],
+        nodes: next.nodes,
+        edges: next.edges,
+        selectedId: null,
+      }
+    }),
+
+  autoLayout: () => {
+    const s = get()
+    if (s.nodes.length < 2) return
+    const placed = tidyLayout(s.nodes, s.edges)
+    if (placed.size === 0) return
+    s.checkpoint()
+    set({
+      nodes: s.nodes.map((n) => {
+        const at = placed.get(n.id)
+        return at ? { ...n, position: at } : n
+      }),
+      layoutAnimating: true,
+    })
+    // Long enough for the CSS transition, short enough that the next drag is never animated.
+    setTimeout(() => set({ layoutAnimating: false }), 400)
+  },
+
+  replay: null,
+  setReplay: (report) => set({ replay: report }),
+
+  onNodesChange: (changes) => {
+    // Delete arrives here as a 'remove' change (the canvas's Delete key), not through
+    // deleteNode — without a checkpoint the most destructive gesture would be the one
+    // that cannot be undone. Node and edge removals of one Delete coalesce into one step.
+    if (changes.some((c) => c.type === 'remove')) get().checkpoint('remove')
+    set((s) => ({ nodes: applyNodeChanges(changes, s.nodes) }))
+  },
+  onEdgesChange: (changes) => {
+    if (changes.some((c) => c.type === 'remove')) get().checkpoint('remove')
+    set((s) => ({ edges: applyEdgeChanges(changes, s.edges) }))
+  },
+  onConnect: (conn) => {
+    const s = get()
+    // A wire that means nothing is not drawn. The canvas already greys the handle out, but a
+    // programmatic connect (paste, a generated flow) reaches here without ever touching a handle.
+    const kindOf = (id: string | null) => s.nodes.find((n) => n.id === id)?.data.kind
+    const source = kindOf(conn.source)
+    const target = kindOf(conn.target)
+    if (source && target && !canConnect(source, target)) return
+    s.checkpoint()
+    set({ edges: addEdge({ ...conn, id: uid('e') }, s.edges) })
+  },
+  deleteEdge: (id) => {
+    get().checkpoint()
+    set((s) => ({ edges: s.edges.filter((e) => e.id !== id) }))
+  },
+
+  addNode: (kind, at) => {
+    get().checkpoint()
     set((s) => {
       const isFirstAgent = kind === 'agent' && !s.nodes.some((n) => n.data.kind === 'agent')
 
@@ -456,21 +580,27 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           )
         : s.edges
       return { nodes: [...s.nodes, node], edges, selectedId: node.id }
-    }),
+    })
+  },
 
-  updateNodeData: (id, patch) =>
+  updateNodeData: (id, patch) => {
+    // Coalesced per node: a burst of keystrokes in one inspector field is one undo step.
+    get().checkpoint(`data:${id}`)
     set((s) => ({
       nodes: s.nodes.map((n) =>
         n.id === id ? { ...n, data: { ...n.data, ...patch } as AppNodeData } : n,
       ),
-    })),
+    }))
+  },
 
-  deleteNode: (id) =>
+  deleteNode: (id) => {
+    get().checkpoint()
     set((s) => ({
       nodes: s.nodes.filter((n) => n.id !== id),
       edges: s.edges.filter((e) => e.source !== id && e.target !== id),
       selectedId: s.selectedId === id ? null : s.selectedId,
-    })),
+    }))
+  },
 
   clipboard: null,
 
@@ -483,26 +613,35 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     return picked.length
   },
 
-  paste: () =>
+  paste: () => {
+    if (!get().clipboard?.nodes.length) return
+    get().checkpoint()
     set((s) => {
       if (!s.clipboard?.nodes.length) return {}
       pasteCount += 1
       return insertClones(s, s.clipboard, PASTE_OFFSET * pasteCount)
-    }),
+    })
+  },
 
   // Duplicate acts in place and leaves the clipboard alone.
-  duplicateSelection: () =>
+  duplicateSelection: () => {
+    if (!targetNodes(get()).length) return
+    get().checkpoint()
     set((s) => {
       const picked = targetNodes(s)
       if (!picked.length) return {}
       return insertClones(s, blockOf(picked, s.edges), PASTE_OFFSET)
-    }),
+    })
+  },
 
-  duplicateNode: (id) =>
+  duplicateNode: (id) => {
+    if (!get().nodes.some((n) => n.id === id)) return
+    get().checkpoint()
     set((s) => {
       const node = s.nodes.find((n) => n.id === id)
       return node ? insertClones(s, { nodes: [node], edges: [] }, PASTE_OFFSET) : {}
-    }),
+    })
+  },
 
   selectNode: (id) => set({ selectedId: id }),
   openNodeDetails: () => set({ detailsOpen: true }),
@@ -523,6 +662,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       edges: [],
       selectedId: null,
       previewVersion: null,
+      // A new drawing starts a new history: undoing across flows would resurrect the wrong one.
+      past: [],
+      future: [],
+      replay: null,
     }),
 
   loadBackendFlow: (flow) => {
@@ -565,6 +708,9 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       // right after. Clearing it here means no path can leave the banner claiming a revision the
       // canvas no longer shows.
       previewVersion: null,
+      past: [],
+      future: [],
+      replay: null,
     })
   },
 
