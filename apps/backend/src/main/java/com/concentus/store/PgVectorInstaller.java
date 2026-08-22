@@ -120,15 +120,25 @@ final class PgVectorInstaller {
     private static String platform() {
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         String arch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
-        // Only x86-64 is built, matching the installers. An ARM machine gets lexical ranking.
-        if (!arch.equals("amd64") && !arch.equals("x86_64")) return null;
+        boolean x64 = arch.equals("amd64") || arch.equals("x86_64");
+        // macOS is the one platform built for two architectures — the release runs an Apple
+        // Silicon runner and an Intel one. Everything else is x86-64 only, matching the
+        // installers; an arch nobody builds for gets lexical ranking.
+        if (os.contains("mac") || os.contains("darwin")) {
+            if (arch.equals("aarch64") || arch.equals("arm64")) return "darwin-arm64";
+            return x64 ? "darwin-amd64" : null;
+        }
+        if (!x64) return null;
         if (os.contains("win")) return "windows-amd64";
         if (os.contains("linux")) return "linux-amd64";
         return null;
     }
 
     private static String libraryName() {
-        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")
-                ? "vector.dll" : "vector.so";
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        if (os.contains("win")) return "vector.dll";
+        // PostgreSQL 16+ names loadable modules .dylib on macOS, and pgvector's Makefile follows.
+        if (os.contains("mac") || os.contains("darwin")) return "vector.dylib";
+        return "vector.so";
     }
 }

@@ -382,12 +382,15 @@ scoop install concentus
 # Windows — winget
 winget install concentus
 
+# macOS — Homebrew
+brew tap gergilcan/concentus
+brew install --cask concentus
+
 # Anywhere with Node — fetches the right installer from Releases
 npx concentus</code></pre>
       <p>
-        Homebrew activates when a notarized macOS build exists. Updating: winget and the plain
-        installer keep the in-app updater; a scoop install updates with
-        <code>scoop update concentus</code> instead.
+        Updating: winget, brew and the plain installers keep the in-app updater; a scoop install
+        updates with <code>scoop update concentus</code> instead.
       </p>
 
       <h3>The bare backend</h3>

@@ -203,9 +203,16 @@ function pruneForeignNatives(stagedJar) {
     const jarTool = path.join(jdkHome(), 'bin', exe('jar'))
     if (!fs.existsSync(jarTool)) throw new Error(`jar tool not found at ${jarTool}`)
 
-    // x64 only, matching what electron-builder produces today. An arm64 build would need its own
-    // keep-set — and would fail loudly at model load, not silently, if this went stale.
-    const keep = isWindows ? ['win-x64', 'win-x86_64'] : ['linux-x64', 'linux-x86_64']
+    // The keep-set names this platform+arch's directory segments, in both spellings the two jars
+    // use (onnxruntime says osx-x64, tokenizers says osx-x86_64 — same for the others). A stale
+    // set fails loudly at model load, not silently.
+    const keep = isWindows
+      ? ['win-x64', 'win-x86_64']
+      : process.platform === 'darwin'
+        ? process.arch === 'arm64'
+          ? ['osx-aarch64', 'osx-arm64']
+          : ['osx-x64', 'osx-x86_64']
+        : ['linux-x64', 'linux-x86_64']
     const inner = list(jarTool, stagedJar).filter(
       (e) => /BOOT-INF\/lib\/(onnxruntime|tokenizers)-[^/]+\.jar$/.test(e),
     )

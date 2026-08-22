@@ -71,6 +71,26 @@ jobs:
               apps/desktop/release/*.AppImage
               apps/desktop/release/*.deb
               apps/desktop/release/latest-linux.yml
+          # Two mac runners, one per architecture, because nothing in this build cross-compiles:
+          # the jar's PostgreSQL binaries, the pgvector dylib and the jlink runtime are all native
+          # to the machine that builds them. The zip rides along with the dmg because Squirrel.Mac
+          # — what electron-updater drives on macOS — updates from a zip; a dmg-only release would
+          # install fine and never update. Each runner writes a latest-mac.yml that names only its
+          # own arch; the publish job merges the two before anything is uploaded.
+          - os: macos-latest
+            name: macOS installer (arm64)
+            artifact: |
+              apps/desktop/release/*.dmg
+              apps/desktop/release/*.zip
+              apps/desktop/release/*.blockmap
+              apps/desktop/release/latest-mac.yml
+          - os: macos-15-intel
+            name: macOS installer (x64)
+            artifact: |
+              apps/desktop/release/*.dmg
+              apps/desktop/release/*.zip
+              apps/desktop/release/*.blockmap
+              apps/desktop/release/latest-mac.yml
 
     steps:
       - uses: actions/checkout@v5
@@ -192,14 +212,59 @@ jobs:
         run: npm pkg set version="${GITHUB_REF_NAME#v}"
 
       - name: Build installer
+        if: runner.os != 'macOS'
         working-directory: apps/desktop
         # electron-builder picks the current platform's targets from electron-builder.yml.
         run: pnpm package
 
+      # Separate from the step above so the signing credentials exist only where they are used:
+      # CSC_LINK in a Windows build's environment would send electron-builder's Windows signer
+      # after a certificate that is not for it.
+      #
+      # Degrades one credential at a time, out loud: no certificate builds unsigned, a certificate
+      # without the notary key signs but skips notarization. Either way the artifacts exist and a
+      # manual run can inspect them — but Gatekeeper only accepts the fully credentialed result,
+      # so a tagged release needs all five secrets (see the docs in packaging/macos.md).
+      - name: Build installer (macOS, signed and notarized)
+        if: runner.os == 'macOS'
+        working-directory: apps/desktop
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERT_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+        run: |
+          set -euo pipefail
+          # Spelled out rather than `pnpm package` with a trailing flag: pnpm treats --config.* as
+          # its own configuration override, so the flag has to be handed to electron-builder
+          # directly.
+          package_without_notarizing() {
+            pnpm run build && pnpm run payload \
+              && pnpm exec electron-builder --publish never --config.mac.notarize=false
+          }
+          if [ -z "${CSC_LINK}" ]; then
+            echo "::warning::MAC_CERT_P12 is not set — building unsigned and without notarization. Gatekeeper will refuse this build on any other machine; fine for checking packaging, never for shipping."
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            package_without_notarizing
+          elif [ -z "${APPLE_API_KEY_CONTENT}" ]; then
+            echo "::warning::APPLE_API_KEY_CONTENT is not set — signed but NOT notarized, so Gatekeeper will still refuse it on other machines."
+            package_without_notarizing
+          else
+            # electron-builder hands these straight to notarytool: APPLE_API_KEY is a path, so the
+            # key content is written out here rather than passed around.
+            export APPLE_API_KEY="$RUNNER_TEMP/apple_api_key.p8"
+            printf '%s' "$APPLE_API_KEY_CONTENT" > "$APPLE_API_KEY"
+            pnpm package
+          fi
+
       - name: Upload installers as artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: concentus-${{ runner.os }}
+          # runner.arch as well as os: the two mac builds would otherwise claim the same name,
+          # and upload-artifact refuses duplicates.
+          name: concentus-${{ runner.os }}-${{ runner.arch }}
           path: ${{ matrix.artifact }}
           if-no-files-found: error
 
@@ -213,6 +278,41 @@ jobs:
       - uses: actions/download-artifact@v5
         with:
           path: artifacts
+
+      # Each mac runner wrote a latest-mac.yml naming only the arch it built, and a GitHub release
+      # cannot hold two assets with one name. electron-updater reads a single feed and picks the
+      # entry matching the install's arch — so the two feeds become one here. Skipping this would
+      # not fail the release; it would upload whichever feed won, and every install of the OTHER
+      # arch would sit on updates forever. The failure mode this repo's release history is made of.
+      - name: Merge the macOS update feeds
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t feeds < <(find artifacts -name latest-mac.yml | sort)
+          if [ "${#feeds[@]}" -le 1 ]; then
+            echo "${#feeds[@]} macOS feed(s) — nothing to merge."
+            exit 0
+          fi
+          python3 -c 'import yaml' 2>/dev/null || pip3 install --quiet pyyaml
+          python3 - "${feeds[@]}" <<'EOF'
+          import sys, yaml
+          paths = sys.argv[1:]
+          docs = [yaml.safe_load(open(p)) for p in paths]
+          base = docs[0]
+          seen = {f["url"] for f in base["files"]}
+          for doc in docs[1:]:
+              for f in doc["files"]:
+                  if f["url"] not in seen:
+                      base["files"].append(f)
+                      seen.add(f["url"])
+          with open("latest-mac-merged.yml", "w") as out:
+              yaml.safe_dump(base, out, sort_keys=False)
+          EOF
+          rm -- "${feeds[@]}"
+          mkdir -p artifacts/mac-feed
+          mv latest-mac-merged.yml artifacts/mac-feed/latest-mac.yml
+          echo "Merged feed:"
+          cat artifacts/mac-feed/latest-mac.yml
 
       - name: Create the release
         uses: softprops/action-gh-release@v3
@@ -229,7 +329,7 @@ jobs:
 
   # ---------------------------------------------------------------------------- channels
   # The package-manager channels, fed from the release above. Stable tags only: a prerelease in
-  # winget or npm would be offered to people who never chose the beta train. Each channel is
+  # winget, npm or brew would be offered to people who never chose the beta train. Each channel is
   # guarded by its own secret, so a missing token skips that channel with a log line instead of
   # failing the release that already shipped.
   channels:
@@ -304,6 +404,43 @@ jobs:
             update Gergilcan.Concentus --version "$version" --urls "$url" \
             --submit --token "$WINGET_TOKEN" \
             || echo "::warning::winget submission failed — submit by hand with packaging/winget/README.md"
+
+      # The tap is the repo this workflow owns (Gergilcan/homebrew-concentus), so publishing to
+      # brew is a commit there, not a review queue. Stamped from the template in
+      # packaging/homebrew — the cask's shape lives in this repo, only version and hashes move.
+      # Guarded like the channels around it: no token, or a release without mac artifacts, logs
+      # and moves on rather than failing a release that already shipped.
+      - name: Update the Homebrew tap
+        if: env.HOMEBREW_TAP_TOKEN != ''
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.hash.outputs.version }}"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${version}"
+          if ! curl -sfL "$base/Concentus-${version}-arm64.dmg" -o arm.dmg \
+             || ! curl -sfL "$base/Concentus-${version}-x64.dmg" -o x64.dmg; then
+            echo "::warning::v${version} has no macOS dmg pair — the brew tap was not updated."
+            exit 0
+          fi
+          arm_sha=$(sha256sum arm.dmg | cut -d' ' -f1)
+          x64_sha=$(sha256sum x64.dmg | cut -d' ' -f1)
+          rm arm.dmg x64.dmg
+          if ! git clone --depth 1 "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/Gergilcan/homebrew-concentus.git" tap; then
+            echo "::warning::could not clone the tap — does Gergilcan/homebrew-concentus exist and does HOMEBREW_TAP_TOKEN reach it?"
+            exit 0
+          fi
+          mkdir -p tap/Casks
+          sed -e "s/^  version .*/  version \"${version}\"/" \
+              -e "s/REPLACE_WITH_ARM64_DMG_SHA256/${arm_sha}/" \
+              -e "s/REPLACE_WITH_X64_DMG_SHA256/${x64_sha}/" \
+              packaging/homebrew/Casks/concentus.rb > tap/Casks/concentus.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/concentus.rb
+          git diff --cached --quiet || git commit -m "concentus ${version}"
+          git push || echo "::warning::pushing the tap failed — update Casks/concentus.rb by hand from packaging/homebrew."
 
       # No token: npm's trusted publishing accepts this workflow's OIDC identity, configured
       # once on the package's settings at npmjs.com (user Gergilcan, repo concentus, workflow

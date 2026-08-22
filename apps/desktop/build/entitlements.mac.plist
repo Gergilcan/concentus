@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for the hardened runtime, applied to the app and (via entitlementsInherit) to every
+  signed binary inside it — Electron's helpers and the bundled JRE alike. Each one is here because
+  something in this app needs it, not as a template:
+
+    allow-jit / allow-unsigned-executable-memory — Electron's V8 and HotSpot both generate code at
+    runtime; hardened runtime kills the process on the first executable page without these. Modern
+    JDKs use MAP_JIT (allow-jit), older paths in the JVM still map RWX (unsigned-executable-memory).
+
+    disable-library-validation — the JVM loads JNI libraries that Java dependencies unpack to disk
+    at runtime (netty, onnxruntime, tokenizers). Those are not signed with this app's identity, and
+    library validation would refuse every one of them.
+
+    allow-dyld-environment-variables — the JVM launcher re-execs itself with DYLD_* set; hardened
+    runtime strips those variables without this, which breaks java before main() is reached.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+</dict>
+</plist>

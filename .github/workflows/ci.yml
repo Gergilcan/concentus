@@ -140,7 +140,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Both mac architectures, same as the release: the dylib is per-arch native code, so each
+        # is its own way to break.
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-15-intel]
     steps:
       - uses: actions/checkout@v5
 
@@ -165,6 +167,7 @@ jobs:
       - name: Upload the extension
         uses: actions/upload-artifact@v5
         with:
-          name: pgvector-${{ runner.os }}
+          # runner.arch as well as os — the two mac builds would otherwise collide on one name.
+          name: pgvector-${{ runner.os }}-${{ runner.arch }}
           path: apps/backend/src/main/resources/pgvector/
           if-no-files-found: error
