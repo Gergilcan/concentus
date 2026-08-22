@@ -89,7 +89,7 @@ export function UpdateBadge() {
       case 'downloading':
         return `Downloading ${st.available ?? 'the update'}… ${st.progressPercent ?? 0}%`
       case 'downloaded':
-        return `Version ${st.available} is ready. Restarting applies it — or it installs by itself when you quit.`
+        return `Version ${st.available} is ready. Installing takes a few seconds and reopens the app; it also installs by itself when you quit.`
       case 'error':
         return `The last check failed: ${st.error ?? 'unknown error'}`
     }

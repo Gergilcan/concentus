@@ -980,6 +980,38 @@ semantic (cosine,      top 50) ─┘</code></pre>
         An update dialog that interrupts work teaches people to dismiss update dialogs. A mark that
         waits to be noticed costs nothing and is still there tomorrow.
       </p>
+      <h3>Installing without being asked anything</h3>
+      <p>
+        Pressing install runs the installer silently: no wizard, no licence page you already
+        accepted, and no question about where to put it — it goes where the existing installation
+        already is. The app reopens when it is done.
+      </p>
+      <p>
+        Before the installer starts, Concentus ends its own backend and waits for it to actually be
+        gone, taking the whole process tree with it if asking politely does not work. That wait is
+        not politeness: the bundled Java runtime lives inside the installation directory, so an
+        installer that starts while the backend still holds those files stops and reports that the
+        application is still open — behind a window that has already disappeared.
+      </p>
+
+      <h3>Which releases you are offered</h3>
+      <p>
+        A <strong>prerelease</strong> build follows both prereleases and final releases, taking
+        whichever is newer. A <strong>final</strong> build follows final releases only: somebody
+        who installed a stable version did not ask to be moved onto a prerelease.
+      </p>
+      <div class="warn">
+        <b>Prereleases are tagged <code>-beta.N</code>, and that is not cosmetic</b>
+        <p>
+          electron-updater derives the update channel from the version's prerelease identifier, and
+          only offers a final release to builds whose channel is null, <code>alpha</code> or
+          <code>beta</code> — those three names are hard-coded. On any other identifier,
+          <code>rc</code> included, a build can never reach a stable version at all. It must also be
+          dotted: <code>0.1.3-beta.1</code> gives every release in the train the same channel, while
+          <code>0.1.3-beta1</code> gives each its own and nobody is ever offered the next one. The
+          release workflow refuses both mistakes.
+        </p>
+      </div>
       <div class="note">
         <b>Where it does not apply</b>
         <p>

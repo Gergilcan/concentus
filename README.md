@@ -806,6 +806,29 @@ a data migration that breaks existing installs.
 > The same material laid out to be looked things up in rather than read through is on the site,
 > at **/docs** — the source is [apps/website/docs/index.html](apps/website/docs/index.html).
 
+## Updates
+
+The desktop app checks every four hours, downloads in the background, and installs when you quit.
+The state sits in the top right of the window: silent while there is nothing to say, a dot when a
+version is downloaded and waiting.
+
+Pressing install runs the installer **silently** — no wizard, no licence page, and no question
+about where to put it, because it goes where the installation already is. The app reopens when it
+is done. Before the installer starts, Concentus ends its own backend and waits for it to be gone,
+taking the whole process tree if it has to: the bundled Java runtime lives inside the installation
+directory, and an installer that starts while the backend still holds those files stops and reports
+that the application is still open.
+
+A **prerelease** build follows both prereleases and finals, whichever is newer. A **final** build
+follows finals only.
+
+> Prereleases are tagged `-beta.N`, dotted, and that is load-bearing. electron-updater takes the
+> update channel from the prerelease identifier and only offers a final release to builds on null,
+> `alpha` or `beta` — those three names are hard-coded in it. On any other identifier, `rc`
+> included, a build can never reach a stable version. Dotted matters too: `0.1.3-beta.1` puts every
+> release in the train on one channel, while `0.1.3-beta1` gives each release its own and nobody is
+> offered the next one. The release workflow refuses both mistakes.
+
 ## Paying for runs
 
 The setup screen asks once, before anything is installed, because the answer decides whether

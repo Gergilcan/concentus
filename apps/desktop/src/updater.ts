@@ -36,6 +36,17 @@ export interface UpdateState {
   checkedAt?: number
 }
 
+/**
+ * Whether a version is a prerelease, by the same rule the release workflow uses to mark one.
+ *
+ * <p>A string test rather than semver's parser, deliberately: this has to agree with
+ * `contains(github.ref_name, '-')` in release.yml, and two different definitions of "is this a
+ * prerelease" is how a build ends up on a channel its own release page disagrees with.
+ */
+function isPrerelease(version: string): boolean {
+  return version.includes('-')
+}
+
 let state: Omit<UpdateState, 'version'> = { supported: false, phase: 'idle' }
 let updater: import('electron-updater').AppUpdater | null = null
 
@@ -68,16 +79,52 @@ export async function checkForUpdatesNow(): Promise<UpdateState> {
   return updateStatus()
 }
 
-/** Quit and run the downloaded installer. Refused until one has actually been downloaded. */
-export function installUpdateNow(): { ok: boolean; error?: string } {
+/**
+ * What the shell must finish before the installer may start.
+ *
+ * <p>Set by main.ts. The installer overwrites the bundled Java runtime and the backend jar, both
+ * of which live inside the installation directory — so if the backend process is still holding
+ * them the installer stops and says the application is still open. Which it is: quitting the
+ * window is not the same as ending the process tree underneath it.
+ */
+let closeEverything: (() => Promise<void>) | null = null
+
+export function onBeforeInstall(close: () => Promise<void>): void {
+  closeEverything = close
+}
+
+/**
+ * Install the downloaded update, without asking anything.
+ *
+ * <p><b>Silently.</b> The person already pressed the button that means "install this"; a wizard
+ * afterwards asks them to agree to what they just chose, one dialog at a time, and its first page
+ * is a licence they have already accepted once. NSIS takes {@code /S} even for an assisted
+ * installer, and reuses the directory the previous install recorded — so there is nothing left to
+ * ask.
+ *
+ * <p><b>And it comes back.</b> A silent install that does not relaunch looks like the app crashed
+ * on being asked to update itself.
+ *
+ * <p>The backend is stopped, tree and all, before the installer is spawned. That wait is the whole
+ * difference between an update that works and an installer sitting on "Concentus is still
+ * running" behind a window that has already gone.
+ */
+export async function installUpdateNow(): Promise<{ ok: boolean; error?: string }> {
   if (!updater) {
     return { ok: false, error: state.reason ?? 'This run cannot update itself.' }
   }
   if (state.phase !== 'downloaded') {
     return { ok: false, error: 'No downloaded update to install yet — check for updates first.' }
   }
-  log.info('Auto-update: restart-and-install requested from the UI.')
-  updater.quitAndInstall()
+  log.info('Auto-update: install requested from the UI.')
+  try {
+    if (closeEverything) await closeEverything()
+  } catch (err) {
+    // Reported, not fatal: the installer's own wait-for-exit is the backstop, and refusing to
+    // update because a shutdown step complained would be the worse outcome.
+    log.warn(`Auto-update: shutting down before install: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  updater.quitAndInstall(true, true)
   return { ok: true }
 }
 
@@ -114,33 +161,34 @@ export function startAutoUpdates(): void {
     error: (m: unknown) => log.error(`Auto-update: ${String(m)}`),
     debug: () => {},
   }
-  // Install silently when the app exits; nothing interrupts a session.
+  // Install when the app exits, so an update lands without ever interrupting a session. The
+  // shell's own before-quit already stops the backend and waits for it, which is what makes this
+  // path safe: electron-updater spawns the installer as the process is going away, and an
+  // installer racing a backend that still holds the bundled runtime is the "application is still
+  // open" dialog nobody is there to answer.
   autoUpdater.autoInstallOnAppQuit = true
 
-  // Say the channel out loud instead of letting it be derived from how the version string happens
-  // to tokenise. That derivation is what silently broke updates for every prerelease shipped so
-  // far, and it is worth spelling out because nothing about it is visible from the outside:
+  // Which releases this build is willing to move to. Two facts about electron-updater's GitHub
+  // provider decide the whole design here, and neither is visible from the outside:
   //
-  // electron-updater takes the channel from `semver.prerelease(version)[0]`. For `0.1.0-rc15` that
-  // is the whole glued token `"rc15"`, so the release AFTER it, `0.1.0-rc16`, reads as channel
-  // `"rc16"` — a DIFFERENT channel — and the matching loop skips it. It then keeps walking the feed
-  // until it finds a tag in channel `"rc15"`, which is the running version itself, and reports
-  // "you are on the latest version". Every rc was its own channel; auto-update never moved anyone
-  // between two of them.
+  // 1. The channel is `semver.prerelease(version)[0]`. A DOTTED prerelease (`0.1.3-beta.1`) gives
+  //    "beta" for every release in the train; a glued one (`0.1.0-rc15`) gives "rc15", so the next
+  //    release reads as a different channel and is skipped. That is what silently broke updates
+  //    for every prerelease shipped before this — release.yml refuses the glued form now.
   //
-  // Pinning it here means the running build's channel no longer depends on its own version string.
-  // Tags must still carry a DOTTED prerelease (`v0.1.1-rc.1`, not `v0.1.1-rc1`) so the feed side
-  // resolves to "rc" too — release.yml refuses the glued form.
+  // 2. The provider only considers a STABLE release when the running channel is null, "alpha" or
+  //    "beta". Those three names are hard-coded in its matching loop. Any other identifier — "rc"
+  //    among them — is treated as a custom channel, and a build on one never sees a final release
+  //    at all. Pinning `channel = 'rc'` therefore did more than fix (1): it meant 0.1.2, a real
+  //    stable release, could not be offered to anybody. Hence "beta" as the identifier, and no
+  //    pin: the version string says which train this build is on, which is the only place that
+  //    fact belongs.
   //
-  // One consequence to remember when 1.0.0 comes: "rc" is a custom channel, so a stable release
-  // (no prerelease component) will not be offered to a build pinned here. Drop this line in the
-  // release that graduates.
-  autoUpdater.channel = 'rc'
-  // Stated for the same reason, rather than inherited: it otherwise defaults to true only because
-  // the running version happens to carry a prerelease component, and following an "rc" channel
-  // without it is a contradiction that would surface as a 404 on /releases/latest — there is no
-  // stable release for that endpoint to return.
-  autoUpdater.allowPrerelease = true
+  // What that produces: a prerelease build follows both betas and finals, taking whichever is
+  // newest, and a final build follows finals only. Somebody who installed a stable release did
+  // not ask to be moved onto a prerelease, and moving them would be the kind of surprise that
+  // makes people turn updates off.
+  autoUpdater.allowPrerelease = isPrerelease(app.getVersion())
 
   // Every phase lands in `state`, which is all the Updates panel sees. The updater's own events
   // are the single source of truth — the manual check sets no phase beyond 'checking' itself.

@@ -13,7 +13,13 @@ import { Splash, noSplash, showSplash } from './splash'
 import { resetRunNotifications, startRunNotifications } from './run-notifications'
 import { loadSettings, saveSettings } from './settings'
 import { applyStartWithSystem, createTray } from './tray'
-import { checkForUpdatesNow, installUpdateNow, startAutoUpdates, updateStatus } from './updater'
+import {
+  checkForUpdatesNow,
+  installUpdateNow,
+  onBeforeInstall,
+  startAutoUpdates,
+  updateStatus,
+} from './updater'
 import { log } from './log'
 
 /**
@@ -111,6 +117,8 @@ async function main(): Promise<void> {
   // at last version's path launches nothing.
   if (loadSettings().startWithSystem) applyStartWithSystem(true)
   startAutoUpdates()
+  // What the installer needs to be true before it can replace the files under it.
+  onBeforeInstall(closeForInstall)
   await launch()
   startRunNotifications({
     port: () => backend?.port ?? null,
@@ -134,6 +142,27 @@ async function main(): Promise<void> {
       app.quit()
     })
   })
+}
+
+/**
+ * Everything closed, for an installer that is about to overwrite it.
+ *
+ * <p>Quitting a window is not the same as ending what is under it. The bundled Java runtime and
+ * the backend jar live inside the installation directory, so while the backend process is alive
+ * the installer cannot replace them — it stops and says the application is still open, behind a
+ * window that has already disappeared.
+ *
+ * <p>So this does the ending itself and waits for it, rather than trusting the quit that follows:
+ * {@link stopBackend} asks politely, then takes the whole process tree, then waits for it to
+ * actually be gone. It also sets {@link quitting} first, so no tray setting turns the quit into a
+ * hide, and closes the windows so nothing can veto what comes next.
+ */
+async function closeForInstall(): Promise<void> {
+  log.info('Closing everything before the installer runs.')
+  quitting = true
+  await stopBackend(backend)
+  backend = null
+  for (const window of BrowserWindow.getAllWindows()) window.destroy()
 }
 
 /** Start the backend, then show the first-run page, the app, or the failure page. */

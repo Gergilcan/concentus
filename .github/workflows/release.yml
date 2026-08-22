@@ -4,15 +4,23 @@ name: Release
 #
 #   git tag v1.0.0 && git push origin v1.0.0
 #
-# A prerelease MUST be dotted — v0.1.1-rc.1, never v0.1.1-rc1 — and the job below refuses the
-# glued form rather than shipping it. electron-updater derives the update channel from
-# `semver.prerelease(version)[0]`: dotted gives "rc" for every release in the train, glued gives
-# "rc1", "rc2", … so each release becomes its own channel and no install is ever offered the next
-# one. That is not theoretical — it is why v0.1.0-rc2 through rc16 never updated anyone.
+# A prerelease MUST be "-beta.N", dotted — v0.1.3-beta.1, never v0.1.3-beta1, and no longer
+# "-rc.N". Two separate rules of electron-updater's GitHub provider force that exact shape, and
+# neither is visible from the outside:
 #
-# Mind the ordering when changing the shape: prerelease identifiers compare as strings, and
-# "rc" < "rc16", so 0.1.0-rc.17 is OLDER than 0.1.0-rc16. Moving from the glued form to the dotted
-# one has to bump the base version too (0.1.0-rc16 -> 0.1.1-rc.1).
+#   Dotted, because the update channel is `semver.prerelease(version)[0]`. Dotted gives "beta" for
+#   every release in the train; glued gives "beta1", "beta2", … so each release becomes its own
+#   channel and no install is ever offered the next one. That is not theoretical — it is why
+#   v0.1.0-rc2 through rc16 never updated anyone. The job below refuses the glued form.
+#
+#   "beta" (or "alpha"), because the provider only considers a FINAL release when the running
+#   channel is one of null / "alpha" / "beta" — those three names are hard-coded in its matching
+#   loop. On any other identifier, "rc" included, a build never sees a stable release at all. That
+#   is why v0.1.2 could not reach a single install of v0.1.1-rc.N: they were all on a channel the
+#   provider treats as private to itself.
+#
+# Mind the ordering when changing the shape: prerelease identifiers compare as strings, so moving
+# between forms has to bump the base version too (0.1.2 -> 0.1.3-beta.1).
 #
 # Manual runs build the installers and leave them as artifacts without publishing anything, which
 # is how to check a packaging change without spending a version number on it.
@@ -78,8 +86,21 @@ jobs:
           if [[ "$tag" =~ -[A-Za-z]+[0-9]+$ ]]; then
             echo "::error::Tag $tag glues its prerelease to a number, which gives every release its"
             echo "::error::own electron-updater channel and breaks auto-update. Use a dot:"
-            echo "::error::  ${tag%%-*}-rc.N"
+            echo "::error::  ${tag%%-*}-beta.N"
             exit 1
+          fi
+          # And the identifier itself has to be one the provider will let a build leave. See the
+          # note at the top: on any other name, an install never sees a final release again.
+          if [[ "$tag" == *-* ]]; then
+            id="${tag#*-}"
+            id="${id%%.*}"
+            if [[ "$id" != "beta" && "$id" != "alpha" ]]; then
+              echo "::error::Tag $tag uses the prerelease identifier '$id'. electron-updater only"
+              echo "::error::offers final releases to builds on null, alpha or beta, so a '$id'"
+              echo "::error::build would never be able to update to a stable version. Use:"
+              echo "::error::  ${tag%%-*}-beta.N"
+              exit 1
+            fi
           fi
 
       # Zulu rather than Temurin, for one specific reason: the payload script builds the bundled

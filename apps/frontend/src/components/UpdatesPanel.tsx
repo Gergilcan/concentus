@@ -61,7 +61,7 @@ export function UpdatesPanel() {
       case 'downloading':
         return `Downloading ${s.available ?? 'the update'}… ${s.progressPercent ?? 0}%`
       case 'downloaded':
-        return `Version ${s.available} is downloaded — restart to apply it, or it installs when you quit.`
+        return `Version ${s.available} is downloaded — installing reopens the app when it is done, and it installs by itself when you quit either way.`
       case 'error':
         return `The last check failed: ${s.error ?? 'unknown error'}`
     }

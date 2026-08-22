@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { ChildProcess, spawn } from 'node:child_process'
+import { ChildProcess, execFile, spawn } from 'node:child_process'
 import * as crypto from 'node:crypto'
 import * as fs from 'node:fs'
 import * as http from 'node:http'
@@ -33,6 +33,8 @@ const STARTUP_TIMEOUT_MS = 120_000
 const HEALTH_POLL_INTERVAL_MS = 150
 /** Grace period for a clean shutdown before the process is killed outright. */
 const SHUTDOWN_TIMEOUT_MS = 8_000
+/** How long to wait for a killed process tree to actually be gone before giving up on it. */
+const KILL_TIMEOUT_MS = 5_000
 
 export interface RunningBackend {
   port: number
@@ -521,12 +523,64 @@ export async function stopBackend(backend: RunningBackend | null): Promise<void>
     })
   })
 
-  if (!exited) {
-    log.warn('Backend did not exit in time; terminating it.')
-    child.kill('SIGKILL')
-  } else {
+  if (exited) {
     log.info('Backend stopped.')
+    return
   }
+
+  log.warn('Backend did not exit in time; terminating it and everything under it.')
+  await killTree(child)
+}
+
+/**
+ * Ends a process and everything it started, and does not return until it is gone.
+ *
+ * <p>Two things were wrong with a bare {@code kill('SIGKILL')} here, and both only show up at the
+ * worst moment — when an installer is waiting for this application to release its files.
+ *
+ * <p><b>It killed one process, not the tree.</b> The backend is the parent of an embedded
+ * PostgreSQL, and Windows has no process-group semantics to lean on: a killed java never gets to
+ * stop its postgres, which then holds the data directory against the next launch. That is the
+ * same debris {@code orphans.ts} exists to clear up afterwards — better not to create it.
+ *
+ * <p><b>And it did not wait.</b> {@code kill} asks; it does not promise the process is gone when
+ * it returns. Quitting immediately after left java still holding the bundled runtime under the
+ * installation directory, which is exactly the file an update is about to overwrite — and the
+ * installer stops and says the application is still open.
+ */
+async function killTree(child: import('node:child_process').ChildProcess): Promise<void> {
+  const pid = child.pid
+  if (pid == null) return
+
+  const gone = new Promise<void>((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve()
+    child.once('exit', () => resolve())
+  })
+
+  try {
+    if (process.platform === 'win32') {
+      // /T takes the children with it, /F does not ask. The same command orphans.ts uses on the
+      // leftovers of a launch that did not get this far.
+      await new Promise<void>((resolve) => {
+        execFile('taskkill', ['/PID', String(pid), '/T', '/F'], () => resolve())
+      })
+    } else {
+      // The backend is spawned in its own process group, so the negative pid reaches the group.
+      try {
+        process.kill(-pid, 'SIGKILL')
+      } catch {
+        child.kill('SIGKILL')
+      }
+    }
+  } catch (err) {
+    log.warn(`Could not terminate the backend tree: ${err instanceof Error ? err.message : String(err)}`)
+    child.kill('SIGKILL')
+  }
+
+  // Wait for the exit event, but not forever: a process that will not die must not hold the app
+  // open, and by this point everything that could be asked of it has been.
+  await Promise.race([gone, new Promise<void>((r) => setTimeout(r, KILL_TIMEOUT_MS))])
+  log.info('Backend terminated.')
 }
 
 /** Tail of the backend log, for the failure window. */
