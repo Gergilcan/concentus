@@ -15,11 +15,16 @@ The type matters: **Developer ID Application** — the one for apps distributed 
 Store. Not "Apple Development", not "Apple Distribution"; an app signed with those still gets
 blocked by Gatekeeper.
 
+Run these OUTSIDE the repository (the key must never sit anywhere `git add` reaches; .gitignore
+guards the names anyway, as the second line of defense):
+
 ```sh
 # A key and a certificate signing request. The email is the Apple ID's; CN is informative only.
 openssl genrsa -out developerid.key 2048
-openssl req -new -key developerid.key -out developerid.csr \
-  -subj "/emailAddress=gila791@gmail.com/CN=Concentus Developer ID/C=ES"
+# Git Bash on Windows mangles the leading / of -subj into C:/Program Files/Git/… —
+# MSYS_NO_PATHCONV=1 turns that off for this one command. Elsewhere, drop the prefix.
+MSYS_NO_PATHCONV=1 openssl req -new -key developerid.key -out developerid.csr \
+  -subj "/emailAddress=gila791@hotmail.com/CN=Concentus Developer ID/C=ES"
 ```
 
 1. https://developer.apple.com/account → Certificates, Identifiers & Profiles → Certificates → +

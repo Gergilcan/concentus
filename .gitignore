@@ -29,6 +29,14 @@ apps/backend/data/
 .env.local
 !.env.example
 
+# Apple signing material (packaging/macos.md) — the key and certificate must NEVER enter git,
+# wherever in the tree an openssl command happened to be run from.
+developerid.*
+DeveloperIDG2CA.cer
+intermediate.pem
+*.p12
+*.p8
+
 # Logs & OS
 *.log
 .DS_Store
