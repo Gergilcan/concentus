@@ -1,6 +1,7 @@
 package com.concentus.web;
 
 import com.concentus.auth.OidcProvider;
+import com.concentus.auth.OidcRegistry;
 import com.concentus.auth.OidcSignIn;
 import com.concentus.auth.OrgContext;
 import com.concentus.config.SettingsStore;
@@ -40,11 +41,14 @@ public class SignInProviderController {
     private final SettingsStore store;
     private final OrgContext orgContext;
     private final OidcSignIn signIn;
+    private final OidcRegistry registry;
 
-    public SignInProviderController(SettingsStore store, OrgContext orgContext, OidcSignIn signIn) {
+    public SignInProviderController(SettingsStore store, OrgContext orgContext, OidcSignIn signIn,
+                                    OidcRegistry registry) {
         this.store = store;
         this.orgContext = orgContext;
         this.signIn = signIn;
+        this.registry = registry;
     }
 
     /**
@@ -93,6 +97,10 @@ public class SignInProviderController {
     @PutMapping
     public Map<String, Object> save(@RequestBody ProviderUpdate body, HttpServletRequest request) {
         orgContext.requireAdmin();
+        // A provider already signing people in keeps doing so however the license situation
+        // changes — that's OidcSignIn reading straight from settings. This is the one place a NEW
+        // registration is written, so it's the one place that needs the enterprise check.
+        registry.requireEnterpriseToRegister();
         String organizationId = orgContext.defaultOrganizationId();
         String id = body.id() == null ? "" : body.id().trim().toLowerCase(Locale.ROOT);
         if (!PRESETS.contains(id)) {

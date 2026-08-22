@@ -3,9 +3,16 @@ package com.concentus.auth;
 import org.junit.jupiter.api.Test;
 import com.concentus.config.Settings;
 import com.concentus.config.SettingsStore;
+import com.concentus.license.LicenseService;
+import com.concentus.license.TestLicenses;
 import org.springframework.mock.env.MockEnvironment;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Which identity providers a deployment offers.
@@ -38,8 +45,17 @@ class OidcRegistryTest {
         return new MockEnvironment();
     }
 
+    /**
+     * An {@link OidcRegistry} reading {@code env}, on an unlicensed installation — the license
+     * question is not what these reading tests are about, so every one of them gets the same
+     * seat-limit-of-one service the gate tests below build their "no license" case from too.
+     */
+    private static OidcRegistry registryFrom(MockEnvironment env) throws Exception {
+        return new OidcRegistry(settingsFrom(env), TestLicenses.serviceOn(Files.createTempDirectory("oidc-registry-test")));
+    }
+
     @Test
-    void several_providers_are_offered_in_the_order_they_were_named() {
+    void several_providers_are_offered_in_the_order_they_were_named() throws Exception {
         MockEnvironment env = env()
                 .withProperty("app.auth.oidc.providers", "microsoft,google")
                 .withProperty("app.auth.oidc.microsoft.client-id", "ms-id")
@@ -47,7 +63,7 @@ class OidcRegistryTest {
                 .withProperty("app.auth.oidc.google.client-id", "g-id")
                 .withProperty("app.auth.oidc.google.client-secret", "g-secret");
 
-        OidcRegistry registry = new OidcRegistry(settingsFrom(env));
+        OidcRegistry registry = registryFrom(env);
 
         assertThat(registry.all()).extracting(OidcRegistry.Configured::id)
                 .containsExactly("microsoft", "google");
@@ -58,21 +74,21 @@ class OidcRegistryTest {
     // A button that fails at the redirect is worse than one that is absent: the person has already
     // decided to sign in by the time they find out.
     @Test
-    void a_provider_without_credentials_is_not_offered() {
+    void a_provider_without_credentials_is_not_offered() throws Exception {
         MockEnvironment env = env()
                 .withProperty("app.auth.oidc.providers", "microsoft,google")
                 .withProperty("app.auth.oidc.microsoft.client-id", "ms-id")
                 .withProperty("app.auth.oidc.microsoft.client-secret", "ms-secret")
                 .withProperty("app.auth.oidc.google.client-id", "g-id");
 
-        assertThat(new OidcRegistry(settingsFrom(env)).all()).extracting(OidcRegistry.Configured::id)
+        assertThat(registryFrom(env).all()).extracting(OidcRegistry.Configured::id)
                 .containsExactly("microsoft");
     }
 
     // The shape this application had before it could hold more than one. An upgrade that quietly
     // switched off a company's sign-in would lock out everyone whose account has no password.
     @Test
-    void the_single_provider_configuration_still_means_what_it_did() {
+    void the_single_provider_configuration_still_means_what_it_did() throws Exception {
         MockEnvironment env = env()
                 .withProperty("app.auth.oidc.enabled", "true")
                 .withProperty("app.auth.oidc.provider", "microsoft")
@@ -80,7 +96,7 @@ class OidcRegistryTest {
                 .withProperty("app.auth.oidc.client-id", "id")
                 .withProperty("app.auth.oidc.client-secret", "secret");
 
-        OidcRegistry registry = new OidcRegistry(settingsFrom(env));
+        OidcRegistry registry = registryFrom(env);
 
         assertThat(registry.all()).hasSize(1);
         assertThat(registry.all().getFirst().provider().issuer())
@@ -88,20 +104,20 @@ class OidcRegistryTest {
     }
 
     @Test
-    void nothing_configured_offers_nothing() {
-        assertThat(new OidcRegistry(settingsFrom(env())).any()).isFalse();
+    void nothing_configured_offers_nothing() throws Exception {
+        assertThat(registryFrom(env()).any()).isFalse();
     }
 
     // A provider that is OAuth2 rather than OpenID Connect publishes nothing to discover and names
     // its fields differently. Configuration, not code.
     @Test
-    void a_provider_that_does_not_publish_its_endpoints_states_them_instead() {
+    void a_provider_that_does_not_publish_its_endpoints_states_them_instead() throws Exception {
         MockEnvironment env = env()
                 .withProperty("app.auth.oidc.providers", "discord")
                 .withProperty("app.auth.oidc.discord.client-id", "id")
                 .withProperty("app.auth.oidc.discord.client-secret", "secret");
 
-        OidcProvider discord = new OidcRegistry(settingsFrom(env)).byId("discord").orElseThrow().provider();
+        OidcProvider discord = registryFrom(env).byId("discord").orElseThrow().provider();
 
         assertThat(discord.hasStatedEndpoints()).isTrue();
         assertThat(discord.isUsable()).isTrue();
@@ -111,7 +127,7 @@ class OidcRegistryTest {
     }
 
     @Test
-    void any_provider_can_have_its_endpoints_and_claims_stated() {
+    void any_provider_can_have_its_endpoints_and_claims_stated() throws Exception {
         MockEnvironment env = env()
                 .withProperty("app.auth.oidc.providers", "internal")
                 .withProperty("app.auth.oidc.internal.display-name", "Staff directory")
@@ -123,7 +139,7 @@ class OidcRegistryTest {
                 .withProperty("app.auth.oidc.internal.client-id", "id")
                 .withProperty("app.auth.oidc.internal.client-secret", "secret");
 
-        OidcRegistry.Configured configured = new OidcRegistry(settingsFrom(env)).byId("internal").orElseThrow();
+        OidcRegistry.Configured configured = registryFrom(env).byId("internal").orElseThrow();
 
         assertThat(configured.displayName()).isEqualTo("Staff directory");
         assertThat(configured.provider().userinfoUrl()).isEqualTo("https://id.example/me");
@@ -132,7 +148,7 @@ class OidcRegistryTest {
 
     // Said once, under the shared key, rather than repeated beneath every provider.
     @Test
-    void the_role_a_first_time_arrival_gets_is_shared_unless_a_provider_overrides_it() {
+    void the_role_a_first_time_arrival_gets_is_shared_unless_a_provider_overrides_it() throws Exception {
         MockEnvironment env = env()
                 .withProperty("app.auth.oidc.providers", "microsoft,google")
                 .withProperty("app.auth.oidc.default-role", "OPERATOR")
@@ -142,9 +158,30 @@ class OidcRegistryTest {
                 .withProperty("app.auth.oidc.google.client-secret", "d")
                 .withProperty("app.auth.oidc.google.default-role", "VIEWER");
 
-        OidcRegistry registry = new OidcRegistry(settingsFrom(env));
+        OidcRegistry registry = registryFrom(env);
 
         assertThat(registry.byId("microsoft").orElseThrow().defaultRole()).isEqualTo("OPERATOR");
         assertThat(registry.byId("google").orElseThrow().defaultRole()).isEqualTo("VIEWER");
+    }
+
+    // The gate: reading a provider is unaffected by licensing (above), but writing a NEW one is.
+
+    @Test
+    void registering_a_provider_is_refused_without_an_enterprise_license() throws Exception {
+        OidcRegistry registry = registryFrom(env());
+
+        assertThatThrownBy(registry::requireEnterpriseToRegister)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("enterprise");
+    }
+
+    @Test
+    void registering_a_provider_is_allowed_with_the_enterprise_fixture_installed() throws Exception {
+        Path dir = Files.createTempDirectory("oidc-registry-test-enterprise");
+        TestLicenses.installFixture(dir, "enterprise-test.license");
+        LicenseService enterprise = TestLicenses.serviceOn(dir);
+        OidcRegistry registry = new OidcRegistry(settingsFrom(env()), enterprise);
+
+        assertThatCode(registry::requireEnterpriseToRegister).doesNotThrowAnyException();
     }
 }
