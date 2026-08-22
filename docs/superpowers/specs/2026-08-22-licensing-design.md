@@ -58,9 +58,10 @@ The public keys are constants in the backend source.
 
 New `LicenseService`:
 
-- **Sources**, first match wins: `CONCENTUS_LICENSE` env var → `license.key` file next to the
-  data directory → the value pasted in Resources → Settings (stored like other settings).
-  Env/file exist because a headless server deployment sets its license before any UI exists.
+- **Sources**, first match wins: `CONCENTUS_LICENSE` env var → `license.key` file in the data
+  directory. Pasting a license in Resources → Settings WRITES that file — one storage, no
+  license row in a database the license itself gates. Env exists because a headless server
+  deployment sets its license before any UI does.
 - Verifies signature (against the tier-matching public key) and dates at startup and on change;
   result exposed on `/api/auth/status` (tier, licensee, seats, expiry, days-of-grace-left) so the
   UI can show state and banners without a new endpoint.
