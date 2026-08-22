@@ -8,6 +8,7 @@ import { CompareRunsModal } from './CompareRunsModal.tsx'
 import { ComparePickerModal } from './ComparePickerModal.tsx'
 import { Console } from './Console.tsx'
 import { Spinner } from './Spinner.tsx'
+import { useFlowStore } from '../state/store.ts'
 import styles from './runs.module.scss'
 
 /** Every trigger that isn't `manual` gets a badge; an unknown one falls back to its own name. */
@@ -77,6 +78,20 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
   }
 
   const selectedRun = mine.find((r) => r.id === selected) ?? null
+  const setReplay = useFlowStore((s) => s.setReplay)
+  const replayShown = useFlowStore((s) => s.replay !== null)
+
+  // Replay walks the run's recorded outputs through the flow as saved NOW and paints where the
+  // path would diverge — on the canvas, which is where the flow being asked about is visible.
+  const replay = async () => {
+    if (!selectedRun) return
+    setErr(null)
+    try {
+      setReplay(await api.replayRun(selectedRun.id))
+    } catch (e) {
+      setErr(errMessage(e))
+    }
+  }
   // Anything the selected run can be read against: this flow's other executions. Comparing used
   // to be available only against the golden reference, which is the right default and the wrong
   // only option — two runs of the same block on different models is the pair worth reading now.
@@ -121,6 +136,18 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
             onClick={startCompare}
           >
             ⇄ Compare
+          </button>
+          <button
+            className={styles.goldenAction}
+            disabled={!selectedRun || !selectedRun.flowId}
+            title={
+              selectedRun?.flowId
+                ? 'Walk this run’s recorded outputs through the flow as saved now, and paint on the canvas where the path would diverge. Nothing is executed.'
+                : 'Select an execution of a saved flow — an ad-hoc run has no current flow to replay against.'
+            }
+            onClick={() => void (replayShown ? setReplay(null) : replay())}
+          >
+            {replayShown ? '⟲ Hide replay' : '⟲ Replay vs current'}
           </button>
         </div>
         {err && <div className={styles.err}>{err}</div>}

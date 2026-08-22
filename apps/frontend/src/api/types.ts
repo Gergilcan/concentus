@@ -189,6 +189,27 @@ export interface NodeExecReport {
   graph?: GraphMetrics | null
 }
 
+// --- Replay: a run's recorded decisions walked against the flow as saved today ---------------
+
+/** What happened to one block then, and what would happen now. Closed vocabularies, painted
+ * as-is by the canvas: then ∈ ran|failed|skipped|absent, now ∈ would-run|would-skip|unknown|
+ * capability|gate|gone. */
+export interface ReplayNode {
+  nodeId: string
+  label: string
+  type: string
+  then: string
+  now: string
+  divergent: boolean
+  reason?: string | null
+}
+
+export interface ReplayReport {
+  runId: string
+  divergences: number
+  nodes: ReplayNode[]
+}
+
 // ---- Flow / node data (canvas) ----
 // `type` aliases (not interfaces) so they satisfy React Flow's
 // `Record<string, unknown>` node-data constraint.

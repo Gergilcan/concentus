@@ -1,6 +1,7 @@
 import { Handle, Position } from '@xyflow/react'
 import type { ReactNode } from 'react'
 import { cx } from '../../utils/cx.ts'
+import { NodeReplayBadge } from './NodeReplayBadge.tsx'
 import { NodeStatusBadge } from './NodeStatusBadge.tsx'
 import styles from './nodes.module.scss'
 
@@ -52,6 +53,7 @@ export function NodeShell({
       </div>
       {children}
       {showStatus && id && <NodeStatusBadge id={id} />}
+      {id && <NodeReplayBadge id={id} />}
       {showSourceHandle && <Handle type="source" position={Position.Right} />}
       {altHandle && (
         <>

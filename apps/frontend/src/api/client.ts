@@ -37,6 +37,7 @@ import type {
   RuntimeInstallPlan,
   RuntimeStatus,
   RunComparison,
+  ReplayReport,
   RunEvent,
   RunSummary,
   StorageConfig,
@@ -253,6 +254,9 @@ export const api = {
   /** The golden reference and a candidate, side by side (numbers, steps, final outputs). */
   compareRuns: (referenceId: string, candidateId: string) =>
     req<RunComparison>(`/runs/${referenceId}/compare/${candidateId}`),
+  /** Where this run's path would diverge against the flow as saved NOW. Routing only — see
+   * the canvas legend; nothing is executed. */
+  replayRun: (runId: string) => req<ReplayReport>(`/runs/${runId}/replay`),
 
   // agent library
   listAgents: () => req<LibraryAgent[]>('/agents'),
