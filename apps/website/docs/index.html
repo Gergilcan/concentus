@@ -5,37 +5,56 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Concentus documentation</title>
 <meta name="description" content="How Concentus works: the canvas and its blocks, knowledge bases and hybrid retrieval, triggers, teams and roles, settings, traces, and the HTTP API." />
-<meta name="theme-color" content="#0b0e14" />
+<meta name="theme-color" content="#0e1117" />
 <meta property="og:type" content="article" />
 <meta property="og:title" content="Concentus documentation" />
 <meta property="og:description" content="The canvas, knowledge bases and retrieval, triggers, teams, settings and the API — everything the app actually does." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cpath d='M25 16 L20.5 23.8 L11.5 23.8 L7 16 L11.5 8.2 L20.5 8.2 Z' fill='none' stroke='%236ea8fe' stroke-width='2.6' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" />
 <style>
+  /*
+   * The application's own tokens, so the site and the app cannot drift apart. Every value below
+   * is copied from apps/frontend/src/styles/global.scss (the dark palette, which is its default);
+   * only --faint is derived, because the app has no tertiary text role and this page needs one.
+   */
   :root {
     color-scheme: dark;
-    --bg: #0b0e14;
-    --bg-grid: #141a26;
-    --panel: #141a24;
-    --panel-2: #1a2130;
-    --line: #232c3b;
-    --line-2: #313d51;
-    --text: #e9eff8;
-    --muted: #93a0b4;
-    --faint: #5c6879;
+    --bg: #0e1117;
+    --panel: #161b22;
+    --panel-2: #1c2230;
+    --line: #2a3140;
+    --text: #e6edf3;
+    --muted: #98a2ad;
+    --faint: #6e7a89;
 
     --accent: #6ea8fe;
-    --coord: #b98cff;
+    --agent: #6ea8fe;
+    --coordinator: #b98cff;
     --mcp: #63e6be;
     --repo: #ffd43b;
     --sql: #ff922b;
-    --gate: #ffa8a8;
-    --subflow: #74c0fc;
-    --api: #a9e34b;
-    --danger: #ff8787;
+    --api: #e64980;
+    --knowledge: #b98cff;
+    --merge: #ffa94d;
+    --verifier: #94d82d;
+    --gate: #f783ac;
+    --subflow: #4dabf7;
 
-    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
-    --r: 12px;
+    --danger: #ff6b6b;
+    --ok: #51cf66;
+    --warn: #ffd43b;
+    --accent-soft: rgba(110, 168, 254, 0.12);
+    --on-accent: #08111f;
+
+    /* The three type roles the app defines: display for brand and titles, system sans for
+       density, mono for data. Anything else would be a fourth voice nothing asked for. */
+    --display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+
+    --r: 8px;
   }
 
   * { box-sizing: border-box; }
@@ -45,48 +64,57 @@
     background: var(--bg);
     color: var(--text);
     font-family: var(--sans);
-    font-size: 16.5px;
-    line-height: 1.68;
+    font-size: 15.5px;
+    line-height: 1.72;
     -webkit-font-smoothing: antialiased;
   }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
 
+  /* The canvas ground, at the gap and size FlowCanvas actually renders it. */
   .bg {
     position: fixed; inset: 0; z-index: -1; pointer-events: none;
     background-color: var(--bg);
-    background-image: radial-gradient(var(--bg-grid) 1px, transparent 1px);
-    background-size: 22px 22px;
+    background-image: radial-gradient(circle, var(--line) 1px, transparent 1px);
+    background-size: 18px 18px;
+    opacity: 0.5;
   }
 
   /* ------------------------------ top bar ------------------------------ */
+  /* The application's own header, reused: same metrics, same control shapes. */
   .nav {
     position: sticky; top: 0; z-index: 50;
     backdrop-filter: blur(12px);
-    /* Nearly opaque: at 78% the headings scrolling under it were still legible through
-       the bar, which reads as a rendering fault rather than as translucency. */
     background: color-mix(in srgb, var(--bg) 94%, transparent);
     border-bottom: 1px solid var(--line);
   }
   .nav-in {
-    display: flex; align-items: center; gap: 18px; height: 62px;
+    display: flex; align-items: center; gap: 14px; height: 62px;
     max-width: 1380px; margin: 0 auto; padding: 0 24px;
   }
-  .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; letter-spacing: -0.01em; color: var(--text); }
+  .brand {
+    display: flex; align-items: center; gap: 6px; color: var(--text);
+    font-family: var(--display); font-weight: 700; font-size: 15px; letter-spacing: 0.01em;
+  }
   .brand:hover { text-decoration: none; }
-  .hex { color: var(--accent); font-size: 18px; }
+  .hex { color: var(--accent); font-size: 15.5px; }
   .badge {
-    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
-    color: var(--muted); border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 9px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px;
   }
-  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 14.5px; }
-  .nav-right a { color: var(--muted); }
-  .nav-right a:hover { color: var(--text); text-decoration: none; }
+  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .nav-right a {
+    color: var(--muted); font-size: 12.5px; padding: 4px 10px;
+    border-radius: 6px; border: 1px solid transparent;
+  }
+  .nav-right a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
   .menu-btn {
-    display: none; background: var(--panel); color: var(--text); border: 1px solid var(--line-2);
-    border-radius: 8px; padding: 6px 11px; font: inherit; font-size: 14px; cursor: pointer;
+    display: none; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 11px; font: inherit; font-size: 12.5px; cursor: pointer;
   }
+  .menu-btn:hover { border-color: var(--accent); }
 
   /* ------------------------------ layout ------------------------------ */
   .shell {
@@ -103,106 +131,124 @@
     position: sticky; top: 62px; align-self: start;
     max-height: calc(100vh - 62px);
     overflow-y: auto;
-    padding: 26px 0 40px;
-    font-size: 14.5px;
+    padding: 22px 0 40px;
   }
   .filter {
-    width: 100%; background: var(--panel); color: var(--text);
-    border: 1px solid var(--line-2); border-radius: 8px;
-    padding: 7px 11px; font: inherit; font-size: 14px; margin-bottom: 18px;
+    width: 100%; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 7px 10px; font: inherit; font-size: 12.5px; margin-bottom: 16px;
   }
   .filter::placeholder { color: var(--faint); }
+  .filter:hover { border-color: var(--accent); }
   .side h4 {
-    font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
-    color: var(--faint); margin: 22px 0 8px; font-weight: 600;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--faint); margin: 22px 0 6px; padding: 0 10px; font-weight: 400;
   }
   .side h4:first-of-type { margin-top: 0; }
+  /* Same shape as the app's own nav buttons: 6px radius, a bordered panel when active. */
   .side a {
-    display: block; color: var(--muted); padding: 4px 10px; border-radius: 7px;
-    border-left: 2px solid transparent; margin-left: -2px;
+    display: block; color: var(--muted); font-size: 13px; padding: 5px 10px;
+    border-radius: 6px; border: 1px solid transparent;
   }
-  .side a:hover { color: var(--text); background: var(--panel); text-decoration: none; }
-  .side a.on { color: var(--text); border-left-color: var(--accent); background: var(--panel); }
+  .side a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+  .side a.on { color: var(--text); background: var(--panel-2); border-color: var(--line); }
   .side a.hidden { display: none; }
 
   /* ------------------------------ content ------------------------------ */
-  main { padding: 40px 0 0; min-width: 0; }
-  .lede { max-width: 70ch; }
+  main { padding: 44px 0 0; min-width: 0; }
+  .lede { max-width: 70ch; padding-bottom: 32px; border-bottom: 1px solid var(--line); }
   .lede h1 {
-    font-size: clamp(32px, 4.4vw, 42px); line-height: 1.08; letter-spacing: -0.025em;
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(30px, 4.2vw, 38px); line-height: 1.12; letter-spacing: -0.025em;
     margin: 0 0 14px; text-wrap: balance;
   }
-  .lede p { color: var(--muted); font-size: 18px; margin: 0 0 10px; }
+  .lede p { color: var(--muted); font-size: 17px; margin: 0 0 10px; }
 
-  section { padding-top: 52px; max-width: 74ch; scroll-margin-top: 86px; }
+  /* A rule between sections rather than whitespace alone: this is a reference document, and the
+     eye needs a boundary to land on when it jumps rather than reads. */
+  section { padding-top: 40px; margin-top: 44px; border-top: 1px solid var(--line); max-width: 76ch; scroll-margin-top: 86px; }
+  section:first-of-type { border-top: 0; margin-top: 0; }
   section > h2 {
-    font-size: 27px; letter-spacing: -0.02em; margin: 0 0 6px; text-wrap: balance;
-    scroll-margin-top: 86px;
+    font-family: var(--display); font-weight: 700;
+    font-size: 24px; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 8px;
+    text-wrap: balance; scroll-margin-top: 86px;
   }
-  section > h2 + .sub { color: var(--muted); margin: 0 0 18px; }
-  h3 { font-size: 18.5px; letter-spacing: -0.01em; margin: 28px 0 8px; }
+  section > h2 + .sub { color: var(--muted); font-size: 15px; margin: 0 0 18px; }
+  h3 {
+    font-family: var(--display); font-weight: 600;
+    font-size: 16.5px; letter-spacing: -0.01em; margin: 30px 0 8px;
+  }
   p { margin: 0 0 14px; }
-  ul, ol { margin: 0 0 14px; padding-left: 22px; }
-  li { margin: 5px 0; }
-  strong { color: var(--text); font-weight: 650; }
-  em { color: var(--text); }
+  ul, ol { margin: 0 0 14px; padding-left: 20px; }
+  li { margin: 6px 0; }
+  strong { color: var(--text); font-weight: 600; }
+  em { color: var(--muted); font-style: italic; }
 
   code {
-    font-family: var(--mono); font-size: 0.87em;
+    font-family: var(--mono); font-size: 0.85em;
     background: var(--panel-2); border: 1px solid var(--line);
-    border-radius: 5px; padding: 1px 5px;
+    border-radius: 4px; padding: 1px 6px; color: var(--text);
   }
   pre {
     background: var(--panel); border: 1px solid var(--line);
     border-radius: var(--r); padding: 14px 16px; overflow-x: auto; margin: 0 0 16px;
   }
-  pre code { background: none; border: 0; padding: 0; font-size: 13.5px; line-height: 1.6; }
+  pre code { background: none; border: 0; padding: 0; font-size: 13px; line-height: 1.65; }
 
-  .tablewrap { overflow-x: auto; margin: 0 0 18px; }
-  table { border-collapse: collapse; width: 100%; font-size: 15px; }
-  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th {
-    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase;
-    color: var(--faint); font-weight: 600; border-bottom-color: var(--line-2);
+  /* The border lives on the wrapper so a scrolling table keeps a frame on both edges. */
+  .tablewrap {
+    overflow-x: auto; margin: 0 0 18px;
+    border: 1px solid var(--line); border-radius: var(--r);
   }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--faint); font-weight: 400; padding-top: 12px;
+  }
+  td { color: var(--muted); }
+  td strong { color: var(--text); }
+  tbody tr:last-child td { border-bottom: 0; }
   td code { white-space: nowrap; }
 
   .note, .warn {
-    border: 1px solid var(--line-2); border-radius: var(--r);
-    padding: 14px 16px; margin: 0 0 18px; background: var(--panel);
+    border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: var(--r);
+    padding: 15px 17px; margin: 0 0 18px; background: var(--accent-soft);
   }
   .note b, .warn b {
-    display: block; font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
-    text-transform: uppercase; margin-bottom: 5px;
+    display: block; font-size: 14.5px; color: var(--text);
+    font-weight: 600; margin-bottom: 6px;
   }
-  .note b { color: var(--accent); }
-  .warn { border-color: color-mix(in srgb, var(--danger) 45%, var(--line-2)); }
-  .warn b { color: var(--danger); }
+  .note p, .warn p { color: var(--muted); font-size: 14.5px; }
+  .warn { border-left-color: var(--danger); background: rgba(255, 107, 107, 0.09); }
   .note p:last-child, .warn p:last-child { margin-bottom: 0; }
 
   .pill {
-    display: inline-block; font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
-    text-transform: uppercase; border: 1px solid var(--line-2); border-radius: 999px;
-    padding: 1px 8px; color: var(--muted); vertical-align: middle;
+    display: inline-block; font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; background: var(--line); border-radius: 10px;
+    padding: 1px 6px; color: var(--muted); vertical-align: middle;
   }
 
   /* ------------------------------ on this page ------------------------------ */
   .toc {
     position: sticky; top: 62px; align-self: start;
     max-height: calc(100vh - 62px); overflow-y: auto;
-    padding: 46px 0 40px; font-size: 13.5px;
+    padding: 46px 0 40px;
   }
   .toc h4 {
-    font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
-    color: var(--faint); margin: 0 0 10px; font-weight: 600;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--faint); margin: 0 0 10px; padding-left: 12px; font-weight: 400;
   }
-  .toc a { display: block; color: var(--faint); padding: 3px 0; }
+  .toc a {
+    display: block; color: var(--faint); font-size: 12.5px;
+    padding: 5px 0 5px 12px; border-left: 1px solid var(--line);
+  }
   .toc a:hover { color: var(--text); text-decoration: none; }
-  .toc a.on { color: var(--accent); }
+  .toc a.on { color: var(--accent); border-left-color: var(--accent); }
 
   footer {
     border-top: 1px solid var(--line); margin-top: 72px; padding-top: 22px;
-    color: var(--faint); font-size: 14px; max-width: 74ch;
+    color: var(--faint); font-size: 14px; max-width: 76ch;
   }
 
   @media (max-width: 1180px) {
@@ -212,12 +258,19 @@
   @media (max-width: 860px) {
     .shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
     .menu-btn { display: block; }
+    .nav-in { gap: 10px; }
+    .nav-right a { padding: 4px 8px; }
     .side {
-      display: none; position: static; max-height: none; padding: 18px 0 6px;
+      display: none; position: static; max-height: none; padding: 16px 0 6px;
       border-bottom: 1px solid var(--line);
     }
     .side.open { display: block; }
     main { padding-top: 28px; }
+    section { padding-top: 32px; margin-top: 36px; }
+  }
+  /* Narrow enough that Contents, Download and GitHub are all the bar can carry. */
+  @media (max-width: 560px) {
+    .nav-right a:nth-of-type(1) { display: none; }
   }
 </style>
 </head>

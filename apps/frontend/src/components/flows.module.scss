@@ -9,8 +9,11 @@
 }
 
 .inner {
-  max-width: 1280px;
-  margin: 0 auto;
+  /* No cap. The flow list is a grid of cards whose columns are `minmax(310px, 1fr)`, so every
+     extra hundred pixels is either a wider card or another column — both of them useful. A
+     1280px ceiling on a 2560px monitor left half the screen as margin and the dashboard
+     floating in the middle of it, which is what a reading column wants and a dashboard does
+     not. Prose that does need a measure sets its own; see .lede below. */
   padding: var(--sp-5) var(--sp-5) 30px;
 }
 
@@ -208,7 +211,10 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  /* 340, not 310: the minimum was set when a card carried four controls, and it now carries up
+     to nine. Thirty pixels is the difference between the common cards fitting on one line and
+     every one of them wrapping. At 1920 this is still five columns. */
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: var(--sp-3);
 }
 
@@ -514,6 +520,10 @@
   margin-top: 14px;
   padding-top: 11px;
   border-top: 1px solid t.$border;
+  /* One line, and it stays one line: the row holds Open, Run, the schedule toggle where there is
+     a schedule, and the ⋯ menu. Everything else moved into that menu, which is why this no longer
+     needs to wrap — and why the card is back to the height it should have been. */
+  min-width: 0;
 }
 
 .spacer {
@@ -529,6 +539,11 @@
   padding: 5px 12px;
   font-size: 12px;
   cursor: pointer;
+  /* Two words and an arrow, kept on one line. In a narrow card the row would wrap the label
+     under its own icon — a two-line button that reads as broken rather than as compact — and
+     these two are the last things in the row that should give way. */
+  white-space: nowrap;
+  flex: 0 0 auto;
 
   &:hover {
     border-color: t.$accent;
@@ -550,6 +565,9 @@
   border-radius: 6px;
   width: 26px;
   height: 26px;
+  /* Fixed at 26 and allowed to shrink no further, but also not to grow: the icons are what the
+     row spends its slack on before it takes any from the two buttons. */
+  flex: 0 0 26px;
   font-size: 12px;
   cursor: pointer;
 
@@ -1295,4 +1313,70 @@
 .dropOver {
   border-color: t.$accent;
   background: t.$accent-soft;
+}
+
+/* ---------------- the card's overflow menu ---------------- */
+
+.menuWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.menu {
+  position: absolute;
+  /* Above the button, not below it: this row is the last thing in a card, and a menu opening
+     downwards from the bottom card of a grid opens off the screen. */
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 208px;
+  padding: 4px;
+  background: t.$panel;
+  border: 1px solid t.$border;
+  border-radius: 9px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: t.$text;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: t.$panel-2;
+  }
+
+  /* Kept in place rather than hidden. An action that disappears when you lack permission teaches
+     you it does not exist; one that is there and says why teaches you who to ask. */
+  &:disabled {
+    color: t.$muted;
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.menuDanger:hover:not(:disabled) {
+  color: t.$danger;
+}
+
+.menuIcon {
+  width: 15px;
+  text-align: center;
+  flex: 0 0 15px;
+  color: t.$muted;
+}
+
+.menuLabel {
+  white-space: nowrap;
 }

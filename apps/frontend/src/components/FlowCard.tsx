@@ -1,3 +1,4 @@
+import { CardMenu, menuItems } from './CardMenu.tsx'
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import type { BackendFlow, GoldenStatus, RunSummary } from '../api/types.ts'
 import { deniedReason, usePermissions } from '../state/permissions.tsx'
@@ -219,61 +220,58 @@ export function FlowCard({
           </button>
         )}
         <div className={styles.spacer} />
-        {flow.id && setDoctorFor && (
-          <button
-            className={styles.icon}
-            title="Check this flow: missing credentials, servers without auth, un-installed plugins, an invalid schedule, an exhausted budget. Informs — never blocks a run."
-            onClick={() => setDoctorFor(flow)}
-          >
-            ⚕
-          </button>
-        )}
-        <button className={styles.icon} title="Version history" onClick={() => setVersionsFor(flow)}>
-          ⟲
-        </button>
-        <button
-          className={styles.icon}
-          title={permissions.canEdit ? 'Settings' : deniedReason(permissions, 'edit')}
-          disabled={!permissions.canEdit}
-          onClick={() => setSettingsFor(flow)}
-        >
-          ⚙
-        </button>
-        <button className={styles.icon} title="Export JSON" onClick={() => exportFlow(flow)}>
-          ↓
-        </button>
-        <button
-          className={styles.icon}
-          title="Copy as template JSON — credentials, accounts and private endpoints are stripped, so it is safe to share. See docs/templates.md to propose it for the gallery."
-          onClick={() => void copyTemplate()}
-        >
-          {copied ? '✓' : '⎘'}
-        </button>
-        <button
-          className={styles.icon}
-          title={permissions.canEdit ? 'Duplicate' : deniedReason(permissions, 'edit')}
-          disabled={!permissions.canEdit}
-          onClick={() => onDuplicate(flow)}
-        >
-          ⧉
-        </button>
-        {onSandbox && (
-          <button
-            className={styles.icon}
-            title="Duplicate as sandbox: a copy that runs in plan mode, with every worker facade replaced by a dry-run twin. It proposes instead of acting — the dialog says exactly what is and is not simulated."
-            onClick={() => void onSandbox(flow)}
-          >
-            🧪
-          </button>
-        )}
-        <button
-          className={cx(styles.icon, styles.danger)}
-          title={permissions.canEdit ? 'Delete' : deniedReason(permissions, 'edit')}
-          disabled={!permissions.canEdit}
-          onClick={() => flow.id && onDelete(flow.id)}
-        >
-          ✕
-        </button>
+        {/* Everything a person does rarely, behind one button and with a name on it. Nine controls
+            is more than a card footer holds at four columns — they used to wrap onto a second line,
+            and before that sit on the card's own border — and seven of them were a glyph you had to
+            hover to identify. */}
+        <CardMenu
+          label={flow.name}
+          items={menuItems([
+            flow.id &&
+              setDoctorFor && {
+                label: 'Check this flow',
+                icon: '⚕',
+                hint: 'Missing credentials, servers without auth, un-installed plugins, an invalid schedule, an exhausted budget. Informs — never blocks a run.',
+                onSelect: () => setDoctorFor(flow),
+              },
+            { label: 'Version history', icon: '⟲', onSelect: () => setVersionsFor(flow) },
+            {
+              label: 'Settings',
+              icon: '⚙',
+              disabled: !permissions.canEdit,
+              disabledReason: deniedReason(permissions, 'edit'),
+              onSelect: () => setSettingsFor(flow),
+            },
+            { label: 'Export JSON', icon: '↓', onSelect: () => exportFlow(flow) },
+            {
+              label: copied ? 'Copied as template' : 'Copy as template',
+              icon: copied ? '✓' : '⎘',
+              hint: 'Credentials, accounts and private endpoints are stripped, so it is safe to share. See docs/templates.md to propose it for the gallery.',
+              onSelect: () => void copyTemplate(),
+            },
+            {
+              label: 'Duplicate',
+              icon: '⧉',
+              disabled: !permissions.canEdit,
+              disabledReason: deniedReason(permissions, 'edit'),
+              onSelect: () => onDuplicate(flow),
+            },
+            onSandbox && {
+              label: 'Duplicate as sandbox',
+              icon: '🧪',
+              hint: 'A copy that runs in plan mode, with every worker facade replaced by a dry-run twin. It proposes instead of acting — the dialog says exactly what is and is not simulated.',
+              onSelect: () => void onSandbox(flow),
+            },
+            {
+              label: 'Delete',
+              icon: '✕',
+              danger: true,
+              disabled: !permissions.canEdit,
+              disabledReason: deniedReason(permissions, 'edit'),
+              onSelect: () => flow.id && onDelete(flow.id),
+            },
+          ])}
+        />
       </div>
     </article>
   )

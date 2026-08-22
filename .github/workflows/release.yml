@@ -129,7 +129,7 @@ jobs:
             echo "::warning::$JAVA_HOME has no jmods; the whole JDK will be bundled and the installer will be larger."
           fi
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
       - name: Set up Node 24
         uses: actions/setup-node@v5
@@ -215,7 +215,7 @@ jobs:
           path: artifacts
 
       - name: Create the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # Flattened from the per-platform artifact folders.
           files: artifacts/**/*
