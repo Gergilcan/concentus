@@ -50,6 +50,12 @@ public final class SettingsCatalog {
             number("runs.max-retained", GROUP_RUNS, "Runs kept ready to stream",
                     "Older runs stay in the database and are still readable — this is only how many "
                             + "are held in memory for the console to attach to instantly.", true),
+            number("execution.max-processes", GROUP_RUNS, "Claude processes at once (total)",
+                    "The machine-wide ceiling over every claude process, whichever run or fan-out "
+                            + "started it. The two limits above and below multiply — eight runs of "
+                            + "four workers is thirty-two processes — and this is the cap on the "
+                            + "product. A worker that does not fit waits, and its run says so. "
+                            + "Applies without a restart.", true),
 
             number("knowledge.context-chars", GROUP_KNOWLEDGE, "Retrieved text per source",
                     "How much of a knowledge base may reach an agent in one run, in characters "

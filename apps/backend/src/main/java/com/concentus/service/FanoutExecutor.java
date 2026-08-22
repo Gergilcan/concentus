@@ -87,6 +87,11 @@ public class FanoutExecutor {
      * telemetry, and this stays a recorder of nothing there.
      */
     private com.concentus.telemetry.Telemetry telemetry = com.concentus.telemetry.Telemetry.none();
+    /**
+     * The machine-wide cap on claude processes, shared with {@link LocalClaudeExecutor}. Not final
+     * for the same reason telemetry is not: the constructor tests use runs everything unlimited.
+     */
+    private ProcessCeiling ceiling = ProcessCeiling.unlimited();
     private final ExecutorService pool;
     private final ScheduledExecutorService watchdogs;
 
@@ -100,7 +105,8 @@ public class FanoutExecutor {
                           @Value("${app.data-dir}") String dataDir,
                           @Value("${server.port:8734}") int serverPort,
                           com.concentus.config.Settings settings,
-                          com.concentus.telemetry.Telemetry telemetry) {
+                          com.concentus.telemetry.Telemetry telemetry,
+                          ProcessCeiling ceiling) {
         // Through Settings rather than as placeholders, so what somebody set under Resources →
         // Settings is what a fan-out actually runs with. The package-private constructor below
         // still takes plain values — it is what tests build, and they are about what a limit does
@@ -114,8 +120,9 @@ public class FanoutExecutor {
                         new ProcessBuilder(args).directory(workdir.toFile())
                                 .redirectErrorStream(true).start());
         // After the delegation rather than through it: the constructor below is what tests build,
-        // and none of them has anything to say about telemetry.
+        // and none of them has anything to say about telemetry or the process ceiling.
         this.telemetry = telemetry;
+        this.ceiling = ceiling;
     }
 
     FanoutExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
@@ -516,6 +523,29 @@ public class FanoutExecutor {
     }
 
     private Attempt attempt(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
+                            String userText, Path workdir, List<Path> dirs, String disallowedTools) {
+        // The machine-wide ceiling, taken before the process exists and held until it has exited.
+        // Waiting here parks a fanout-pool thread, which is the point: the alternative is a
+        // process the machine cannot carry. The run says what it is waiting for.
+        ProcessCeiling.Slot slot;
+        try {
+            slot = ceiling.acquire(() -> "TERMINATED".equals(run.status),
+                    msg -> run.emit(RunEvent.of("system", msg, spec.name, spec.nodeId)));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new Attempt(false, false, null, "interrupted while waiting for a process slot");
+        }
+        if (slot == null) {
+            return new Attempt(false, false, null, "run was stopped");
+        }
+        try {
+            return attemptWithSlot(run, spec, exec, cmd, userText, workdir, dirs, disallowedTools);
+        } finally {
+            slot.close();
+        }
+    }
+
+    private Attempt attemptWithSlot(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
                             String userText, Path workdir, List<Path> dirs, String disallowedTools) {
         boolean promptOnStdin = userText.length() > LocalClaudeExecutor.MAX_INLINE_PROMPT_CHARS;
         // Written next to the worker's own MCP config, and passed as a path — inline JSON does not

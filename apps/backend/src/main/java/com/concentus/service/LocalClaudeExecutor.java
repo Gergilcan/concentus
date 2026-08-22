@@ -56,6 +56,8 @@ public class LocalClaudeExecutor {
     private final PreRunSubflows preRunSubflows;
     private final McpRegistry mcpRegistry;
     private final PluginRegistry pluginRegistry;
+    /** The machine-wide cap on claude processes, shared with {@link FanoutExecutor}. */
+    private final ProcessCeiling ceiling;
     private final LocalStreamEventHandler streamHandler;
     private final ContextFolderResolver contextFolders;
     private final GitWorkspace gitWorkspace;
@@ -124,6 +126,7 @@ public class LocalClaudeExecutor {
                                SkillService skillService,
                                OrgContext orgContext,
                                PluginRegistry pluginRegistry,
+                               ProcessCeiling ceiling,
                                @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                                @Value("${app.data-dir}") String dataDir,
                                @Value("${local.auto-register-mcp:true}") boolean autoRegisterMcp,
@@ -143,6 +146,7 @@ public class LocalClaudeExecutor {
         this.skillService = skillService;
         this.orgContext = orgContext;
         this.pluginRegistry = pluginRegistry;
+        this.ceiling = ceiling;
         this.permissionMode = permissionMode;
         this.dataDir = dataDir;
         this.autoRegisterMcp = autoRegisterMcp;
@@ -193,10 +197,27 @@ public class LocalClaudeExecutor {
         // `git remote -v` or in anything the agent might paste into a commit or a PR body.
         pb.environment().putAll(GitWorkspace.environmentFor(run.checkouts));
 
+        // The machine-wide ceiling on claude processes, shared with every fan-out's workers.
+        // Acquired before the process exists, held until it has exited (the finally below).
+        ProcessCeiling.Slot slot;
+        try {
+            slot = ceiling.acquire(() -> "TERMINATED".equals(run.status),
+                    msg -> run.emit(RunEvent.of("system", msg)));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            fail(run, "Interrupted while waiting for a process slot.");
+            return;
+        }
+        if (slot == null) {
+            // The run was stopped while it waited; there is nothing to start.
+            return;
+        }
+
         Process proc;
         try {
             proc = pb.start();
         } catch (IOException e) {
+            slot.close();
             fail(run, "Failed to start claude: " + e.getMessage());
             return;
         }
@@ -226,6 +247,7 @@ public class LocalClaudeExecutor {
         } catch (Exception e) {
             run.emit(RunEvent.of("system", "Local run ended: " + e.getMessage()));
         } finally {
+            slot.close();
             run.localProcess = null;
             if (!"TERMINATED".equals(run.status) && !"ERROR".equals(run.status)) {
                 // Not IDLE: idle means "waiting for whatever you want next", and this run is
