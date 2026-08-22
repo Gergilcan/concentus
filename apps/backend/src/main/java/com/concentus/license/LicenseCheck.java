@@ -24,13 +24,19 @@ public final class LicenseCheck {
 
     /** Refuses to proceed unless an enterprise license (or its grace window) covers this install. */
     public static void requireEnterpriseForExternalDatabase(Path dataDir) {
-        requireEnterpriseForExternalDatabase(dataDir, LicenseVerifier.production(), Clock.systemUTC());
+        requireEnterpriseForExternalDatabase(dataDir, LicenseVerifier.production(),
+                System.getenv(LicenseService.ENV_VAR), Clock.systemUTC());
     }
 
-    /** Testable overload: an injectable verifier (fixture keys) and clock. */
-    static void requireEnterpriseForExternalDatabase(Path dataDir, LicenseVerifier verifier, Clock clock) {
-        LicenseService service = new LicenseService(verifier, dataDir, System.getenv(LicenseService.ENV_VAR),
-                clock);
+    /**
+     * Testable overload: an injectable verifier (fixture keys), env value and clock. The env value
+     * is a parameter here rather than read again from {@code System.getenv} — a test that wants "no
+     * env license" must be able to get that regardless of what is actually set in the process
+     * running the test, which the one-arg entry point above is the only caller allowed to assume.
+     */
+    static void requireEnterpriseForExternalDatabase(Path dataDir, LicenseVerifier verifier,
+                                                      String envLicense, Clock clock) {
+        LicenseService service = new LicenseService(verifier, dataDir, envLicense, clock);
         if (service.enterpriseActive()) return;
         throw new IllegalStateException(
                 "The shared database is an enterprise feature. Install a license via the "
