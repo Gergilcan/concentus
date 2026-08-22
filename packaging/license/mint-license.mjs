@@ -83,7 +83,11 @@ export function mint(opts, { keysDir, now = new Date() }) {
   return { token, id, licensee, email, seats: seatCount, expires, mintedAt, ledgerPath }
 }
 
-// ---- CLI wrapper: argv parsing, printing, and the (network-touching, untested) --send path ----
+// ---- CLI wrapper: argv parsing, printing, and the --send path ----
+// sendEmail() itself is exported and network-free-testable: it takes an injectable fetchImpl
+// (defaulting to globalThis.fetch) and never throws — ANY failure, transport-level (DNS,
+// connection refused, TLS, timeout) or an HTTP error response, comes back as { ok: false, ... }
+// so the caller always gets a chance to print the token and exit 1 instead of dying uncaught.
 
 function parseArgs(argv) {
   const opts = { send: false }
@@ -102,25 +106,31 @@ function parseArgs(argv) {
   return opts
 }
 
-async function sendEmail({ token, licensee }, { email }) {
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: process.env.LICENSE_FROM,
-      to: [email],
-      subject: 'Your Concentus enterprise license',
-      text:
-        `Hi,\n\nYour Concentus enterprise license for ${licensee}:\n\n${token}\n\n` +
-        'Paste it in Resources -> Settings -> License to activate it.\n',
-    }),
-  })
-  if (res.ok) return { ok: true }
-  const body = await res.text().catch(() => '')
-  return { ok: false, status: res.status, body }
+export async function sendEmail({ token, licensee }, { email, fetchImpl = globalThis.fetch }) {
+  try {
+    const res = await fetchImpl('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: process.env.LICENSE_FROM,
+        to: [email],
+        subject: 'Your Concentus enterprise license',
+        text:
+          `Hi,\n\nYour Concentus enterprise license for ${licensee}:\n\n${token}\n\n` +
+          'Paste it in Resources -> Settings -> License to activate it.\n',
+      }),
+    })
+    if (res.ok) return { ok: true }
+    const body = await res.text().catch(() => '')
+    return { ok: false, status: res.status, body }
+  } catch (err) {
+    // Transport-level failure: DNS, connection refused, TLS, timeout — fetch() rejects rather
+    // than resolving with a non-ok response. Treat it the same as an HTTP error: never throw.
+    return { ok: false, status: null, body: err.message }
+  }
 }
 
 async function main() {
@@ -149,7 +159,7 @@ async function main() {
   if (opts.send) {
     const sent = await sendEmail(result, opts)
     if (!sent.ok) {
-      console.error(`Send failed (${sent.status}): ${sent.body}`)
+      console.error(`Send failed${sent.status ? ` (${sent.status})` : ''}: ${sent.body}`)
       console.error('The token above was NOT emailed — copy it manually and send it yourself.')
       process.exitCode = 1
       return

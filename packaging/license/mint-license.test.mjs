@@ -4,7 +4,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { generateKeypair, verifyLicense } from '../../apps/website/api/_lib/license-format.mjs'
-import { mint } from './mint-license.mjs'
+import { mint, sendEmail } from './mint-license.mjs'
 
 function tempKeysDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'concentus-keys-test-'))
@@ -128,4 +128,45 @@ test('mint() rejects a non-positive or non-integer months/seats value', () => {
   assert.throws(() => mint({ licensee: 'ACME', email: 'ops@acme.com', seats: 1, months: 0 }, { keysDir: dir, now }))
   assert.throws(() => mint({ licensee: 'ACME', email: 'ops@acme.com', seats: 1, months: 1.5 }, { keysDir: dir, now }))
   assert.throws(() => mint({ licensee: 'ACME', email: 'ops@acme.com', seats: 0, months: 1 }, { keysDir: dir, now }))
+})
+
+test('sendEmail() flags a transport-level failure instead of throwing (no network touched)', async () => {
+  const rejectingFetch = async () => { throw new Error('getaddrinfo ENOTFOUND api.resend.com') }
+
+  const result = await sendEmail(
+    { token: 'CONCENTUS.fake.token', licensee: 'ACME S.L.' },
+    { email: 'ops@acme.com', fetchImpl: rejectingFetch },
+  )
+
+  assert.equal(result.ok, false)
+  assert.equal(result.status, null)
+  assert.match(result.body, /ENOTFOUND/)
+})
+
+test('sendEmail() flags a non-2xx HTTP response as failure too (no network touched)', async () => {
+  const failingFetch = async () => ({
+    ok: false,
+    status: 422,
+    text: async () => 'invalid `from` address',
+  })
+
+  const result = await sendEmail(
+    { token: 'CONCENTUS.fake.token', licensee: 'ACME S.L.' },
+    { email: 'ops@acme.com', fetchImpl: failingFetch },
+  )
+
+  assert.equal(result.ok, false)
+  assert.equal(result.status, 422)
+  assert.match(result.body, /invalid/)
+})
+
+test('sendEmail() reports success on a 2xx response (no network touched)', async () => {
+  const okFetch = async () => ({ ok: true, status: 200 })
+
+  const result = await sendEmail(
+    { token: 'CONCENTUS.fake.token', licensee: 'ACME S.L.' },
+    { email: 'ops@acme.com', fetchImpl: okFetch },
+  )
+
+  assert.equal(result.ok, true)
 })
