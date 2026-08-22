@@ -226,3 +226,81 @@ jobs:
           # the pipeline out does not put a build people will take as final at the top of the
           # releases page. A plain v1.0.0 is a normal release.
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+  # ---------------------------------------------------------------------------- channels
+  # The package-manager channels, fed from the release above. Stable tags only: a prerelease in
+  # winget or npm would be offered to people who never chose the beta train. Each channel is
+  # guarded by its own secret, so a missing token skips that channel with a log line instead of
+  # failing the release that already shipped.
+  channels:
+    name: Update install channels
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Compute the installer hash
+        id: hash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/Concentus-Setup-${version}.exe"
+          curl -sL "$url" -o installer.exe
+          echo "sha256=$(sha256sum installer.exe | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          rm installer.exe
+
+      # The scoop bucket lives in this repo, so `scoop update` reads whatever is committed here.
+      # checkver/autoupdate in the manifest are for tooling; this is what actually moves users.
+      - name: Update the scoop manifest
+        run: |
+          node -e '
+            const fs = require("fs");
+            const j = JSON.parse(fs.readFileSync("bucket/concentus.json", "utf8"));
+            const v = process.env.VERSION, h = process.env.SHA256;
+            j.version = v;
+            j.architecture["64bit"].url = `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/v${v}/Concentus-Setup-${v}.exe#/dl.7z`;
+            j.architecture["64bit"].hash = h;
+            fs.writeFileSync("bucket/concentus.json", JSON.stringify(j, null, 4) + "\n");
+          '
+        env:
+          VERSION: ${{ steps.hash.outputs.version }}
+          SHA256: ${{ steps.hash.outputs.sha256 }}
+
+      - name: Commit the scoop bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bucket/concentus.json
+          git diff --cached --quiet || git commit -m "chore(scoop): ${GITHUB_REF_NAME}"
+          git push origin main
+
+      # winget-pkgs takes a PR per version. wingetcreate reuses the manifests already merged for
+      # the previous version, swaps url+version, and submits — so the very FIRST version must be
+      # submitted by hand (see packaging/winget/README.md); this step carries every one after it.
+      - name: Submit to winget
+        if: env.WINGET_TOKEN != ''
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          version="${{ steps.hash.outputs.version }}"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${version}/Concentus-Setup-${version}.exe"
+          docker run --rm ghcr.io/russellbanks/komac:latest \
+            update Gergilcan.Concentus --version "$version" --urls "$url" \
+            --submit --token "$WINGET_TOKEN" \
+            || echo "::warning::winget submission failed — submit by hand with packaging/winget/README.md"
+
+      - name: Publish to npm
+        if: env.NPM_TOKEN != ''
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd packaging/npm
+          npm version "${{ steps.hash.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          npm publish --access public \
+            || echo "::warning::npm publish failed — run it by hand from packaging/npm"

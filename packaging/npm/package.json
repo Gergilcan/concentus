@@ -1,0 +1,34 @@
+{
+  "name": "concentus",
+  "version": "0.1.4",
+  "description": "Visual multi-agent AI orchestration that runs on your Claude subscription. This package downloads the desktop app's installer for your platform from GitHub Releases and launches it — the app itself is not inside the package.",
+  "bin": {
+    "concentus": "bin/concentus.mjs"
+  },
+  "files": [
+    "bin"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "win32",
+    "linux"
+  ],
+  "keywords": [
+    "ai",
+    "agents",
+    "claude",
+    "orchestration",
+    "automation",
+    "workflow",
+    "mcp"
+  ],
+  "author": "Gerard Gilabert",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Gergilcan/concentus.git"
+  },
+  "homepage": "https://github.com/Gergilcan/concentus"
+}

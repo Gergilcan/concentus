@@ -369,6 +369,28 @@
       <p>
         To run the backend on its own — a server, a container, a machine nobody sits at:
       </p>
+      <h3>Package managers</h3>
+      <p>
+        Also installable through a package manager — which sidesteps the SmartScreen warning an
+        unsigned browser download gets, because the file never carries the browser's
+        mark-of-the-web:
+      </p>
+      <pre><code># Windows — scoop (the bucket lives in the main repository)
+scoop bucket add concentus https://github.com/Gergilcan/concentus
+scoop install concentus
+
+# Windows — winget
+winget install concentus
+
+# Anywhere with Node — fetches the right installer from Releases
+npx concentus</code></pre>
+      <p>
+        Homebrew activates when a notarized macOS build exists. Updating: winget and the plain
+        installer keep the in-app updater; a scoop install updates with
+        <code>scoop update concentus</code> instead.
+      </p>
+
+      <h3>The bare backend</h3>
       <pre><code>java -jar concentus-backend.jar</code></pre>
       <p>
         With no environment at all, that starts an embedded PostgreSQL, generates its own encryption

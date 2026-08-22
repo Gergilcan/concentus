@@ -1,0 +1,46 @@
+{
+    "version": "0.1.4",
+    "description": "Visual multi-agent AI orchestration that runs on your Claude subscription. The drawing is the program.",
+    "homepage": "https://github.com/Gergilcan/concentus",
+    "license": "PolyForm-Noncommercial-1.0.0",
+    "##": [
+        "The NSIS installer is unwrapped rather than executed: 7-Zip opens NSIS, and electron-builder",
+        "keeps the whole application inside as $PLUGINSDIR/app-64.7z. Both unwraps happen in",
+        "pre_install because scoop's AUTOMATIC archive extraction strips $PLUGINSDIR — the one",
+        "directory that matters here — so the download must arrive as a plain .exe and be opened by",
+        "hand. Nothing is ever executed, which is the point: no installer process, no SmartScreen.",
+        "In-app auto-update is the one thing this shape gives up: quitAndInstall would run the NSIS",
+        "installer and produce a SECOND copy in AppData. Update with: scoop update concentus."
+    ],
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/Gergilcan/concentus/releases/download/v0.1.4/Concentus-Setup-0.1.4.exe#/dl.7z",
+            "hash": "8f82f2742e32a86fbdb3c4fb325246432a38659f59ad57649a5056f698ca49d6"
+        }
+    },
+    "pre_install": [
+        "Expand-7zipArchive \"$dir\\`$PLUGINSDIR\\app-64.7z\" \"$dir\"",
+        "Remove-Item \"$dir\\`$PLUGINSDIR\", \"$dir\\`$R0\" -Recurse -Force -ErrorAction SilentlyContinue"
+    ],
+    "notes": [
+        "Update with: scoop update concentus  (the in-app updater is for the installed edition).",
+        "First launch asks how to pay for runs: your Claude subscription, or an Anthropic API key."
+    ],
+    "checkver": {
+        "github": "https://github.com/Gergilcan/concentus"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/Gergilcan/concentus/releases/download/v$version/Concentus-Setup-$version.exe"
+            }
+        }
+    },
+    "shortcuts": [
+        [
+            "Concentus.exe",
+            "Concentus"
+        ]
+    ],
+    "bin": "Concentus.exe"
+}

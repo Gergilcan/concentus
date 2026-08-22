@@ -815,6 +815,29 @@ a data migration that breaks existing installs.
 > The same material laid out to be looked things up in rather than read through is on the site,
 > at **/docs** — the source is [apps/website/docs/index.html](apps/website/docs/index.html).
 
+## Installing
+
+The installer for your platform is under **Releases** — or through a package manager, which also
+sidesteps the SmartScreen warning an unsigned download gets from a browser:
+
+```bash
+# Windows — scoop (works today: the bucket lives in this repo)
+scoop bucket add concentus https://github.com/Gergilcan/concentus
+scoop install concentus          # update later with: scoop update concentus
+
+# Windows — winget (after the first winget-pkgs approval; see packaging/winget/README.md)
+winget install concentus
+
+# Any platform with Node — downloads the right installer from Releases and runs it
+npx concentus
+```
+
+Homebrew is prepared in `packaging/homebrew` and activates the day a notarized macOS build
+exists — a cask for a build that Gatekeeper would block would only install disappointment.
+
+> **License** — free for personal and other noncommercial use under
+> [PolyForm Noncommercial 1.0.0](LICENSE.md). Commercial use needs a license from the author.
+
 ## Updates
 
 The desktop app checks every four hours, downloads in the background, and installs when you quit.
