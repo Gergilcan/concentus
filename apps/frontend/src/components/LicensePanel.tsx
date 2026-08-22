@@ -33,6 +33,11 @@ function statusLine(s: LicenseStatus): string {
  * why it only needs to appear once, next to the problem.
  */
 export function LicensePanel() {
+  // Loading is its own flag rather than `status === null`: a status that never arrived (the GET
+  // failed) is a different fact from a status that hasn't arrived YET, and only the second one
+  // should hold the screen on a spinner. The first has to render — with the error visible and the
+  // token box still usable, because pasting a fresh token is exactly the way out of that failure.
+  const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<LicenseStatus | null>(null)
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState(false)
@@ -43,6 +48,7 @@ export function LicensePanel() {
       .getLicense()
       .then(setStatus)
       .catch((e) => setError(errMessage(e)))
+      .finally(() => setLoading(false))
   }, [])
 
   const apply = async () => {
@@ -59,22 +65,23 @@ export function LicensePanel() {
     }
   }
 
-  if (!status) return <Spinner />
+  if (loading) return <Spinner />
 
   return (
     <section className={styles.settingGroup}>
       <h4 className={styles.h4}>License</h4>
-      {status.valid ? (
-        <p>{statusLine(status)}</p>
-      ) : (
-        <>
-          <p>No license</p>
-          {status.problem && <p className={panels.hint}>{status.problem}</p>}
-          <a className={styles.linkBtn} href={REQUEST_URL} target="_blank" rel="noreferrer">
-            Request a license
-          </a>
-        </>
-      )}
+      {status &&
+        (status.valid ? (
+          <p>{statusLine(status)}</p>
+        ) : (
+          <>
+            <p>No license</p>
+            {status.problem && <p className={panels.hint}>{status.problem}</p>}
+            <a className={styles.textLink} href={REQUEST_URL} target="_blank" rel="noreferrer">
+              Request a license
+            </a>
+          </>
+        ))}
       <label className={panels.field}>
         <span>License token</span>
         <textarea rows={4} value={token} onChange={(e) => setToken(e.target.value)} />

@@ -88,4 +88,17 @@ describe('LicensePanel', () => {
 
     expect(await screen.findByText('That token has expired.')).toBeInTheDocument()
   })
+
+  // A failed GET used to leave `status` null forever, and the render bailed to the spinner before
+  // it ever reached the error line — a permanently spinning panel with no visible reason and no
+  // way out. The fix is a `loading` flag independent of `status`, so a failed fetch still renders:
+  // error visible, token box still usable.
+  it('shows the error and stays usable when the initial fetch fails', async () => {
+    getLicense.mockRejectedValue(new Error('The server is not answering.'))
+    render(<LicensePanel />)
+
+    expect(await screen.findByText('The server is not answering.')).toBeInTheDocument()
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.getByLabelText('License token')).toBeInTheDocument()
+  })
 })
