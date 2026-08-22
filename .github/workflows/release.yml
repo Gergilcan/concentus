@@ -380,6 +380,12 @@ jobs:
         with:
           ref: main
 
+      # setup-node v5 reads packageManager from the root package.json and turns pnpm caching on
+      # by itself — and then fails outright if the pnpm binary is absent. This job never runs
+      # pnpm, but the cheapest way to keep setup-node happy is the same pair the installers use.
+      # Found the hard way: this exact step killed v0.1.5's first channels run.
+      - uses: pnpm/action-setup@v5
+
       # Trusted publishing needs npm >= 11.5.1 (Node 24 carries it); the runner's default is
       # whatever it is, which is exactly the kind of dependency a publish should not have.
       - uses: actions/setup-node@v5
