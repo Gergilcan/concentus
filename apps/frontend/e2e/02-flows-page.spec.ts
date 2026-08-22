@@ -1,4 +1,4 @@
-import { expect, flowCard, openApp, test } from './fixtures'
+import { expect, flowCard, openApp, test, cardAction } from './fixtures'
 
 /**
  * The Flows dashboard: KPIs, the toolbar, search and the empty states. Tolerant of whether the
@@ -45,7 +45,7 @@ test('a recipe builds a configured flow from the bundled sample', async ({ page 
   // dashboard. A test that leaves state behind breaks its neighbours, not itself.
   page.on('dialog', (d) => void d.accept())
   await page.getByRole('button', { name: '← Flows' }).click()
-  await flowCard(page, 'Send me a briefing every morning').getByTitle('Delete').click()
+  await cardAction(page, 'Send me a briefing every morning', 'Delete')
   await expect(flowCard(page, 'Send me a briefing every morning')).toHaveCount(0)
 })
 
@@ -201,7 +201,7 @@ test('drag and drop: a card into a folder, a folder into a folder, a card back o
   page.on('dialog', (d) => void d.accept())
   for (const name of ['E2E dnd mover', 'E2E dnd resident']) {
     await page.getByLabel('Search flows').fill(name)
-    await flowCard(page, name).getByTitle('Delete').click()
+    await cardAction(page, name, 'Delete')
     await expect(flowCard(page, name)).toHaveCount(0)
   }
   await page.getByLabel('Search flows').fill('')
@@ -232,7 +232,7 @@ test('a folder can be born empty, filled by drag, and removed when empty again',
 
   // Deleting its only flow empties it; back at the root the tile is still there (a folder must
   // not vanish under the user), and the ✕ takes it away for good.
-  await flowCard(page, 'E2E draft flow').getByTitle('Delete').click()
+  await cardAction(page, 'E2E draft flow', 'Delete')
   await expect(flowCard(page, 'E2E draft flow')).toHaveCount(0)
   await page.getByRole('button', { name: 'All flows' }).click()
   await expect(tile).toBeVisible()

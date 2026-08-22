@@ -1317,18 +1317,12 @@
 
 /* ---------------- the card's overflow menu ---------------- */
 
-.menuWrap {
-  position: relative;
-  display: inline-flex;
-}
-
 .menu {
-  position: absolute;
-  /* Above the button, not below it: this row is the last thing in a card, and a menu opening
-     downwards from the bottom card of a grid opens off the screen. */
-  bottom: calc(100% + 6px);
-  right: 0;
-  z-index: 40;
+  /* Fixed and painted at the top of the document, positioned from the button rect by
+     CardMenu. A card sets overflow: hidden to keep its tone stripe inside its rounded corner,
+     and an absolutely-positioned popup inside it was sliced off by that edge. */
+  position: fixed;
+  z-index: 400;
   min-width: 208px;
   padding: 4px;
   background: t.$panel;

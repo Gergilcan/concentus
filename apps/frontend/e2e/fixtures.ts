@@ -168,3 +168,28 @@ export async function goTo(page: Page, view: 'Flows' | 'Studio' | 'Resources' | 
 export function flowCard(page: Page, name: string) {
   return page.getByRole('article').filter({ has: page.getByRole('heading', { name, exact: true }) })
 }
+
+/**
+ * Runs one of a flow card's menu actions — Delete, Duplicate, Settings, and the rest.
+ *
+ * <p>They used to be a row of icon buttons on the card itself, reachable by title. Nine controls
+ * did not fit a card at four columns, so all but Open and Run moved behind a ⋯ menu where each one
+ * has a name. Tests say the name now, which is also what a person reads.
+ */
+export async function cardAction(
+  page: Page,
+  flowName: string,
+  // 'Duplicate' is also a prefix of 'Duplicate as sandbox', so a caller sometimes has to say
+  // exact. Taking the options object rather than only a name keeps that possible without a
+  // second helper.
+  action: string | RegExp | { name: string; exact: boolean },
+): Promise<void> {
+  await flowCard(page, flowName).getByRole('button', { name: /More actions/ }).click()
+  // The menu is rendered into the body, not the card — a card clips its own overflow — so it is
+  // found on the page rather than inside the card.
+  const item = typeof action === 'object' && 'name' in action
+    ? page.getByRole('menuitem', action)
+    : page.getByRole('menuitem', { name: action })
+  await item.click()
+}
+

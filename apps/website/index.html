@@ -195,7 +195,10 @@
   .hr { right: -4px; margin-top: -3.5px; }
 
   .cv { position: relative; }
-  .cv svg { position: absolute; left: 0; top: 0; pointer-events: none; }
+  /* The wires are drawn in the SAME pixel space the node cards are positioned in, so this SVG
+     must never be sized as a percentage of its container: one stretched axis and every line
+     walks off its box. Fixed width/height, matching the viewBox, no preserveAspectRatio. */
+  .cv svg { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
   .wire { fill: none; stroke-width: 1.6; opacity: 0.45; }
   .wire-kin { fill: none; stroke-width: 2.5; opacity: 0.9; }
   .wire-live { fill: none; stroke-width: 2.5; stroke-dasharray: 5 9; animation: flow 2.6s linear infinite; }
@@ -268,9 +271,11 @@
     background: var(--bg); border-bottom: 1px solid var(--border);
   }
   .win-r { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-  .studio { min-width: 1100px; height: 620px; display: flex; flex-direction: column; }
-  .studio-body { display: grid; grid-template-columns: 260px 1fr 300px; flex: 1; min-height: 0; }
-  .console-win { min-width: 900px; height: 452px; display: grid; grid-template-columns: 260px 1fr; }
+  /* 260 palette + 700 canvas + 300 inspector: the palette and inspector are the app's own
+     default widths, and the canvas is fixed rather than 1fr because the wires are drawn in it. */
+  .studio { width: 1260px; height: 620px; margin: 0 auto; display: flex; flex-direction: column; }
+  .studio-body { display: grid; grid-template-columns: 260px 700px 300px; flex: 1; min-height: 0; }
+  .console-win { min-width: 900px; max-width: 1260px; height: 452px; margin: 0 auto; display: grid; grid-template-columns: 260px 1fr; }
 
   .rrow {
     display: flex; align-items: center; gap: 8px; padding: 7px 8px;
@@ -635,42 +640,42 @@
             </div>
 
             <div class="cv grid">
-              <svg width="100%" height="100%" viewBox="0 0 540 582" preserveAspectRatio="none" aria-hidden="true">
-                <path class="wire" d="M224 116 C250 116 254 106 280 106" stroke="var(--mcp)"></path>
-                <path class="wire-live thin" d="M224 116 C250 116 254 106 280 106" stroke="var(--mcp)"></path>
-                <path class="wire" d="M470 106 C500 106 510 196 540 196" stroke="var(--agent)"></path>
-                <path class="wire-live thin" d="M470 106 C500 106 510 196 540 196" stroke="var(--agent)" style="animation-delay:-.5s"></path>
-                <path class="wire" d="M470 106 C520 106 490 392 540 392" stroke="var(--agent)"></path>
-                <path class="wire-live thin" d="M470 106 C520 106 490 392 540 392" stroke="var(--agent)" style="animation-delay:-1s"></path>
-                <path class="wire" d="M224 358 C350 358 414 392 540 392" stroke="var(--sql)"></path>
-                <path class="wire-live thin" d="M224 358 C350 358 414 392 540 392" stroke="var(--sql)" style="animation-delay:-1.6s"></path>
+              <svg width="700" height="581" viewBox="0 0 700 581" aria-hidden="true">
+                <path class="wire" d="M210 121 C250 121 210 105 250 105" stroke="var(--mcp)"></path>
+                <path class="wire-live thin" d="M210 121 C250 121 210 105 250 105" stroke="var(--mcp)"></path>
+                <path class="wire" d="M440 105 C480 105 430 201 470 201" stroke="var(--agent)"></path>
+                <path class="wire-live thin" d="M440 105 C480 105 430 201 470 201" stroke="var(--agent)" style="animation-delay:-.5s"></path>
+                <path class="wire" d="M440 105 C500 105 410 395 470 395" stroke="var(--agent)"></path>
+                <path class="wire-live thin" d="M440 105 C500 105 410 395 470 395" stroke="var(--agent)" style="animation-delay:-1s"></path>
+                <path class="wire" d="M210 359 C270 359 410 395 470 395" stroke="var(--sql)"></path>
+                <path class="wire-live thin" d="M210 359 C270 359 410 395 470 395" stroke="var(--sql)" style="animation-delay:-1.6s"></path>
               </svg>
 
-              <div class="np n v-mcp" style="left:34px;top:86px">
+              <div class="np n v-mcp" style="left:20px;top:86px">
                 <span class="hr"></span>
                 <div class="n-h"><span class="n-i">⚙</span><span class="n-t">linear</span><span class="n-b">MCP</span></div>
                 <div class="n-s">https://mcp.linear.app/sse</div>
               </div>
-              <div class="np n v-sql" style="left:34px;top:316px">
+              <div class="np n v-sql" style="left:20px;top:316px">
                 <span class="hr"></span>
                 <div class="n-h"><span class="n-i">🗄</span><span class="n-t">tickets</span><span class="n-b">SQL</span></div>
                 <div class="n-s">select id, title, body from tickets where key = :key</div>
               </div>
-              <div class="np n v-coordinator" style="left:280px;top:40px">
+              <div class="np n v-coordinator" style="left:250px;top:40px">
                 <span class="hl"></span><span class="hr"></span>
                 <div class="n-h"><span class="n-i">★</span><span class="n-t">Tech Lead</span><span class="n-b coord">coordinator</span></div>
                 <div class="n-m">claude-opus-5</div>
                 <div class="n-s">Read the ticket, split it into backend and frontend work, and hand each part out.</div>
                 <div class="n-e"><i></i>Running · 41.2k</div>
               </div>
-              <div class="np n v-agent" style="left:540px;top:136px">
+              <div class="np n v-agent" style="left:470px;top:136px">
                 <span class="hl"></span><span class="hr"></span>
                 <div class="n-h"><span class="n-i">◆</span><span class="n-t">Backend</span><span class="n-b">agent</span></div>
                 <div class="n-m">claude-sonnet-5</div>
                 <div class="n-s">Spring Boot, Java 25. The compiler and its tests, nothing else.</div>
                 <div class="n-e"><i></i>Running · 18.7k</div>
               </div>
-              <div class="np n v-agent" style="left:540px;top:332px">
+              <div class="np n v-agent" style="left:470px;top:332px">
                 <span class="hl"></span><span class="hr"></span>
                 <div class="n-h"><span class="n-i">◆</span><span class="n-t">Frontend</span><span class="n-b">agent</span></div>
                 <div class="n-m">claude-sonnet-5</div>

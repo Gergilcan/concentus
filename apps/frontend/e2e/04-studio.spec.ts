@@ -1,4 +1,4 @@
-import { expect, flowCard, goTo, openApp, test } from './fixtures'
+import { expect, flowCard, goTo, openApp, test, cardAction } from './fixtures'
 
 /**
  * The Studio: palette, canvas and inspector working together. Nodes are added through the palette
@@ -97,6 +97,6 @@ test('every studio panel folds away and comes back', async ({ page }) => {
 test('cleans up its flow', async ({ page }) => {
   await openApp(page)
   page.on('dialog', (dialog) => void dialog.accept())
-  await flowCard(page, NAME).getByTitle('Delete').click()
+  await cardAction(page, NAME, 'Delete')
   await expect(flowCard(page, NAME)).toHaveCount(0)
 })

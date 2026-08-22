@@ -58,6 +58,7 @@ test('a schedule builds from natural choices, and custom cron still exists', asy
   await page.getByRole('button', { name: '← Flows' }).click()
   page.on('dialog', (d) => void d.accept())
   const card = page.getByRole('article').filter({ hasText: 'E2E cron flow' })
-  await card.getByTitle('Delete').click()
+  await card.getByRole('button', { name: /More actions/ }).click()
+  await page.getByRole('menuitem', { name: 'Delete' }).click()
   await expect(card).toHaveCount(0)
 })

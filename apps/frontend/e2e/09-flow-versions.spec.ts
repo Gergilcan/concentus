@@ -1,4 +1,4 @@
-import { expect, flowCard, openApp, test } from './fixtures'
+import { expect, flowCard, openApp, test, cardAction } from './fixtures'
 
 /**
  * Flow version history end to end: every save appends a revision, the Studio's Versions tab lists
@@ -105,6 +105,6 @@ test('restoring an old revision appends it as a new one instead of erasing histo
 test('cleans up its flow', async ({ page }) => {
   await openApp(page)
   page.on('dialog', (dialog) => void dialog.accept())
-  await flowCard(page, NAME).getByTitle('Delete').click()
+  await cardAction(page, NAME, 'Delete')
   await expect(flowCard(page, NAME)).toHaveCount(0)
 })

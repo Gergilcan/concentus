@@ -1,4 +1,4 @@
-import { expect, flowCard, goTo, openApp, test } from './fixtures'
+import { expect, flowCard, goTo, openApp, test, cardAction } from './fixtures'
 
 /**
  * A flow's whole life through the real UI and the real API: created in the Studio, named, saved,
@@ -30,7 +30,7 @@ test('duplicates the flow', async ({ page }) => {
   await openApp(page)
   // exact: "Duplicate as sandbox" is a second button on the same card, and title matching is
   // substring-based.
-  await flowCard(page, NAME).getByTitle('Duplicate', { exact: true }).click()
+  await cardAction(page, NAME, { name: 'Duplicate', exact: true })
   await expect(flowCard(page, `${NAME} (copy)`)).toHaveCount(1)
 })
 
@@ -53,7 +53,7 @@ test('makes a sandbox copy that is paused, tagged, and in plan mode', async ({ p
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await page.getByRole('button', { name: '← Flows' }).click()
 
-  await flowCard(page, SANDBOXED).getByTitle(/Duplicate as sandbox/).click()
+  await cardAction(page, SANDBOXED, 'Duplicate as sandbox')
 
   const sandbox = flowCard(page, `${SANDBOXED} (sandbox)`)
   await expect(sandbox).toHaveCount(1)
@@ -72,7 +72,7 @@ test('makes a sandbox copy that is paused, tagged, and in plan mode', async ({ p
   await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
   await page.getByRole('button', { name: '← Flows' }).click()
   for (const name of [`${SANDBOXED} (sandbox)`, SANDBOXED]) {
-    await flowCard(page, name).getByTitle('Delete').click()
+    await cardAction(page, name, 'Delete')
     await expect(flowCard(page, name)).toHaveCount(0)
   }
 })
@@ -95,7 +95,7 @@ test('deletes both flows, confirming the dialog', async ({ page }) => {
   page.on('dialog', (dialog) => void dialog.accept())
 
   for (const name of [`${NAME} renamed`, NAME]) {
-    await flowCard(page, name).getByTitle('Delete').click()
+    await cardAction(page, name, 'Delete')
     await expect(flowCard(page, name)).toHaveCount(0)
   }
 })
