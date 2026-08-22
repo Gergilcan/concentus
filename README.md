@@ -835,6 +835,12 @@ npx concentus
 > **License** — free for personal and other noncommercial use under
 > [PolyForm Noncommercial 1.0.0](LICENSE.md). Commercial use needs a license from the author.
 
+The app itself asks for none of that at runtime: it runs at a one-seat limit with no license at
+all, and a free individual license — same limit, just your name on it — is a form away at
+[concentus-ai.com/#license](https://www.concentus-ai.com/#license). A shared database, members
+beyond the first, and SSO are the enterprise features, priced per seat and billed monthly or
+annually. See [the licensing docs](https://www.concentus-ai.com/docs#licensing) for the details.
+
 ## Updates
 
 The desktop app checks every four hours, downloads in the background, and installs when you quit.
