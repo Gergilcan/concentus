@@ -24,6 +24,7 @@ import type {
   KnowledgeDoc,
   KnowledgeHit,
   LibraryAgent,
+  LicenseStatus,
   FlowVersionInfo,
   GoldenStatus,
   McpDef,
@@ -460,6 +461,11 @@ export const api = {
 
   // auth (which Claude credentials the backend runs on — unrelated to signing in)
   authStatus: () => req<AuthStatus>('/auth/status'),
+
+  // license (what this installation is running under)
+  getLicense: () => req<LicenseStatus>('/license'),
+  installLicense: (token: string) =>
+    req<LicenseStatus>('/license', { method: 'POST', body: JSON.stringify({ token }) }),
 
   // account / sign-in
   session: () => req<SessionInfo>('/account/session'),
