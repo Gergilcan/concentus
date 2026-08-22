@@ -239,10 +239,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # For npm trusted publishing: the workflow proves its identity to npm with an OIDC token
+      # instead of a stored secret. As of July 2026, long-lived publish tokens that bypass 2FA
+      # are on a deprecation clock (no direct publishing from January 2027), so a token here
+      # would be building on sand.
+      id-token: write
     steps:
       - uses: actions/checkout@v5
         with:
           ref: main
+
+      # Trusted publishing needs npm >= 11.5.1 (Node 24 carries it); the runner's default is
+      # whatever it is, which is exactly the kind of dependency a publish should not have.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
 
       - name: Compute the installer hash
         id: hash
@@ -294,13 +305,12 @@ jobs:
             --submit --token "$WINGET_TOKEN" \
             || echo "::warning::winget submission failed — submit by hand with packaging/winget/README.md"
 
-      - name: Publish to npm
-        if: env.NPM_TOKEN != ''
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # No token: npm's trusted publishing accepts this workflow's OIDC identity, configured
+      # once on the package's settings at npmjs.com (user Gergilcan, repo concentus, workflow
+      # release.yml). The FIRST publish cannot use this — trusted publishers attach to a package
+      # that already exists — so it is done interactively, with 2FA, from packaging/npm.
+      - name: Publish to npm (trusted publishing)
         run: |
           cd packaging/npm
           npm version "${{ steps.hash.outputs.version }}" --no-git-tag-version --allow-same-version
-          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
-          npm publish --access public \
-            || echo "::warning::npm publish failed — run it by hand from packaging/npm"
+          npm publish --access public             || echo "::warning::npm publish failed — is the trusted publisher configured on npmjs.com, and has the first version been published by hand?"
