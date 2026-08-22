@@ -1,0 +1,8 @@
+{
+  "individual": {
+    "publicKeySpkiBase64": "MCowBQYDK2VwAyEA49fG+6TUzgzxZqKc59udFcR8SMIyqNt1BwF2KZ0q9jQ="
+  },
+  "enterprise": {
+    "publicKeySpkiBase64": "MCowBQYDK2VwAyEA3lM2Dr0cFgBH4pxbn8+7ZFqcqNa1bSh9MkqaWuMIf/o="
+  }
+}
