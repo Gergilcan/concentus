@@ -235,29 +235,60 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+        # electron-builder invoked directly rather than through `pnpm package` with a trailing
+        # flag: pnpm treats --config.* as its own configuration override and would eat it.
         run: |
           set -euo pipefail
-          # Spelled out rather than `pnpm package` with a trailing flag: pnpm treats --config.* as
-          # its own configuration override, so the flag has to be handed to electron-builder
-          # directly.
-          package_without_notarizing() {
-            pnpm run build && pnpm run payload \
-              && pnpm exec electron-builder --publish never --config.mac.notarize=false
-          }
+          pnpm run build
+          pnpm run payload
+
           if [ -z "${CSC_LINK}" ]; then
             echo "::warning::MAC_CERT_P12 is not set — building unsigned and without notarization. Gatekeeper will refuse this build on any other machine; fine for checking packaging, never for shipping."
             export CSC_IDENTITY_AUTO_DISCOVERY=false
-            package_without_notarizing
-          elif [ -z "${APPLE_API_KEY_CONTENT}" ]; then
+            pnpm exec electron-builder --publish never --config.mac.notarize=false
+            exit 0
+          fi
+
+          # Apple's notary unpacks every jar in the app and rejects the submission over any
+          # unsigned Mach-O it finds there — the backend jar (pgvector), jna, onnxruntime and
+          # tokenizers all carry one. electron-builder's signer never opens a jar, so those are
+          # signed here first, with the same certificate imported into a throwaway keychain
+          # (codesign only reads identities out of keychains, and the runner's has nothing).
+          KEYCHAIN="$RUNNER_TEMP/jar-sign.keychain-db"
+          KC_PW=$(openssl rand -hex 16)
+          printf '%s' "$CSC_LINK" | base64 --decode > "$RUNNER_TEMP/jar-sign-cert.p12"
+          security create-keychain -p "$KC_PW" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KC_PW" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/jar-sign-cert.p12" -k "$KEYCHAIN" -f pkcs12 -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/jar-sign-cert.p12"
+          # Without this, codesign hangs on a UI permission prompt no runner will ever answer.
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PW" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F'"' '/Developer ID Application/ {print $2; exit}')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::The imported p12 holds no Developer ID Application identity."
+            exit 1
+          fi
+          node scripts/sign-jar-natives.mjs "$IDENTITY"
+
+          if [ -z "${APPLE_API_KEY_CONTENT}" ]; then
             echo "::warning::APPLE_API_KEY_CONTENT is not set — signed but NOT notarized, so Gatekeeper will still refuse it on other machines."
-            package_without_notarizing
+            pnpm exec electron-builder --publish never --config.mac.notarize=false
           else
             # electron-builder hands these straight to notarytool: APPLE_API_KEY is a path, so the
             # key content is written out here rather than passed around.
             export APPLE_API_KEY="$RUNNER_TEMP/apple_api_key.p8"
             printf '%s' "$APPLE_API_KEY_CONTENT" > "$APPLE_API_KEY"
-            pnpm package
+            pnpm exec electron-builder --publish never
           fi
+
+      # The keychain above outlives its step, so a dedicated step drops it even when the build
+      # fails; the leftover would only confuse the next debugging session on a rerun.
+      - name: Remove the jar-signing keychain
+        if: always() && runner.os == 'macOS'
+        shell: bash
+        run: security delete-keychain "$RUNNER_TEMP/jar-sign.keychain-db" 2>/dev/null || true
 
       - name: Upload installers as artifacts
         uses: actions/upload-artifact@v5

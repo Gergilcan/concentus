@@ -87,8 +87,11 @@ Without the token the step logs a warning and skips, same as winget.
 ## What the workflow does with all this
 
 Per mac runner (arm64 on `macos-latest`, x64 on `macos-15-intel`): build jar + jlink runtime +
-pgvector for that arch, then electron-builder signs every binary in the bundle with the hardened
-runtime and the entitlements in `apps/desktop/build/entitlements.mac.plist`, produces
+pgvector for that arch, then `scripts/sign-jar-natives.mjs` signs the mac natives INSIDE the
+staged jars — the notary unpacks jars and rejects any unsigned Mach-O there (pgvector, jna,
+onnxruntime, tokenizers), and electron-builder's signer never opens a jar. Then electron-builder
+signs every binary in the bundle with the hardened runtime and the entitlements in
+`apps/desktop/build/entitlements.mac.plist`, produces
 `Concentus-<version>-<arch>.dmg` + `.zip`, submits to notarytool and staples the ticket. The
 publish job merges the two arch update feeds into one `latest-mac.yml` (electron-updater on mac
 updates from the zip — that is why it exists).
