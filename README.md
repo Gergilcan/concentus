@@ -123,6 +123,14 @@ concentus/
   coordinator becomes a sub-agent (a flow may only have one coordinator), names are made unique, and
   a copied webhook node starts with an empty secret. Flows themselves duplicate from the ⧉ button on
   their dashboard card.
+- **Undo, tidy, guides** — every canvas change is undoable (`Ctrl+Z` / `Ctrl+Y`, or the ↶ ↷
+  buttons), including deleting a block, which used to be irreversible short of reloading without
+  saving. **⌗ Tidy** lays a hand-grown flow out automatically — the chain left to right,
+  capabilities hung under their agents — and is itself one `Ctrl+Z` from undone. Dragging a block
+  snaps it to its neighbours' edges and centres with Figma-style alignment guides. Wires are
+  tinted by the output they leave from — the on-error path is red and dashed, the else path amber —
+  so the failure path reads at a distance, not only at the handle. A focused block opens with
+  `Enter`.
 - **Run** — how a flow executes depends on your credential:
   - **Local (subscription):** the `claude` CLI runs the coordinator + sub-agents (mapped to Claude
     Code subagents via `--agents`/`.claude/agents`) on your machine. Each command is a turn in the
@@ -188,12 +196,24 @@ concentus/
 - **Golden runs** — mark one execution as a flow's known-good reference, then replay its exact
   input against the **edited** flow and diff the two runs side by side. The deliberate opposite of
   retry, which replays against the flow as it *was*.
+- **Replay vs current** — golden runs compare outputs; this compares **decisions**. From any
+  execution, walk its recorded per-block outputs through the flow as saved *today* — without
+  running anything — and the canvas paints where the path would diverge: a block that ran and
+  would now be skipped (a condition someone edited), a skipped branch the edited gate would now
+  fire, recorded work whose block was deleted. Honest about its one limit, on the banner itself:
+  it replays routing, not agents — where a decision needs output that was never recorded, it says
+  "cannot be decided" rather than guessing.
 - **Flow memory** — every saved flow keeps short notes that survive between runs
   (`memory_read` / `memory_append` tools): decisions taken, state reached, approaches that failed.
   Agents are told to read it before starting, so run N+1 stops redoing what run N learned.
 - **Budgets & usage** — a flow can carry a monthly USD ceiling; at or past it, new runs are
   refused until next month (a run in flight always finishes). The **Usage** page shows measured
-  Claude consumption on the machine, and every run prices each block at its own model's rate.
+  Claude consumption on the machine, and every run prices each block at its own model's rate —
+  shown **on the block itself** during and after a run (tokens and estimated cost on the status
+  badge), so the canvas is the cost report when something comes out expensive.
+- **The interface speaks English, Spanish and Catalan** — chosen next to the theme under
+  Resources → Settings, with **Auto** (the default) following your system language, so most
+  people never have to find the control.
 - **Skills** — upload Agent Skills (a zip with a `SKILL.md`) under Resources → Skills and assign
   them per agent; they are installed into the run's workspace and the agent is told they are its
   own.
@@ -217,6 +237,13 @@ own instructions (never the whole flow's context), its own `--add-dir` grants, i
 and true parallelism, where subagents in a shared session run one at a time. Workers cannot
 delegate (no Task tool) and cannot run shell commands; the fan-out is one level deep by
 construction.
+
+One ceiling holds over all of it: **`execution.max-processes`** (Resources → Settings, default
+10) caps the total `claude` processes on the machine, whichever run or fan-out started them. The
+per-pool limits multiply — eight concurrent runs of four workers would be thirty-two processes,
+each hundreds of MB — and this is the cap on the product. A worker that does not fit waits for a
+slot, with a line in its run saying exactly that; raising the setting frees queued work without a
+restart.
 
 - **The drawn sub-agents are the plan.** Each runs the turn's instruction as its own process, and
   the run ends with a combined report that names failed workers instead of hiding them.

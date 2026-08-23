@@ -873,6 +873,7 @@
         <div><span class="eyebrow" style="color:var(--verifier)">⚖ Verified</span><p>What the adversarial verifier killed, out of what it judged. Rejected output never reaches the merge.</p></div>
         <div><span class="eyebrow" style="color:var(--warn)">⟳ Retried</span><p>A run that only passes after retrying everything is not healthy — it is lucky. The console says which.</p></div>
         <div><span class="eyebrow" style="color:var(--mcp)">⧗ Parallel</span><p>Wall clock against the same work done end to end. That ×factor is what the fan-out actually bought.</p></div>
+        <div><span class="eyebrow" style="color:var(--warn)">⟲ Replay</span><p>Walk a finished run's recorded outputs through the flow as it is drawn <em>today</em> — the canvas rings every block whose fate would flip. Decisions, not outputs; nothing is executed.</p></div>
       </div>
     </div>
   </section>
@@ -947,6 +948,7 @@
           · <code>winget install concentus</code>
           · <code>brew tap gergilcan/concentus &amp;&amp; brew install --cask concentus</code>
           · <code>npx concentus</code></p>
+          <p class="note" style="margin-top:10px">The interface speaks English, Spanish and Catalan — it follows your system language on first launch.</p>
         </div>
       </div>
 

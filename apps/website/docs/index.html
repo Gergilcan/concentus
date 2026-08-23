@@ -429,6 +429,12 @@ npx concentus</code></pre>
         Everybody after that arrives as a <strong>Viewer</strong>. Arriving with a valid company
         account proves who somebody is, not what they should be allowed to change.
       </p>
+      <p>
+        The interface speaks <strong>English, Spanish and Catalan</strong>. It follows your system
+        language by default; the choice lives next to the theme under
+        <em>Resources → Settings</em>, applies instantly, and belongs to this browser rather than
+        to the installation.
+      </p>
       <div class="warn">
         <b>Servers reachable before anybody claims them</b>
         <p>
@@ -493,7 +499,28 @@ npx concentus</code></pre>
       </p>
       <p>
         Selecting a block rings what feeds it and what it feeds, one hop in each direction.
-        Double-clicking opens its properties.
+        Double-clicking opens its properties; a block focused with <code>Tab</code> opens with
+        <code>Enter</code>.
+      </p>
+
+      <h3>Undo, tidy, guides</h3>
+      <p>
+        Every canvas change is undoable — <code>Ctrl</code>+<code>Z</code> /
+        <code>Ctrl</code>+<code>Y</code>, or the ↶ ↷ buttons — including deleting a block, which
+        used to be irreversible short of reloading without saving. A burst of typing in an
+        inspector counts as one step, and a drag as one step, so undo moves in the units you think
+        in.
+      </p>
+      <p>
+        <strong>⌗ Tidy</strong> lays out a flow that grew by hand: the chain left to right,
+        capabilities hung under their agents — the same shape the canvas draws when it places
+        blocks for you. A layout you hate is one <code>Ctrl</code>+<code>Z</code> from gone.
+        While dragging, alignment guides snap a block to its neighbours' edges and centres.
+      </p>
+      <p>
+        Wires are tinted by the output they leave from: the <strong>on error</strong> path red and
+        dashed, the <strong>else</strong> path amber — so at three steps' distance the path of
+        failure and the path of success stop looking identical.
       </p>
 
       <h3>What a wire means</h3>
@@ -535,7 +562,9 @@ npx concentus</code></pre>
             <tr><td><code>Ctrl</code> + <code>K</code></td><td>Command palette — reach any view or action</td></tr>
             <tr><td><code>Ctrl</code> + <code>C</code> / <code>V</code></td><td>Copy and paste blocks. Selected text wins: the canvas stands aside</td></tr>
             <tr><td><code>Ctrl</code> + <code>D</code></td><td>Duplicate the selected block</td></tr>
-            <tr><td><code>Delete</code></td><td>Remove the selection</td></tr>
+            <tr><td><code>Ctrl</code> + <code>Z</code> / <code>Y</code></td><td>Undo / redo any canvas change, deletions included</td></tr>
+            <tr><td><code>Delete</code></td><td>Remove the selection (undoable)</td></tr>
+            <tr><td><code>Enter</code></td><td>Open the focused block's properties</td></tr>
             <tr><td><code>Esc</code></td><td>Close the properties dialog</td></tr>
           </tbody>
         </table>
@@ -654,6 +683,14 @@ npx concentus</code></pre>
         window, and reaches MCP through a <strong>facade</strong> that decides which tools it may
         call and whether writes are blocked (read-only) or simulated (dry-run) — enforced by the
         backend on every call, not by asking the model nicely.
+      </p>
+      <p>
+        One ceiling holds over everything: <code>execution.max-processes</code> (Settings, default
+        10) caps the total <code>claude</code> processes on the machine, whichever run or fan-out
+        started them. The per-pool limits multiply — eight runs of four workers would be
+        thirty-two processes, each hundreds of MB — and this caps the product. A worker that does
+        not fit waits for a slot, and its run says so; raising the setting frees queued work
+        without a restart.
       </p>
       <h3>What passes between them</h3>
       <p>
@@ -997,6 +1034,22 @@ semantic (cosine,      top 50) ─┘</code></pre>
         A run can be marked as a <strong>golden run</strong>: a reference for what this flow should
         produce. Later runs are compared against it, and a flow whose output has drifted says so on
         its card.
+      </p>
+
+      <h3>Replay against the current flow</h3>
+      <p>
+        Golden runs compare <em>outputs</em>; debugging usually needs to compare
+        <em>decisions</em> — with the same input, where does the path diverge? From any execution,
+        <strong>⟲ Replay vs current</strong> walks that run's recorded per-block outputs through
+        the flow as saved today, without running anything, and paints the answer on the canvas: an
+        amber ring on every block whose fate flips (it ran and would now be skipped, or the
+        reverse), a chip saying which way and why, and the blocks that ran but no longer exist
+        named in the banner.
+      </p>
+      <p>
+        It replays <strong>routing, not agents</strong> — gates decide from recorded text, so
+        their answers are exact, but where a decision would need output that was never recorded,
+        the block says <em>cannot be decided</em> rather than guessing.
       </p>
     </section>
 
