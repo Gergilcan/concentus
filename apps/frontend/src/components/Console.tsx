@@ -81,9 +81,10 @@ export function Console({
   const filteredName = agents.find((a) => a.id === agentFilter)?.name ?? agentFilter
 
   useEffect(() => {
-    // The CSS reduced-motion floor can't reach a JS-initiated smooth scroll, so it's honored here.
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    bottomRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' })
+    // Instant, never smooth: opening a run with history animated a long visible scroll to the
+    // bottom on every entry — the reader wants to BE at the latest line, not watch the trip
+    // there. Instant is also what reduced-motion asks for, so one behavior serves both.
+    bottomRef.current?.scrollIntoView({ behavior: 'auto' })
   }, [events])
 
   const send = async () => {

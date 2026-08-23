@@ -111,6 +111,14 @@ export function FlowCard({
       className={cx(styles.card, styles['t_' + trigger.tone], paused && styles.paused)}
       draggable={!!onDragStart}
       onDragStart={onDragStart}
+      // Double-click anywhere on the card opens the flow — the Open button stays as the
+      // discoverable path; this is the muscle-memory one. Except on the card's own controls:
+      // two fast clicks on a button mean "that control, twice" (a star toggled and untoggled),
+      // not "open".
+      onDoubleClick={(e) => {
+        if ((e.target as HTMLElement).closest('button, a')) return
+        if (flow.id) onOpen(flow.id)
+      }}
     >
       <div className={styles.cardHead}>
         <button
