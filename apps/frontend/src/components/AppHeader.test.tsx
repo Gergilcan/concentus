@@ -44,10 +44,22 @@ describe('AppHeader', () => {
     expect(screen.queryByText(/License grace/)).toBeNull()
   })
 
-  it('counts down the grace window once the license has expired', async () => {
-    getLicense.mockResolvedValue({ ...NO_GRACE, valid: false, graceDaysLeft: 9, problem: 'Expired.' })
+  it('counts down the grace window while the license is still (grace-)valid', async () => {
+    // Mid-grace is the one state where the backend reports both a countdown AND valid: true —
+    // enterpriseActive() stays true until the grace window itself runs out.
+    getLicense.mockResolvedValue({ ...NO_GRACE, valid: true, graceDaysLeft: 9, problem: null })
     renderHeader()
 
     expect(await screen.findByText('License grace: 9 days left')).toBeInTheDocument()
+  })
+
+  it('stops showing the chip once grace itself has run out, even though graceDaysLeft is still a number', async () => {
+    // Post-grace: valid flips to false, but graceDaysLeft clamps to 0 rather than going back to
+    // null — so valid is what has to gate the chip, or it would read "0 days left" forever.
+    getLicense.mockResolvedValue({ ...NO_GRACE, valid: false, graceDaysLeft: 0, problem: 'Expired.' })
+    renderHeader()
+
+    await waitFor(() => expect(getLicense).toHaveBeenCalled())
+    expect(screen.queryByText(/License grace/)).toBeNull()
   })
 })

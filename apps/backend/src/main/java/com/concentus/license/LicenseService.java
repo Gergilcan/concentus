@@ -107,9 +107,16 @@ public class LicenseService {
      * How many seats this installation may use. Never null and never "unlimited": no license, an
      * unverifiable one, an individual license, or an enterprise one past its grace window all mean
      * exactly one — a single-user installation is always allowed to keep working.
+     *
+     * <p>An active enterprise license with no seat count on it — hand-minted rather than issued by
+     * {@code mint-license.mjs}, or otherwise malformed — clamps to one too: a license that names no
+     * seats grants none extra, and the alternative (returning null here) would NPE every caller
+     * that unboxes this into an {@code int}, which is all of them.
      */
     public Integer seatLimit() {
-        return enterpriseActive() ? loaded.license.seats() : 1;
+        if (!enterpriseActive()) return 1;
+        Integer seats = loaded.license.seats();
+        return seats == null ? 1 : seats;
     }
 
     /**
@@ -167,6 +174,21 @@ public class LicenseService {
         if (!today.isAfter(license.expires())) return null;
         long daysSinceExpiry = ChronoUnit.DAYS.between(license.expires(), today);
         return (int) Math.max(0, GRACE_DAYS - daysSinceExpiry);
+    }
+
+    /**
+     * The message shown when adding one more person would push an organization past {@link
+     * #seatLimit()} — reused everywhere that gate applies: {@code AccountController#createMember}
+     * refusing a new member, and {@code OidcSignIn} refusing to provision a brand-new account for
+     * an arrival through a directory. One wording, so the two paths that enforce the same rule
+     * never drift into explaining it differently.
+     */
+    public String seatLimitReachedMessage(int limit) {
+        String licensee = status().licensee();
+        String licensedAs = licensee == null ? "no license installed" : "licensed to " + licensee;
+        return "This installation is limited to " + limit + (limit == 1 ? " member" : " members")
+                + " (" + licensedAs + "). An enterprise license — or a bigger one — raises the "
+                + "limit; get one at " + LICENSE_URL + ".";
     }
 
     private static String invalidLicenseProblem(String reason) {

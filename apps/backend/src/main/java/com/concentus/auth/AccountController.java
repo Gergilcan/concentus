@@ -47,7 +47,6 @@ public class AccountController {
 
     private static final org.slf4j.Logger LOG =
             org.slf4j.LoggerFactory.getLogger(AccountController.class);
-    private static final String LICENSE_URL = "https://www.concentus-ai.com/#license";
 
     private final AuthenticationManager authManager;
     private final AccountStore accounts;
@@ -340,7 +339,7 @@ public class AccountController {
         // using it; anyone beyond them needs an enterprise license.
         int limit = licenseService.seatLimit();
         if (accounts.listUsers(organizationId).size() >= limit) {
-            throw new IllegalArgumentException(seatLimitReachedMessage(limit));
+            throw new IllegalArgumentException(licenseService.seatLimitReachedMessage(limit));
         }
         if (body == null || body.email() == null || body.email().isBlank()) {
             throw new IllegalArgumentException("An email address is required.");
@@ -358,14 +357,6 @@ public class AccountController {
         }
         return accounts.createUser(organizationId, body.email(),
                 encoder.encode(body.password()), role).redacted();
-    }
-
-    private String seatLimitReachedMessage(int limit) {
-        String licensee = licenseService.status().licensee();
-        String licensedAs = licensee == null ? "no license installed" : "licensed to " + licensee;
-        return "This installation is limited to " + limit + (limit == 1 ? " member" : " members")
-                + " (" + licensedAs + "). An enterprise license — or a bigger one — raises the "
-                + "limit; get one at " + LICENSE_URL + ".";
     }
 
     /**

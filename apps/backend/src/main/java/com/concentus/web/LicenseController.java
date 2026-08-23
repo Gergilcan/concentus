@@ -1,5 +1,6 @@
 package com.concentus.web;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.license.InvalidLicenseException;
 import com.concentus.license.LicenseService;
 import com.concentus.license.LicenseStatus;
@@ -12,15 +13,25 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
-/** What the UI's license screen reads and writes: the current status, and installing a new key. */
+/**
+ * What the UI's license screen reads and writes: the current status, and installing a new key.
+ *
+ * <p>Reading is every signed-in role — the security filter chain already opens {@code GET
+ * /api/**} that widely, and there is nothing in a status worth hiding from a Viewer. Installing a
+ * new key is admin only, the same {@link OrgContext#requireAdmin()} gate {@code
+ * SettingsController#save} uses: a license changes what the whole organization may do, not
+ * something any signed-in member should be able to paste over.
+ */
 @RestController
 @RequestMapping("/api/license")
 public class LicenseController {
 
     private final LicenseService license;
+    private final OrgContext orgContext;
 
-    public LicenseController(LicenseService license) {
+    public LicenseController(LicenseService license, OrgContext orgContext) {
         this.license = license;
+        this.orgContext = orgContext;
     }
 
     @GetMapping
@@ -36,6 +47,7 @@ public class LicenseController {
      */
     @PostMapping
     public ResponseEntity<?> install(@RequestBody InstallRequest body) {
+        orgContext.requireAdmin();
         try {
             license.install(body.token());
             return ResponseEntity.ok(license.status());

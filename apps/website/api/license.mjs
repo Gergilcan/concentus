@@ -6,7 +6,12 @@
  */
 import { signLicense } from './_lib/license-format.mjs'
 
-const seen = new Map() // ip -> count this instance; serverless instances recycle, and that is fine
+// ip -> count and normalized-email -> count, this instance; serverless instances recycle, and
+// that is fine. Two independent counters, same threshold: an attacker rotating IPs against one
+// address is still capped by the email counter, and one behind a shared IP (an office, a NAT)
+// hammering many addresses is still capped by the IP counter.
+const seenByIp = new Map()
+const seenByEmail = new Map()
 const OK = { message: 'If that address is valid, your license is on its way.' }
 
 // Vercel parses req.body for us when the request arrives as application/json, but a form posted
@@ -32,28 +37,38 @@ export default async function handler(req, res) {
     return res.status(200).json(OK)
   }
   const ip = req.headers['x-forwarded-for']?.split(',')[0] ?? 'unknown'
-  const count = (seen.get(ip) ?? 0) + 1
-  seen.set(ip, count)
-  if (count > 10) return res.status(200).json(OK)
+  const normalizedEmail = String(email).trim().toLowerCase()
+  const ipCount = (seenByIp.get(ip) ?? 0) + 1
+  seenByIp.set(ip, ipCount)
+  const emailCount = (seenByEmail.get(normalizedEmail) ?? 0) + 1
+  seenByEmail.set(normalizedEmail, emailCount)
+  if (ipCount > 10 || emailCount > 10) return res.status(200).json(OK)
 
   const token = signLicense(
     { tier: 'individual', licensee: String(name).trim(), email: String(email).trim(),
       issued: new Date().toISOString().slice(0, 10), expires: null },
     process.env.LICENSE_KEY_INDIVIDUAL,
   )
-  const sent = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: process.env.LICENSE_FROM,
-      to: [email],
-      subject: 'Your Concentus license',
-      text: `Hi ${name},\n\nYour free individual Concentus license:\n\n${token}\n\n`
-          + 'Paste it in Resources → Settings → License if you like — the app works without it; '
-          + 'this one just has your name on it.\n\nEnterprise (shared database, teams, SSO): '
-          + 'https://www.concentus-ai.com/#license\n',
-    }),
-  })
-  if (!sent.ok) console.error('resend answered', sent.status, await sent.text())
+  // Never let a Resend outage (or a missing env var) turn into a 500: the response is identical
+  // either way, so a transport failure (DNS, connection refused, timeout — fetch() rejects rather
+  // than resolving) is caught right alongside the non-ok-response case already logged below.
+  try {
+    const sent = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: process.env.LICENSE_FROM,
+        to: [email],
+        subject: 'Your Concentus license',
+        text: `Hi ${name},\n\nYour free individual Concentus license:\n\n${token}\n\n`
+            + 'Paste it in Resources → Settings → License if you like — the app works without it; '
+            + 'this one just has your name on it.\n\nEnterprise (shared database, teams, SSO): '
+            + 'https://www.concentus-ai.com/#license\n',
+      }),
+    })
+    if (!sent.ok) console.error('resend answered', sent.status, await sent.text())
+  } catch (err) {
+    console.error('resend send failed', err)
+  }
   return res.status(200).json(OK)
 }

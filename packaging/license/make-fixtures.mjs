@@ -24,6 +24,12 @@ const licenses = {
     { tier: 'enterprise', licensee: 'Test Corp', email: 'ops@example.com', seats: 5, issued: '2026-08-22', expires: '2099-01-01', id: 'fixture-enterprise' }, ent.privateKeyPem),
   'enterprise-expired-test.license': signLicense(
     { tier: 'enterprise', licensee: 'Test Corp', email: 'ops@example.com', seats: 5, issued: '2020-01-01', expires: '2020-06-01', id: 'fixture-expired' }, ent.privateKeyPem),
+  // No `seats` at all — a hand-minted or otherwise malformed enterprise token, not one
+  // mint-license.mjs would ever produce (it requires --seats). Exercises LicenseService#seatLimit
+  // clamping a seatless active enterprise license to one rather than NPEing at the unboxing call
+  // sites (AccountController, OidcSignIn) that treat it as a plain int.
+  'enterprise-no-seats-test.license': signLicense(
+    { tier: 'enterprise', licensee: 'Test Corp', email: 'ops@example.com', issued: '2026-08-22', expires: '2099-01-01', id: 'fixture-enterprise-no-seats' }, ent.privateKeyPem),
 }
 const keys = JSON.stringify({
   individual: { publicKeySpkiBase64: ind.publicKeySpkiBase64 },

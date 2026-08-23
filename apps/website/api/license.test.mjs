@@ -57,6 +57,16 @@ function countingFetch(response = { ok: true, status: 200, text: async () => '' 
   return fn
 }
 
+// A transport failure: fetch() rejects rather than resolving with a non-ok response — DNS,
+// connection refused, TLS, timeout. Counts calls the same way countingFetch does, so a test can
+// assert the send was attempted (and failed) rather than skipped.
+function rejectingFetch(message = 'network is down') {
+  const calls = []
+  const fn = async (url, init) => { calls.push({ url, init }); throw new Error(message) }
+  fn.calls = calls
+  return fn
+}
+
 async function withFetch(stub, fn) {
   const original = globalThis.fetch
   globalThis.fetch = stub
@@ -134,6 +144,34 @@ test('rate cap: the 11th request from one IP is refused at the boundary, the fir
   })
 })
 
+test('per-email rate cap: the 11th request for the same address from DIFFERENT IPs is refused, even though no single IP is over its own cap', async () => {
+  const handler = await freshHandler()
+  const fetchStub = countingFetch()
+
+  await withFetch(fetchStub, async () => {
+    for (let i = 0; i < 10; i++) {
+      const res = makeRes()
+      // A fresh IP every time: the per-IP counter never climbs past 1, so only the per-email
+      // counter can be what trips the cap here.
+      await handler(makeReq({
+        headers: { 'x-forwarded-for': `203.0.113.${i}` },
+        body: { name: 'Jane Dev', email: 'jane@example.com', company: '' },
+      }), res)
+      assert.equal(res.statusCode, 200)
+    }
+    assert.equal(fetchStub.calls.length, 10) // all ten under the cap actually tried to send
+
+    const res11 = makeRes()
+    await handler(makeReq({
+      headers: { 'x-forwarded-for': '203.0.113.99' },
+      body: { name: 'Jane Dev', email: 'JANE@Example.com', company: '' }, // same address, different casing
+    }), res11)
+    assert.equal(res11.statusCode, 200)
+    assert.deepEqual(res11.body, OK)
+    assert.equal(fetchStub.calls.length, 10) // unchanged: the 11th never reached fetch
+  })
+})
+
 test('valid request: Resend is called with a token that verifies (individual, no expiry, enterprise URL in the body)', async () => {
   const handler = await freshHandler()
   const fetchStub = countingFetch()
@@ -164,7 +202,28 @@ test('valid request: Resend is called with a token that verifies (individual, no
   assert.deepEqual(res.body, OK)
 })
 
-test('response oracle: honeypot, invalid input, the rate-cap block, a malformed body and success all answer identically', async () => {
+test('Resend transport failure: the send is attempted, fails, is logged, and the response is still the generic 200 OK', async () => {
+  const handler = await freshHandler()
+  const fetchStub = rejectingFetch()
+  const res = makeRes()
+  const originalConsoleError = console.error
+  const logged = []
+  console.error = (...args) => logged.push(args)
+
+  try {
+    await withFetch(fetchStub, () =>
+      handler(makeReq({ body: { name: 'Jane Dev', email: 'jane@example.com', company: '' } }), res))
+  } finally {
+    console.error = originalConsoleError
+  }
+
+  assert.equal(fetchStub.calls.length, 1) // the send really was attempted
+  assert.equal(logged.length, 1) // and the failure was logged, not swallowed silently
+  assert.equal(res.statusCode, 200)
+  assert.deepEqual(res.body, OK)
+})
+
+test('response oracle: honeypot, invalid input, the rate-cap block, a malformed body, a Resend transport failure and success all answer identically', async () => {
   const results = []
 
   { // honeypot
@@ -198,6 +257,19 @@ test('response oracle: honeypot, invalid input, the rate-cap block, a malformed 
     await withFetch(throwingFetch(), () => handler(makeReq({ body: 'not-json{{' }), res))
     results.push(res)
   }
+  { // Resend transport failure
+    const handler = await freshHandler()
+    const res = makeRes()
+    const originalConsoleError = console.error
+    console.error = () => {}
+    try {
+      await withFetch(rejectingFetch(), () =>
+        handler(makeReq({ body: { name: 'Jane', email: 'transport-fail@x.com', company: '' } }), res))
+    } finally {
+      console.error = originalConsoleError
+    }
+    results.push(res)
+  }
   { // success
     const handler = await freshHandler()
     const res = makeRes()
@@ -206,7 +278,7 @@ test('response oracle: honeypot, invalid input, the rate-cap block, a malformed 
     results.push(res)
   }
 
-  assert.equal(results.length, 5)
+  assert.equal(results.length, 6)
   for (const res of results) {
     assert.equal(res.statusCode, 200)
     assert.deepEqual(res.body, OK)

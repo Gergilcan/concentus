@@ -23,7 +23,16 @@ interface Props {
 }
 
 export function AppHeader({ view, onView, signedInAs, onSignOut }: Props) {
-  const [graceDaysLeft, setGraceDaysLeft] = useState<number | null>(null)
+  // Both fields off the same fetch: the chip only means something while the license is still
+  // valid (mid-grace, counting down). Once grace runs out, valid flips to false and graceDaysLeft
+  // clamps to 0 rather than going back to null — the backend's memory of "how many days were left
+  // when this last mattered" — so valid has to gate the chip too, or a license that expired weeks
+  // ago would show "0 days left" forever. That post-grace state is the Settings screen's problem
+  // text to carry, not this header's.
+  const [license, setLicense] = useState<{ valid: boolean; graceDaysLeft: number | null }>({
+    valid: true,
+    graceDaysLeft: null,
+  })
 
   // One-shot, not a poller: the grace window moves in days, not seconds, and AuthBadge already
   // owns the header's one polling loop. Fetched once on mount, same as everything else in this
@@ -33,7 +42,7 @@ export function AppHeader({ view, onView, signedInAs, onSignOut }: Props) {
     api
       .getLicense()
       .then((s) => {
-        if (alive) setGraceDaysLeft(s.graceDaysLeft)
+        if (alive) setLicense({ valid: s.valid, graceDaysLeft: s.graceDaysLeft })
       })
       .catch(() => {})
     return () => {
@@ -63,12 +72,12 @@ export function AppHeader({ view, onView, signedInAs, onSignOut }: Props) {
       <UpdateBadge />
       {/* Next to the version chip AuthBadge renders — both answer "what is this installation
           on", and only one of them is usually worth a second look. */}
-      {graceDaysLeft != null && (
+      {license.valid && license.graceDaysLeft != null && (
         <span
           className={styles.graceChip}
           title="Your license has expired. Paste a new token in Resources → Settings before the grace window runs out."
         >
-          License grace: {graceDaysLeft} days left
+          License grace: {license.graceDaysLeft} days left
         </span>
       )}
       <AuthBadge />

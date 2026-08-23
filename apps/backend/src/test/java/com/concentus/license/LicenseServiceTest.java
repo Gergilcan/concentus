@@ -38,6 +38,19 @@ class LicenseServiceTest {
         assertEquals("Test Corp", s.status().licensee());
     }
 
+    // A hand-minted (or otherwise malformed) enterprise license with no seat count at all — not
+    // one mint-license.mjs would ever produce, since it requires --seats, but the parser accepts
+    // it (seats is nullable on the record) and seatLimit() used to hand that null straight back,
+    // NPEing every caller that unboxes it into an int. It must clamp to one instead: a license
+    // that names no seats grants none extra.
+    @Test
+    void enterpriseLicenseWithoutSeats_clampsToOne(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("license.key"), TestLicenses.token("enterprise-no-seats-test.license"));
+        LicenseService s = new LicenseService(TestLicenses.verifier(), dir, "", at("2026-08-22"));
+        assertTrue(s.enterpriseActive());
+        assertEquals(1, s.seatLimit());
+    }
+
     @Test
     void envBeatsFile(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("license.key"), TestLicenses.token("enterprise-test.license"));
