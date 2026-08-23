@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Enterprise licensing
+    url: https://www.concentus-ai.com/#license
+    about: Shared database, team members and SSO run under an enterprise license — request one here.

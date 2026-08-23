@@ -1,0 +1,49 @@
+# The license field is not bureaucracy: support is where an unlicensed enterprise deployment
+# surfaces, and asking is the cheapest honest detector there is. See packaging/license/.
+name: Bug report
+description: Something broke, or behaves in a way the docs do not promise.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The version chip in the app header, or the tag you installed.
+      placeholder: v0.1.5
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux
+        - Server deployment
+    validations:
+      required: true
+  - type: input
+    id: license
+    attributes:
+      label: License
+      description: >
+        The "Licensed to" line from Resources → Settings → License — or "no license" (the app
+        works without one for individual use). For team/server deployments this is required:
+        those features run under an enterprise license.
+      placeholder: Licensed to ACME S.L. · enterprise · 20 seats — or "no license"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got. Screenshots welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Anything relevant from the console or the backend log. Redact secrets.
