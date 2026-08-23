@@ -61,6 +61,16 @@ let splash: Splash = noSplash
 /** Set once quitting has begun, so the backend is stopped exactly once. */
 let quitting = false
 /**
+ * Set while an update install is being prepared, so nothing quits the app out from under it.
+ *
+ * <p>Without this, closeForInstall's window destruction fired window-all-closed, which saw
+ * {@link quitting} and called app.quit() BEFORE installUpdateNow reached quitAndInstall — and a
+ * quit that electron-updater merely observes takes its autoInstallOnAppQuit path: silent install,
+ * no relaunch flag. The update applied and the app never came back. The quit belongs to
+ * quitAndInstall, which is the call that registers the relaunch.
+ */
+let installing = false
+/**
  * The CLI path the running backend was started with.
  *
  * Kept because the backend reads `local.claude-command` once, at startup. A login appearing later
@@ -127,6 +137,9 @@ async function main(): Promise<void> {
   })
 
   app.on('window-all-closed', () => {
+    // During an update install the windows are destroyed on purpose and the quit is
+    // quitAndInstall's to make — see the note on `installing`.
+    if (installing) return
     // In background mode the tray is the app now; everywhere else, no window means no app —
     // leaving a backend running with no way to see it would be a service nobody asked for.
     if (!loadSettings().runInBackground || quitting) app.quit()
@@ -160,6 +173,7 @@ async function main(): Promise<void> {
 async function closeForInstall(): Promise<void> {
   log.info('Closing everything before the installer runs.')
   quitting = true
+  installing = true
   await stopBackend(backend)
   backend = null
   for (const window of BrowserWindow.getAllWindows()) window.destroy()
