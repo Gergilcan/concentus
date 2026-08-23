@@ -202,6 +202,25 @@ test('valid request: Resend is called with a token that verifies (individual, no
   assert.deepEqual(res.body, OK)
 })
 
+test('analytics is best-effort: a broken DATABASE_URL neither blocks the license nor changes the answer', async () => {
+  // Locally the Neon driver is not even installed (apps/website is not a workspace member; Vercel
+  // installs it at deploy time), so this exercises the failure path for real: the dynamic import
+  // rejects, recordIssue swallows it, and the email still goes out.
+  process.env.DATABASE_URL = 'not-a-database-url'
+  try {
+    const handler = await freshHandler()
+    const fetchStub = countingFetch()
+    const res = makeRes()
+    await withFetch(fetchStub, () =>
+      handler(makeReq({ body: { name: 'Jane Dev', email: 'jane@example.com', company: '' } }), res))
+    assert.equal(fetchStub.calls.length, 1)
+    assert.equal(res.statusCode, 200)
+    assert.deepEqual(res.body, OK)
+  } finally {
+    delete process.env.DATABASE_URL
+  }
+})
+
 test('Resend transport failure: the send is attempted, fails, is logged, and the response is still the generic 200 OK', async () => {
   const handler = await freshHandler()
   const fetchStub = rejectingFetch()

@@ -29,6 +29,45 @@ function readBody(req) {
   }
 }
 
+/**
+ * The analytics ledger: every issued license lands as a row in Neon, wired through Vercel's Neon
+ * integration (which is what puts DATABASE_URL in this function's environment). Best-effort by
+ * design — the license and the generic answer must survive the analytics database being down,
+ * missing, or simply not set up yet, so every failure path here ends in console.error and
+ * nothing else. The table is created on first use: zero-ops beats a migration pipeline while the
+ * schema is one table.
+ */
+let tableReady = null
+async function recordIssue(token) {
+  const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL
+  if (!url) return
+  try {
+    const { neon } = await import('@neondatabase/serverless')
+    const sql = neon(url)
+    tableReady ??= sql`create table if not exists license_requests (
+      id uuid primary key,
+      tier text not null,
+      licensee text not null,
+      email text not null,
+      issued date not null,
+      expires date,
+      source text not null,
+      created_at timestamptz not null default now()
+    )`
+    await tableReady
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
+    await sql`insert into license_requests (id, tier, licensee, email, issued, expires, source)
+              values (${payload.id}, ${payload.tier}, ${payload.licensee}, ${payload.email},
+                      ${payload.issued}, ${payload.expires}, 'web-form')
+              on conflict (id) do nothing`
+  } catch (err) {
+    // A rejected creation promise must not stay cached, or one bad moment wedges every insert
+    // this instance ever tries again.
+    tableReady = null
+    console.error('license analytics insert failed', err)
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
   const { name, email, company } = readBody(req)
@@ -49,6 +88,7 @@ export default async function handler(req, res) {
       issued: new Date().toISOString().slice(0, 10), expires: null },
     process.env.LICENSE_KEY_INDIVIDUAL,
   )
+  await recordIssue(token)
   // Never let a Resend outage (or a missing env var) turn into a 500: the response is identical
   // either way, so a transport failure (DNS, connection refused, timeout — fetch() rejects rather
   // than resolving) is caught right alongside the non-ok-response case already logged below.

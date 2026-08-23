@@ -1,0 +1,8 @@
+{
+  "name": "concentus-website",
+  "private": true,
+  "description": "The website and its serverless functions. Deliberately NOT a pnpm workspace member: these dependencies exist for Vercel's function runtime, which installs them at deploy time — the repo's own install and CI never need them.",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0"
+  }
+}
