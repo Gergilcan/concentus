@@ -5,6 +5,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -18,6 +19,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * (management.endpoints.web.exposure.include=health,info in application.properties).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+// Close the context when the class ends, not when the JVM does. The embedded PostgreSQL this
+// context starts lives INSIDE the @TempDir below, and a cached context outlives the class — so
+// JUnit's temp-dir cleanup ran under a postmaster that was still holding pgdata/epg-lock and the
+// binaries, and the whole class errored on teardown after all its tests had passed.
+@DirtiesContext
 class ActuatorHealthTest {
 
     @TempDir
