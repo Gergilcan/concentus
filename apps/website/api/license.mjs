@@ -38,13 +38,11 @@ function readBody(req) {
  * schema is one table.
  */
 let tableReady = null
-async function recordIssue(token) {
-  const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL
-  if (!url) return
-  try {
-    const { neon } = await import('@neondatabase/serverless')
-    const sql = neon(url)
-    tableReady ??= sql`create table if not exists license_requests (
+async function ensureTable(sql) {
+  // The alter is how `status` reaches a table created by an earlier deploy — `create table if
+  // not exists` never touches columns on a table that already exists.
+  tableReady ??= (async () => {
+    await sql`create table if not exists license_requests (
       id uuid primary key,
       tier text not null,
       licensee text not null,
@@ -52,19 +50,53 @@ async function recordIssue(token) {
       issued date not null,
       expires date,
       source text not null,
+      status text not null default 'pending_send',
+      sent_at timestamptz,
       created_at timestamptz not null default now()
     )`
-    await tableReady
+    await sql`alter table license_requests add column if not exists status text not null default 'pending_send'`
+    await sql`alter table license_requests add column if not exists sent_at timestamptz`
+  })()
+  await tableReady
+}
+
+/**
+ * Records the issue BEFORE the send is attempted, as `pending_send` — so a license that was
+ * minted but never reached an inbox is a visible row, not a mystery. Returns a handle for
+ * markSent, or null when there is no database (or it failed — best-effort as ever: the license
+ * and the generic answer survive the analytics database in any state, with console.error as the
+ * only trace).
+ */
+async function recordPending(token) {
+  const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL
+  if (!url) return null
+  try {
+    const { neon } = await import('@neondatabase/serverless')
+    const sql = neon(url)
+    await ensureTable(sql)
     const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
-    await sql`insert into license_requests (id, tier, licensee, email, issued, expires, source)
+    await sql`insert into license_requests (id, tier, licensee, email, issued, expires, source, status)
               values (${payload.id}, ${payload.tier}, ${payload.licensee}, ${payload.email},
-                      ${payload.issued}, ${payload.expires}, 'web-form')
+                      ${payload.issued}, ${payload.expires}, 'web-form', 'pending_send')
               on conflict (id) do nothing`
+    return { sql, id: payload.id }
   } catch (err) {
     // A rejected creation promise must not stay cached, or one bad moment wedges every insert
     // this instance ever tries again.
     tableReady = null
     console.error('license analytics insert failed', err)
+    return null
+  }
+}
+
+/** Flips the row to `sent` once Resend accepted the email. Rows that stay `pending_send` ARE the
+ * report: minted, never delivered — the ones worth retrying by hand. */
+async function markSent(handle) {
+  if (!handle) return
+  try {
+    await handle.sql`update license_requests set status = 'sent', sent_at = now() where id = ${handle.id}`
+  } catch (err) {
+    console.error('license analytics sent-update failed', err)
   }
 }
 
@@ -88,7 +120,7 @@ export default async function handler(req, res) {
       issued: new Date().toISOString().slice(0, 10), expires: null },
     process.env.LICENSE_KEY_INDIVIDUAL,
   )
-  await recordIssue(token)
+  const pending = await recordPending(token)
   // Never let a Resend outage (or a missing env var) turn into a 500: the response is identical
   // either way, so a transport failure (DNS, connection refused, timeout — fetch() rejects rather
   // than resolving) is caught right alongside the non-ok-response case already logged below.
@@ -106,7 +138,11 @@ export default async function handler(req, res) {
             + 'https://www.concentus-ai.com/#license\n',
       }),
     })
-    if (!sent.ok) console.error('resend answered', sent.status, await sent.text())
+    if (sent.ok) {
+      await markSent(pending)
+    } else {
+      console.error('resend answered', sent.status, await sent.text())
+    }
   } catch (err) {
     console.error('resend send failed', err)
   }
