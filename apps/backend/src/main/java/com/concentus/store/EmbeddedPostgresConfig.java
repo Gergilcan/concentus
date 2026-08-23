@@ -114,6 +114,18 @@ public class EmbeddedPostgresConfig {
             settings = new StorageSettings("external", configuredUrl, configuredUser,
                     configuredPassword);
         }
+        // The shared database is the enterprise deployment; the license decides what an external
+        // configuration is allowed to mean — before a single connection is opened, whichever of
+        // the two branches above put this installation in external mode. An individual license
+        // does not refuse startup: the app runs WITH the limitation, on the embedded database
+        // below. No valid license (or an enterprise one past its grace) still stops here, inside
+        // enterpriseCoversExternalDatabase.
+        if (settings.isExternal() && !LicenseCheck.enterpriseCoversExternalDatabase(Path.of(dataDir))) {
+            log.warn("An external PostgreSQL is configured, but the installed license is individual —"
+                    + " starting on the embedded database instead. The shared database unlocks with"
+                    + " an enterprise license: https://www.concentus-ai.com/#license");
+            settings = StorageSettings.embedded();
+        }
         if (!settings.isExternal()) {
             EmbeddedPostgres postgres = open(dataDir, majorVersion);
             SchemaMigrator.migrate(postgres.getPostgresDatabase());
@@ -125,11 +137,6 @@ public class EmbeddedPostgresConfig {
             });
             return postgres.getPostgresDatabase();
         }
-
-        // The shared database is the enterprise deployment; this is where the license line is
-        // drawn — before a single connection is opened, whichever of the two branches above put
-        // this installation in external mode.
-        LicenseCheck.requireEnterpriseForExternalDatabase(Path.of(dataDir));
 
         log.info("Using an external PostgreSQL: {} (the embedded server is not started).",
                 settings.url());
