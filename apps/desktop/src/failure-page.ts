@@ -6,6 +6,8 @@
  * is almost always in it — a port conflict, a missing jar, a JVM that refused to start.
  */
 
+import { updateStrip } from './update-strip'
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -67,6 +69,7 @@ export function failurePage(message: string, logTail: string, logPath: string): 
     <button onclick="concentus.openLogs()">Open logs folder</button>
     <button onclick="concentus.quit()">Quit</button>
   </div>
+  ${updateStrip()}
   <pre>${escapeHtml(logTail)}</pre>
   <div class="path">${escapeHtml(logPath)}</div>
 </body>

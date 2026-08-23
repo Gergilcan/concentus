@@ -8,6 +8,8 @@
  * it would teach people that the wall sometimes blinks. It does not.
  */
 
+import { updateStrip } from './update-strip'
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -84,6 +86,7 @@ export function licensePage(message: string): string {
     The license is checked when the app starts. If the one you paste is not accepted, this window
     returns with the reason.
   </p>
+  ${updateStrip()}
   <script>
     async function apply() {
       const button = document.getElementById('apply')

@@ -18,6 +18,13 @@ contextBridge.exposeInMainWorld('concentus', {
   requestLicense: () => ipcRenderer.send('license:request'),
   closeLicense: () => ipcRenderer.send('license:quit'),
 
+  // The update escape hatch (update-strip.ts, on both shell pages): a backend that refuses to
+  // start — the license wall included — must never strand an install on the version that
+  // refuses. Same IPC the app's Updates panel uses; the strip just reaches it from out here.
+  updateStatus: () => ipcRenderer.invoke('updates:status'),
+  checkForUpdates: () => ipcRenderer.invoke('updates:check'),
+  installUpdate: () => ipcRenderer.invoke('updates:install'),
+
   // First run. The first two answer with fresh state so the page re-renders from the same shape
   // it was given initially, rather than guessing at what changed.
   recheckClaude: () => ipcRenderer.invoke('onboarding:recheck'),

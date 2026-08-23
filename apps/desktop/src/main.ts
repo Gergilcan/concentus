@@ -545,7 +545,7 @@ function showLicenseWindow(message: string): void {
   splash = noSplash
   licenseWindow = new BrowserWindow({
     width: 640,
-    height: 560,
+    height: 640,
     resizable: false,
     title: 'Concentus — license required',
     icon: appIcon(),
