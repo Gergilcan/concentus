@@ -34,6 +34,17 @@ public final class TestLicenses {
         }
     }
 
+    /**
+     * Filesystem path to the committed {@code test-keys.json} fixture — for hooks that take a
+     * FILE path rather than a classpath resource, namely {@link LicenseVerifier#forProduction} via
+     * the {@code CONCENTUS_LICENSE_TEST_KEYS} env var. Resolved off the classloader (not a relative
+     * path from the working directory) so it finds the fixture the same way whether tests run from
+     * an IDE or from {@code mvn test}.
+     */
+    public static Path testKeysPath() throws Exception {
+        return Path.of(TestLicenses.class.getResource("/license/test-keys.json").toURI());
+    }
+
     /** A {@link LicenseVerifier} trusting the committed test keys, not the production ones. */
     public static LicenseVerifier verifier() throws Exception {
         try (InputStream in = TestLicenses.class.getResourceAsStream("/license/test-keys.json")) {

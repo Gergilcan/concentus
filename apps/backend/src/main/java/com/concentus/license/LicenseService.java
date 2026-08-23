@@ -62,8 +62,9 @@ public class LicenseService {
     // picks neither — "No default constructor found", a mistake already made more than once here.
     @Autowired
     public LicenseService(@Value("${app.data-dir}") String dataDir,
-                          @Value("${" + ENV_VAR + ":}") String envLicense) {
-        this(LicenseVerifier.production(), Path.of(dataDir), envLicense, Clock.systemUTC());
+                          @Value("${" + ENV_VAR + ":}") String envLicense,
+                          @Value("${" + LicenseVerifier.ENV_TEST_KEYS + ":}") String envTestKeys) {
+        this(LicenseVerifier.forProduction(envTestKeys), Path.of(dataDir), envLicense, Clock.systemUTC());
     }
 
     /** For tests: an injectable verifier (fixture keys), directory and clock. */

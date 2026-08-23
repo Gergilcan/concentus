@@ -77,4 +77,29 @@ class LicenseServiceTest {
                 () -> s.install(TestLicenses.token("enterprise-test.license")));
         assertTrue(e.getMessage().contains("CONCENTUS_LICENSE"));
     }
+
+    // CONCENTUS_LICENSE_TEST_KEYS hook: LicenseVerifier.forProduction(envTestKeys) is what a
+    // production entry point (the Spring constructor here, LicenseCheck's one-arg entry) builds its
+    // verifier from instead of LicenseVerifier.production(). Passing that same function's result in
+    // here — the way the Spring constructor does — is what proves the hook actually reaches
+    // LicenseService, not just that forProduction itself works (LicenseVerifierTest covers that).
+
+    @Test
+    void envTestKeys_pointingAtTheFixture_aFixtureSignedLicensePasses(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("license.key"), TestLicenses.token("enterprise-test.license"));
+        LicenseVerifier v = LicenseVerifier.forProduction(TestLicenses.testKeysPath().toString());
+        LicenseService s = new LicenseService(v, dir, "", at("2026-08-22"));
+        assertTrue(s.enterpriseActive());
+        assertEquals("Test Corp", s.status().licensee());
+        assertEquals(5, s.seatLimit());
+    }
+
+    @Test
+    void withoutEnvTestKeys_productionKeysAreUsed_aFixtureSignedLicenseIsRejected(@TempDir Path dir)
+            throws Exception {
+        Files.writeString(dir.resolve("license.key"), TestLicenses.token("enterprise-test.license"));
+        LicenseService s = new LicenseService(LicenseVerifier.forProduction(""), dir, "", at("2026-08-22"));
+        assertFalse(s.status().valid());
+        assertEquals(1, s.seatLimit());
+    }
 }

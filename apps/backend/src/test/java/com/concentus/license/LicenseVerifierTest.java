@@ -56,4 +56,33 @@ class LicenseVerifierTest {
         assertThrows(InvalidLicenseException.class, () -> TestLicenses.verifier().verify("CONCENTUS.??.!!"));
         assertThrows(InvalidLicenseException.class, () -> TestLicenses.verifier().verify(""));
     }
+
+    // forProduction is the CONCENTUS_LICENSE_TEST_KEYS hook's pure core: a production entry point
+    // passes it whatever the environment says (or doesn't), and only this function decides which
+    // trust root results. Testing it directly, with the env value as an ordinary parameter, is what
+    // keeps LicenseService/LicenseCheck from needing to fake System.getenv at all.
+
+    @Test
+    void forProduction_blank_isTheEmbeddedProductionKeys_fixtureTokensDoNotVerify() throws Exception {
+        LicenseVerifier v = LicenseVerifier.forProduction("");
+        // The fixture is signed with the TEST private key, never the real embedded one — production
+        // trusting it would mean the test hook leaked into the default path.
+        assertThrows(InvalidLicenseException.class,
+                () -> v.verify(TestLicenses.token("individual-test.license")));
+    }
+
+    @Test
+    void forProduction_null_isAlsoTheEmbeddedProductionKeys() throws Exception {
+        LicenseVerifier v = LicenseVerifier.forProduction(null);
+        assertThrows(InvalidLicenseException.class,
+                () -> v.verify(TestLicenses.token("individual-test.license")));
+    }
+
+    @Test
+    void forProduction_pointingAtTheFixtureKeysFile_verifiesFixtureTokens() throws Exception {
+        LicenseVerifier v = LicenseVerifier.forProduction(TestLicenses.testKeysPath().toString());
+        License l = v.verify(TestLicenses.token("enterprise-test.license"));
+        assertEquals("Test Corp", l.licensee());
+        assertEquals(5, l.seats());
+    }
 }

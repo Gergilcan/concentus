@@ -1,9 +1,13 @@
 package com.concentus.license;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.Signature;
@@ -24,9 +28,19 @@ import java.util.Map;
  */
 public final class LicenseVerifier {
 
+    private static final Logger log = LoggerFactory.getLogger(LicenseVerifier.class);
+
     private static final ObjectMapper JSON = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
             .findAndRegisterModules();  // for LocalDate
+
+    /**
+     * When set, names a JSON file shaped exactly like the committed test fixture
+     * {@code apps/backend/src/test/resources/license/test-keys.json} — {@code
+     * {individual:{publicKeySpkiBase64},enterprise:{publicKeySpkiBase64}}} — whose keys REPLACE the
+     * embedded production trust root wholesale. See {@link #forProduction}.
+     */
+    public static final String ENV_TEST_KEYS = "CONCENTUS_LICENSE_TEST_KEYS";
 
     private final Map<String, PublicKey> publicKeysByTier;
 
@@ -39,6 +53,47 @@ public final class LicenseVerifier {
         return new LicenseVerifier(Map.of(
                 License.TIER_INDIVIDUAL, publicKey(LicenseKeys.INDIVIDUAL_SPKI_BASE64),
                 License.TIER_ENTERPRISE, publicKey(LicenseKeys.ENTERPRISE_SPKI_BASE64)));
+    }
+
+    /**
+     * The verifier a production entry point should use: the real embedded keys, unless {@code
+     * envTestKeys} names a test-keys JSON file (see {@link #ENV_TEST_KEYS}) — in which case licenses
+     * are checked against THAT trust root instead, loudly, for the rest of this process's life.
+     *
+     * <p>Why a hook exists at all: the app embeds the real public keys, and the e2e suite runs the
+     * real jar. A license that verifies there would have to be signed with the real enterprise
+     * private key — and committing such a license (or the key that made it) to a public repository
+     * hands everyone a valid enterprise license. So the alternative is this: an explicit, documented,
+     * loudly-logged TEST hook, not a second door. It replaces the trust root WHOLESALE — anyone who
+     * sets it loses real-license verification entirely — which is what keeps it honest: nobody sets
+     * it by accident and keeps working normally. This is honest-by-default enforcement, not DRM.
+     *
+     * <p>A pure function of its parameter, deliberately, so the hook is testable without touching the
+     * real environment: only the outermost production entry points ({@link LicenseService}'s Spring
+     * constructor, {@link LicenseCheck}'s one-arg entry) may read {@code System.getenv}/{@code
+     * @Value} and pass the result in here; every test passes a literal string instead.
+     */
+    public static LicenseVerifier forProduction(String envTestKeys) {
+        if (envTestKeys == null || envTestKeys.isBlank()) {
+            return production();
+        }
+        log.warn("TEST LICENSE KEYS ACTIVE ({}) — licenses signed with the production keys will NOT verify.",
+                envTestKeys);
+        return fromTestKeysFile(Path.of(envTestKeys));
+    }
+
+    /** Loads a verifier trusting the keys in a JSON file shaped like the committed fixture. */
+    private static LicenseVerifier fromTestKeysFile(Path jsonFile) {
+        try {
+            JsonNode keys = JSON.readTree(jsonFile.toFile());
+            return new LicenseVerifier(Map.of(
+                    License.TIER_INDIVIDUAL,
+                    publicKey(keys.get("individual").get("publicKeySpkiBase64").asText()),
+                    License.TIER_ENTERPRISE,
+                    publicKey(keys.get("enterprise").get("publicKeySpkiBase64").asText())));
+        } catch (Exception e) {
+            throw new IllegalStateException("Could not read test license keys from " + jsonFile, e);
+        }
     }
 
     private static PublicKey publicKey(String spkiBase64) {

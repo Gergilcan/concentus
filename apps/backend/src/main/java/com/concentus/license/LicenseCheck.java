@@ -24,7 +24,8 @@ public final class LicenseCheck {
 
     /** Refuses to proceed unless an enterprise license (or its grace window) covers this install. */
     public static void requireEnterpriseForExternalDatabase(Path dataDir) {
-        requireEnterpriseForExternalDatabase(dataDir, LicenseVerifier.production(),
+        requireEnterpriseForExternalDatabase(dataDir,
+                LicenseVerifier.forProduction(System.getenv(LicenseVerifier.ENV_TEST_KEYS)),
                 System.getenv(LicenseService.ENV_VAR), Clock.systemUTC());
     }
 

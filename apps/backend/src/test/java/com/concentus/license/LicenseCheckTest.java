@@ -69,4 +69,14 @@ class LicenseCheckTest {
                         "bogus-not-a-real-token", at("2026-08-22")));
         assertTrue(e.getMessage().toLowerCase(java.util.Locale.ROOT).contains("license"));
     }
+
+    // The same CONCENTUS_LICENSE_TEST_KEYS hook LicenseServiceTest exercises, through this class's
+    // own testable overload: LicenseVerifier.forProduction(envTestKeys) is what the one-arg
+    // production entry point now passes as the verifier instead of LicenseVerifier.production().
+    @Test
+    void verifierFromEnvTestKeys_acceptsAFixtureSignedLicense(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve(LicenseService.FILE_NAME), TestLicenses.token("enterprise-test.license"));
+        LicenseVerifier v = LicenseVerifier.forProduction(TestLicenses.testKeysPath().toString());
+        assertDoesNotThrow(() -> LicenseCheck.requireEnterpriseForExternalDatabase(dir, v, "", at("2026-08-22")));
+    }
 }
