@@ -13,6 +13,11 @@ contextBridge.exposeInMainWorld('concentus', {
   openLogs: () => ipcRenderer.send('failure:open-logs'),
   quit: () => ipcRenderer.send('failure:quit'),
 
+  // The license wall (license-page.ts): paste and apply, open the request page, or give up.
+  applyLicense: (token: string) => ipcRenderer.invoke('license:apply', token),
+  requestLicense: () => ipcRenderer.send('license:request'),
+  closeLicense: () => ipcRenderer.send('license:quit'),
+
   // First run. The first two answer with fresh state so the page re-renders from the same shape
   // it was given initially, rather than guessing at what changed.
   recheckClaude: () => ipcRenderer.invoke('onboarding:recheck'),

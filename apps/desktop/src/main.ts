@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Notification, dialog, ipcMain, Menu, shell } from 'electron'
+import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { RunningBackend, backendLogTail, startBackend, stopBackend } from './backend'
 import { StorageDraft, backendApi } from './backend-api'
@@ -7,8 +8,9 @@ import { installClaude, installCommand, openLoginTerminal } from './claude-insta
 import { hasApiKey, saveApiKey } from './api-key'
 import { ensureOnPath } from './path-setup'
 import { failurePage } from './failure-page'
+import { licensePage } from './license-page'
 import { OnboardingState, StorageState, onboardingPage } from './onboarding-page'
-import { backendLogFile, isPackaged, shellLogFile } from './paths'
+import { backendLogFile, dataDir, isPackaged, shellLogFile } from './paths'
 import { Splash, noSplash, showSplash } from './splash'
 import { resetRunNotifications, startRunNotifications } from './run-notifications'
 import { loadSettings, saveSettings } from './settings'
@@ -55,6 +57,7 @@ let mainWindow: BrowserWindow | null = null
  */
 const altWindows: BrowserWindow[] = []
 let failureWindow: BrowserWindow | null = null
+let licenseWindow: BrowserWindow | null = null
 let onboardingWindow: BrowserWindow | null = null
 /** The splash for the launch in progress; noSplash outside one, so callers never null-check. */
 let splash: Splash = noSplash
@@ -203,7 +206,16 @@ async function launch(): Promise<void> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.error('Backend failed to start', err)
-    showFailureWindow(message)
+    // The license gate is a refusal, not a failure: it gets its own window, with the paste box,
+    // instead of a stack trace. The marker is the gate's own message text (LicenseCheck, backend)
+    // — it only ever appears in the log for exactly this refusal.
+    const tail = backendLogTail()
+    const gateLine = tail.match(/[^\n]*is an enterprise feature[^\n]*/)?.[0]
+    if (gateLine) {
+      showLicenseWindow(gateLine.replace(/^.*?(?=The )/, '').trim())
+    } else {
+      showFailureWindow(message)
+    }
   }
 }
 
@@ -244,7 +256,7 @@ function openMainWindow(): void {
     mainWindow.focus()
     return
   }
-  const win = failureWindow ?? onboardingWindow
+  const win = failureWindow ?? licenseWindow ?? onboardingWindow
   if (win) {
     win.show()
     win.focus()
@@ -329,6 +341,8 @@ async function openAccountWindow(): Promise<{ ok: boolean; error?: string }> {
 async function showMainWindow(port: number): Promise<void> {
   failureWindow?.close()
   failureWindow = null
+  licenseWindow?.close()
+  licenseWindow = null
 
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -522,6 +536,32 @@ function showFailureWindow(message: string): void {
   void failureWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
 }
 
+/**
+ * The license wall. A fixed-size modal shape on purpose — this is a decision screen, not a
+ * workspace: paste a license, go request one, or close the app. See license-page.ts.
+ */
+function showLicenseWindow(message: string): void {
+  splash.close()
+  splash = noSplash
+  licenseWindow = new BrowserWindow({
+    width: 640,
+    height: 560,
+    resizable: false,
+    title: 'Concentus — license required',
+    icon: appIcon(),
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  licenseWindow.on('closed', () => {
+    licenseWindow = null
+  })
+  void licenseWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(licensePage(message))}`)
+}
+
 function registerIpc(): void {
   // The main window's updates bridge (preload-main.ts). Status is a poll target — the panel asks
   // while a check or download is in flight — so it must stay cheap and side-effect free.
@@ -544,6 +584,29 @@ function registerIpc(): void {
     shell.showItemInFolder(shellLogFile())
   })
   ipcMain.on('failure:quit', () => app.quit())
+
+  // The license wall's three exits. Apply does only what the shell can judge — the shape check
+  // and the file write; whether the license is VALID is the backend's verdict, delivered by the
+  // relaunch: accepted means the app opens, refused means this window returns with the reason.
+  ipcMain.handle('license:apply', (_event, token: unknown) => {
+    const text = String(token ?? '').trim()
+    if (!text.startsWith('CONCENTUS.')) {
+      return { ok: false, error: 'That does not look like a Concentus license — it is one line starting with "CONCENTUS.".' }
+    }
+    try {
+      fs.writeFileSync(path.join(dataDir(), 'license.key'), text + '\n')
+    } catch (err) {
+      return { ok: false, error: `Could not write the license file: ${err instanceof Error ? err.message : String(err)}` }
+    }
+    licenseWindow?.close()
+    licenseWindow = null
+    void launch()
+    return { ok: true }
+  })
+  ipcMain.on('license:request', () => {
+    void shell.openExternal('https://www.concentus-ai.com/#license')
+  })
+  ipcMain.on('license:quit', () => app.quit())
 
   ipcMain.handle('onboarding:recheck', async () => {
     const state = await claudeState()
