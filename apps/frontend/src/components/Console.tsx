@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { errMessage } from '../utils/errMessage.ts'
 import { api, openRunSocket, type RunSocketStatus } from '../api/client.ts'
@@ -80,11 +80,14 @@ export function Console({
   )
   const filteredName = agents.find((a) => a.id === agentFilter)?.name ?? agentFilter
 
-  useEffect(() => {
-    // Instant, never smooth: opening a run with history animated a long visible scroll to the
-    // bottom on every entry — the reader wants to BE at the latest line, not watch the trip
-    // there. Instant is also what reduced-motion asks for, so one behavior serves both.
-    bottomRef.current?.scrollIntoView({ behavior: 'auto' })
+  useLayoutEffect(() => {
+    // The reader must BE at the latest line, never watch the trip there. Two things conspire to
+    // show the trip anyway and both are handled: a layout effect scrolls BEFORE the browser
+    // paints (a plain effect painted the pre-scroll position first, so history arriving in
+    // websocket batches read as a fast visible crawl), and 'instant' rather than 'auto' because
+    // 'auto' defers to any CSS scroll-behavior a container might set. Instant is also what
+    // reduced-motion asks for, so one behavior serves both.
+    bottomRef.current?.scrollIntoView({ behavior: 'instant' })
   }, [events])
 
   const send = async () => {
