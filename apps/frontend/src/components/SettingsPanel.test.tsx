@@ -9,6 +9,8 @@ vi.mock('../api/client.ts', () => ({
   api: {
     listSettings: () => listSettings(),
     saveSettings: (values: Record<string, string>) => saveSettings(values),
+    // LicensePanel fetches this on mount; a never-resolving promise keeps it out of these tests.
+    getLicense: () => new Promise(() => {}),
   },
 }))
 

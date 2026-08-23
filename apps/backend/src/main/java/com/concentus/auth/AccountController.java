@@ -1,5 +1,6 @@
 package com.concentus.auth;
 
+import com.concentus.license.LicenseService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -56,6 +57,8 @@ public class AccountController {
     private final org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe;
     /** The accounts this browser has already signed into, so switching between them costs a click. */
     private final DeviceAccountStore devices;
+    /** How many members this organization's license allows — {@link #createMember} enforces it. */
+    private final LicenseService licenseService;
     private final int rememberMeDays;
     /** What the organization is called, for the row the first account is created under. */
     private final String organizationName;
@@ -66,6 +69,7 @@ public class AccountController {
                              OidcSignIn oidc,
                              org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe,
                              DeviceAccountStore devices,
+                             LicenseService licenseService,
                              @org.springframework.beans.factory.annotation.Value(
                                      "${app.auth.remember-me-days:30}") int rememberMeDays,
                              @org.springframework.beans.factory.annotation.Value(
@@ -77,6 +81,7 @@ public class AccountController {
         this.oidc = oidc;
         this.rememberMe = rememberMe;
         this.devices = devices;
+        this.licenseService = licenseService;
         this.rememberMeDays = rememberMeDays;
         this.organizationName = organizationName;
     }
@@ -328,6 +333,14 @@ public class AccountController {
     @PostMapping("/members")
     public Accounts.UserAccount createMember(@RequestBody NewMemberRequest body) {
         orgContext.requireAdmin();
+        String organizationId = orgContext.requireOrganizationId();
+        // Existing members are never touched — this only refuses to add one more. A free
+        // installation is licensed for exactly one seat, so the admin who is signed in is already
+        // using it; anyone beyond them needs an enterprise license.
+        int limit = licenseService.seatLimit();
+        if (accounts.listUsers(organizationId).size() >= limit) {
+            throw new IllegalArgumentException(licenseService.seatLimitReachedMessage(limit));
+        }
         if (body == null || body.email() == null || body.email().isBlank()) {
             throw new IllegalArgumentException("An email address is required.");
         }
@@ -342,7 +355,7 @@ public class AccountController {
             throw new IllegalArgumentException("Unknown role '" + body.role() + "'. Use one of: "
                     + String.join(", ", Accounts.ROLES) + ".");
         }
-        return accounts.createUser(orgContext.requireOrganizationId(), body.email(),
+        return accounts.createUser(organizationId, body.email(),
                 encoder.encode(body.password()), role).redacted();
     }
 

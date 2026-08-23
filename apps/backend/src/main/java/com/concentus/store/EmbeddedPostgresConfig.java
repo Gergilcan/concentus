@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.license.LicenseCheck;
 import com.concentus.model.StorageSettings;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -124,6 +125,11 @@ public class EmbeddedPostgresConfig {
             });
             return postgres.getPostgresDatabase();
         }
+
+        // The shared database is the enterprise deployment; this is where the license line is
+        // drawn — before a single connection is opened, whichever of the two branches above put
+        // this installation in external mode.
+        LicenseCheck.requireEnterpriseForExternalDatabase(Path.of(dataDir));
 
         log.info("Using an external PostgreSQL: {} (the embedded server is not started).",
                 settings.url());

@@ -29,7 +29,7 @@ const BUILD_HINT =
   '  pnpm --filter frontend build\n' +
   '  cd apps/backend && mvn -B clean package -DskipTests\n'
 
-export async function startBackend(port: number): Promise<Backend> {
+export async function startBackend(port: number, extraEnv: Record<string, string> = {}): Promise<Backend> {
   if (!fs.existsSync(jar)) {
     throw new Error(`Backend jar not found at ${jar}.\n${BUILD_HINT}`)
   }
@@ -76,6 +76,11 @@ export async function startBackend(port: number): Promise<Backend> {
         // Cleared alongside the empty home: an API key would give the backend a way to execute
         // agents again, which is the very thing the CI condition is missing.
         ...(noCli ? { ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '', CLAUDE_COMMAND: '' } : {}),
+        // A spec that needs a licensed backend (or any other env-driven variant) passes it here —
+        // CONCENTUS_LICENSE / CONCENTUS_LICENSE_TEST_KEYS for 11-license.spec.ts, so far. Spread
+        // last: a caller asking for a specific value is never quietly overridden by the defaults
+        // above.
+        ...extraEnv,
       },
       stdio: ['ignore', 'inherit', 'inherit'],
     },

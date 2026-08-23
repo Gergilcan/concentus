@@ -1,5 +1,6 @@
 package com.concentus.auth;
 
+import com.concentus.license.LicenseService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -69,16 +70,19 @@ public class OidcSignIn {
     private final EmailDomainPolicy domains;
     private final ObjectMapper mapper;
     private final OidcRegistry registry;
+    private final LicenseService licenseService;
     private final String organizationId;
 
     public OidcSignIn(AccountStore accounts, UserIdentityStore identities,
                       EmailDomainPolicy domains, ObjectMapper mapper, OidcRegistry registry,
+                      LicenseService licenseService,
                       @Value("${app.organization-id:default}") String organizationId) {
         this.accounts = accounts;
         this.identities = identities;
         this.domains = domains;
         this.mapper = mapper;
         this.registry = registry;
+        this.licenseService = licenseService;
         this.organizationId = organizationId;
     }
 
@@ -219,7 +223,7 @@ public class OidcSignIn {
                 return Outcome.failed("Addresses at " + EmailDomainPolicy.domainOf(email)
                         + " cannot sign in to this deployment.");
             }
-            return new Outcome(resolveAccount(configured, subject, email), null);
+            return resolveAccount(configured, subject, email);
         } catch (RuntimeException e) {
             log.warn("Sign-in through {} failed: {}", provider.id(), e.getMessage());
             return Outcome.failed("Sign-in could not be completed: " + e.getMessage());
@@ -235,19 +239,31 @@ public class OidcSignIn {
      * had — so the identity is linked rather than a duplicate created, with their existing role,
      * which is the point of linking. Neither means a new account, at the role a first-time arrival
      * gets.
+     *
+     * <p>Only that third case — an arrival nobody has an account for — is checked against the seat
+     * limit. The first two are somebody already counted, signing back in; refusing them because the
+     * organization happens to be at its limit would lock out existing members over a license that
+     * has nothing to do with whether they may still use the accounts they have. The very first
+     * account on an empty installation is never caught by this either, since {@link
+     * AccountStore#listUsers} is empty and every license's seat limit is at least one.
      */
-    private Accounts.UserAccount resolveAccount(OidcRegistry.Configured configured,
-                                                String subject, String email) {
+    private Outcome resolveAccount(OidcRegistry.Configured configured,
+                                   String subject, String email) {
         String providerId = configured.provider().id();
         Optional<Accounts.UserAccount> linked = identities.find(providerId, subject)
                 .flatMap(id -> accounts.findById(id.userId()));
-        if (linked.isPresent()) return linked.get();
+        if (linked.isPresent()) return new Outcome(linked.get(), null);
 
         Optional<Accounts.UserAccount> byEmail = accounts.findByEmail(email);
         if (byEmail.isPresent()) {
             identities.link(providerId, subject, byEmail.get().id(),
                     byEmail.get().organizationId(), email);
-            return byEmail.get();
+            return new Outcome(byEmail.get(), null);
+        }
+
+        int limit = licenseService.seatLimit();
+        if (accounts.listUsers(organizationId).size() >= limit) {
+            return Outcome.failed(licenseService.seatLimitReachedMessage(limit));
         }
 
         String role = Accounts.normalizeRole(configured.defaultRole());
@@ -270,7 +286,7 @@ public class OidcSignIn {
                 "{external}" + HexFormat.of().formatHex(randomBytes(32)), role);
         identities.link(providerId, subject, created.id(), created.organizationId(), email);
         log.info("Provisioned {} from {} sign-in as {}", email, providerId, role);
-        return created;
+        return new Outcome(created, null);
     }
 
     /**

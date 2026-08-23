@@ -8,6 +8,8 @@ vi.mock('../api/client.ts', () => ({
     // shape leaves the panel on its spinner forever, which is not a failure anybody can read.
     listSettings: () => Promise.resolve({ settings: [] }),
     saveSettings: () => Promise.resolve({ saved: 0, restartRequired: false }),
+    // LicensePanel fetches this on mount; a never-resolving promise keeps it out of these tests.
+    getLicense: () => new Promise(() => {}),
   },
 }))
 

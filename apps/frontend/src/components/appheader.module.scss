@@ -51,6 +51,16 @@
   flex: 1;
 }
 
+/* The grace countdown, next to the version chip AuthBadge renders — a warning color because,
+   unlike that chip, it is only ever shown once there is something to act on. */
+.graceChip {
+  font-size: 11px;
+  color: t.$warn;
+  border: 1px solid t.$warn;
+  border-radius: 12px;
+  padding: 4px 9px;
+}
+
 /* The theme cycler: one icon-sized control, same metrics as Sign out so the row stays even. */
 .themeBtn {
   background: transparent;

@@ -731,6 +731,25 @@ export interface AuthStatus {
   appVersion?: string | null
 }
 
+/**
+ * What this installation is running under — mirrors the backend record field for field.
+ *
+ * No license installed (or an unverifiable one) is every field null/false except `problem`, which
+ * always names the fix rather than just the failure.
+ */
+export interface LicenseStatus {
+  tier: string | null
+  licensee: string | null
+  /** Enterprise only; null on an individual (seatless) license. */
+  seats: number | null
+  /** ISO date string, or null on a perpetual (individual) license. */
+  expires: string | null
+  /** null unless the license has expired; the days left in the grace window otherwise. */
+  graceDaysLeft: number | null
+  valid: boolean
+  problem: string | null
+}
+
 // `type` aliases (not interfaces) so they satisfy the CrudPanel `Record<string, unknown>` constraint.
 export type LibraryAgent = {
   id?: string

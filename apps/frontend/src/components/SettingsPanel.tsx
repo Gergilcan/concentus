@@ -3,6 +3,7 @@ import { api } from '../api/client.ts'
 import type { SettingEntry } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { setTheme, THEMES, useTheme } from '../utils/theme.ts'
+import { LicensePanel } from './LicensePanel.tsx'
 import { Spinner } from './Spinner.tsx'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
@@ -141,6 +142,8 @@ export function SettingsPanel({ pushError }: { pushError: (m: string) => void })
       </div>
 
       <ThemeSetting />
+
+      <LicensePanel />
 
       {saved && (
         <p className={styles.savedNote}>
