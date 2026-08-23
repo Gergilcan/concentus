@@ -149,7 +149,10 @@ describe('auto-layout', () => {
     expect(s().nodes.find((n) => n.id === agent.id)!.position.x).toBe(900)
   })
 
-  it('hangs capabilities under their agent instead of ranking them into the chain', () => {
+  it('ranks a capability to the LEFT of the agent it feeds, never in its column', () => {
+    // The old behaviour — hanging the MCP under the agent at the agent's own x — is exactly what
+    // the tidy-up no longer does: a feeder belongs visibly upstream, and a fixed drop ignored the
+    // agent card's real height. addNode's hang-below remains the on-creation convenience only.
     const s = () => useFlowStore.getState()
     s().addNode('agent')
     s().addNode('mcp')
@@ -158,7 +161,6 @@ describe('auto-layout', () => {
     s().autoLayout()
     const placedAgent = s().nodes.find((n) => n.id === agent.id)!
     const placedMcp = s().nodes.find((n) => n.id === mcp.id)!
-    expect(placedMcp.position.y).toBeGreaterThan(placedAgent.position.y)
-    expect(placedMcp.position.x).toBe(placedAgent.position.x)
+    expect(placedMcp.position.x).toBeLessThan(placedAgent.position.x)
   })
 })
