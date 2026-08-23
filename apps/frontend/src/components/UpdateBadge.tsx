@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { shellBridge, type ShellUpdateState } from '../api/shell.ts'
 import { clockTime } from '../utils/format.ts'
 import styles from './appheader.module.scss'
@@ -19,6 +20,7 @@ import styles from './appheader.module.scss'
  * anything is worse than no control.
  */
 export function UpdateBadge() {
+  const { t } = useTranslation()
   const bridge = shellBridge()
   const [st, setSt] = useState<ShellUpdateState | null>(null)
   const [open, setOpen] = useState(false)
@@ -74,24 +76,32 @@ export function UpdateBadge() {
     setError(null)
     const r = await bridge.updates.install()
     // On success the app is already quitting — there is nothing left to render.
-    if (!r.ok) setError(r.error ?? 'The update could not be installed.')
+    if (!r.ok) setError(r.error ?? t('The update could not be installed.'))
   }
 
   const line = (): string => {
-    if (!st.supported) return st.reason ?? 'This build cannot update itself.'
+    if (!st.supported) return st.reason ?? t('This build cannot update itself.')
     switch (st.phase) {
       case 'idle':
-        return 'Not checked yet in this session. Concentus also checks on its own every 4 hours.'
+        return t('Not checked yet in this session. Concentus also checks on its own every 4 hours.')
       case 'checking':
-        return 'Checking for a new version…'
+        return t('Checking for a new version…')
       case 'up-to-date':
-        return `You are on the latest version.${st.checkedAt ? ` Checked at ${clockTime(st.checkedAt)}.` : ''}`
+        return st.checkedAt
+          ? t('You are on the latest version. Checked at {{time}}.', { time: clockTime(st.checkedAt) })
+          : t('You are on the latest version.')
       case 'downloading':
-        return `Downloading ${st.available ?? 'the update'}… ${st.progressPercent ?? 0}%`
+        return t('Downloading {{what}}… {{percent}}%', {
+          what: st.available ?? t('the update'),
+          percent: st.progressPercent ?? 0,
+        })
       case 'downloaded':
-        return `Version ${st.available} is ready. Installing takes a few seconds and reopens the app; it also installs by itself when you quit.`
+        return t(
+          'Version {{version}} is ready. Installing takes a few seconds and reopens the app; it also installs by itself when you quit.',
+          { version: st.available },
+        )
       case 'error':
-        return `The last check failed: ${st.error ?? 'unknown error'}`
+        return t('The last check failed: {{error}}', { error: st.error ?? t('unknown error') })
     }
   }
 
@@ -100,8 +110,14 @@ export function UpdateBadge() {
       <button
         type="button"
         className={styles.updateBtn}
-        aria-label={ready ? `Version ${st.available} is ready to install` : 'Updates'}
-        title={ready ? `Version ${st.available} is ready — restart to install` : 'Updates'}
+        aria-label={
+          ready ? t('Version {{version}} is ready to install', { version: st.available }) : t('Updates')
+        }
+        title={
+          ready
+            ? t('Version {{version}} is ready — restart to install', { version: st.available })
+            : t('Updates')
+        }
         onClick={() => setOpen((v) => !v)}
       >
         {/* A download arrow into a tray: the shape every updater uses, so it needs no label. */}
@@ -116,14 +132,14 @@ export function UpdateBadge() {
       </button>
 
       {open && (
-        <div className={styles.updatePop} role="dialog" aria-label="Updates">
+        <div className={styles.updatePop} role="dialog" aria-label={t('Updates')}>
           <div className={styles.updateVersion}>Concentus {st.version}</div>
           <p className={styles.updateLine}>{line()}</p>
           {error && <p className={styles.updateError}>{error}</p>}
           <div className={styles.updateActions}>
             {ready ? (
               <button type="button" className={styles.updatePrimary} onClick={() => void install()}>
-                Restart and install
+                {t('Restart and install')}
               </button>
             ) : (
               <button
@@ -132,7 +148,7 @@ export function UpdateBadge() {
                 disabled={!st.supported || busy}
                 onClick={() => void check()}
               >
-                {st.phase === 'checking' ? 'Checking…' : 'Check for updates'}
+                {st.phase === 'checking' ? t('Checking…') : t('Check for updates')}
               </button>
             )}
           </div>

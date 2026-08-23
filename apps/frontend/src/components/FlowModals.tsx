@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { BackendFlow, FlowMemoryView, Variable } from '../api/types.ts'
 import { CredentialField } from './CredentialField.tsx'
@@ -17,6 +18,7 @@ export function SettingsModal({
   onClose: () => void
   onSave: (changes: Partial<BackendFlow>) => Promise<void>
 }) {
+  const { t } = useTranslation()
   const [name, setName] = useState(flow.name)
   const [tags, setTags] = useState((flow.tags ?? []).join(', '))
   const [enabled, setEnabled] = useState(flow.enabled !== false)
@@ -81,9 +83,9 @@ export function SettingsModal({
     Object.fromEntries(Object.entries(variables).filter(([, value]) => value.trim() !== ''))
 
   return (
-    <Modal title="Flow settings" onClose={onClose}>
+    <Modal title={t('Flow settings')} onClose={onClose}>
       <label className={styles.field}>
-        <span>Name</span>
+        <span>{t('Name')}</span>
         <input value={name} onChange={(e) => setName(e.target.value)} />
       </label>
       {/* No folder field. Filing a flow is done by dragging its card onto a folder on the
@@ -91,42 +93,42 @@ export function SettingsModal({
           a settings dialog asked somebody to remember the tree and to spell it. The flow keeps
           whichever folder it is in — this screen simply no longer has an opinion about it. */}
       <label className={styles.field}>
-        <span>Tags (comma separated)</span>
-        <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="ops, nightly" />
+        <span>{t('Tags (comma separated)')}</span>
+        <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder={t('ops, nightly')} />
       </label>
       <label className={styles.toggleRow}>
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
         <span>
-          Enabled — when off, scheduled (cron) runs are paused. Manual runs still work.
+          {t('Enabled — when off, scheduled (cron) runs are paused. Manual runs still work.')}
         </span>
       </label>
       <label
         className={styles.field}
-        title="Sum of the estimated cost of this flow's runs in the current calendar month. Only ever refuses a run that would be billed — one on ANTHROPIC_API_KEY. Runs on your Claude subscription or on a self-hosted model cost the same whether the flow runs once or fifty times, so the ceiling never blocks them; their estimate is still recorded, as equivalent usage rather than a bill. A run already in flight always finishes."
+        title={t("Sum of the estimated cost of this flow's runs in the current calendar month. Only ever refuses a run that would be billed — one on ANTHROPIC_API_KEY. Runs on your Claude subscription or on a self-hosted model cost the same whether the flow runs once or fifty times, so the ceiling never blocks them; their estimate is still recorded, as equivalent usage rather than a bill. A run already in flight always finishes.")}
       >
-        <span>Monthly budget in USD, for API-key runs (blank = no limit) ⓘ</span>
+        <span>{t('Monthly budget in USD, for API-key runs (blank = no limit) ⓘ')}</span>
         <input
           type="number"
           min="0"
           step="0.5"
           value={budget}
           onChange={(e) => setBudget(e.target.value)}
-          placeholder="e.g. 25"
+          placeholder={t('e.g. 25')}
         />
       </label>
       <label
         className={styles.toggleRow}
-        title="After a save that changes the graph, replay the golden reference's input against the new flow automatically. Each check is a real run with a real cost, which is why it is off unless you ask for it — the dashboard offers the same check as a chip when the flow drifts."
+        title={t("After a save that changes the graph, replay the golden reference's input against the new flow automatically. Each check is a real run with a real cost, which is why it is off unless you ask for it — the dashboard offers the same check as a chip when the flow drifts.")}
       >
         <input
           type="checkbox"
           checked={goldenAutoRun}
           onChange={(e) => setGoldenAutoRun(e.target.checked)}
         />
-        <span>Re-run the golden check after each save that changes the flow ⓘ</span>
+        <span>{t('Re-run the golden check after each save that changes the flow ⓘ')}</span>
       </label>
       <label className={styles.field}>
-        <span>Failure notification webhook</span>
+        <span>{t('Failure notification webhook')}</span>
         <input
           value={webhook}
           onChange={(e) => setWebhook(e.target.value)}
@@ -134,33 +136,33 @@ export function SettingsModal({
         />
       </label>
       <p className={styles.modalHint}>
-        POSTed with a Slack-compatible <code>text</code> field plus run details whenever an execution
-        of this flow fails.
+        {t('POSTed with a Slack-compatible')} <code>text</code>{' '}
+        {t('field plus run details whenever an execution of this flow fails.')}
       </p>
 
       <h4
         className={styles.sectionHead}
-        title="Where a run goes when it stops for a human — waiting for approval, or asking a question. Fill in either one, or both, or neither: with none of it set the run still waits, and you answer it in the app."
+        title={t('Where a run goes when it stops for a human — waiting for approval, or asking a question. Fill in either one, or both, or neither: with none of it set the run still waits, and you answer it in the app.')}
       >
-        Remote approvals and questions ⓘ
+        {t('Remote approvals and questions ⓘ')}
       </h4>
       <p className={styles.modalHint}>
-        Optional, and independent of each other. <b>Slack</b> can also answer: a ✅ reaction approves
-        a plan (❌ rejects) and a reply in the question&apos;s thread becomes the run&apos;s next
-        command — the app polls, so no public URL is needed. <b>Teams</b> only tells you: its
-        webhooks cannot carry a reply back. With neither, a waiting run is answered in the app.
+        {t('Optional, and independent of each other.')} <b>Slack</b>{' '}
+        {t("can also answer: a ✅ reaction approves a plan (❌ rejects) and a reply in the question's thread becomes the run's next command — the app polls, so no public URL is needed.")}{' '}
+        <b>Teams</b>{' '}
+        {t('only tells you: its webhooks cannot carry a reply back. With neither, a waiting run is answered in the app.')}
       </p>
       <CredentialField
-        label="Slack bot token (optional)"
+        label={t('Slack bot token (optional)')}
         value={slackCredential}
         onChange={setSlackCredential}
-        what="the Slack bot (scopes: chat:write, reactions:read, channels:history)"
+        what={t('the Slack bot (scopes: chat:write, reactions:read, channels:history)')}
       />
       <label
         className={styles.field}
-        title="Channel id (C0123456789, from the channel's details) or a public channel name. The bot must be invited to it (/invite @bot)."
+        title={t("Channel id (C0123456789, from the channel's details) or a public channel name. The bot must be invited to it (/invite @bot).")}
       >
-        <span>Slack channel — only if you set a Slack token ⓘ</span>
+        <span>{t('Slack channel — only if you set a Slack token ⓘ')}</span>
         <input
           value={slackChannel}
           onChange={(e) => setSlackChannel(e.target.value)}
@@ -169,9 +171,9 @@ export function SettingsModal({
       </label>
       <label
         className={styles.field}
-        title="A Teams incoming-webhook URL (Workflows). Posts the plan or the question as a card — notification only; answer from the app or Slack."
+        title={t('A Teams incoming-webhook URL (Workflows). Posts the plan or the question as a card — notification only; answer from the app or Slack.')}
       >
-        <span>Teams webhook, on its own or alongside Slack (notify only) ⓘ</span>
+        <span>{t('Teams webhook, on its own or alongside Slack (notify only) ⓘ')}</span>
         <input
           value={teamsWebhook}
           onChange={(e) => setTeamsWebhook(e.target.value)}
@@ -181,13 +183,14 @@ export function SettingsModal({
 
       <h4
         className={styles.sectionHead}
-        title="Values substituted into this flow's prompts as {{NAME}} when a run starts. Rows come from Resources → Variables; typing here overrides that value for THIS flow only, and blank inherits it. Add flow-only variables below. Saved with the flow, so it remembers what its runs use."
+        title={t("Values substituted into this flow's prompts as {{NAME}} when a run starts. Rows come from Resources → Variables; typing here overrides that value for THIS flow only, and blank inherits it. Add flow-only variables below. Saved with the flow, so it remembers what its runs use.")}
       >
-        Variables ⓘ
+        {t('Variables ⓘ')}
       </h4>
       {variableNames.length === 0 && (
         <p className={styles.modalHint}>
-          None yet — define shared ones under <b>Resources → Variables</b>, or add one below.
+          {t('None yet — define shared ones under')} <b>{t('Resources → Variables')}</b>
+          {t(', or add one below.')}
         </p>
       )}
       {variableNames.map((varName) => {
@@ -196,21 +199,21 @@ export function SettingsModal({
           <label key={varName} className={styles.field} title={org?.description || undefined}>
             <span>
               {'{{'}{varName}{'}}'}
-              {org && variables[varName] !== undefined ? ' — overridden' : ''}
+              {org && variables[varName] !== undefined ? t(' — overridden') : ''}
             </span>
             <input
               value={variables[varName] ?? ''}
-              placeholder={org ? `${org.value} (organization)` : ''}
+              placeholder={org ? t('{{value}} (organization)', { value: org.value }) : ''}
               onChange={(e) => setVariable(varName, e.target.value)}
             />
           </label>
         )
       })}
       <label className={styles.field}>
-        <span>Add a variable for this flow</span>
+        <span>{t('Add a variable for this flow')}</span>
         <input
           value={newVarName}
-          placeholder="NAME — then fill its value above"
+          placeholder={t('NAME — then fill its value above')}
           onChange={(e) => setNewVarName(e.target.value)}
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return
@@ -228,10 +231,10 @@ export function SettingsModal({
       {flow.id && <MemorySection flowId={flow.id} />}
       <div className={styles.modalActions}>
         <button className={styles.ghost} onClick={onClose}>
-          Cancel
+          {t('Cancel')}
         </button>
         <button className={styles.primary} onClick={() => void save()} disabled={busy}>
-          {busy ? 'Saving…' : 'Save'}
+          {busy ? t('Saving…') : t('Save')}
         </button>
       </div>
     </Modal>
@@ -247,6 +250,7 @@ const MEMORY_PAGE = 20
  * editing them by hand would put words in a mouth that never said them.
  */
 function MemorySection({ flowId }: { flowId: string }) {
+  const { t } = useTranslation()
   const [mem, setMem] = useState<FlowMemoryView | null>(null)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -261,7 +265,7 @@ function MemorySection({ flowId }: { flowId: string }) {
   if (!mem) return null
 
   const clear = async () => {
-    if (!confirm('Forget every note? Future runs of this flow start with an empty memory.')) return
+    if (!confirm(t('Forget every note? Future runs of this flow start with an empty memory.'))) return
     setBusy(true)
     try {
       await api.clearFlowMemory(flowId)
@@ -276,24 +280,26 @@ function MemorySection({ flowId }: { flowId: string }) {
     <div className={styles.memory}>
       <div
         className={styles.memoryHead}
-        title="Notes agents leave with the memory_append tool during runs of this flow; every future run reads them with memory_read. Stored in the app's database, per flow."
+        title={t("Notes agents leave with the memory_append tool during runs of this flow; every future run reads them with memory_read. Stored in the app's database, per flow.")}
       >
         <span>
-          Agent memory · {mem.count} note{mem.count === 1 ? '' : 's'} ⓘ
+          {mem.count === 1
+            ? t('Agent memory · {{n}} note ⓘ', { n: mem.count })
+            : t('Agent memory · {{n}} notes ⓘ', { n: mem.count })}
         </span>
         {mem.count > 0 && (
           <>
             <button className={styles.ghost} onClick={() => setOpen(!open)}>
-              {open ? 'Hide' : 'View'}
+              {open ? t('Hide') : t('View')}
             </button>
             <button className={styles.ghost} onClick={() => void clear()} disabled={busy}>
-              Forget all
+              {t('Forget all')}
             </button>
           </>
         )}
       </div>
       {!mem.available && (
-        <p className={styles.modalHint}>Storage is unavailable — notes cannot be read right now.</p>
+        <p className={styles.modalHint}>{t('Storage is unavailable — notes cannot be read right now.')}</p>
       )}
       {open && (
         <ul className={styles.memoryList}>
@@ -304,7 +310,7 @@ function MemorySection({ flowId }: { flowId: string }) {
             </li>
           ))}
           {mem.count > MEMORY_PAGE && (
-            <li className={styles.memoryMore}>…and {mem.count - MEMORY_PAGE} older</li>
+            <li className={styles.memoryMore}>{t('…and {{n}} older', { n: mem.count - MEMORY_PAGE })}</li>
           )}
         </ul>
       )}
@@ -325,8 +331,9 @@ export function VersionsModal({
   onClose: () => void
   pushError: (m: string) => void
 }) {
+  const { t } = useTranslation()
   return (
-    <Modal title={`History — ${flow.name}`} onClose={onClose}>
+    <Modal title={t('History — {{name}}', { name: flow.name })} onClose={onClose}>
       <FlowVersions flowId={flow.id ?? null} onRestored={onClose} pushError={pushError} />
     </Modal>
   )

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { AvailablePlugin, PluginsView } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
@@ -14,6 +15,7 @@ import styles from './resources.module.scss'
  * plugins a RUN loads is chosen per agent, on the agent's inspector.
  */
 export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) {
+  const { t } = useTranslation()
   const [view, setView] = useState<PluginsView | null>(null)
   const [catalog, setCatalog] = useState<AvailablePlugin[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -79,7 +81,7 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
 
   return (
     <div className={`${styles.crudForm} ${styles.lone}`}>
-      <h3 className={styles.h4}>Installed plugins</h3>
+      <h3 className={styles.h4}>{t('Installed plugins')}</h3>
 
       {view.plugins.length > 0 ? (
         <div className={styles.pluginList}>
@@ -94,24 +96,24 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
                     <span className={styles.pluginChip}>{p.version.slice(0, 12)}</span>
                   )}
                   <span className={cx(styles.pluginChip, p.enabled ? styles.pluginOn : styles.pluginOff)}>
-                    {p.enabled ? 'enabled' : 'disabled'}
+                    {p.enabled ? t('enabled') : t('disabled')}
                   </span>
                 </div>
                 <div className={styles.pluginActs}>
                   <button
                     className={styles.rowBtn}
                     disabled={busy}
-                    title={p.enabled ? 'Keep it installed but stop loading it' : 'Load it again'}
+                    title={p.enabled ? t('Keep it installed but stop loading it') : t('Load it again')}
                     onClick={() => void act(() => api.setPluginEnabled(p.id, !p.enabled))}
                   >
-                    {p.enabled ? 'Disable' : 'Enable'}
+                    {p.enabled ? t('Disable') : t('Enable')}
                   </button>
                   <button
                     className={cx(styles.rowBtn, styles.rowBtnDanger)}
                     disabled={busy}
                     onClick={() => void act(() => api.uninstallPlugin(p.id))}
                   >
-                    Uninstall
+                    {t('Uninstall')}
                   </button>
                 </div>
               </div>
@@ -119,22 +121,26 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
           })}
         </div>
       ) : (
-        <p className={styles.hint}>None installed yet — add a marketplace below, then install from it.</p>
+        <p className={styles.hint}>{t('None installed yet — add a marketplace below, then install from it.')}</p>
       )}
 
       <p
         className={styles.hint}
-        title="Runs load plugins only on the Claude backend. An agent with no selection runs with the CLI's own defaults."
+        title={t(
+          "Runs load plugins only on the Claude backend. An agent with no selection runs with the CLI's own defaults.",
+        )}
       >
-        Which plugins a run uses is chosen per agent, on the agent's inspector. ⓘ
+        {t("Which plugins a run uses is chosen per agent, on the agent's inspector.")} ⓘ
       </p>
 
-      <h3 className={styles.h4}>Install from marketplaces</h3>
+      <h3 className={styles.h4}>{t('Install from marketplaces')}</h3>
       <div className={styles.installRow}>
         <input
           value={search}
-          placeholder={catalog ? `Search ${catalog.length} plugins…` : 'Loading the catalog…'}
-          aria-label="Search available plugins"
+          placeholder={
+            catalog ? t('Search {{count}} plugins…', { count: catalog.length }) : t('Loading the catalog…')
+          }
+          aria-label={t('Search available plugins')}
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
@@ -149,10 +155,12 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
                     <span className={styles.pluginName}>{p.name}</span>
                     {p.marketplace && <span className={styles.pluginChip}>@{p.marketplace}</span>}
                     {(p.installCount ?? 0) > 0 && (
-                      <span className={styles.pluginChip}>{compact(p.installCount ?? 0)} installs</span>
+                      <span className={styles.pluginChip}>
+                        {t('{{count}} installs', { count: compact(p.installCount ?? 0) })}
+                      </span>
                     )}
                     {installed && (
-                      <span className={cx(styles.pluginChip, styles.pluginOn)}>installed</span>
+                      <span className={cx(styles.pluginChip, styles.pluginOn)}>{t('installed')}</span>
                     )}
                   </div>
                   {p.description && (
@@ -168,7 +176,7 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
                       disabled={busy}
                       onClick={() => void act(() => api.installPlugin(p.id))}
                     >
-                      Install
+                      {t('Install')}
                     </button>
                   </div>
                 )}
@@ -178,13 +186,13 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
         </div>
       )}
       {catalog && catalog.length === 0 && (
-        <p className={styles.hint}>The configured marketplaces offer nothing — add one below.</p>
+        <p className={styles.hint}>{t('The configured marketplaces offer nothing — add one below.')}</p>
       )}
       {catalog && catalog.length > 0 && results.length === 0 && (
-        <p className={styles.hint}>Nothing matches “{search.trim()}”.</p>
+        <p className={styles.hint}>{t('Nothing matches “{{query}}”.', { query: search.trim() })}</p>
       )}
 
-      <h3 className={styles.h4}>Marketplaces</h3>
+      <h3 className={styles.h4}>{t('Marketplaces')}</h3>
 
       {view.marketplaces.length > 0 ? (
         <div className={styles.pluginList}>
@@ -200,21 +208,21 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
                   disabled={busy}
                   onClick={() => void act(() => api.removePluginMarketplace(m.name))}
                 >
-                  Remove
+                  {t('Remove')}
                 </button>
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <p className={styles.hint}>No marketplaces yet — add one to install plugins from it.</p>
+        <p className={styles.hint}>{t('No marketplaces yet — add one to install plugins from it.')}</p>
       )}
 
       <div className={styles.installRow}>
         <input
           value={marketSource}
-          placeholder="owner/repo, URL or path"
-          aria-label="Marketplace to add"
+          placeholder={t('owner/repo, URL or path')}
+          aria-label={t('Marketplace to add')}
           onChange={(e) => setMarketSource(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && marketSource.trim() && !busy)
@@ -226,7 +234,7 @@ export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) 
           disabled={busy || !marketSource.trim()}
           onClick={() => void act(() => api.addPluginMarketplace(marketSource.trim()), () => setMarketSource(''))}
         >
-          Add marketplace
+          {t('Add marketplace')}
         </button>
       </div>
 

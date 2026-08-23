@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import type { FocusEvent, ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cx } from '../utils/cx.ts'
 import styles from './panels.module.scss'
 
@@ -107,6 +108,7 @@ export function CheckboxField({ label, checked, onChange, className }: CheckboxF
  * where fields live, never about what they do.
  */
 export function FineTuning({ children }: { children: ReactNode }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   return (
     <div className={styles.fineTuning}>
@@ -115,10 +117,10 @@ export function FineTuning({ children }: { children: ReactNode }) {
         className={styles.fineTuningHead}
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        title="Optional settings with sensible defaults. The node works without opening this."
+        title={t('Optional settings with sensible defaults. The node works without opening this.')}
       >
         <span className={styles.fineTuningArrow}>{open ? '▾' : '▸'}</span>
-        Fine-tuning
+        {t('Fine-tuning')}
       </button>
       {open && children}
     </div>

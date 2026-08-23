@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { type Sort } from './flowFormat.ts'
 import styles from './flows.module.scss'
 
@@ -24,6 +25,7 @@ export function FlowsToolbar({
   /** Opens the outcome recipes — a configured flow in two or three questions. */
   onRecipes: () => void
 }) {
+  const { t } = useTranslation()
   const fileRef = useRef<HTMLInputElement>(null)
 
   return (
@@ -32,21 +34,21 @@ export function FlowsToolbar({
         className={styles.search}
         value={query}
         onChange={(e) => onQueryChange(e.target.value)}
-        placeholder="Search flows…"
-        aria-label="Search flows"
+        placeholder={t('Search flows…')}
+        aria-label={t('Search flows')}
       />
       <select
         className={styles.sort}
         value={sort}
         onChange={(e) => onSortChange(e.target.value as Sort)}
-        aria-label="Sort flows"
+        aria-label={t('Sort flows')}
       >
-        <option value="recent">Recently run</option>
-        <option value="name">Name</option>
-        <option value="runs">Most runs</option>
+        <option value="recent">{t('Recently run')}</option>
+        <option value="name">{t('Name')}</option>
+        <option value="runs">{t('Most runs')}</option>
       </select>
       <button className={styles.ghost} onClick={() => fileRef.current?.click()}>
-        Import
+        {t('Import')}
       </button>
       <input
         ref={fileRef}
@@ -62,19 +64,19 @@ export function FlowsToolbar({
       <button
         className={styles.ghost}
         onClick={onRecipes}
-        title="Pick an outcome — triage my inbox, brief me every morning — answer the two or three things only you can know, and get a configured flow."
+        title={t('Pick an outcome — triage my inbox, brief me every morning — answer the two or three things only you can know, and get a configured flow.')}
       >
-        🍳 Recipes
+        🍳 {t('Recipes')}
       </button>
       <button
         className={styles.ghost}
         onClick={onDescribe}
-        title="Describe what you want automated in a sentence and get a first draft on the canvas. Nothing is saved until you press Save."
+        title={t('Describe what you want automated in a sentence and get a first draft on the canvas. Nothing is saved until you press Save.')}
       >
-        ✨ Describe a flow
+        ✨ {t('Describe a flow')}
       </button>
       <button className={styles.primary} onClick={onNew}>
-        + New flow
+        + {t('New flow')}
       </button>
     </div>
   )

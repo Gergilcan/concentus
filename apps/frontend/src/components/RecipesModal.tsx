@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { BackendFlow } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -31,6 +32,7 @@ export function RecipesModal({
   onSaved: (flow: BackendFlow) => void
   pushError: (m: string) => void
 }) {
+  const { t } = useTranslation()
   const [recipe, setRecipe] = useState<Recipe | null>(null)
   const [step, setStep] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string>>({})
@@ -60,7 +62,10 @@ export function RecipesModal({
     } catch (e) {
       // Most likely cause by far: the sample was deleted. Say that, rather than the raw 404.
       setError(
-        `${errMessage(e)} — this recipe builds on the bundled "${recipe.sampleId}" sample; if it was deleted, the recipe cannot be assembled.`,
+        t('{{error}} — this recipe builds on the bundled "{{sampleId}}" sample; if it was deleted, the recipe cannot be assembled.', {
+          error: errMessage(e),
+          sampleId: recipe.sampleId,
+        }),
       )
       pushError(errMessage(e))
     } finally {
@@ -70,17 +75,16 @@ export function RecipesModal({
 
   if (!recipe) {
     return (
-      <Modal title="Start from a recipe" onClose={onClose}>
+      <Modal title={t('Start from a recipe')} onClose={onClose}>
         <p className={styles.describeHint}>
-          Pick what you want to happen. Each one asks only for the pieces it cannot know, then saves
-          a flow you can open and edit like any other.
+          {t('Pick what you want to happen. Each one asks only for the pieces it cannot know, then saves a flow you can open and edit like any other.')}
         </p>
-        <ul className={styles.recipeList} aria-label="Recipes">
+        <ul className={styles.recipeList} aria-label={t('Recipes')}>
           {RECIPES.map((r) => (
             <li key={r.id}>
               <button className={styles.recipeItem} onClick={() => start(r)}>
-                <span className={styles.recipeTitle}>{r.title}</span>
-                <span className={styles.recipeBlurb}>{r.blurb}</span>
+                <span className={styles.recipeTitle}>{t(r.title)}</span>
+                <span className={styles.recipeBlurb}>{t(r.blurb)}</span>
               </button>
             </li>
           ))}
@@ -93,9 +97,13 @@ export function RecipesModal({
   const last = step === recipe.questions.length - 1
 
   return (
-    <Modal title={recipe.title} onClose={onClose}>
+    <Modal title={t(recipe.title)} onClose={onClose}>
       <p className={panels.hint}>
-        Question {step + 1} of {recipe.questions.length} — {question.title}
+        {t('Question {{step}} of {{total}} — {{title}}', {
+          step: step + 1,
+          total: recipe.questions.length,
+          title: t(question.title),
+        })}
       </p>
 
       {question.fields.map((field) => {
@@ -105,28 +113,28 @@ export function RecipesModal({
         return (
           <div key={key}>
             {field.control === 'credential' ? (
-              <CredentialField label={field.label} value={value} onChange={set} what="this mailbox" />
+              <CredentialField label={t(field.label)} value={value} onChange={set} what={t('this mailbox')} />
             ) : (
               <label className={styles.field}>
-                <span>{field.label}</span>
+                <span>{t(field.label)}</span>
                 {field.control === 'textarea' ? (
                   <textarea
                     className={styles.describeInput}
                     rows={4}
-                    placeholder={field.placeholder}
+                    placeholder={field.placeholder ? t(field.placeholder) : undefined}
                     value={value}
                     onChange={(e) => set(e.target.value)}
                   />
                 ) : (
                   <input
-                    placeholder={field.placeholder}
+                    placeholder={field.placeholder ? t(field.placeholder) : undefined}
                     value={value}
                     onChange={(e) => set(e.target.value)}
                   />
                 )}
               </label>
             )}
-            {field.help && <p className={panels.hint}>{field.help}</p>}
+            {field.help && <p className={panels.hint}>{t(field.help)}</p>}
           </div>
         )
       })}
@@ -134,7 +142,7 @@ export function RecipesModal({
       {last && (
         <label className={styles.toggleRow}>
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          <span>Start it now — {recipe.enableHint}</span>
+          <span>{t('Start it now — {{hint}}', { hint: t(recipe.enableHint) })}</span>
         </label>
       )}
 
@@ -146,15 +154,15 @@ export function RecipesModal({
           disabled={saving}
           onClick={() => (step === 0 ? setRecipe(null) : setStep(step - 1))}
         >
-          Back
+          {t('Back')}
         </button>
         {last ? (
           <button className={styles.primary} disabled={saving} onClick={() => void save()}>
-            {saving ? <Spinner label="Saving" /> : 'Create the flow'}
+            {saving ? <Spinner label={t('Saving')} /> : t('Create the flow')}
           </button>
         ) : (
           <button className={styles.primary} onClick={() => setStep(step + 1)}>
-            Next
+            {t('Next')}
           </button>
         )}
       </div>

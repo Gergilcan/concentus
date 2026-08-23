@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { cx } from '../utils/cx.ts'
 import styles from './flows.module.scss'
 
@@ -11,12 +12,13 @@ export function TagFilterBar({
   activeTag: string | null
   onSelect: (tag: string | null) => void
 }) {
+  const { t } = useTranslation()
   if (tags.length === 0) return null
 
   return (
     <div className={styles.tagBar}>
       <button className={cx(styles.tagChip, !activeTag && styles.tagActive)} onClick={() => onSelect(null)}>
-        All
+        {t('All')}
       </button>
       {tags.map((t) => (
         <button

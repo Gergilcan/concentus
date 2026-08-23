@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { SignInProvider } from '../api/types.ts'
 import styles from './signin.module.scss'
 
@@ -22,7 +23,12 @@ export function ProviderButtons({
   /** "Continue" on the sign-in screen, "Set up" on the first launch. */
   verb: string
 }) {
+  const { t } = useTranslation()
   const [explaining, setExplaining] = useState<string | null>(null)
+
+  // The verb is a key of its own ("Continue", "Set up"), so each screen's phrasing translates
+  // whole; the provider's name is a proper noun and stays as the API sent it.
+  const label = (name: string) => t('{{verb}} with {{name}}', { verb: t(verb), name })
 
   return (
     <>
@@ -34,13 +40,14 @@ export function ProviderButtons({
               className={`${styles.provider} ${styles.providerUnset}`}
               onClick={() => setExplaining(explaining === provider.id ? null : provider.id)}
             >
-              {verb} with {provider.name}
+              {label(provider.name)}
             </button>
             {explaining === provider.id && (
               <p className={styles.providerNote}>
-                {provider.name} is not registered on this installation yet. An administrator adds
-                its client id and secret under Resources → Members → Sign-in providers; the screen
-                there carries the redirect URI to register.
+                {t(
+                  '{{name}} is not registered on this installation yet. An administrator adds its client id and secret under Resources → Members → Sign-in providers; the screen there carries the redirect URI to register.',
+                  { name: provider.name },
+                )}
               </p>
             )}
           </div>
@@ -52,7 +59,7 @@ export function ProviderButtons({
             className={styles.provider}
             href={`/api/account/oidc/start?provider=${encodeURIComponent(provider.id)}`}
           >
-            {verb} with {provider.name}
+            {label(provider.name)}
           </a>
         ),
       )}

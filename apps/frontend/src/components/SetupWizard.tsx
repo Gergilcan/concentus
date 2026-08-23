@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { SignedInUser, SignInProvider } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -28,6 +29,7 @@ interface Props {
  * otherwise be invented here simply never exists.
  */
 export function SetupWizard({ onSignedIn, storeUnavailable, providers = [] }: Props) {
+  const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -60,35 +62,37 @@ export function SetupWizard({ onSignedIn, storeUnavailable, providers = [] }: Pr
         <div className={styles.brand}>
           <span className={styles.logo}>⬡</span> Concentus
         </div>
-        <h1 className={styles.setupTitle}>Set up this installation</h1>
+        <h1 className={styles.setupTitle}>{t('Set up this installation')}</h1>
         <p className={styles.lead}>
-          There are no accounts here yet. The one you create now administers it: it can add people
-          and decide what each of them may do.
+          {t(
+            'There are no accounts here yet. The one you create now administers it: it can add people and decide what each of them may do.',
+          )}
         </p>
 
         {storeUnavailable && (
           <p className={styles.warning} role="alert">
-            The backend cannot reach its database, so no account can be created until it is
-            available.
+            {t(
+              'The backend cannot reach its database, so no account can be created until it is available.',
+            )}
           </p>
         )}
 
         <div className={styles.field}>
-          <label htmlFor="setup-email">Email</label>
+          <label htmlFor="setup-email">{t('Email')}</label>
           <input
             id="setup-email"
             type="email"
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@company.com"
+            placeholder={t('name@company.com')}
             required
             autoFocus
           />
         </div>
 
         <div className={styles.field}>
-          <label htmlFor="setup-password">Password</label>
+          <label htmlFor="setup-password">{t('Password')}</label>
           <input
             id="setup-password"
             type="password"
@@ -102,12 +106,14 @@ export function SetupWizard({ onSignedIn, storeUnavailable, providers = [] }: Pr
             id="setup-password-hint"
             className={tooShort ? styles.fieldWarn : styles.fieldNote}
           >
-            {tooShort ? `${12 - password.length} more characters` : 'At least 12 characters.'}
+            {tooShort
+              ? t('{{n}} more characters', { n: 12 - password.length })
+              : t('At least 12 characters.')}
           </small>
         </div>
 
         <div className={styles.field}>
-          <label htmlFor="setup-confirm">Password again</label>
+          <label htmlFor="setup-confirm">{t('Password again')}</label>
           <input
             id="setup-confirm"
             type="password"
@@ -119,7 +125,7 @@ export function SetupWizard({ onSignedIn, storeUnavailable, providers = [] }: Pr
           />
           {mismatch && (
             <small id="setup-confirm-hint" className={styles.fieldWarn}>
-              These do not match.
+              {t('These do not match.')}
             </small>
           )}
         </div>
@@ -131,12 +137,12 @@ export function SetupWizard({ onSignedIn, storeUnavailable, providers = [] }: Pr
         )}
 
         <button type="submit" className={styles.submit} disabled={busy || !ready}>
-          {busy ? 'Creating…' : 'Create account and continue'}
+          {busy ? t('Creating…') : t('Create account and continue')}
         </button>
 
         {providers.length > 0 && (
           <>
-            <p className={styles.or}>or</p>
+            <p className={styles.or}>{t('or')}</p>
             {/* The first account to arrive through one of these administers the installation,
                 exactly as the form above does. */}
             <ProviderButtons providers={providers} verb="Set up" />
@@ -144,8 +150,9 @@ export function SetupWizard({ onSignedIn, storeUnavailable, providers = [] }: Pr
         )}
 
         <p className={styles.hint}>
-          Everyone else signs in afterwards and starts as a Viewer — able to read what the
-          automation did, and nothing more — until you promote them under Resources → Members.
+          {t(
+            'Everyone else signs in afterwards and starts as a Viewer — able to read what the automation did, and nothing more — until you promote them under Resources → Members.',
+          )}
         </p>
       </form>
     </div>

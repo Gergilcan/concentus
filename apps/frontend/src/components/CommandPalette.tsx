@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cx } from '../utils/cx.ts'
 import { filterCommands, type Command } from './commandPalette.ts'
 import styles from './commandPalette.module.scss'
@@ -12,6 +13,7 @@ import styles from './commandPalette.module.scss'
  * exactly the cost keyboard users are trying to avoid.
  */
 export function CommandPalette({ commands, onClose }: { commands: Command[]; onClose: () => void }) {
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -67,15 +69,15 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
         className={styles.palette}
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-label={t('Command palette')}
         onClick={(e) => e.stopPropagation()}
       >
         <input
           ref={inputRef}
           className={styles.input}
           value={query}
-          placeholder="Go to a flow, run one, switch view or theme…"
-          aria-label="Command"
+          placeholder={t('Go to a flow, run one, switch view or theme…')}
+          aria-label={t('Command')}
           onChange={(e) => {
             setQuery(e.target.value)
             setActive(0)
@@ -83,9 +85,9 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
           onKeyDown={onKeyDown}
         />
         {matches.length === 0 ? (
-          <p className={styles.empty}>Nothing matches “{query}”.</p>
+          <p className={styles.empty}>{t('Nothing matches “{{query}}”.', { query })}</p>
         ) : (
-          <ul className={styles.list} role="listbox" aria-label="Commands" ref={listRef}>
+          <ul className={styles.list} role="listbox" aria-label={t('Commands')} ref={listRef}>
             {matches.map((command, i) => (
               <li
                 key={command.id}
@@ -100,7 +102,7 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
                 }}
                 onMouseEnter={() => setActive(i)}
               >
-                <span className={styles.group}>{command.group}</span>
+                <span className={styles.group}>{t(command.group)}</span>
                 <span className={styles.label}>{command.label}</span>
                 {command.hint && <span className={styles.hint}>{command.hint}</span>}
               </li>

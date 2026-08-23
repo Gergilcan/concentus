@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { RunSummary } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
@@ -30,6 +31,7 @@ interface Props {
 }
 
 export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = null }: Props) {
+  const { t } = useTranslation()
   // Only this flow's executions. The panel sits under the flow you are editing, so a list mixing
   // in every other flow's runs is noise you have to read past — and worse, it makes the run you
   // just started hard to find. An unsaved flow has no id, so its ad-hoc runs (which have none
@@ -109,16 +111,16 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
   return (
     <section className={styles.runs}>
       <div className={styles.runList}>
-        <h3 className={styles.h3}>Executions</h3>
+        <h3 className={styles.h3}>{t('Executions')}</h3>
         {goldenRun && (
           <div className={styles.goldenBar}>
             <button
               className={styles.goldenAction}
               disabled={busy}
-              title="Re-run the golden reference's input against the flow as it is saved now — then compare the two runs"
+              title={t("Re-run the golden reference's input against the flow as it is saved now — then compare the two runs")}
               onClick={() => void rerunGolden()}
             >
-              ⭐▶ Test current flow
+              {t('⭐▶ Test current flow')}
             </button>
           </div>
         )}
@@ -130,24 +132,24 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
             disabled={!canCompare}
             title={
               canCompare
-                ? 'Compare the selected execution with another one — the golden reference, or any other run of this flow'
-                : 'Select an execution, with at least one other to read it against'
+                ? t('Compare the selected execution with another one — the golden reference, or any other run of this flow')
+                : t('Select an execution, with at least one other to read it against')
             }
             onClick={startCompare}
           >
-            ⇄ Compare
+            {t('⇄ Compare')}
           </button>
           <button
             className={styles.goldenAction}
             disabled={!selectedRun || !selectedRun.flowId}
             title={
               selectedRun?.flowId
-                ? 'Walk this run’s recorded outputs through the flow as saved now, and paint on the canvas where the path would diverge. Nothing is executed.'
-                : 'Select an execution of a saved flow — an ad-hoc run has no current flow to replay against.'
+                ? t('Walk this run’s recorded outputs through the flow as saved now, and paint on the canvas where the path would diverge. Nothing is executed.')
+                : t('Select an execution of a saved flow — an ad-hoc run has no current flow to replay against.')
             }
             onClick={() => void (replayShown ? setReplay(null) : replay())}
           >
-            {replayShown ? '⟲ Hide replay' : '⟲ Replay vs current'}
+            {replayShown ? t('⟲ Hide replay') : t('⟲ Replay vs current')}
           </button>
         </div>
         {err && <div className={styles.err}>{err}</div>}
@@ -156,8 +158,8 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
         ) : mine.length === 0 ? (
           <div className={styles.muted}>
             {runs.length > 0
-              ? 'No executions for this flow yet. Press Run, or wait for its trigger.'
-              : 'No executions yet. Design a flow and press Run.'}
+              ? t('No executions for this flow yet. Press Run, or wait for its trigger.')
+              : t('No executions yet. Design a flow and press Run.')}
           </div>
         ) : null}
         {!loading &&
@@ -175,14 +177,14 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
               }}
             >
               <span className={cx(styles.dot, styles['s_' + r.status])} />
-              <span className={styles.runName}>{r.flowName || 'flow'}</span>
+              <span className={styles.runName}>{r.flowName || t('flow')}</span>
               {r.trigger && r.trigger !== 'manual' && (
-                <span className={styles.trigger}>{TRIGGER_LABEL[r.trigger] ?? r.trigger}</span>
+                <span className={styles.trigger}>{t(TRIGGER_LABEL[r.trigger] ?? r.trigger)}</span>
               )}
               {!!r.flowVersion && (
                 <span
                   className={styles.version}
-                  title={`Ran flow version ${r.flowVersion}. Opening this execution puts exactly that revision on the canvas.`}
+                  title={t('Ran flow version {{n}}. Opening this execution puts exactly that revision on the canvas.', { n: r.flowVersion })}
                 >
                   v{r.flowVersion}
                 </span>
@@ -192,7 +194,7 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
                   schedule or a webhook: the trigger badge beside this already says what they
                   were, and a name invented for them would be worse than the gap. */}
               {r.startedBy && (
-                <span className={styles.runCost} title={`Started by ${r.startedBy}`}>
+                <span className={styles.runCost} title={t('Started by {{name}}', { name: r.startedBy })}>
                   {r.startedBy.split('@')[0]}
                 </span>
               )}
@@ -202,7 +204,7 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
               {!!r.estimatedCostUsd && (
                 <span
                   className={styles.runCost}
-                  title="Estimated at this run's own model rates. On a Claude subscription there is no per-token bill — read it as equivalent usage."
+                  title={t("Estimated at this run's own model rates. On a Claude subscription there is no per-token bill — read it as equivalent usage.")}
                 >
                   {money(r.estimatedCostUsd)}
                 </span>
@@ -212,10 +214,10 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
                   className={cx(styles.goldStar, isGolden(r) && styles.goldStarOn)}
                   title={
                     isGolden(r)
-                      ? 'Golden reference — click to unmark'
-                      : 'Mark as this flow’s golden reference'
+                      ? t('Golden reference — click to unmark')
+                      : t('Mark as this flow’s golden reference')
                   }
-                  aria-label={isGolden(r) ? 'Unmark golden reference' : 'Mark as golden reference'}
+                  aria-label={isGolden(r) ? t('Unmark golden reference') : t('Mark as golden reference')}
                   onClick={(e) => {
                     e.stopPropagation()
                     void toggleGolden(r)
@@ -235,7 +237,7 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
             flowVersion={selectedRun?.flowVersion}
           />
         ) : (
-          <div className={styles.runEmpty}>Select a run to see its output and send commands.</div>
+          <div className={styles.runEmpty}>{t('Select a run to see its output and send commands.')}</div>
         )}
       </div>
       {picking && selectedRun && (

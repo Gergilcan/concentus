@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { DoctorFinding } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -21,6 +22,7 @@ export function DoctorModal({ flowId, flowName, onClose }: {
   flowName: string
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   const [findings, setFindings] = useState<DoctorFinding[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -44,27 +46,29 @@ export function DoctorModal({ flowId, flowName, onClose }: {
   const warnings = findings?.filter((f) => f.level === 'warn') ?? []
 
   return (
-    <Modal title={`Check — ${flowName}`} onClose={onClose}>
+    <Modal title={t('Check — {{name}}', { name: flowName })} onClose={onClose}>
       {findings === null ? (
         <div className={styles.sideEmpty}>
-          <Spinner label="Checking this flow" />
+          <Spinner label={t('Checking this flow')} />
         </div>
       ) : error ? (
-        <p className={styles.describeError}>The check could not run: {error}</p>
+        <p className={styles.describeError}>{t('The check could not run: {{error}}', { error })}</p>
       ) : findings.length === 0 ? (
         <p className={styles.doctorClear}>
-          ✓ Nothing to fix. Credentials resolve, the graph compiles, and this machine can run it.
+          {t('✓ Nothing to fix. Credentials resolve, the graph compiles, and this machine can run it.')}
         </p>
       ) : (
         <>
           <p className={styles.describeHint}>
             {errors.length > 0
-              ? `${errors.length} thing${errors.length === 1 ? '' : 's'} would fail`
-              : 'Nothing would fail'}
-            {warnings.length > 0 && `, ${warnings.length} worth a look`}. Running is still allowed —
-            this informs, it does not block.
+              ? errors.length === 1
+                ? t('{{n}} thing would fail', { n: errors.length })
+                : t('{{n}} things would fail', { n: errors.length })
+              : t('Nothing would fail')}
+            {warnings.length > 0 && t(', {{n}} worth a look', { n: warnings.length })}
+            {t('. Running is still allowed — this informs, it does not block.')}
           </p>
-          <ul className={styles.doctorList} aria-label="Findings">
+          <ul className={styles.doctorList} aria-label={t('Findings')}>
             {[...errors, ...warnings].map((f, i) => (
               <li key={i} className={styles.doctorRow}>
                 <span className={f.level === 'error' ? styles.doctorError : styles.doctorWarn}>

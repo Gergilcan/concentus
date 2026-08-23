@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { ModelCatalog, ModelRate } from '../api/types.ts'
 import { MODEL_GROUPS } from '../constants.ts'
@@ -34,7 +35,7 @@ function rateLabel(rate: ModelRate): string {
 export function ModelField({
   value,
   onChange,
-  label = 'Model',
+  label,
   allowNone = false,
 }: {
   value: string
@@ -44,6 +45,7 @@ export function ModelField({
   /** Adds an explicit empty choice, for a model that is optional rather than required. */
   allowNone?: boolean
 }) {
+  const { t } = useTranslation()
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null)
 
   useEffect(() => {
@@ -87,7 +89,7 @@ export function ModelField({
   return (
     <>
       <label className={styles.field}>
-        <span>{label}</span>
+        <span>{label ?? t('Model')}</span>
         <select
           value={custom ? CUSTOM : value}
           onChange={(e) => {
@@ -99,9 +101,9 @@ export function ModelField({
             onChange(e.target.value)
           }}
         >
-          {allowNone && <option value="">— none —</option>}
+          {allowNone && <option value="">{t('— none —')}</option>}
           {groups.map((g) => (
-            <optgroup key={g.label} label={g.label}>
+            <optgroup key={g.label} label={t(g.label)}>
               {g.models.map((m) => {
                 const rate = rateFor(m)
                 // A self-hosted model has no per-token bill, so "$0 / $0" would be noise where
@@ -109,7 +111,7 @@ export function ModelField({
                 if (localModels.includes(m)) {
                   return (
                     <option key={m} value={m}>
-                      {m} — runs locally
+                      {m} — {t('runs locally')}
                     </option>
                   )
                 }
@@ -121,26 +123,26 @@ export function ModelField({
               })}
             </optgroup>
           ))}
-          <option value={CUSTOM}>Custom…</option>
+          <option value={CUSTOM}>{t('Custom…')}</option>
         </select>
       </label>
 
       {custom && (
         <Field
-          label="Model id"
+          label={t('Model id')}
           value={value}
-          placeholder="e.g. claude-opus-4-8"
+          placeholder={t('e.g. claude-opus-4-8')}
           onChange={onChange}
         />
       )}
 
-      {group && <p className={styles.hint}>{group.hint}</p>}
+      {group && <p className={styles.hint}>{t(group.hint)}</p>}
 
       {isLocal && (
         <p className={styles.hint}>
-          Runs on your own machine, so there is no per-token bill and nothing leaves it. Delegation,
-          file tools, SQL context and MCP all work. <b>Bash and repository nodes do not</b> — a flow
-          that has to clone a repo and open a pull request needs a Claude model.
+          {t('Runs on your own machine, so there is no per-token bill and nothing leaves it. Delegation, file tools, SQL context and MCP all work.')}{' '}
+          <b>{t('Bash and repository nodes do not')}</b>{' '}
+          {t('— a flow that has to clone a repo and open a pull request needs a Claude model.')}
         </p>
       )}
 
@@ -157,18 +159,18 @@ export function ModelField({
           {/* A subscription run has no per-token bill at all, and the same flow may run either
               way depending on the credential present — so the figure is framed as a comparison
               aid rather than a charge. */}
-          Costs shown against a run are an estimate at <b>{rateLabel(currentRate)}</b> per 1M tokens
-          (in / out). On a Claude <b>subscription</b> there is no per-token bill, so treat it as
-          equivalent usage; on the <b>API</b> it approximates the real charge. Cached context
-          re-read on later turns bills at roughly a tenth of the input rate.
+          {t('Costs shown against a run are an estimate at')} <b>{rateLabel(currentRate)}</b>{' '}
+          {t('per 1M tokens (in / out). On a Claude')} <b>{t('subscription')}</b>{' '}
+          {t('there is no per-token bill, so treat it as equivalent usage; on the')} <b>API</b>{' '}
+          {t('it approximates the real charge. Cached context re-read on later turns bills at roughly a tenth of the input rate.')}
         </p>
       )}
 
       {!currentRate && catalog && !isLocal && (
         <p className={styles.hint}>
-          No rate configured for this model, so cost is estimated at the fallback{' '}
-          {rateLabel(catalog.fallback)} per 1M tokens. Add it to <code>pricing.models</code> for an
-          accurate figure.
+          {t('No rate configured for this model, so cost is estimated at the fallback')}{' '}
+          {rateLabel(catalog.fallback)} {t('per 1M tokens. Add it to')} <code>pricing.models</code>{' '}
+          {t('for an accurate figure.')}
         </p>
       )}
     </>

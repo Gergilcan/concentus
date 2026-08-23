@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { McpCapabilities, McpServerInfo } from '../api/types.ts'
@@ -33,6 +34,7 @@ function claudeState(server: McpServerInfo | undefined): ClaudeState {
   return 'connected'
 }
 
+/** English at rest, translated where it is rendered — like every label table in this app. */
 const STATE_LABEL: Record<ClaudeState, string> = {
   connected: 'Connected in Claude Code',
   failed: 'In Claude Code — failed to connect',
@@ -59,6 +61,7 @@ const STATE_DOT: Record<ClaudeState, string> = {
  * an OAuth sign-in "cannot complete here", which was true of the CLI's flow and false of the app's.
  */
 export function McpClaudeActions({ name, url, credentialId, authHeader }: Props) {
+  const { t } = useTranslation()
   const [servers, setServers] = useState<McpServerInfo[]>([])
   const [caps, setCaps] = useState<McpCapabilities | null>(null)
   const [status, setStatus] = useState<string | null>(null)
@@ -119,7 +122,7 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
     act(async () => {
       if (!listed) await api.addMcpServer({ name, url: endpoint, credentialId, authHeader })
       return api.loginMcpServer(name)
-    }, 'Starting sign-in…')
+    }, t('Starting sign-in…'))
 
   const removeSrv = () => act(() => api.removeMcpServer(name))
 
@@ -127,16 +130,19 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
     <div className={styles.mcpActions}>
       <div
         className={styles.mcpStatus}
-        title="The claude CLI's own registration, used by runs on the Claude backend. The CLI keeps its authorizations to itself — the tool picker and self-hosted runs use 'Sign in to this server' above instead."
+        title={t(
+          "The claude CLI's own registration, used by runs on the Claude backend. The CLI keeps its authorizations to itself — the tool picker and self-hosted runs use 'Sign in to this server' above instead.",
+        )}
       >
         <span className={cx(styles.sDot, STATE_DOT[state])} />
-        {STATE_LABEL[state]}
+        {t(STATE_LABEL[state])}
       </div>
 
       {!endpoint && (
         <div className={styles.previewMeta}>
-          This server is a local command, not a URL — runs launch it themselves, so there is nothing
-          to register with the CLI here.
+          {t(
+            'This server is a local command, not a URL — runs launch it themselves, so there is nothing to register with the CLI here.',
+          )}
         </div>
       )}
 
@@ -146,7 +152,7 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
             action instead of a fallback. */}
         {endpoint !== '' && !connected && caps?.interactiveLogin && (
           <button className={styles.previewBtn} onClick={() => void authorize()} disabled={busy || !canAct}>
-            {busy ? 'Working…' : listed ? 'Authorize (OAuth)' : 'Add & authorize'}
+            {busy ? t('Working…') : listed ? t('Authorize (OAuth)') : t('Add & authorize')}
           </button>
         )}
         {endpoint !== '' && !listed && (
@@ -155,29 +161,29 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
             onClick={() => void add()}
             disabled={busy || !canAct}
           >
-            {caps?.interactiveLogin ? 'Add without sign-in' : busy ? 'Working…' : 'Add with token'}
+            {caps?.interactiveLogin ? t('Add without sign-in') : busy ? t('Working…') : t('Add with token')}
           </button>
         )}
         {listed && (
           <button className={styles.linkBtn} onClick={() => void removeSrv()} disabled={busy}>
-            Remove
+            {t('Remove')}
           </button>
         )}
         <button className={styles.linkBtn} onClick={load} disabled={busy}>
-          Recheck
+          {t('Recheck')}
         </button>
       </div>
 
       {caps && !caps.interactiveLogin && (
         <div className={styles.previewMeta}>
           {caps.hint ||
-            'The claude CLI’s sign-in needs a desktop — use “Sign in to this server” above instead.'}
+            t('The claude CLI’s sign-in needs a desktop — use “Sign in to this server” above instead.')}
         </div>
       )}
       {failed && (
         <div className={styles.previewMeta}>
-          Store a token under <b>Resources → Credentials</b>, select it above, and use “Add with
-          token”.
+          {t('Store a token under')} <b>{t('Resources → Credentials')}</b>
+          {t(', select it above, and use “Add with token”.')}
         </div>
       )}
       {status && <div className={styles.previewMeta}>{status}</div>}

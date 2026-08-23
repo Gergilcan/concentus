@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import type { RunSummary } from '../api/types.ts'
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError }: Props) {
+  const { t } = useTranslation()
   const name = useFlowStore((s) => s.name)
   const permissions = usePermissions()
   const setName = useFlowStore((s) => s.setName)
@@ -56,25 +58,25 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
 
   return (
     <header className={styles.toolbar}>
-      <button className={styles.back} onClick={onBackToFlows} title="Back to all flows">
-        ← Flows
+      <button className={styles.back} onClick={onBackToFlows} title={t('Back to all flows')}>
+        ← {t('Flows')}
       </button>
 
       <input
         className={styles.name}
         value={name}
         onChange={(e) => setName(e.target.value)}
-        aria-label="Flow name"
+        aria-label={t('Flow name')}
       />
 
       <select
         className={styles.select}
         value={mode}
         onChange={(e) => setMode(e.target.value as 'managed' | 'local')}
-        title="managed = multi-agent execution"
+        title={t('managed = multi-agent execution')}
       >
-        <option value="managed">managed</option>
-        <option value="local">local</option>
+        <option value="managed">{t('managed')}</option>
+        <option value="local">{t('local')}</option>
       </select>
 
       <div className={styles.spacer} />
@@ -85,8 +87,8 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
         className={styles.btn}
         onClick={undo}
         disabled={!canUndo || !permissions.canEdit}
-        title="Undo the last canvas change (Ctrl+Z)"
-        aria-label="Undo"
+        title={t('Undo the last canvas change (Ctrl+Z)')}
+        aria-label={t('Undo')}
       >
         ↶
       </button>
@@ -94,8 +96,8 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
         className={styles.btn}
         onClick={redo}
         disabled={!canRedo || !permissions.canEdit}
-        title="Redo what was just undone (Ctrl+Y)"
-        aria-label="Redo"
+        title={t('Redo what was just undone (Ctrl+Y)')}
+        aria-label={t('Redo')}
       >
         ↷
       </button>
@@ -103,9 +105,9 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
         className={styles.btn}
         onClick={autoLayout}
         disabled={!canTidy || !permissions.canEdit}
-        title="Tidy up: lay the chain out left to right, capabilities under their agents. One Ctrl+Z away from undone."
+        title={t('Tidy up: lay the chain out left to right, capabilities under their agents. One Ctrl+Z away from undone.')}
       >
-        ⌗ Tidy
+        ⌗ {t('Tidy')}
       </button>
 
       {/* Checks the SAVED flow, so an unsaved canvas has nothing to check yet — the button says
@@ -116,11 +118,11 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
         disabled={!flowId}
         title={
           flowId
-            ? 'Check this flow before running it: missing credentials, servers without auth, un-installed plugins, an invalid schedule, an exhausted budget. Informs — never blocks a run.'
-            : 'Save the flow first — the check runs against the saved version.'
+            ? t('Check this flow before running it: missing credentials, servers without auth, un-installed plugins, an invalid schedule, an exhausted budget. Informs — never blocks a run.')
+            : t('Save the flow first — the check runs against the saved version.')
         }
       >
-        ⚕ Check
+        ⚕ {t('Check')}
       </button>
       {/* Version history lived in the inspector panel, next to the canvas it changes, until the
           panel went. It belongs here rather than only behind the dashboard's History modal for
@@ -131,13 +133,13 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
         className={styles.btn}
         onClick={() => flowId && setVersions(true)}
         disabled={!flowId}
-        title={flowId ? 'Earlier versions of this flow — preview one, or roll back to it.'
-                      : 'Save the flow first — a version history starts at the first save.'}
+        title={flowId ? t('Earlier versions of this flow — preview one, or roll back to it.')
+                      : t('Save the flow first — a version history starts at the first save.')}
       >
-        Versions
+        {t('Versions')}
       </button>
       <button className={styles.btn} onClick={newFlow} disabled={!permissions.canEdit}>
-        New
+        {t('New')}
       </button>
       <button
         className={styles.btn}
@@ -145,7 +147,7 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
         disabled={!permissions.canEdit}
         title={permissions.canEdit ? undefined : deniedReason(permissions, 'edit')}
       >
-        Save
+        {t('Save')}
       </button>
       <button
         className={cx(styles.btn, styles.run)}
@@ -153,7 +155,7 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
         disabled={!permissions.canRun}
         title={permissions.canRun ? undefined : deniedReason(permissions, 'run')}
       >
-        ▶ Run
+        ▶ {t('Run')}
       </button>
 
       {checking && flowId && (
@@ -166,7 +168,7 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
           is the point of the feature. Restoring appends a revision rather than overwriting one,
           and watching "current" move to a NEW row is how that stops being a claim in a tooltip. */}
       {versions && flowId && (
-        <Modal title={`Versions — ${name}`} onClose={() => setVersions(false)} wide>
+        <Modal title={t('Versions — {{name}}', { name })} onClose={() => setVersions(false)} wide>
           <FlowVersions flowId={flowId} pushError={pushError} />
         </Modal>
       )}

@@ -1,5 +1,6 @@
 import { CardMenu, menuItems } from './CardMenu.tsx'
 import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { BackendFlow, GoldenStatus, RunSummary } from '../api/types.ts'
 import { deniedReason, usePermissions } from '../state/permissions.tsx'
 import { cx } from '../utils/cx.ts'
@@ -51,6 +52,7 @@ export function FlowCard({
   /** When set, the card can be dragged (onto a dashboard folder). The handler fills the payload. */
   onDragStart?: (e: DragEvent) => void
 }) {
+  const { t } = useTranslation()
   // Copy-as-template feedback: a ✓ for a moment, then back. Clipboard writes are invisible,
   // and a button that seems to do nothing gets clicked five times.
   const permissions = usePermissions()
@@ -113,7 +115,7 @@ export function FlowCard({
       <div className={styles.cardHead}>
         <button
           className={cx(styles.star, flow.favorite && styles.starOn)}
-          title={flow.favorite ? 'Unpin' : 'Pin to top'}
+          title={flow.favorite ? t('Unpin') : t('Pin to top')}
           onClick={() => void patch(flow, { favorite: !flow.favorite })}
         >
           {flow.favorite ? '★' : '☆'}
@@ -125,8 +127,8 @@ export function FlowCard({
       </div>
 
       <div className={styles.badges}>
-        <span className={cx(styles.badge, styles['b_' + trigger.tone])}>{trigger.label}</span>
-        {paused && <span className={cx(styles.badge, styles.b_paused)}>paused</span>}
+        <span className={cx(styles.badge, styles['b_' + trigger.tone])}>{t(trigger.label)}</span>
+        {paused && <span className={cx(styles.badge, styles.b_paused)}>{t('paused')}</span>}
         {voices.length > 0 && (
           <span className={styles.voices}>
             {voices.map((name, i) => (
@@ -135,7 +137,8 @@ export function FlowCard({
           </span>
         )}
         <span className={styles.meta}>
-          {agents} agent{agents === 1 ? '' : 's'} · {tools} tool{tools === 1 ? '' : 's'}
+          {agents === 1 ? t('{{n}} agent', { n: agents }) : t('{{n}} agents', { n: agents })} ·{' '}
+          {tools === 1 ? t('{{n}} tool', { n: tools }) : t('{{n}} tools', { n: tools })}
         </span>
       </div>
 
@@ -146,10 +149,10 @@ export function FlowCard({
         <button
           className={styles.goldenChip}
           disabled={goldenChecking}
-          title="This flow has changed since its golden reference ran. Replay that run's input against the flow as it is saved now, then compare the two."
+          title={t("This flow has changed since its golden reference ran. Replay that run's input against the flow as it is saved now, then compare the two.")}
           onClick={() => onGoldenCheck(golden)}
         >
-          {goldenChecking ? '⭐ testing…' : '⭐ golden outdated — test now'}
+          {goldenChecking ? t('⭐ testing…') : t('⭐ golden outdated — test now')}
         </button>
       )}
 
@@ -168,18 +171,18 @@ export function FlowCard({
           <>
             <span className={cx(styles.dot, styles['k_' + kindOf(last.status)])} />
             <span className={styles.lastText}>
-              {KIND_LABEL[kindOf(last.status)]} · {timeAgo(last.createdAt)}
+              {t(KIND_LABEL[kindOf(last.status)])} · {timeAgo(last.createdAt)}
             </span>
             {!!last.totalOutputTokens && (
-              <span className={styles.tok}>{compact(last.totalOutputTokens)} out</span>
+              <span className={styles.tok}>{t('{{tokens}} out', { tokens: compact(last.totalOutputTokens) })}</span>
             )}
           </>
         ) : (
-          <span className={styles.neverRun}>Never run</span>
+          <span className={styles.neverRun}>{t('Never run')}</span>
         )}
       </div>
 
-      <div className={styles.history} aria-label="Recent run outcomes">
+      <div className={styles.history} aria-label={t('Recent run outcomes')}>
         {flowRuns
           .slice(0, 10)
           .reverse()
@@ -190,7 +193,7 @@ export function FlowCard({
               title={`${r.status} · ${timeAgo(r.createdAt)}`}
             />
           ))}
-        {flowRuns.length === 0 && <span className={styles.barsEmpty}>no history</span>}
+        {flowRuns.length === 0 && <span className={styles.barsEmpty}>{t('no history')}</span>}
         <span className={styles.rate}>
           {rate !== null && `${rate}%`}
           {cost > 0 && ` · ${money(cost)}`}
@@ -199,7 +202,7 @@ export function FlowCard({
 
       <div className={styles.cardActions}>
         <button className={styles.open} onClick={() => flow.id && onOpen(flow.id)}>
-          Open
+          {t('Open')}
         </button>
         <button
           className={styles.run}
@@ -207,12 +210,12 @@ export function FlowCard({
           disabled={!permissions.canRun}
           title={permissions.canRun ? undefined : deniedReason(permissions, 'run')}
         >
-          ▶ Run
+          {t('▶ Run')}
         </button>
         {trigger.scheduled && (
           <button
             className={styles.icon}
-            title={paused ? 'Resume schedule' : 'Pause schedule'}
+            title={paused ? t('Resume schedule') : t('Pause schedule')}
             disabled={!permissions.canEdit}
             onClick={() => void patch(flow, { enabled: paused })}
           >
@@ -229,41 +232,41 @@ export function FlowCard({
           items={menuItems([
             flow.id &&
               setDoctorFor && {
-                label: 'Check this flow',
+                label: t('Check this flow'),
                 icon: '⚕',
-                hint: 'Missing credentials, servers without auth, un-installed plugins, an invalid schedule, an exhausted budget. Informs — never blocks a run.',
+                hint: t('Missing credentials, servers without auth, un-installed plugins, an invalid schedule, an exhausted budget. Informs — never blocks a run.'),
                 onSelect: () => setDoctorFor(flow),
               },
-            { label: 'Version history', icon: '⟲', onSelect: () => setVersionsFor(flow) },
+            { label: t('Version history'), icon: '⟲', onSelect: () => setVersionsFor(flow) },
             {
-              label: 'Settings',
+              label: t('Settings'),
               icon: '⚙',
               disabled: !permissions.canEdit,
               disabledReason: deniedReason(permissions, 'edit'),
               onSelect: () => setSettingsFor(flow),
             },
-            { label: 'Export JSON', icon: '↓', onSelect: () => exportFlow(flow) },
+            { label: t('Export JSON'), icon: '↓', onSelect: () => exportFlow(flow) },
             {
-              label: copied ? 'Copied as template' : 'Copy as template',
+              label: copied ? t('Copied as template') : t('Copy as template'),
               icon: copied ? '✓' : '⎘',
-              hint: 'Credentials, accounts and private endpoints are stripped, so it is safe to share. See docs/templates.md to propose it for the gallery.',
+              hint: t('Credentials, accounts and private endpoints are stripped, so it is safe to share. See docs/templates.md to propose it for the gallery.'),
               onSelect: () => void copyTemplate(),
             },
             {
-              label: 'Duplicate',
+              label: t('Duplicate'),
               icon: '⧉',
               disabled: !permissions.canEdit,
               disabledReason: deniedReason(permissions, 'edit'),
               onSelect: () => onDuplicate(flow),
             },
             onSandbox && {
-              label: 'Duplicate as sandbox',
+              label: t('Duplicate as sandbox'),
               icon: '🧪',
-              hint: 'A copy that runs in plan mode, with every worker facade replaced by a dry-run twin. It proposes instead of acting — the dialog says exactly what is and is not simulated.',
+              hint: t('A copy that runs in plan mode, with every worker facade replaced by a dry-run twin. It proposes instead of acting — the dialog says exactly what is and is not simulated.'),
               onSelect: () => void onSandbox(flow),
             },
             {
-              label: 'Delete',
+              label: t('Delete'),
               icon: '✕',
               danger: true,
               disabled: !permissions.canEdit,

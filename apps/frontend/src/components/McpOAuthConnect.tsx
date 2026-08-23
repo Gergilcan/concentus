@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import styles from './panels.module.scss'
@@ -26,20 +27,31 @@ export function callbackUnreachable(redirectUri: string | undefined, page: { ori
 }
 
 /**
+ * How a helper outside any component says a sentence in the user's language: the caller lends it
+ * a translate function. The default speaks English, so non-component callers (and old tests)
+ * still get the message verbatim.
+ */
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+const plainTranslate: Translate = (key, options) =>
+  key.replace(/\{\{(\w+)\}\}/g, (match, name) =>
+    options && name in options ? String(options[name]) : match,
+  )
+
+/**
  * Starts the app's own OAuth sign-in for an MCP server and opens the approval tab.
  * Returns an error message, or null when the tab is open and approval is now up to the user.
  * Shared with the tool picker's dialog, which offers this sign-in when a server answers 401.
  */
-export async function beginMcpSignIn(url: string): Promise<string | null> {
+export async function beginMcpSignIn(url: string, t: Translate = plainTranslate): Promise<string | null> {
   const started = await api.startMcpOAuth(url)
   if (!started.ok || !started.authorizationUrl) {
-    return started.error ?? 'This server could not be signed in to.'
+    return started.error ?? t('This server could not be signed in to.')
   }
   if (callbackUnreachable(started.redirectUri, window.location)) {
-    return (
-      `This sign-in would return to ${started.redirectUri}, which only exists on the backend's ` +
-      `own machine — you are using Concentus from ${window.location.origin}. Set ` +
-      `MCP_OAUTH_REDIRECT_BASE=${window.location.origin} and restart the backend.`
+    return t(
+      "This sign-in would return to {{redirectUri}}, which only exists on the backend's own machine — you are using Concentus from {{origin}}. Set MCP_OAUTH_REDIRECT_BASE={{origin}} and restart the backend.",
+      { redirectUri: started.redirectUri, origin: window.location.origin },
     )
   }
   // A new tab, not a redirect: the canvas has unsaved state.
@@ -67,6 +79,7 @@ export function McpOAuthConnect({
   url: string
   onStatus?: (connected: boolean | null) => void
 }) {
+  const { t } = useTranslation()
   const [connected, setConnected] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -96,7 +109,7 @@ export function McpOAuthConnect({
     setBusy(true)
     setError(null)
     try {
-      setError(await beginMcpSignIn(trimmed))
+      setError(await beginMcpSignIn(trimmed, (key, options) => t(key, options ?? {})))
     } catch (e) {
       setError(errMessage(e))
     } finally {
@@ -122,26 +135,34 @@ export function McpOAuthConnect({
     <>
       <div className={styles.mcpBtns}>
         <button className={styles.previewBtn} onClick={() => void connect()} disabled={busy}>
-          {busy ? 'Opening…' : connected ? 'Re-authorize' : 'Sign in to this server'}
+          {busy ? t('Opening…') : connected ? t('Re-authorize') : t('Sign in to this server')}
         </button>
         {connected && (
           <button className={styles.previewBtn} onClick={() => void disconnect()} disabled={busy}>
-            Disconnect
+            {t('Disconnect')}
           </button>
         )}
         <button className={styles.linkBtn} onClick={refresh}>
-          Re-check
+          {t('Re-check')}
         </button>
       </div>
 
       <p className={styles.hint}>
         {connected === true ? (
-          <span title="Concentus holds its own encrypted grant for this server and renews it automatically. No token needed — every backend reaches it.">
-            <b>Signed in with OAuth.</b> No token needed. ⓘ
+          <span
+            title={t(
+              'Concentus holds its own encrypted grant for this server and renews it automatically. No token needed — every backend reaches it.',
+            )}
+          >
+            <b>{t('Signed in with OAuth.')}</b> {t('No token needed.')} ⓘ
           </span>
         ) : (
-          <span title="Approve once in the tab that opens; the grant is stored encrypted and renews itself. The claude CLI's own sign-in is separate — without this grant, non-CLI backends get 401 from OAuth servers.">
-            For servers that use <b>OAuth</b> instead of a pasted token. ⓘ
+          <span
+            title={t(
+              "Approve once in the tab that opens; the grant is stored encrypted and renews itself. The claude CLI's own sign-in is separate — without this grant, non-CLI backends get 401 from OAuth servers.",
+            )}
+          >
+            {t('For servers that use')} <b>OAuth</b> {t('instead of a pasted token.')} ⓘ
           </span>
         )}
       </p>

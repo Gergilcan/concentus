@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { RuntimeCheck, RuntimeInstallPlan } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -27,6 +28,7 @@ export function RuntimeNotice({
   /** Called with whether the machine is ready, so a caller can gate its own step. */
   onResolved?: (satisfied: boolean) => void
 }) {
+  const { t } = useTranslation()
   const [check, setCheck] = useState<RuntimeCheck | null>(null)
   const [plan, setPlan] = useState<RuntimeInstallPlan | null>(null)
   const [installing, setInstalling] = useState(false)
@@ -64,8 +66,8 @@ export function RuntimeNotice({
   useEffect(() => {
     // Debounced: this can be wired to a text field, and every keystroke would otherwise ask the
     // backend to go looking for binaries.
-    const t = setTimeout(() => void refresh(false), 400)
-    return () => clearTimeout(t)
+    const timer = setTimeout(() => void refresh(false), 400)
+    return () => clearTimeout(timer)
   }, [refresh])
 
   const missing = check?.runtime && !check.satisfied ? check.runtime : null
@@ -94,7 +96,7 @@ export function RuntimeNotice({
     try {
       const result = await api.installRuntime(missing.id)
       setOutput(result.output)
-      if (!result.ok) setError('The installer did not finish. Its output is above.')
+      if (!result.ok) setError(t('The installer did not finish. Its output is above.'))
       // Re-probed either way: an installer that reported failure may still have put the binary in
       // place, and one that reported success may not have.
       await refresh(true)
@@ -111,8 +113,11 @@ export function RuntimeNotice({
     return (
       <p className={styles.ok}>
         {check.runtime
-          ? `${check.runtime.label} ${check.runtime.version} found — this server can be launched.`
-          : 'This command is not one of the runtimes this app manages; nothing to check.'}
+          ? t('{{label}} {{version}} found — this server can be launched.', {
+              label: check.runtime.label,
+              version: check.runtime.version,
+            })
+          : t('This command is not one of the runtimes this app manages; nothing to check.')}
       </p>
     )
   }
@@ -120,33 +125,38 @@ export function RuntimeNotice({
   return (
     <div className={styles.missing} role="status">
       <p className={styles.head}>
-        <b>{missing?.label} is not installed on this machine.</b> The run launches this server with{' '}
-        <code>{check.command.split(/\s+/)[0]}</code>, so it would fail to start.
+        <b>{t('{{label}} is not installed on this machine.', { label: missing?.label })}</b>{' '}
+        {t('The run launches this server with')} <code>{check.command.split(/\s+/)[0]}</code>
+        {t(', so it would fail to start.')}
       </p>
       {plan?.command ? (
         <>
-          <p className={styles.hint}>This runs, exactly as written:</p>
+          <p className={styles.hint}>{t('This runs, exactly as written:')}</p>
           <pre className={styles.command}>{plan.command}</pre>
           <div className={styles.actions}>
             <button className={styles.install} disabled={installing} onClick={() => void install()}>
-              {installing ? <Spinner label={`Installing ${missing?.label}`} /> : `Install ${missing?.label}`}
+              {installing ? (
+                <Spinner label={t('Installing {{label}}', { label: missing?.label })} />
+              ) : (
+                t('Install {{label}}', { label: missing?.label })
+              )}
             </button>
             <button className={styles.ghost} disabled={installing} onClick={() => void refresh(true)}>
-              Re-check
+              {t('Re-check')}
             </button>
             <a className={styles.docs} href={missing?.docsUrl} target="_blank" rel="noreferrer">
-              Instructions
+              {t('Instructions')}
             </a>
           </div>
         </>
       ) : (
         <p className={styles.hint}>
-          {plan?.reason ?? 'Install it on this machine and press Re-check.'}{' '}
+          {plan?.reason ?? t('Install it on this machine and press Re-check.')}{' '}
           <a className={styles.docs} href={missing?.docsUrl} target="_blank" rel="noreferrer">
-            Official instructions
+            {t('Official instructions')}
           </a>
           <button className={styles.ghost} disabled={installing} onClick={() => void refresh(true)}>
-            Re-check
+            {t('Re-check')}
           </button>
         </p>
       )}

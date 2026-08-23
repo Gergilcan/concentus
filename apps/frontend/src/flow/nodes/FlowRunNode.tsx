@@ -1,4 +1,5 @@
 import type { NodeProps } from '@xyflow/react'
+import { useTranslation } from 'react-i18next'
 import { useFlowStore } from '../../state/store.ts'
 import type { FlowRunRFNode } from '../nodeTypes.ts'
 import { NodeShell } from './NodeShell.tsx'
@@ -17,6 +18,7 @@ import styles from './nodes.module.scss'
  * be the same lie the dropdown used to allow, only harder to notice.
  */
 export function FlowRunNode({ id, data, selected }: NodeProps<FlowRunRFNode>) {
+  const { t } = useTranslation()
   const drawn = useFlowStore((s) => {
     const consumers = new Set(
       s.nodes.filter((n) => ['agent', 'merge', 'verifier'].includes(n.data.kind)).map((n) => n.id),
@@ -31,25 +33,25 @@ export function FlowRunNode({ id, data, selected }: NodeProps<FlowRunRFNode>) {
 
   return (
     <NodeShell
-      altHandle={{ id: 'error', label: 'on error', tone: 'error' }}
+      altHandle={{ id: 'error', label: t('on error'), tone: 'error' }}
       id={id}
       variant="flow"
       selected={selected}
       icon="🔗"
-      title={data.label || 'flow'}
-      badge={wiring === 'after' ? 'AFTER' : wiring === 'loose' ? '—' : 'BEFORE'}
+      title={data.label || t('flow')}
+      badge={wiring === 'after' ? t('AFTER') : wiring === 'loose' ? '—' : t('BEFORE')}
       showStatus
     >
       <div className={styles.snippet}>
         {!data.flowId
-          ? 'no flow selected'
+          ? t('no flow selected')
           : wiring === 'loose'
-            ? 'not wired to an agent — it will not run'
+            ? t('not wired to an agent — it will not run')
             : wiring === 'after'
-              ? 'runs when this flow finishes'
+              ? t('runs when this flow finishes')
               : data.waitForResult
-                ? 'runs first; its answer goes to the agent'
-                : 'starts first; nobody waits for it'}
+                ? t('runs first; its answer goes to the agent')
+                : t('starts first; nobody waits for it')}
       </div>
     </NodeShell>
   )

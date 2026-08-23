@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { cx } from '../../utils/cx.ts'
 import { useFlowStore } from '../../state/store.ts'
 import { compact } from '../../components/flowFormat.ts'
@@ -6,6 +7,7 @@ import styles from './nodes.module.scss'
 
 /** Live run status + output-token count for a node, shown on the canvas during/after a run. */
 export function NodeStatusBadge({ id }: { id: string }) {
+  const { t } = useTranslation()
   const exec = useFlowStore((s) => s.runExecByNode[id])
   if (!exec) return null
   const tokens = exec.outputTokens ? ` · ${exec.outputTokens.toLocaleString()}t` : ''
@@ -25,8 +27,19 @@ export function NodeStatusBadge({ id }: { id: string }) {
     ctxLabel = win > 0 ? ` · ctx ${Math.round((ctx / win) * 100)}%` : ` · ctx ${compact(ctx)}`
     const grew = ctx - started
     ctxTitle =
-      `Context window in use: ${ctx.toLocaleString()}${win > 0 ? ` of ${win.toLocaleString()}` : ''} tokens` +
-      (grew > 0 ? ` — started at ${started.toLocaleString()}, its work added ${grew.toLocaleString()}` : '')
+      (win > 0
+        ? t('Context window in use: {{ctx}} of {{win}} tokens', {
+            ctx: ctx.toLocaleString(),
+            win: win.toLocaleString(),
+          })
+        : t('Context window in use: {{ctx}} tokens', { ctx: ctx.toLocaleString() })) +
+      (grew > 0
+        ? ' ' +
+          t('— started at {{started}}, its work added {{grew}}', {
+            started: started.toLocaleString(),
+            grew: grew.toLocaleString(),
+          })
+        : '')
   }
   return (
     <>
@@ -35,7 +48,15 @@ export function NodeStatusBadge({ id }: { id: string }) {
         title={cx(
           ctxTitle,
           cost > 0 &&
-            `${(exec.inputTokens + exec.outputTokens).toLocaleString()} tokens (${exec.inputTokens.toLocaleString()} in, ${exec.outputTokens.toLocaleString()} out) · estimated ${money(cost)} at this model's rates. On a subscription, read it as equivalent usage.`,
+            t(
+              "{{total}} tokens ({{input}} in, {{output}} out) · estimated {{cost}} at this model's rates. On a subscription, read it as equivalent usage.",
+              {
+                total: (exec.inputTokens + exec.outputTokens).toLocaleString(),
+                input: exec.inputTokens.toLocaleString(),
+                output: exec.outputTokens.toLocaleString(),
+                cost: money(cost),
+              },
+            ),
         ) || undefined}
       >
         <span className={styles.ebDot} />
@@ -51,8 +72,10 @@ export function NodeStatusBadge({ id }: { id: string }) {
           className={cx(styles.execBadge, styles['vd_' + exec.verdict])}
           title={
             exec.verdict === 'rejected'
-              ? `Rejected by the verifier: ${exec.verdictReason ?? 'no reason recorded'}. This output was withheld from the merge.`
-              : 'The verifier tried to reject this output and could not fault it.'
+              ? t('Rejected by the verifier: {{reason}}. This output was withheld from the merge.', {
+                  reason: exec.verdictReason ?? t('no reason recorded'),
+                })
+              : t('The verifier tried to reject this output and could not fault it.')
           }
         >
           ⚖ {exec.verdict}

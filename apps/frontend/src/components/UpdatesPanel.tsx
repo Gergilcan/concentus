@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { shellBridge, type ShellUpdateState } from '../api/shell.ts'
 import { clockTime } from '../utils/format.ts'
 import { Spinner } from './Spinner.tsx'
@@ -14,6 +15,7 @@ import panels from './panels.module.scss'
  * bridge is absent in a browser, and the Updates tab with it.
  */
 export function UpdatesPanel() {
+  const { t } = useTranslation()
   const bridge = shellBridge()
   const [st, setSt] = useState<ShellUpdateState | null>(null)
   const [installError, setInstallError] = useState<string | null>(null)
@@ -46,33 +48,41 @@ export function UpdatesPanel() {
     setInstallError(null)
     const r = await bridge.updates.install()
     // On success the app is already quitting — there is nothing left to render.
-    if (!r.ok) setInstallError(r.error ?? 'The update could not be installed.')
+    if (!r.ok) setInstallError(r.error ?? t('The update could not be installed.'))
   }
 
   const line = (s: ShellUpdateState): string => {
-    if (!s.supported) return s.reason ?? 'This run cannot update itself.'
+    if (!s.supported) return s.reason ?? t('This run cannot update itself.')
     switch (s.phase) {
       case 'idle':
-        return 'Not checked yet in this session — the app also checks on its own every 4 hours.'
+        return t('Not checked yet in this session — the app also checks on its own every 4 hours.')
       case 'checking':
-        return 'Checking GitHub Releases…'
+        return t('Checking GitHub Releases…')
       case 'up-to-date':
-        return `You are on the latest version.${s.checkedAt ? ` Checked at ${clockTime(s.checkedAt)}.` : ''}`
+        return s.checkedAt
+          ? t('You are on the latest version. Checked at {{time}}.', { time: clockTime(s.checkedAt) })
+          : t('You are on the latest version.')
       case 'downloading':
-        return `Downloading ${s.available ?? 'the update'}… ${s.progressPercent ?? 0}%`
+        return t('Downloading {{what}}… {{percent}}%', {
+          what: s.available ?? t('the update'),
+          percent: s.progressPercent ?? 0,
+        })
       case 'downloaded':
-        return `Version ${s.available} is downloaded — installing reopens the app when it is done, and it installs by itself when you quit either way.`
+        return t(
+          'Version {{version}} is downloaded — installing reopens the app when it is done, and it installs by itself when you quit either way.',
+          { version: s.available },
+        )
       case 'error':
-        return `The last check failed: ${s.error ?? 'unknown error'}`
+        return t('The last check failed: {{error}}', { error: s.error ?? t('unknown error') })
     }
   }
 
   return (
     <div className={`${styles.crudForm} ${styles.lone}`}>
-      <h3 className={styles.h4}>Application updates</h3>
+      <h3 className={styles.h4}>{t('Application updates')}</h3>
       <p className={styles.status}>
-        Current version: <b>{st ? st.version : '…'}</b>
-        {st?.available && st.phase !== 'up-to-date' && <> · found {st.available}</>}
+        {t('Current version:')} <b>{st ? st.version : '…'}</b>
+        {st?.available && st.phase !== 'up-to-date' && <> · {t('found {{version}}', { version: st.available })}</>}
       </p>
       <p className={panels.hint} role="status">
         {st ? line(st) : <Spinner />}
@@ -82,9 +92,9 @@ export function UpdatesPanel() {
           className={styles.saveBtn}
           onClick={() => void check()}
           disabled={!st?.supported || busy}
-          title="Ask GitHub Releases whether a newer version exists; if one does, it downloads in the background"
+          title={t('Ask GitHub Releases whether a newer version exists; if one does, it downloads in the background')}
         >
-          {st?.phase === 'checking' ? 'Checking…' : 'Check for updates'}
+          {st?.phase === 'checking' ? t('Checking…') : t('Check for updates')}
         </button>
         <button
           className={styles.newBtn}
@@ -92,11 +102,11 @@ export function UpdatesPanel() {
           disabled={st?.phase !== 'downloaded'}
           title={
             st?.phase === 'downloaded'
-              ? 'Quit and run the installer now'
-              : 'Available once an update has been downloaded'
+              ? t('Quit and run the installer now')
+              : t('Available once an update has been downloaded')
           }
         >
-          Restart &amp; update
+          {t('Restart & update')}
         </button>
       </div>
       {installError && <p className={styles.errText}>{installError}</p>}

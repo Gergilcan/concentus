@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { clockTime } from '../utils/format.ts'
 import { useFlowStore } from '../state/store.ts'
 import { agentKey } from '../utils/agentKey.ts'
@@ -13,16 +14,17 @@ import styles from './runs.module.scss'
  * even when two agents share a display name.
  */
 export function NodeLogView({ nodeId, label }: { nodeId: string; label: string }) {
+  const { t } = useTranslation()
   const events = useFlowStore((s) => s.runEvents)
   const activeRunId = useFlowStore((s) => s.activeRunId)
 
   const mine = useMemo(() => events.filter((e) => agentKey(e) === nodeId), [events, nodeId])
 
   if (!activeRunId) {
-    return <div className={styles.logMuted}>Select a run below to see this agent's output.</div>
+    return <div className={styles.logMuted}>{t("Select a run below to see this agent's output.")}</div>
   }
   if (mine.length === 0) {
-    return <div className={styles.logMuted}>No output from {label} yet.</div>
+    return <div className={styles.logMuted}>{t('No output from {{name}} yet.', { name: label })}</div>
   }
 
   return (

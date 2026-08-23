@@ -6,6 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AppHeader, NAV, type View } from './components/AppHeader.tsx'
 import { CommandPalette } from './components/CommandPalette.tsx'
 import { type Command } from './components/commandPalette.ts'
@@ -161,14 +162,15 @@ interface SidePanelProps {
  * rather than each caller spelling out its own half of the mirror.
  */
 function SidePanel({ side, label, railLabel, open, onToggle, startDrag, children }: SidePanelProps) {
+  const { t } = useTranslation()
   const onLeft = side === 'left'
   if (!open) {
     return (
       <button
         className={styles.rail}
         onClick={onToggle}
-        title={`Show ${label}`}
-        aria-label={`Show ${label}`}
+        title={t('Show {{label}}', { label })}
+        aria-label={t('Show {{label}}', { label })}
       >
         {onLeft ? '▸' : '◂'}
         <span className={styles.railLabel}>{railLabel}</span>
@@ -181,8 +183,8 @@ function SidePanel({ side, label, railLabel, open, onToggle, startDrag, children
       <button
         className={cx(styles.collapseSide, onLeft ? styles.collapseAtRight : styles.collapseAtLeft)}
         onClick={onToggle}
-        title={`Hide ${label}`}
-        aria-label={`Hide ${label}`}
+        title={t('Hide {{label}}', { label })}
+        aria-label={t('Hide {{label}}', { label })}
       >
         {onLeft ? '◂' : '▸'}
       </button>
@@ -192,7 +194,7 @@ function SidePanel({ side, label, railLabel, open, onToggle, startDrag, children
         onPointerDown={startDrag(
           onLeft ? (e) => e.clientX : (e) => window.innerWidth - e.clientX,
         )}
-        title="Drag to resize"
+        title={t('Drag to resize')}
       />
     </div>
   )
@@ -204,6 +206,7 @@ interface WorkspaceProps {
 }
 
 function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
+  const { t } = useTranslation()
   const [view, setView] = useState<View>('flows')
   const [commandsOpen, setCommandsOpen] = useState(false)
   // The executions panel sits under the flow being edited, so it shows that flow's runs only.
@@ -266,7 +269,7 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
   const commands = useMemo<Command[]>(() => {
     const out: Command[] = NAV.map((nav) => ({
       id: `view:${nav.id}`,
-      group: 'Go to',
+      group: t('Go to'),
       label: nav.label,
       run: () => setView(nav.id),
     }))
@@ -275,23 +278,23 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
       const id = flow.id
       out.push({
         id: `flow:${id}`,
-        group: 'Flows',
-        label: `Open ${flow.name}`,
+        group: t('Flows'),
+        label: t('Open {{name}}', { name: flow.name }),
         hint: flow.folder || undefined,
         run: () => void openFlow(id),
       })
       out.push({
         id: `run:${id}`,
-        group: 'Flows',
-        label: `Run ${flow.name}`,
+        group: t('Flows'),
+        label: t('Run {{name}}', { name: flow.name }),
         run: () => void runFlow(id),
       })
     }
     for (const run of runs.slice(0, 20)) {
       out.push({
         id: `exec:${run.id}`,
-        group: 'Runs',
-        label: `Open run of ${run.flowName ?? 'flow'}`,
+        group: t('Runs'),
+        label: t('Open run of {{name}}', { name: run.flowName ?? 'flow' }),
         hint: `${run.status} · ${timeAgo(run.createdAt)}`,
         run: () => void openRun(run.id),
       })
@@ -299,13 +302,13 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
     for (const theme of THEMES) {
       out.push({
         id: `theme:${theme.id}`,
-        group: 'Theme',
+        group: t('Theme'),
         label: `${theme.icon} ${theme.label}`,
         run: () => setTheme(theme.id),
       })
     }
     return out
-  }, [flows, runs, openFlow, runFlow, openRun, setView])
+  }, [flows, runs, openFlow, runFlow, openRun, setView, t])
 
   function renderView(): ReactNode {
     switch (view) {
@@ -348,8 +351,8 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
             >
               <SidePanel
                 side="left"
-                label="the node palette"
-                railLabel="Add node"
+                label={t('the node palette')}
+                railLabel={t('Add node')}
                 open={paletteOpen}
                 onToggle={togglePalette}
                 startDrag={dragPalette}
@@ -373,8 +376,8 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
                 <button
                   className={styles.collapseBottom}
                   onClick={toggleRuns}
-                  title="Hide the executions panel"
-                  aria-label="Hide the executions panel"
+                  title={t('Hide the executions panel')}
+                  aria-label={t('Hide the executions panel')}
                 >
                   ▾
                 </button>
@@ -382,17 +385,17 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
                   className={styles.resizeY}
                   style={{ top: -4 }}
                   onPointerDown={dragRuns((e) => window.innerHeight - e.clientY)}
-                  title="Drag to resize"
+                  title={t('Drag to resize')}
                 />
               </div>
             ) : (
               <button
                 className={styles.bottomRail}
                 onClick={toggleRuns}
-                title="Show the executions panel"
-                aria-label="Show the executions panel"
+                title={t('Show the executions panel')}
+                aria-label={t('Show the executions panel')}
               >
-                ▴ Executions
+                ▴ {t('Executions')}
               </button>
             )}
           </>
@@ -417,7 +420,7 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
             type="button"
             className={styles.toastDismiss}
             onClick={() => setToast(null)}
-            aria-label="Dismiss notification"
+            aria-label={t('Dismiss notification')}
           >
             ×
           </button>

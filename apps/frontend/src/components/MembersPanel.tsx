@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { Member } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -66,6 +67,7 @@ function Rungs({ role }: { role: string }) {
  * ellipsis while a three-field form owned the other thousand pixels.
  */
 export function MembersPanel({ pushError }: { pushError: (m: string) => void }) {
+  const { t } = useTranslation()
   const [members, setMembers] = useState<Member[] | null>(null)
   const [me, setMe] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -130,16 +132,18 @@ export function MembersPanel({ pushError }: { pushError: (m: string) => void }) 
     <div className={styles.roster}>
       <div className={styles.rosterHead}>
         <div>
-          <h3 className={styles.h4}>Members</h3>
+          <h3 className={styles.h4}>{t('Members')}</h3>
           <p className={panels.hint}>
             {members.length === 0
-              ? 'Nobody to list yet.'
-              : `${members.length} ${members.length === 1 ? 'account' : 'accounts'}.`}{' '}
-            Roles are enforced on every request, not only on screen.
+              ? t('Nobody to list yet.')
+              : members.length === 1
+                ? t('{{count}} account.', { count: members.length })
+                : t('{{count}} accounts.', { count: members.length })}{' '}
+            {t('Roles are enforced on every request, not only on screen.')}
           </p>
         </div>
         <button className={styles.newBtn} onClick={() => setAdding((open) => !open)}>
-          {adding ? 'Cancel' : 'Add member'}
+          {adding ? t('Cancel') : t('Add member')}
         </button>
       </div>
 
@@ -147,7 +151,7 @@ export function MembersPanel({ pushError }: { pushError: (m: string) => void }) 
         <div className={styles.addMember}>
           <div className={styles.addMemberFields}>
             <label className={styles.field}>
-              <span>Email</span>
+              <span>{t('Email')}</span>
               <input
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -155,33 +159,38 @@ export function MembersPanel({ pushError }: { pushError: (m: string) => void }) 
               />
             </label>
             <label className={styles.field}>
-              <span>Temporary password</span>
+              <span>{t('Temporary password')}</span>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 12 characters"
+                placeholder={t('At least 12 characters')}
               />
             </label>
             <label className={styles.field}>
-              <span>Role</span>
+              <span>{t('Role')}</span>
               <select value={role} onChange={(e) => setRole(e.target.value)}>
                 {ROLES.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {r.label}
+                    {t(r.label)}
                   </option>
                 ))}
               </select>
             </label>
           </div>
           <div className={styles.addMemberFoot}>
-            <span className={panels.hint}>{ROLES.find((r) => r.id === role)?.means}</span>
+            <span className={panels.hint}>
+              {(() => {
+                const means = ROLES.find((r) => r.id === role)?.means
+                return means ? t(means) : undefined
+              })()}
+            </span>
             <button
               className={styles.saveBtn}
               disabled={busy === 'new' || !email.trim() || !password}
               onClick={() => void add()}
             >
-              {busy === 'new' ? 'Adding…' : 'Add member'}
+              {busy === 'new' ? t('Adding…') : t('Add member')}
             </button>
           </div>
         </div>
@@ -189,8 +198,9 @@ export function MembersPanel({ pushError }: { pushError: (m: string) => void }) 
 
       {members.length === 0 ? (
         <p className={styles.emptyRoster}>
-          No accounts yet. If this deployment runs without sign-in there is nobody to list and
-          nothing to restrict — turn accounts on to divide read, run and edit between people.
+          {t(
+            'No accounts yet. If this deployment runs without sign-in there is nobody to list and nothing to restrict — turn accounts on to divide read, run and edit between people.',
+          )}
         </p>
       ) : (
         <ul className={styles.memberList}>
@@ -200,25 +210,28 @@ export function MembersPanel({ pushError }: { pushError: (m: string) => void }) 
               <li key={m.id} className={styles.memberRow}>
                 <span className={styles.memberWho}>
                   <span className={styles.memberEmail}>{m.email}</span>
-                  {m.email === me && <span className={styles.youTag}>you</span>}
+                  {m.email === me && <span className={styles.youTag}>{t('you')}</span>}
                 </span>
-                <span className={styles.memberMeta}>joined {timeAgo(m.createdAt)}</span>
+                <span className={styles.memberMeta}>{t('joined {{when}}', { when: timeAgo(m.createdAt) })}</span>
                 <span className={styles.memberRole}>
                   <Rungs role={m.role} />
                   <select
-                    aria-label={`Role for ${m.email}`}
+                    aria-label={t('Role for {{email}}', { email: m.email })}
                     value={known ? m.role.toUpperCase() : ''}
                     disabled={busy === m.id}
                     onChange={(e) => void changeRole(m, e.target.value)}
-                    title={ROLES.find((r) => r.id === m.role.toUpperCase())?.means}
+                    title={(() => {
+                      const means = ROLES.find((r) => r.id === m.role.toUpperCase())?.means
+                      return means ? t(means) : undefined
+                    })()}
                   >
                     {/* A role the backend has and this list does not still shows, unselectable,
                         rather than silently reading as the first option — which would be a lie
                         about what that account can do. */}
-                    {!known && <option value="">{m.role} (unknown)</option>}
+                    {!known && <option value="">{t('{{role}} (unknown)', { role: m.role })}</option>}
                     {ROLES.map((r) => (
                       <option key={r.id} value={r.id}>
-                        {r.label}
+                        {t(r.label)}
                       </option>
                     ))}
                   </select>
@@ -232,22 +245,24 @@ export function MembersPanel({ pushError }: { pushError: (m: string) => void }) 
       <SignInProvidersPanel pushError={pushError} />
 
       <div className={styles.roleLegend}>
-        <h4 className={styles.h4}>What each role may do</h4>
+        <h4 className={styles.h4}>{t('What each role may do')}</h4>
         <dl>
           {ROLES.map((r) => (
             <div key={r.id}>
               <dt>
                 <Rungs role={r.id} />
-                {r.label}
+                {t(r.label)}
               </dt>
-              <dd>{r.means}</dd>
+              <dd>{t(r.means)}</dd>
             </div>
           ))}
         </dl>
         <p className={panels.hint}>
-          Someone signing in with a company account for the first time arrives as a <b>Viewer</b>.
-          They can read what the automation did; promoting them is a decision somebody makes, not a
-          default.
+          {t('Someone signing in with a company account for the first time arrives as a')}{' '}
+          <b>{t('Viewer')}</b>.{' '}
+          {t(
+            'They can read what the automation did; promoting them is a decision somebody makes, not a default.',
+          )}
         </p>
       </div>
     </div>

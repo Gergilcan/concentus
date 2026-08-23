@@ -105,34 +105,54 @@ export function parseCron(expression: string): CronPreset {
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
-const SCOPE_SUFFIX: Record<DayScope, string> = {
-  every: '',
-  weekdays: ' on working days (Mon–Fri)',
-  weekends: ' on weekends',
+/**
+ * How this module says a sentence in the user's language without importing i18n: the render site
+ * lends `describeCron` its translate function. The default speaks English — same interpolation
+ * shape as i18next, so keys and callers do not fork — which keeps non-UI callers and the tests
+ * exactly as they were.
+ */
+export type CronTranslate = (key: string, options?: Record<string, unknown>) => string
+
+const plainTranslate: CronTranslate = (key, options) =>
+  key.replace(/\{\{(\w+)\}\}/g, (match, name) =>
+    options && name in options ? String(options[name]) : match,
+  )
+
+function scopeSuffix(days: DayScope, t: CronTranslate): string {
+  if (days === 'weekdays') return ` ${t('on working days (Mon–Fri)')}`
+  if (days === 'weekends') return ` ${t('on weekends')}`
+  return ''
 }
 
-function listDays(days: number[]): string {
-  const names = days.map((d) => DAY_NAMES[d] ?? `day ${d}`)
+function listDays(days: number[], t: CronTranslate): string {
+  const names = days.map((d) => (DAY_NAMES[d] ? t(DAY_NAMES[d]) : t('day {{d}}', { d })))
   if (names.length === 1) return names[0]
-  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]
+  return names.slice(0, -1).join(', ') + ` ${t('and')} ` + names[names.length - 1]
 }
 
 /** The schedule in words, or null when the expression is beyond the presets' vocabulary. */
-export function describeCron(expression: string): string | null {
+export function describeCron(expression: string, t: CronTranslate = plainTranslate): string | null {
   const p = parseCron(expression)
   switch (p.kind) {
     case 'daily':
-      if (p.days === 'weekdays') return `Working days (Mon–Fri) at ${p.time}`
-      if (p.days === 'weekends') return `Weekends at ${p.time}`
-      return `Every day at ${p.time}`
+      if (p.days === 'weekdays') return t('Working days (Mon–Fri) at {{time}}', { time: p.time })
+      if (p.days === 'weekends') return t('Weekends at {{time}}', { time: p.time })
+      return t('Every day at {{time}}', { time: p.time })
     case 'minutes':
-      return `Every ${p.n === 1 ? 'minute' : `${p.n} minutes`}${SCOPE_SUFFIX[p.days]}`
+      return (
+        (p.n === 1 ? t('Every minute') : t('Every {{n}} minutes', { n: p.n })) +
+        scopeSuffix(p.days, t)
+      )
     case 'hours':
-      return `Every ${p.n === 1 ? 'hour' : `${p.n} hours`}${SCOPE_SUFFIX[p.days]}`
+      return (
+        (p.n === 1 ? t('Every hour') : t('Every {{n}} hours', { n: p.n })) + scopeSuffix(p.days, t)
+      )
     case 'weekly':
-      return p.days.length ? `Every ${listDays(p.days)} at ${p.time}` : `Every day at ${p.time}`
+      return p.days.length
+        ? t('Every {{days}} at {{time}}', { days: listDays(p.days, t), time: p.time })
+        : t('Every day at {{time}}', { time: p.time })
     case 'monthly':
-      return `On day ${p.day} of every month at ${p.time}`
+      return t('On day {{day}} of every month at {{time}}', { day: p.day, time: p.time })
     case 'custom':
       return null
   }

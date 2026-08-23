@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { ApiNodeData, ApiOperationView } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -18,6 +19,7 @@ interface Props {
  * server enforces — an operation never ticked simply does not exist as far as the agent knows.
  */
 export function ApiInspector({ data, set }: Props) {
+  const { t } = useTranslation()
   const [ops, setOps] = useState<ApiOperationView[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -53,18 +55,18 @@ export function ApiInspector({ data, set }: Props) {
 
   return (
     <>
-      <Field label="Label" value={data.label} onChange={(v) => set({ label: v })} />
+      <Field label={t('Label')} value={data.label} onChange={(v) => set({ label: v })} />
       <SelectField
         label={
-          <span title="A spec turns a whole API into typed tools and you tick the ones the agent may call. A single endpoint is for the URL-and-a-key case: a webhook, an internal service, one endpoint of an API whose document you do not have.">
-            This node calls ⓘ
+          <span title={t('A spec turns a whole API into typed tools and you tick the ones the agent may call. A single endpoint is for the URL-and-a-key case: a webhook, an internal service, one endpoint of an API whose document you do not have.')}>
+            {t('This node calls ⓘ')}
           </span>
         }
         value={data.mode ?? 'spec'}
         onChange={(v) => set({ mode: v })}
       >
-        <option value="spec">an API described by an OpenAPI spec</option>
-        <option value="endpoint">a single endpoint I type here</option>
+        <option value="spec">{t('an API described by an OpenAPI spec')}</option>
+        <option value="endpoint">{t('a single endpoint I type here')}</option>
       </SelectField>
 
       {endpoint && <EndpointFields data={data} set={set} />}
@@ -72,31 +74,31 @@ export function ApiInspector({ data, set }: Props) {
       {!endpoint && (
       <Field
         label={
-          <span title="URL of the API's OpenAPI 3.x document (JSON or YAML). If it is not fetchable, paste the document under Fine-tuning instead.">
-            OpenAPI spec URL ⓘ
+          <span title={t("URL of the API's OpenAPI 3.x document (JSON or YAML). If it is not fetchable, paste the document under Fine-tuning instead.")}>
+            {t('OpenAPI spec URL ⓘ')}
           </span>
         }
-        placeholder="https://api.example.com/openapi.json"
+        placeholder={t('https://api.example.com/openapi.json')}
         value={data.specUrl}
         onChange={(v) => set({ specUrl: v })}
       />
       )}
       <Field
         label={
-          <span title="Credential id from Resources → Credentials. Sent as Authorization: Bearer unless a different header is named under Fine-tuning. The agent never sees the token.">
-            Credential id ⓘ
+          <span title={t('Credential id from Resources → Credentials. Sent as Authorization: Bearer unless a different header is named under Fine-tuning. The agent never sees the token.')}>
+            {t('Credential id ⓘ')}
           </span>
         }
-        placeholder="from Resources → Credentials"
+        placeholder={t('from Resources → Credentials')}
         value={data.credentialId ?? ''}
         onChange={(v) => set({ credentialId: v })}
       />
       <FineTuning>
         {!endpoint && (
           <TextArea
-            label="Paste the spec (when the URL is not fetchable)"
+            label={t('Paste the spec (when the URL is not fetchable)')}
             rows={3}
-            placeholder='{"openapi": "3.0.0", …}'
+            placeholder={t('{"openapi": "3.0.0", …}')}
             value={data.specInline ?? ''}
             onChange={(v) => set({ specInline: v })}
           />
@@ -104,18 +106,18 @@ export function ApiInspector({ data, set }: Props) {
         {!endpoint && (
           <Field
             label={
-              <span title="Overrides the spec's own servers[0].url — for sandboxes or self-hosted instances.">
-                Base URL (optional) ⓘ
+              <span title={t("Overrides the spec's own servers[0].url — for sandboxes or self-hosted instances.")}>
+                {t('Base URL (optional) ⓘ')}
               </span>
             }
-            placeholder="filled from the spec after loading"
+            placeholder={t('filled from the spec after loading')}
             value={data.baseUrl ?? ''}
             onChange={(v) => set({ baseUrl: v })}
           />
         )}
         <Field
-          label="Send token in (blank = Authorization: Bearer)"
-          placeholder="X-Api-Key"
+          label={t('Send token in (blank = Authorization: Bearer)')}
+          placeholder={t('X-Api-Key')}
           value={data.authHeader ?? ''}
           onChange={(v) => set({ authHeader: v })}
         />
@@ -124,11 +126,11 @@ export function ApiInspector({ data, set }: Props) {
       {endpoint ? null : (
       <div className={styles.mcpBtns}>
         <button className={styles.previewBtn} onClick={() => void load()} disabled={loading}>
-          {loading ? 'Loading…' : 'Load operations'}
+          {loading ? t('Loading…') : t('Load operations')}
         </button>
         {ops && (
           <button className={styles.linkBtn} onClick={allowAllReads}>
-            Allow all reads
+            {t('Allow all reads')}
           </button>
         )}
       </div>
@@ -152,7 +154,7 @@ export function ApiInspector({ data, set }: Props) {
       )}
       {!endpoint && !ops && data.ops.length > 0 && (
         <p className={styles.hint}>
-          {data.ops.length} operation(s) currently allowed. Load the spec to review them.
+          {t('{{n}} operation(s) currently allowed. Load the spec to review them.', { n: data.ops.length })}
         </p>
       )}
     </>
@@ -167,10 +169,11 @@ export function ApiInspector({ data, set }: Props) {
  * typed exactly one call on exactly one node.
  */
 function EndpointFields({ data, set }: Props) {
+  const { t } = useTranslation()
   return (
     <>
       <SelectField
-        label="Method"
+        label={t('Method')}
         value={data.method ?? 'GET'}
         onChange={(v) => set({ method: v })}
       >
@@ -182,27 +185,27 @@ function EndpointFields({ data, set }: Props) {
       </SelectField>
       <Field
         label={
-          <span title="The full URL. Anything in {braces} becomes an argument the agent fills in, encoded on the way out — https://api.example.com/orgs/{org}/repos gives the agent an 'org' argument.">
-            URL ⓘ
+          <span title={t("The full URL. Anything in {braces} becomes an argument the agent fills in, encoded on the way out — https://api.example.com/orgs/{org}/repos gives the agent an 'org' argument.")}>
+            {t('URL ⓘ')}
           </span>
         }
-        placeholder="https://api.example.com/things/{id}"
+        placeholder={t('https://api.example.com/things/{id}')}
         value={data.url ?? ''}
         onChange={(v) => set({ url: v })}
       />
       <TextArea
         label={
-          <span title="With no specification to read, this sentence is the only thing telling the model when to call this endpoint and what it does. Say what it acts on and what comes back.">
-            What this endpoint does ⓘ
+          <span title={t('With no specification to read, this sentence is the only thing telling the model when to call this endpoint and what it does. Say what it acts on and what comes back.')}>
+            {t('What this endpoint does ⓘ')}
           </span>
         }
         rows={2}
-        placeholder="Posts a message to the ops channel. Returns the message id."
+        placeholder={t('Posts a message to the ops channel. Returns the message id.')}
         value={data.description ?? ''}
         onChange={(v) => set({ description: v })}
       />
       <CheckboxField
-        label="The agent may send a JSON body"
+        label={t('The agent may send a JSON body')}
         checked={data.sendsBody ?? false}
         onChange={(v) => set({ sendsBody: v })}
       />

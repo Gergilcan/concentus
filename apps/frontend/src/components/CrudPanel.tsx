@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { errMessage } from '../utils/errMessage.ts'
 import { cx } from '../utils/cx.ts'
 import styles from './resources.module.scss'
@@ -66,6 +67,7 @@ export function CrudPanel<T extends Record<string, unknown>>({
   remove,
   extra,
 }: Props<T>) {
+  const { t } = useTranslation()
   const [items, setItems] = useState<T[]>([])
   const [draft, setDraft] = useState<T>(empty())
   const [status, setStatus] = useState<string | null>(null)
@@ -87,7 +89,7 @@ export function CrudPanel<T extends Record<string, unknown>>({
       const saved = await save(draft)
       await refresh()
       setDraft(saved)
-      setStatus('Saved')
+      setStatus(t('Saved'))
     } catch (e) {
       setStatus(errMessage(e))
     }
@@ -103,7 +105,7 @@ export function CrudPanel<T extends Record<string, unknown>>({
       await remove(id)
       await refresh()
       setDraft(empty())
-      setStatus('Deleted')
+      setStatus(t('Deleted'))
     } catch (e) {
       setStatus(errMessage(e))
     }
@@ -121,10 +123,10 @@ export function CrudPanel<T extends Record<string, unknown>>({
               setStatus(null)
             }}
           >
-            + New
+            {t('+ New')}
           </button>
         </div>
-        {items.length === 0 && <div className={styles.muted}>None yet.</div>}
+        {items.length === 0 && <div className={styles.muted}>{t('None yet.')}</div>}
         {items.map((it) => (
           <button
             key={idOf(it)}
@@ -134,25 +136,25 @@ export function CrudPanel<T extends Record<string, unknown>>({
               setStatus(null)
             }}
           >
-            <span className={styles.crudItemLabel}>{labelOf(it) || '(unnamed)'}</span>
+            <span className={styles.crudItemLabel}>{labelOf(it) || t('(unnamed)')}</span>
             {/* Delete from the LIST, without opening: a record with data the form cannot render
                 must still be removable — opening it first is exactly what a broken one can't
                 survive. A span with role=button because a button may not contain a button. */}
             <span
               role="button"
-              aria-label={`Delete ${labelOf(it) || 'this entry'}`}
-              title="Delete without opening"
+              aria-label={t('Delete {{name}}', { name: labelOf(it) || t('this entry') })}
+              title={t('Delete without opening')}
               className={styles.crudItemDelete}
               onClick={(e) => {
                 e.stopPropagation()
                 const id = idOf(it)
                 if (!id) return
-                if (!window.confirm(`Delete "${labelOf(it) || 'this entry'}"?`)) return
+                if (!window.confirm(t('Delete "{{name}}"?', { name: labelOf(it) || t('this entry') }))) return
                 void remove(id)
                   .then(() => refresh())
                   .then(() => {
                     if (idOf(draft) === id) setDraft(empty())
-                    setStatus('Deleted')
+                    setStatus(t('Deleted'))
                   })
                   .catch((err) => setStatus(errMessage(err)))
               }}
@@ -204,14 +206,14 @@ export function CrudPanel<T extends Record<string, unknown>>({
 
         <div className={styles.crudActions}>
           <button className={styles.saveBtn} onClick={() => void onSave()}>
-            {idOf(draft) ? 'Save' : 'Create'}
+            {idOf(draft) ? t('Save') : t('Create')}
           </button>
           {/* Delete acted on nothing while the form held an unsaved draft, which is also the
               state the page opens in — so the first thing anybody saw was a blank form offering
               to delete itself. */}
           {idOf(draft) && (
             <button className={styles.delBtn} onClick={() => void onDelete()}>
-              Delete
+              {t('Delete')}
             </button>
           )}
           {status && <span className={styles.status}>{status}</span>}

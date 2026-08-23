@@ -1,4 +1,5 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { errMessage } from '../utils/errMessage.ts'
 import { api, openRunSocket, type RunSocketStatus } from '../api/client.ts'
 import type { RunStatus } from '../api/types.ts'
@@ -29,6 +30,7 @@ export function Console({
   /** The flow revision this run executed; absent/0 for runs from before versions were recorded. */
   flowVersion?: number
 }) {
+  const { t } = useTranslation()
   // Stopping only means something while something is running: IDLE is a turn-based run waiting
   // for its next command, with no process to kill, and TERMINATED/ERROR are over. kindOf is the
   // shared definition of "in flight" — a third active status added there reaches this button too,
@@ -128,7 +130,9 @@ export function Console({
     }
   }
 
-  const connNotice = CONN_NOTICE[connStatus] ?? null
+  // The map keeps its English; the wrap happens here, at the render side of the lookup.
+  const connNoticeKey = CONN_NOTICE[connStatus] ?? null
+  const connNotice = connNoticeKey ? t(connNoticeKey) : null
 
   const totals = useFlowStore((s) => s.runTotals)
   const hasTotals = totals.input > 0 || totals.output > 0
@@ -147,9 +151,18 @@ export function Console({
     return {
       label: win > 0 ? `${Math.round((ctx / win) * 100)}%` : compact(ctx),
       title:
-        `Context window in use: ${ctx.toLocaleString()}${win > 0 ? ` of ${win.toLocaleString()}` : ''} tokens` +
+        (win > 0
+          ? t('Context window in use: {{ctx}} of {{win}} tokens', {
+              ctx: ctx.toLocaleString(),
+              win: win.toLocaleString(),
+            })
+          : t('Context window in use: {{ctx}} tokens', { ctx: ctx.toLocaleString() })) +
         (grew > 0
-          ? ` — started at ${(exec?.contextStartTokens ?? 0).toLocaleString()}, its work added ${grew.toLocaleString()}`
+          ? ' ' +
+            t('— started at {{start}}, its work added {{grew}}', {
+              start: (exec?.contextStartTokens ?? 0).toLocaleString(),
+              grew: grew.toLocaleString(),
+            })
           : ''),
     }
   }
@@ -161,16 +174,19 @@ export function Console({
         // run executed (openRun loads the run's own snapshot); this names which revision that was.
         <div
           className={styles.tokenBar}
-          title="The flow revision this execution ran. Studio's Versions tab lists them all."
+          title={t("The flow revision this execution ran. Studio's Versions tab lists them all.")}
         >
-          ⑂ flow version v{flowVersion}
+          {t('⑂ flow version v{{n}}', { n: flowVersion })}
         </div>
       )}
       {hasTotals && (
         <div className={styles.tokenBar}>
-          Σ execution tokens · in {totals.input.toLocaleString()} · out {totals.output.toLocaleString()}
+          {t('Σ execution tokens · in {{in}} · out {{out}}', {
+            in: totals.input.toLocaleString(),
+            out: totals.output.toLocaleString(),
+          })}
           {totals.costUsd > 0 && (
-            <span title="Sum of each block priced at its own model's rate, with cached tokens weighted. Runs on a Claude subscription have no per-token bill — treat this as equivalent usage.">
+            <span title={t("Sum of each block priced at its own model's rate, with cached tokens weighted. Runs on a Claude subscription have no per-token bill — treat this as equivalent usage.")}>
               {' '}· ≈{money(totals.costUsd)}
             </span>
           )}
@@ -180,21 +196,21 @@ export function Console({
         // The run as a graph, not a transcript: only shown for fan-out runs, which are the
         // ones with parallelism, retries and a verifier to be honest about.
         <div className={styles.tokenBar}>
-          <span title="Independent worker processes this run executed (drawn or plan-born), and how many of them failed.">
-            ⑃ {graph.workers} worker{graph.workers === 1 ? '' : 's'}
-            {graph.workersFailed > 0 && ` (${graph.workersFailed} failed)`}
+          <span title={t('Independent worker processes this run executed (drawn or plan-born), and how many of them failed.')}>
+            ⑃ {graph.workers === 1 ? t('{{n}} worker', { n: graph.workers }) : t('{{n}} workers', { n: graph.workers })}
+            {graph.workersFailed > 0 && ` (${t('{{n}} failed', { n: graph.workersFailed })})`}
           </span>
-          <span title="Extra process launches after a failed attempt, across all of the run's nodes. A run that only passes after retrying everything is not healthy — it is lucky.">
-            {' '}· ⟳ {graph.retries} retr{graph.retries === 1 ? 'y' : 'ies'}
+          <span title={t("Extra process launches after a failed attempt, across all of the run's nodes. A run that only passes after retrying everything is not healthy — it is lucky.")}>
+            {' '}· ⟳ {graph.retries === 1 ? t('{{n}} retry', { n: graph.retries }) : t('{{n}} retries', { n: graph.retries })}
           </span>
           {graph.verdicts > 0 && (
-            <span title="Outputs the adversarial verifier killed, out of the outputs it judged. Rejected outputs never reached the merge. 0 rejections may mean solid workers — or a verifier with no teeth; its box carries the reasons either way.">
-              {' '}· ⚖ killed {graph.workersRejected}/{graph.verdicts}
+            <span title={t('Outputs the adversarial verifier killed, out of the outputs it judged. Rejected outputs never reached the merge. 0 rejections may mean solid workers — or a verifier with no teeth; its box carries the reasons either way.')}>
+              {' '}· ⚖ {t('killed {{rejected}}/{{judged}}', { rejected: graph.workersRejected, judged: graph.verdicts })}
             </span>
           )}
           {graph.wallMs > 0 && (
-            <span title="Wall clock from the first worker's start to the last worker's end, versus the same work end to end. The ×factor is the parallelism the fan-out really bought.">
-              {' '}· ⧗ {secs(graph.wallMs)} vs {secs(graph.sumWorkerMs)} sequential
+            <span title={t("Wall clock from the first worker's start to the last worker's end, versus the same work end to end. The ×factor is the parallelism the fan-out really bought.")}>
+              {' '}· ⧗ {t('{{wall}} vs {{sequential}} sequential', { wall: secs(graph.wallMs), sequential: secs(graph.sumWorkerMs) })}
               {graph.sumWorkerMs > graph.wallMs && ` (${(graph.sumWorkerMs / graph.wallMs).toFixed(1)}×)`}
             </span>
           )}
@@ -206,7 +222,7 @@ export function Console({
             className={cx(styles.agentChip, !agentFilter && styles.agentChipOn)}
             onClick={() => setAgentFilter(null)}
           >
-            All agents
+            {t('All agents')}
           </button>
           {agents.map((a) => {
             const ctx = ctxOf(a.id)
@@ -236,11 +252,11 @@ export function Console({
             onClick={() => setView(v)}
             title={
               v === 'output'
-                ? 'The run’s output, line by line'
-                : 'One bar per block over the run’s own span — overlapping bars are real parallelism, gaps are dead time'
+                ? t('The run’s output, line by line')
+                : t('One bar per block over the run’s own span — overlapping bars are real parallelism, gaps are dead time')
             }
           >
-            {v === 'output' ? 'Output' : 'Timeline'}
+            {v === 'output' ? t('Output') : t('Timeline')}
           </button>
         ))}
       </div>
@@ -249,10 +265,10 @@ export function Console({
 
       <div className={styles.log} hidden={view !== 'output'}>
         {events.length === 0 && (
-          <div className={styles.logMuted}>{connNotice ?? <Spinner label="Waiting for output" />}</div>
+          <div className={styles.logMuted}>{connNotice ?? <Spinner label={t('Waiting for output')} />}</div>
         )}
         {agentFilter && shown.length === 0 && (
-          <div className={styles.logMuted}>No output from {filteredName} yet.</div>
+          <div className={styles.logMuted}>{t('No output from {{name}} yet.', { name: filteredName })}</div>
         )}
         {shown.map((e, i) => (
           <div key={i} className={cx(styles.line, styles['t_' + e.type])}>
@@ -275,7 +291,7 @@ export function Console({
       {status === 'AWAITING_ANSWER' && (
         <div className={styles.approvalRow}>
           <span>
-            <b>The agent asked you something.</b> Its question is above — answer in the box below.
+            <b>{t('The agent asked you something.')}</b> {t('Its question is above — answer in the box below.')}
           </span>
         </div>
       )}
@@ -283,13 +299,13 @@ export function Console({
       {status === 'AWAITING_APPROVAL' && (
         <div className={styles.approvalRow}>
           <span>
-            <b>Waiting for your approval.</b> The plan is above; nothing has been changed yet.
+            <b>{t('Waiting for your approval.')}</b> {t('The plan is above; nothing has been changed yet.')}
           </span>
           <button className={styles.sendBtn} onClick={() => void decide('approve')} disabled={deciding}>
-            Approve
+            {t('Approve')}
           </button>
           <button className={styles.stopBtn} onClick={() => void decide('reject')} disabled={deciding}>
-            Reject
+            {t('Reject')}
           </button>
         </div>
       )}
@@ -301,25 +317,25 @@ export function Console({
           onKeyDown={(e) => {
             if (e.key === 'Enter') void send()
           }}
-          placeholder="Send a command to the running agents…"
+          placeholder={t('Send a command to the running agents…')}
         />
         <button className={styles.sendBtn} onClick={() => void send()} disabled={sending}>
-          Send
+          {t('Send')}
         </button>
         <button
           className={styles.stopBtn}
           onClick={() => void stop()}
           disabled={!canStop}
-          title={canStop ? 'Stop the agents' : 'Nothing is running to stop'}
+          title={canStop ? t('Stop the agents') : t('Nothing is running to stop')}
         >
-          Stop
+          {t('Stop')}
         </button>
         <button
           className={styles.retryBtn}
-          title="Re-run this execution's flow with the same initial input"
+          title={t("Re-run this execution's flow with the same initial input")}
           onClick={() => void retry()}
         >
-          ⟳ Retry
+          {t('⟳ Retry')}
         </button>
       </div>
     </div>

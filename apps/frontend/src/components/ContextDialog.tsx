@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { NodeExec } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
 import { contextParts, ctxColor, freeContext } from './contextParts.ts'
@@ -15,6 +16,7 @@ import styles from './contextDialog.module.scss'
  * never be labelled or coloured differently in the two places.
  */
 export function ContextDialog({ exec, onClose }: { exec: NodeExec; onClose: () => void }) {
+  const { t } = useTranslation()
   const parts = contextParts(exec)
   const ctx = exec.contextTokens ?? 0
   const win = exec.contextWindow ?? 0
@@ -25,14 +27,14 @@ export function ContextDialog({ exec, onClose }: { exec: NodeExec; onClose: () =
   const approx = parts.some((p) => p.approx)
 
   return (
-    <Modal title="Context usage" onClose={onClose}>
+    <Modal title={t('Context usage')} onClose={onClose}>
       <div className={styles.dialog}>
-        <div className={styles.model} title={`Context recorded for the “${exec.label}” block.`}>
+        <div className={styles.model} title={t('Context recorded for the “{{label}}” block.', { label: exec.label })}>
           {exec.model ?? exec.label}
         </div>
         <div className={styles.headline}>
           {compact(ctx)}
-          {win > 0 && ` / ${compact(win)}`} tokens
+          {win > 0 && ` / ${compact(win)}`} {t('tokens')}
           {win > 0 && ` (${Math.round((ctx / win) * 100)}%)`}
         </div>
 
@@ -48,32 +50,32 @@ export function ContextDialog({ exec, onClose }: { exec: NodeExec; onClose: () =
         <table className={styles.table}>
           <thead>
             <tr>
-              <th>Category</th>
-              <th>Tokens</th>
-              <th>Usage</th>
+              <th>{t('Category')}</th>
+              <th>{t('Tokens')}</th>
+              <th>{t('Usage')}</th>
             </tr>
           </thead>
           <tbody>
             {parts.map((p) => (
-              <tr key={p.key} title={p.hint}>
+              <tr key={p.key} title={t(p.hint)}>
                 <td>
                   <span className={styles.swatch} style={{ background: ctxColor(p.hue) }} />
-                  {p.label}
+                  {t(p.label)}
                   {p.approx && ' ~'}
                 </td>
-                <td className={styles.num} title={`${p.value.toLocaleString()} tokens`}>
+                <td className={styles.num} title={t('{{n}} tokens', { n: p.value.toLocaleString() })}>
                   {compact(p.value)}
                 </td>
                 <td className={styles.num}>{pctLabel(p.value, total)}</td>
               </tr>
             ))}
             {free > 0 && (
-              <tr title="What is left of the model's context window.">
+              <tr title={t("What is left of the model's context window.")}>
                 <td>
                   <span className={cx(styles.swatch, styles.swatchFree)} />
-                  Free space
+                  {t('Free space')}
                 </td>
-                <td className={styles.num} title={`${free.toLocaleString()} tokens`}>
+                <td className={styles.num} title={t('{{n}} tokens', { n: free.toLocaleString() })}>
                   {compact(free)}
                 </td>
                 <td className={styles.num}>{pctLabel(free, total)}</td>
@@ -84,9 +86,7 @@ export function ContextDialog({ exec, onClose }: { exec: NodeExec; onClose: () =
 
         {approx && (
           <p className={styles.note}>
-            ~ estimated. The stream reports the starting prompt as a single number, so its split
-            between system + tools and the task is derived from the recorded input at ≈4 characters
-            per token. The other rows are measured from usage.
+            {t('~ estimated. The stream reports the starting prompt as a single number, so its split between system + tools and the task is derived from the recorded input at ≈4 characters per token. The other rows are measured from usage.')}
           </p>
         )}
       </div>

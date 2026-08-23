@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import styles from './errorboundary.module.scss'
 
 interface Props {
@@ -28,21 +29,27 @@ export class ErrorBoundary extends Component<Props, State> {
     const { error } = this.state
     if (!error) return this.props.children
 
-    return (
-      <div className={styles.boundary}>
-        <div className={styles.card}>
-          <h2 className={styles.title}>Something went wrong</h2>
-          <p className={styles.message}>{error.message || String(error)}</p>
-          <div className={styles.actions}>
-            <button className={styles.retryBtn} onClick={this.reset}>
-              Try again
-            </button>
-            <button className={styles.reloadBtn} onClick={() => location.reload()}>
-              Reload app
-            </button>
-          </div>
+    return <ErrorCard error={error} onReset={this.reset} />
+  }
+}
+
+/** The fallback card. A function component so the translation hook is usable — the boundary itself is a class. */
+function ErrorCard({ error, onReset }: { error: Error; onReset: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className={styles.boundary}>
+      <div className={styles.card}>
+        <h2 className={styles.title}>{t('Something went wrong')}</h2>
+        <p className={styles.message}>{error.message || String(error)}</p>
+        <div className={styles.actions}>
+          <button className={styles.retryBtn} onClick={onReset}>
+            {t('Try again')}
+          </button>
+          <button className={styles.reloadBtn} onClick={() => location.reload()}>
+            {t('Reload app')}
+          </button>
         </div>
       </div>
-    )
-  }
+    </div>
+  )
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { AppNodeData } from '../api/types.ts'
 import { Inspector } from './Inspector.tsx'
 import { Modal } from './Modal.tsx'
@@ -41,16 +42,17 @@ const KIND_NAMES: Record<string, string> = {
   foreach: 'For each',
 }
 
-function blockName(data: AppNodeData): string {
+function blockName(data: AppNodeData, t: (key: string) => string): string {
   if ('name' in data && data.name) return data.name
   if ('label' in data && data.label) return data.label
   // Its kind, never the word "Block". Input, Condition and For each carry neither a name nor a
   // label, so the most prominent line on the dialog was the only one saying nothing — while the
   // line directly beneath it already read INPUT / TRIGGER.
-  return KIND_NAMES[data.kind] ?? 'Block'
+  return t(KIND_NAMES[data.kind] ?? 'Block')
 }
 
 export function NodeDetailsDialog() {
+  const { t } = useTranslation()
   const open = useFlowStore((s) => s.detailsOpen)
   const close = useFlowStore((s) => s.closeNodeDetails)
   const selectedId = useFlowStore((s) => s.selectedId)
@@ -63,7 +65,7 @@ export function NodeDetailsDialog() {
   if (!open || !selectedId) return null
   if (!node && !worker) return null
 
-  const title = node ? blockName(node.data) : worker?.label || selectedId
+  const title = node ? blockName(node.data, t) : worker?.label || selectedId
 
   return (
     <Modal title={title} onClose={close} wide className={flows.modalTall}>

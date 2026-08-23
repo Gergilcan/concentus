@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { KnowledgeDef, KnowledgeDoc, KnowledgeHit } from '../api/types.ts'
@@ -138,6 +139,7 @@ export function pathSegments(relativePath: string): string[] {
 }
 
 function Documents({ baseId }: { baseId: string }) {
+  const { t } = useTranslation()
   const [docs, setDocs] = useState<KnowledgeDoc[]>([])
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
@@ -172,7 +174,9 @@ function Documents({ baseId }: { baseId: string }) {
     setNote(null)
     try {
       const result = await api.addKnowledgeUrl(baseId, address)
-      setNote(`${result.docName} — ${result.chunks} passage(s). ${result.detail}`)
+      setNote(
+        `${t('{{name}} — {{count}} passage(s).', { name: result.docName, count: result.chunks })} ${result.detail}`,
+      )
       setUrl('')
       setAddingUrl(false)
       refresh()
@@ -193,9 +197,12 @@ function Documents({ baseId }: { baseId: string }) {
       // answering from a page that has not existed for a month.
       setNote(
         failed.length === 0
-          ? `${refreshed.length} page(s) re-fetched.`
-          : `${refreshed.length - failed.length} of ${refreshed.length} re-fetched. Failed: ` +
-            failed.map((f) => `${f.url} (${f.error})`).join('; '),
+          ? t('{{count}} page(s) re-fetched.', { count: refreshed.length })
+          : t('{{ok}} of {{total}} re-fetched. Failed: {{failures}}', {
+              ok: refreshed.length - failed.length,
+              total: refreshed.length,
+              failures: failed.map((f) => `${f.url} (${f.error})`).join('; '),
+            }),
       )
       refresh()
     } catch (e) {
@@ -245,12 +252,19 @@ function Documents({ baseId }: { baseId: string }) {
 
   const deleteFolder = async (node: TreeNode) => {
     const total = countUnder(node)
-    if (!confirm(`Delete "${node.path}" and the ${total} document(s) under it? This cannot be undone.`)) {
+    if (
+      !confirm(
+        t('Delete "{{path}}" and the {{count}} document(s) under it? This cannot be undone.', {
+          path: node.path,
+          count: total,
+        }),
+      )
+    ) {
       return
     }
     try {
       const result = await api.deleteKnowledgeFolder(baseId, node.path)
-      setNote(`Deleted ${result.deleted} document(s) from ${node.path}.`)
+      setNote(t('Deleted {{count}} document(s) from {{path}}.', { count: result.deleted, path: node.path }))
       refresh()
     } catch (e) {
       setNote(errMessage(e))
@@ -269,10 +283,10 @@ function Documents({ baseId }: { baseId: string }) {
         </button>
         <button
           className={styles.delBtn}
-          title={`Delete this folder and everything under it`}
+          title={t('Delete this folder and everything under it')}
           onClick={() => void deleteFolder(row.node)}
         >
-          Delete
+          {t('Delete')}
         </button>
       </div>
     ) : (
@@ -283,13 +297,14 @@ function Documents({ baseId }: { baseId: string }) {
           {row.doc.name}
         </span>
         <span className={styles.muted}>
-          {row.doc.chunks} passage(s){row.doc.embedded ? '' : ' · word-overlap only'}
+          {t('{{count}} passage(s)', { count: row.doc.chunks })}
+          {row.doc.embedded ? '' : ` · ${t('word-overlap only')}`}
         </span>
         <button
           className={styles.delBtn}
           onClick={() => void api.deleteKnowledgeDoc(baseId, row.doc.name).then(refresh)}
         >
-          Delete
+          {t('Delete')}
         </button>
       </div>
     )
@@ -335,8 +350,11 @@ function Documents({ baseId }: { baseId: string }) {
     if (usable.length === 0) {
       setNote(
         skipped > 0
-          ? `Nothing to index: ${skipped} file(s) skipped — supported types are ${supported.join(', ')}.`
-          : 'No files selected.',
+          ? t('Nothing to index: {{count}} file(s) skipped — supported types are {{types}}.', {
+              count: skipped,
+              types: supported.join(', '),
+            })
+          : t('No files selected.'),
       )
       return
     }
@@ -349,7 +367,7 @@ function Documents({ baseId }: { baseId: string }) {
     let chunks = 0
     const failures: string[] = []
     for (const file of usable) {
-      setNote(`Indexing ${done + 1}/${usable.length}: ${file.name}…`)
+      setNote(t('Indexing {{n}}/{{total}}: {{name}}…', { n: done + 1, total: usable.length, name: file.name }))
       try {
         const result = await api.uploadKnowledgeDoc(
           baseId,
@@ -367,9 +385,9 @@ function Documents({ baseId }: { baseId: string }) {
     refresh()
     setBusy(false)
     setNote(
-      `Indexed ${done} document(s), ${chunks} passage(s).` +
-        (skipped > 0 ? ` ${skipped} unsupported file(s) skipped.` : '') +
-        (failures.length > 0 ? ` Failed: ${failures.join('; ')}` : ''),
+      t('Indexed {{docs}} document(s), {{chunks}} passage(s).', { docs: done, chunks }) +
+        (skipped > 0 ? ` ${t('{{count}} unsupported file(s) skipped.', { count: skipped })}` : '') +
+        (failures.length > 0 ? ` ${t('Failed: {{list}}', { list: failures.join('; ') })}` : ''),
     )
   }
 
@@ -384,9 +402,9 @@ function Documents({ baseId }: { baseId: string }) {
 
   return (
     <div className={styles.kbDocs}>
-      <h4 className={styles.h4}>Documents</h4>
+      <h4 className={styles.h4}>{t('Documents')}</h4>
       <RetrievalModelsPanel />
-      {docs.length === 0 && <div className={styles.muted}>No documents yet.</div>}
+      {docs.length === 0 && <div className={styles.muted}>{t('No documents yet.')}</div>}
 
       {docs.length > 0 && (
         <div className={styles.kbTabs}>
@@ -394,15 +412,15 @@ function Documents({ baseId }: { baseId: string }) {
             className={typeTab === 'all' ? styles.kbTabOn : ''}
             onClick={() => { setTypeTab('all'); setPage(0) }}
           >
-            All ({docs.length})
+            {t('All')} ({docs.length})
           </button>
-          {DOC_TYPES.filter((t) => countsByType[t.key]).map((t) => (
+          {DOC_TYPES.filter((d) => countsByType[d.key]).map((d) => (
             <button
-              key={t.key}
-              className={typeTab === t.key ? styles.kbTabOn : ''}
-              onClick={() => { setTypeTab(t.key); setPage(0) }}
+              key={d.key}
+              className={typeTab === d.key ? styles.kbTabOn : ''}
+              onClick={() => { setTypeTab(d.key); setPage(0) }}
             >
-              {t.label} ({countsByType[t.key]})
+              {t(d.label)} ({countsByType[d.key]})
             </button>
           ))}
           {countsByType.other ? (
@@ -410,7 +428,7 @@ function Documents({ baseId }: { baseId: string }) {
               className={typeTab === 'other' ? styles.kbTabOn : ''}
               onClick={() => { setTypeTab('other'); setPage(0) }}
             >
-              Other ({countsByType.other})
+              {t('Other')} ({countsByType.other})
             </button>
           ) : null}
         </div>
@@ -421,7 +439,9 @@ function Documents({ baseId }: { baseId: string }) {
       {pages > 1 && (
         <div className={styles.kbPager}>
           <button disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>‹</button>
-          <span className={styles.muted}>{safePage + 1} / {pages} · {rows.length} rows</span>
+          <span className={styles.muted}>
+            {safePage + 1} / {pages} · {t('{{count}} rows', { count: rows.length })}
+          </span>
           <button disabled={safePage >= pages - 1} onClick={() => setPage(safePage + 1)}>›</button>
         </div>
       )}
@@ -429,17 +449,20 @@ function Documents({ baseId }: { baseId: string }) {
       {pending && (
         <div className={styles.excludeBox}>
           <div className={styles.excludeHead}>
-            Importing <b>{selected.length}</b> of {pendingUsable?.length ?? 0} indexable file(s)
+            {t('Importing')} <b>{selected.length}</b>{' '}
+            {t('of {{count}} indexable file(s)', { count: pendingUsable?.length ?? 0 })}
             {pending.length !== pendingUsable?.length && (
-              <span className={styles.muted}> · {pending.length - (pendingUsable?.length ?? 0)} unsupported</span>
+              <span className={styles.muted}>
+                {' '}· {t('{{count}} unsupported', { count: pending.length - (pendingUsable?.length ?? 0) })}
+              </span>
             )}
           </div>
           {folderNames.length > 0 && (
             <>
-              <div className={styles.muted}>Untick a folder to leave it out (matches at any depth):</div>
+              <div className={styles.muted}>{t('Untick a folder to leave it out (matches at any depth):')}</div>
               <div className={styles.excludeList}>
                 {folderNames.map(([name, count]) => (
-                  <label key={name} className={styles.excludeItem} title={`${count} indexable file(s)`}>
+                  <label key={name} className={styles.excludeItem} title={t('{{count}} indexable file(s)', { count })}>
                     <input
                       type="checkbox"
                       checked={!excluded.has(name)}
@@ -462,10 +485,10 @@ function Documents({ baseId }: { baseId: string }) {
                 void upload(files)
               }}
             >
-              {busy ? 'Indexing…' : `Index ${selected.length} file(s)`}
+              {busy ? t('Indexing…') : t('Index {{count}} file(s)', { count: selected.length })}
             </button>
             <button className={styles.textLink} onClick={() => setPending(null)}>
-              Cancel
+              {t('Cancel')}
             </button>
           </div>
         </div>
@@ -473,24 +496,26 @@ function Documents({ baseId }: { baseId: string }) {
 
       <div className={styles.crudActions}>
         <button className={styles.newBtn} disabled={busy} onClick={() => fileRef.current?.click()}>
-          {busy ? 'Indexing…' : 'Upload documents'}
+          {busy ? t('Indexing…') : t('Upload documents')}
         </button>
         <button className={styles.newBtn} disabled={busy} onClick={() => folderRef.current?.click()}>
-          Upload folder
+          {t('Upload folder')}
         </button>
         {/* A manual on a wiki is a document too, and asking somebody to print it to PDF first is
             asking them to keep a second copy that starts going out of date immediately. */}
         <button className={styles.newBtn} disabled={busy} onClick={() => setAddingUrl((v) => !v)}>
-          Add a page
+          {t('Add a page')}
         </button>
         {hasPages && (
           <button
             className={styles.textLink}
             disabled={busy}
-            title="Fetches every page in this base again. Uploaded files are untouched — a file somebody chose has no address to go back to."
+            title={t(
+              'Fetches every page in this base again. Uploaded files are untouched — a file somebody chose has no address to go back to.',
+            )}
             onClick={() => void refreshPages()}
           >
-            Refresh pages
+            {t('Refresh pages')}
           </button>
         )}
         <input
@@ -530,17 +555,17 @@ function Documents({ baseId }: { baseId: string }) {
               if (e.key === 'Enter') void addPage()
             }}
             placeholder="https://wiki.example.com/onboarding"
-            aria-label="Page address"
+            aria-label={t('Page address')}
           />
           <button className={styles.newBtn} disabled={busy || !url.trim()} onClick={() => void addPage()}>
-            Add
+            {t('Add')}
           </button>
         </div>
       )}
 
       {note && <p className={panels.hint}>{note}</p>}
 
-      <h4 className={styles.h4}>Try a search</h4>
+      <h4 className={styles.h4}>{t('Try a search')}</h4>
       <div className={styles.kbSearch}>
         <input
           value={query}
@@ -548,17 +573,17 @@ function Documents({ baseId }: { baseId: string }) {
           onKeyDown={(e) => {
             if (e.key === 'Enter') void search()
           }}
-          placeholder="What would an agent ask?"
+          placeholder={t('What would an agent ask?')}
         />
         <button className={styles.newBtn} onClick={() => void search()}>
-          Search
+          {t('Search')}
         </button>
       </div>
-      {hits && hits.length === 0 && <div className={styles.muted}>No matching passages.</div>}
+      {hits && hits.length === 0 && <div className={styles.muted}>{t('No matching passages.')}</div>}
       {hits?.map((h, i) => (
         <div key={i} className={styles.kbHit}>
           <div className={styles.kbHitHead}>
-            {h.docName} · passage {h.seq + 1} · score {h.score.toFixed(3)}
+            {h.docName} · {t('passage {{n}} · score {{score}}', { n: h.seq + 1, score: h.score.toFixed(3) })}
           </div>
           <div className={styles.kbHitBody}>{h.content.slice(0, 400)}</div>
         </div>
@@ -573,24 +598,25 @@ function Documents({ baseId }: { baseId: string }) {
 }
 
 export function KnowledgePanel() {
+  const { t } = useTranslation()
   return (
     <CrudPanel<KnowledgeDef>
-      title="Knowledge bases"
+      title={t('Knowledge bases')}
       fields={[
-        { key: 'name', label: 'Name' },
-        { key: 'description', label: 'Description', placeholder: 'What lives here' },
+        { key: 'name', label: t('Name') },
+        { key: 'description', label: t('Description'), placeholder: t('What lives here') },
         {
           key: 'minRole',
-          label: 'Who may read it',
+          label: t('Who may read it'),
           type: 'select' as const,
           // A knowledge base is not configuration, it is the documents. Salary bands, an incident
           // post-mortem, a contract — material where "anybody who can edit a flow" is plainly the
           // wrong audience, and where the leak arrives disguised as an agent answering well.
           options: [
-            { value: '', label: 'Anybody in the organization' },
-            { value: 'OPERATOR', label: 'Operators and above' },
-            { value: 'MEMBER', label: 'Members and above' },
-            { value: 'ADMIN', label: 'Admins only' },
+            { value: '', label: t('Anybody in the organization') },
+            { value: 'OPERATOR', label: t('Operators and above') },
+            { value: 'MEMBER', label: t('Members and above') },
+            { value: 'ADMIN', label: t('Admins only') },
           ],
         },
       ]}
@@ -609,7 +635,7 @@ export function KnowledgePanel() {
           <Documents baseId={draft.id} />
         ) : (
           <p className={panels.hint}>
-            <b>Save the base first</b> — documents and search appear here after.
+            <b>{t('Save the base first')}</b> — {t('documents and search appear here after.')}
           </p>
         )
       }

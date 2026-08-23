@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { createPortal } from 'react-dom'
 import styles from './flows.module.scss'
 
@@ -48,6 +49,7 @@ interface At {
  * permission teaches you it does not exist; one that is there and says why teaches you who to ask.
  */
 export function CardMenu({ items, label }: { items: CardMenuItem[]; label: string }) {
+  const { t } = useTranslation()
   const [at, setAt] = useState<At | null>(null)
   const button = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
@@ -104,8 +106,8 @@ export function CardMenu({ items, label }: { items: CardMenuItem[]; label: strin
         className={styles.icon}
         aria-haspopup="menu"
         aria-expanded={at !== null}
-        title={`More actions for ${label}`}
-        aria-label={`More actions for ${label}`}
+        title={t('More actions for {{label}}', { label })}
+        aria-label={t('More actions for {{label}}', { label })}
         onClick={() => setAt((v) => (v ? null : { top: -9999, right: 0 }))}
       >
         ⋯

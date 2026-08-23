@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { useFlowStore } from '../state/store.ts'
@@ -29,6 +30,7 @@ export function RerunBlockDialog({
   recordedInput: string
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   const [input, setInput] = useState(recordedInput)
   const [downstream, setDownstream] = useState(false)
   // Blank means the model the block already names. The two knobs worth turning on a block are its
@@ -59,9 +61,9 @@ export function RerunBlockDialog({
   const edited = input !== recordedInput
 
   return (
-    <Modal title={`Run “${label}” again`} onClose={onClose}>
+    <Modal title={t('Run “{{label}}” again', { label })} onClose={onClose}>
       <label className={styles.describeLabel} htmlFor="rerun-input">
-        The input this block received
+        {t('The input this block received')}
       </label>
       <textarea
         id="rerun-input"
@@ -74,8 +76,8 @@ export function RerunBlockDialog({
       />
       <ModelField
         label={
-          <span title="Runs this block on another model, with the same input and the same instructions — the only shape in which 'would the cheaper model do this just as well' has an answer. Only this block moves: the agents it delegates to keep theirs, and the flow on disk is not touched.">
-            Run it on another model (blank = its own) ⓘ
+          <span title={t("Runs this block on another model, with the same input and the same instructions — the only shape in which 'would the cheaper model do this just as well' has an answer. Only this block moves: the agents it delegates to keep theirs, and the flow on disk is not touched.")}>
+            {t('Run it on another model (blank = its own) ⓘ')}
           </span>
         }
         value={model}
@@ -90,30 +92,32 @@ export function RerunBlockDialog({
           onChange={(e) => setDownstream(e.target.checked)}
         />
         <span>
-          Also the agents it delegates to
+          {t('Also the agents it delegates to')}
           <b className={styles.checkHint}>
             {' '}
-            — for continuing a failed run from here, rather than tuning this block alone.
+            {t('— for continuing a failed run from here, rather than tuning this block alone.')}
           </b>
         </span>
       </label>
       <p className={styles.describeHint}>
-        Runs as a <b>new execution</b> containing this block alone{downstream ? ' and what it delegates to' : ''}.
-        The flow&rsquo;s trigger and its hand-offs stay behind: nothing downstream of the flow fires
-        from a block you are still tuning.
-        {edited && <b> Your edited input is not saved to the flow.</b>}
+        {t('Runs as a')} <b>{t('new execution')}</b>{' '}
+        {downstream
+          ? t('containing this block alone and what it delegates to.')
+          : t('containing this block alone.')}{' '}
+        {t('The flow’s trigger and its hand-offs stay behind: nothing downstream of the flow fires from a block you are still tuning.')}
+        {edited && <b> {t('Your edited input is not saved to the flow.')}</b>}
       </p>
       {error && <p className={styles.describeError}>{error}</p>}
       <div className={styles.modalActions}>
         <button className={styles.ghost} onClick={onClose} disabled={busy}>
-          Cancel
+          {t('Cancel')}
         </button>
         <button
           className={styles.primary}
           onClick={() => void run()}
           disabled={busy || !input.trim()}
         >
-          {busy ? <Spinner label="Starting" /> : 'Run this block'}
+          {busy ? <Spinner label={t('Starting')} /> : t('Run this block')}
         </button>
       </div>
     </Modal>

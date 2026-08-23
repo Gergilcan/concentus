@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { McpDef } from '../api/types.ts'
@@ -32,9 +33,9 @@ interface CatalogEntry {
   /** Env the server expects, pre-created EMPTY so the definition shows what must be filled. */
   env?: Record<string, string>
   auth: 'oauth' | 'token' | 'none' | 'stdio'
-  /** What the server gives an agent — the card's visible line. */
+  /** What the server gives an agent — the card's visible line (English; translated at render). */
   blurb: string
-  /** The longer story (auth details, caveats), kept to the tooltip. */
+  /** The longer story (auth details, caveats), kept to the tooltip (English; translated at render). */
   note: string
   /**
    * Header the token goes in, when it is not `Authorization: Bearer`. Carried as data rather
@@ -217,6 +218,7 @@ export function McpCatalog({
    */
   onConfigure?: (entry: CatalogSetup) => void
 }) {
+  const { t } = useTranslation()
   const [note, setNote] = useState<string | null>(null)
   // Names already in the user's server list, lowercased. What turns a card into a ✓: adding the
   // same server twice only creates a confusing duplicate below, so an added card says so and
@@ -267,12 +269,21 @@ export function McpCatalog({
       setAdded((prev) => new Set(prev ?? []).add(entry.name.toLowerCase()))
       setNote(
         entry.auth === 'oauth'
-          ? `${entry.name} added. Drop an MCP node on the canvas, pick it, and press "Sign in to this server".`
+          ? t(
+              '{{name}} added. Drop an MCP node on the canvas, pick it, and press "Sign in to this server".',
+              { name: entry.name },
+            )
           : entry.auth === 'token'
-            ? `${entry.name} added. Create the token under Resources → Credentials and set its id on the definition.`
+            ? t(
+                '{{name}} added. Create the token under Resources → Credentials and set its id on the definition.',
+                { name: entry.name },
+              )
             : entry.auth === 'stdio'
-              ? `${entry.name} added. It runs on this machine: pick it in the list below and fill its env values in "This server as JSON" (they can reference credential:<id>), and make sure "${entry.command}" is installed.`
-              : `${entry.name} added.`,
+              ? t(
+                  '{{name}} added. It runs on this machine: pick it in the list below and fill its env values in "This server as JSON" (they can reference credential:<id>), and make sure "{{command}}" is installed.',
+                  { name: entry.name, command: entry.command },
+                )
+              : t('{{name}} added.', { name: entry.name }),
       )
       onAdded()
     } catch (e) {
@@ -288,10 +299,10 @@ export function McpCatalog({
         className={styles.collapseHead}
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        title="Curated servers, added with one click — each entry says how it authenticates."
+        title={t('Curated servers, added with one click — each entry says how it authenticates.')}
       >
         <span className={styles.collapseArrow}>{open ? '▾' : '▸'}</span>
-        Catalog — one click to add
+        {t('Catalog — one click to add')}
         <span className={styles.collapseCount}>{CATALOG.length}</span>
       </button>
 
@@ -306,7 +317,7 @@ export function McpCatalog({
                 className={cx(styles.chip, category === cat && styles.chipActive)}
                 onClick={() => setCategory(cat)}
               >
-                {cat}
+                {t(cat)}
               </button>
             ))}
           </div>
@@ -319,10 +330,10 @@ export function McpCatalog({
                   className={cx(styles.catalogItem, isAdded && styles.catalogAdded)}
                   title={
                     isAdded
-                      ? 'Already in your server list below.'
+                      ? t('Already in your server list below.')
                       : onConfigure && needsSetup(entry)
-                        ? `${entry.note} — opens setup: it needs something installed or filled in before it can run.`
-                        : entry.note
+                        ? `${t(entry.note)} — ${t('opens setup: it needs something installed or filled in before it can run.')}`
+                        : t(entry.note)
                   }
                   disabled={isAdded || busy === entry.name}
                   onClick={() => void add(entry)}
@@ -330,14 +341,14 @@ export function McpCatalog({
                   <span className={styles.catalogHead}>
                     <span className={styles.catalogName}>{entry.name}</span>
                     {isAdded ? (
-                      <span className={cx(styles.authPill, styles.authAdded)}>✓ added</span>
+                      <span className={cx(styles.authPill, styles.authAdded)}>{t('✓ added')}</span>
                     ) : (
                       <span className={cx(styles.authPill, styles['auth_' + entry.auth])}>
-                        {busy === entry.name ? '…' : AUTH_LABEL[entry.auth]}
+                        {busy === entry.name ? '…' : t(AUTH_LABEL[entry.auth])}
                       </span>
                     )}
                   </span>
-                  <span className={styles.catalogNote}>{entry.blurb}</span>
+                  <span className={styles.catalogNote}>{t(entry.blurb)}</span>
                 </button>
               )
             })}

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { RunSummary } from '../api/types.ts'
 import { money } from '../utils/format.ts'
 import { timeAgo } from './flowFormat.ts'
@@ -28,6 +29,7 @@ export function ComparePickerModal({
   onPick: (runId: string) => void
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   const ordered = [...runs].sort((a, b) => {
     if (a.id === goldenId) return -1
     if (b.id === goldenId) return 1
@@ -35,7 +37,7 @@ export function ComparePickerModal({
   })
 
   return (
-    <Modal title="Compare with which execution?" onClose={onClose}>
+    <Modal title={t('Compare with which execution?')} onClose={onClose}>
       <div className={styles.pickList}>
         {ordered.map((r) => (
           <button key={r.id} className={styles.pickRow} onClick={() => onPick(r.id)}>

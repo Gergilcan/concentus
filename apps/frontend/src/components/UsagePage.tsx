@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { UsageDay, UsageSummary } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -21,16 +22,17 @@ function weekday(date: string): string {
  * nobody measured.
  */
 function SevenDays({ days }: { days: UsageDay[] }) {
+  const { t } = useTranslation()
   const peak = Math.max(...days.map((d) => d.estimatedUsd), 0.01)
   return (
     <>
-      <h3 className={styles.h3}>Day by day</h3>
+      <h3 className={styles.h3}>{t('Day by day')}</h3>
       <div className={styles.chart}>
         {days.map((d, i) => {
           const last = i === days.length - 1
           const height = Math.max(2, Math.round((d.estimatedUsd / peak) * 100))
           return (
-            <div key={d.date} className={styles.bar} title={`${d.date} — ${d.messages} message(s)`}>
+            <div key={d.date} className={styles.bar} title={`${d.date} — ${t('{{n}} message(s)', { n: d.messages })}`}>
               <div className={styles.barValue}>{d.estimatedUsd > 0 ? money(d.estimatedUsd) : ''}</div>
               <div className={styles.barTrack}>
                 <div
@@ -38,7 +40,7 @@ function SevenDays({ days }: { days: UsageDay[] }) {
                   style={{ height: `${height}%` }}
                 />
               </div>
-              <div className={styles.barLabel}>{last ? 'Today' : weekday(d.date)}</div>
+              <div className={styles.barLabel}>{last ? t('Today') : weekday(d.date)}</div>
             </div>
           )
         })}
@@ -61,6 +63,7 @@ function tokens(n: number): string {
  * inside the CLI shows those), so this page shows the thing that CAN be known exactly and says so.
  */
 export function UsagePage() {
+  const { t } = useTranslation()
   const [data, setData] = useState<UsageSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -82,13 +85,12 @@ export function UsagePage() {
   }, [])
 
   if (error) return <div className={styles.page}><p className={styles.note}>{error}</p></div>
-  if (!data) return <div className={styles.page}><p className={styles.note}>Reading transcripts…</p></div>
+  if (!data) return <div className={styles.page}><p className={styles.note}>{t('Reading transcripts…')}</p></div>
   if (!data.available) {
     return (
       <div className={styles.page}>
         <p className={styles.note}>
-          No Claude Code transcripts found on this machine (~/.claude/projects). Usage appears here
-          once the CLI has run at least one session.
+          {t('No Claude Code transcripts found on this machine (~/.claude/projects). Usage appears here once the CLI has run at least one session.')}
         </p>
       </div>
     )
@@ -102,27 +104,30 @@ export function UsagePage() {
 
   return (
     <div className={styles.page}>
-      <h2 className={styles.h2}>Claude usage on this machine</h2>
+      <h2 className={styles.h2}>{t('Claude usage on this machine')}</h2>
       <p
         className={styles.note}
-        title="Measured from Claude Code's own transcripts (~/.claude/projects) — every session on this machine, not only Concentus runs. The $ figure prices the tokens at API rates: on a subscription it is equivalent usage, not a bill. The official quota and extra-usage credit balance have no API; only /usage inside the CLI shows them."
+        title={t("Measured from Claude Code's own transcripts (~/.claude/projects) — every session on this machine, not only Concentus runs. The $ figure prices the tokens at API rates: on a subscription it is equivalent usage, not a bill. The official quota and extra-usage credit balance have no API; only /usage inside the CLI shows them.")}
       >
-        Measured from the CLI's transcripts, refreshed every minute · $ = API-equivalent value, not
-        a bill · official quota &amp; credits: run <code>/usage</code> inside Claude Code ⓘ
+        {t("Measured from the CLI's transcripts, refreshed every minute · $ = API-equivalent value, not a bill · official quota & credits: run")}{' '}
+        <code>/usage</code> {t('inside Claude Code')} ⓘ
       </p>
 
       <div className={styles.tiles}>
         {windows.map((w) => {
           const win = data.windows[w.key]
           return (
-            <div key={w.key} className={styles.tile} title={w.hint}>
-              <div className={styles.tileLabel}>{w.label}</div>
+            <div key={w.key} className={styles.tile} title={t(w.hint)}>
+              <div className={styles.tileLabel}>{t(w.label)}</div>
               <div className={styles.tileValue}>{money(win.estimatedUsd)}</div>
               <div className={styles.tileDetail}>
-                {tokens(win.inputTokens)} in · {tokens(win.outputTokens)} out ·{' '}
-                {tokens(win.cacheReadTokens)} cache
+                {t('{{in}} in · {{out}} out · {{cache}} cache', {
+                  in: tokens(win.inputTokens),
+                  out: tokens(win.outputTokens),
+                  cache: tokens(win.cacheReadTokens),
+                })}
               </div>
-              <div className={styles.tileDetail}>{win.messages} message(s)</div>
+              <div className={styles.tileDetail}>{t('{{n}} message(s)', { n: win.messages })}</div>
             </div>
           )
         })}
@@ -130,11 +135,11 @@ export function UsagePage() {
 
       {data.days && data.days.length > 0 && <SevenDays days={data.days} />}
 
-      <h3 className={styles.h3}>By model — last 7 days</h3>
+      <h3 className={styles.h3}>{t('By model — last 7 days')}</h3>
       <div className={styles.tableWrap}>
         <table>
           <thead>
-            <tr><th>Model</th><th>Input</th><th>Output</th><th>Cache read</th><th>Cache write</th><th>$ equiv.</th></tr>
+            <tr><th>{t('Model')}</th><th>{t('Input')}</th><th>{t('Output')}</th><th>{t('Cache read')}</th><th>{t('Cache write')}</th><th>{t('$ equiv.')}</th></tr>
           </thead>
           <tbody>
             {data.models.map((m) => (

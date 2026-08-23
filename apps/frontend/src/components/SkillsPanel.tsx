@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { SkillCatalogSkill, SkillInfo, SkillRepo } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -18,6 +19,7 @@ const PAGE_SIZE = 20
  * the moat: a competitor without the CLI underneath has to build the whole mechanism.
  */
 export function SkillsPanel() {
+  const { t } = useTranslation()
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [note, setNote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -39,7 +41,12 @@ export function SkillsPanel() {
     setNote(null)
     try {
       const saved = await api.uploadSkill(file)
-      setNote(`"${saved.name}" installed (${saved.fileCount} file(s)). Assign it on an agent node.`)
+      setNote(
+        t('"{{name}}" installed ({{count}} file(s)). Assign it on an agent node.', {
+          name: saved.name,
+          count: saved.fileCount,
+        }),
+      )
       refresh()
     } catch (e) {
       setNote(errMessage(e))
@@ -50,26 +57,28 @@ export function SkillsPanel() {
 
   return (
     <div className={`${styles.crudForm} ${styles.lone}`}>
-      <h3 className={styles.h3}>Agent Skills</h3>
+      <h3 className={styles.h3}>{t('Agent Skills')}</h3>
       <p
         className={panels.hint}
-        title="A skill is a folder with a SKILL.md (name + description in its frontmatter) plus any files it needs — playbooks, templates, scripts. Zip the folder and upload it. Assigned skills are installed into each run's workspace, where Claude Code discovers them by itself."
+        title={t(
+          "A skill is a folder with a SKILL.md (name + description in its frontmatter) plus any files it needs — playbooks, templates, scripts. Zip the folder and upload it. Assigned skills are installed into each run's workspace, where Claude Code discovers them by itself.",
+        )}
       >
-        Upload a zipped skill folder, then assign it on agent nodes. ⓘ
+        {t('Upload a zipped skill folder, then assign it on agent nodes.')} ⓘ
       </p>
 
-      {skills.length === 0 && <div className={styles.muted}>No skills installed yet.</div>}
+      {skills.length === 0 && <div className={styles.muted}>{t('No skills installed yet.')}</div>}
       {skills
         .slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
         .map((s) => (
           <div key={s.id} className={styles.kbDoc}>
             <span className={styles.kbDocName} title={s.description}>{s.name}</span>
-            <span className={styles.muted}>{s.fileCount} file(s)</span>
+            <span className={styles.muted}>{t('{{count}} file(s)', { count: s.fileCount })}</span>
             <button
               className={styles.delBtn}
               onClick={() => void api.deleteSkill(s.id).then(refresh)}
             >
-              Delete
+              {t('Delete')}
             </button>
           </div>
         ))}
@@ -77,7 +86,7 @@ export function SkillsPanel() {
 
       <div className={styles.crudActions}>
         <button className={styles.newBtn} disabled={busy} onClick={() => fileRef.current?.click()}>
-          {busy ? 'Installing…' : 'Upload skill (.zip)'}
+          {busy ? t('Installing…') : t('Upload skill (.zip)')}
         </button>
         <input
           ref={fileRef}
@@ -111,6 +120,7 @@ function SkillCatalog({ installedNames, onInstalled, setNote }: {
   onInstalled: () => void
   setNote: (note: string | null) => void
 }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [repos, setRepos] = useState<SkillRepo[] | null>(null)
   const [reposError, setReposError] = useState<string | null>(null)
@@ -148,7 +158,12 @@ function SkillCatalog({ installedNames, onInstalled, setNote }: {
     setNote(null)
     try {
       const saved = await api.installCatalogSkill(owner, repo, skill.path)
-      setNote(`"${saved.name}" installed (${saved.fileCount} file(s)). Assign it on an agent node.`)
+      setNote(
+        t('"{{name}}" installed ({{count}} file(s)). Assign it on an agent node.', {
+          name: saved.name,
+          count: saved.fileCount,
+        }),
+      )
       onInstalled()
     } catch (e) {
       setNote(errMessage(e))
@@ -169,21 +184,25 @@ function SkillCatalog({ installedNames, onInstalled, setNote }: {
         className={styles.collapseHead}
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        title="Skill collections on GitHub, ranked by stars. A skill is installed straight from its repository — same rules as a zip upload. Installing one means trusting its instructions, exactly as if you had written them."
+        title={t(
+          'Skill collections on GitHub, ranked by stars. A skill is installed straight from its repository — same rules as a zip upload. Installing one means trusting its instructions, exactly as if you had written them.',
+        )}
       >
         <span className={styles.collapseArrow}>{open ? '▾' : '▸'}</span>
-        Browse catalog — popular on GitHub
+        {t('Browse catalog — popular on GitHub')}
       </button>
 
-      {open && repos === null && !reposError && <div className={styles.muted}>Asking GitHub…</div>}
+      {open && repos === null && !reposError && <div className={styles.muted}>{t('Asking GitHub…')}</div>}
       {open && reposError && <div className={styles.muted}>{reposError}</div>}
       {open && repos !== null && (
         <input
           className={panels.pickerSearch}
           value={query}
-          placeholder="Search repositories and their skills…"
-          aria-label="Search skill catalog"
-          title="Narrows the repositories by name and description, and the skills inside any repository that is open. A repository must be opened once for its skills to be searchable."
+          placeholder={t('Search repositories and their skills…')}
+          aria-label={t('Search skill catalog')}
+          title={t(
+            'Narrows the repositories by name and description, and the skills inside any repository that is open. A repository must be opened once for its skills to be searchable.',
+          )}
           onChange={(e) => {
             setQuery(e.target.value)
             setSkillPage(0)
@@ -209,7 +228,7 @@ function SkillCatalog({ installedNames, onInstalled, setNote }: {
               {openRepo === repo.fullName && (
                 <div className={styles.repoSkills}>
                   {repoSkills[repo.fullName] === 'loading' && (
-                    <div className={styles.muted}>Reading the repository…</div>
+                    <div className={styles.muted}>{t('Reading the repository…')}</div>
                   )}
                   {typeof repoSkills[repo.fullName] === 'string' &&
                     repoSkills[repo.fullName] !== 'loading' && (
@@ -223,7 +242,9 @@ function SkillCatalog({ installedNames, onInstalled, setNote }: {
                     if (matching.length === 0) {
                       return (
                         <div className={styles.muted}>
-                          {query.trim() ? 'No skill here matches that search.' : 'No SKILL.md found in this repository.'}
+                          {query.trim()
+                            ? t('No skill here matches that search.')
+                            : t('No SKILL.md found in this repository.')}
                         </div>
                       )
                     }
@@ -240,14 +261,14 @@ function SkillCatalog({ installedNames, onInstalled, setNote }: {
                                   {skill.name}
                                 </span>
                                 {done ? (
-                                  <span className={cx(styles.authPill, styles.authAdded)}>✓ installed</span>
+                                  <span className={cx(styles.authPill, styles.authAdded)}>✓ {t('installed')}</span>
                                 ) : (
                                   <button
                                     className={styles.newBtn}
                                     disabled={installing !== null}
                                     onClick={() => void install(repo.fullName, skill)}
                                   >
-                                    {installing === busyKey ? 'Installing…' : 'Install'}
+                                    {installing === busyKey ? t('Installing…') : t('Install')}
                                   </button>
                                 )}
                               </div>

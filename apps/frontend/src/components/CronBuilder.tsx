@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cx } from '../utils/cx.ts'
 import { buildCron, describeCron, parseCron, type CronPreset, type DayScope } from './cron.ts'
 import { Field, SelectField } from './fields.tsx'
@@ -12,6 +13,7 @@ import styles from './panels.module.scss'
  * also how the builder earns trust: you can check its work.
  */
 export function CronBuilder({ value, onChange }: { value: string; onChange: (cron: string) => void }) {
+  const { t } = useTranslation()
   const [preset, setPreset] = useState<CronPreset>(() =>
     value.trim() === '' ? { kind: 'daily', time: '09:00', days: 'every' } : parseCron(value),
   )
@@ -45,22 +47,22 @@ export function CronBuilder({ value, onChange }: { value: string; onChange: (cro
   }
 
   const expression = buildCron(preset)
-  const meaning = describeCron(expression)
+  const meaning = describeCron(expression, (key, options) => t(key, options ?? {}))
 
   return (
     <>
-      <SelectField label="Schedule" value={preset.kind} onChange={changeKind}>
-        <option value="daily">At a fixed time</option>
-        <option value="minutes">Every N minutes</option>
-        <option value="hours">Every N hours</option>
-        <option value="weekly">Weekly, on chosen days</option>
-        <option value="monthly">Monthly, on a day</option>
-        <option value="custom">Custom (cron expression)</option>
+      <SelectField label={t('Schedule')} value={preset.kind} onChange={changeKind}>
+        <option value="daily">{t('At a fixed time')}</option>
+        <option value="minutes">{t('Every N minutes')}</option>
+        <option value="hours">{t('Every N hours')}</option>
+        <option value="weekly">{t('Weekly, on chosen days')}</option>
+        <option value="monthly">{t('Monthly, on a day')}</option>
+        <option value="custom">{t('Custom (cron expression)')}</option>
       </SelectField>
 
       {(preset.kind === 'minutes' || preset.kind === 'hours') && (
         <Field
-          label={preset.kind === 'minutes' ? 'Every how many minutes' : 'Every how many hours'}
+          label={preset.kind === 'minutes' ? t('Every how many minutes') : t('Every how many hours')}
           type="number"
           value={preset.n}
           onChange={(v) => apply({ ...preset, n: Number(v) || 1 })}
@@ -69,7 +71,7 @@ export function CronBuilder({ value, onChange }: { value: string; onChange: (cro
 
       {(preset.kind === 'daily' || preset.kind === 'weekly' || preset.kind === 'monthly') && (
         <Field
-          label="At"
+          label={t('At')}
           type="time"
           value={preset.time}
           onChange={(v) => v && apply({ ...preset, time: v })}
@@ -78,18 +80,18 @@ export function CronBuilder({ value, onChange }: { value: string; onChange: (cro
 
       {(preset.kind === 'daily' || preset.kind === 'minutes' || preset.kind === 'hours') && (
         <SelectField
-          label="On which days"
+          label={t('On which days')}
           value={preset.days}
           onChange={(v) => apply({ ...preset, days: v as DayScope })}
         >
-          <option value="every">Every day</option>
-          <option value="weekdays">Working days (Mon–Fri)</option>
-          <option value="weekends">Weekends</option>
+          <option value="every">{t('Every day')}</option>
+          <option value="weekdays">{t('Working days (Mon–Fri)')}</option>
+          <option value="weekends">{t('Weekends')}</option>
         </SelectField>
       )}
 
       {preset.kind === 'weekly' && (
-        <div className={styles.dayRow} role="group" aria-label="Days of the week">
+        <div className={styles.dayRow} role="group" aria-label={t('Days of the week')}>
           {(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const).map((name, i) => {
             const day = (i + 1) % 7 // Mon=1 … Sat=6, Sun=0
             const on = preset.days.includes(day)
@@ -105,7 +107,7 @@ export function CronBuilder({ value, onChange }: { value: string; onChange: (cro
                   if (days.length > 0) apply({ ...preset, days })
                 }}
               >
-                {name}
+                {t(name)}
               </button>
             )
           })}
@@ -114,7 +116,7 @@ export function CronBuilder({ value, onChange }: { value: string; onChange: (cro
 
       {preset.kind === 'monthly' && (
         <Field
-          label="Day of the month"
+          label={t('Day of the month')}
           type="number"
           value={preset.day}
           onChange={(v) => apply({ ...preset, day: Number(v) || 1 })}
@@ -123,7 +125,7 @@ export function CronBuilder({ value, onChange }: { value: string; onChange: (cro
 
       {preset.kind === 'custom' && (
         <Field
-          label="Cron expression"
+          label={t('Cron expression')}
           value={preset.expression}
           placeholder="0 9 * * *"
           onChange={(v) => apply({ kind: 'custom', expression: v })}
@@ -135,9 +137,9 @@ export function CronBuilder({ value, onChange }: { value: string; onChange: (cro
         {meaning
           ? ` — ${meaning}`
           : preset.kind === 'custom' && expression
-            ? ' — used as written. 5-field (min hour day month weekday) or 6-field cron.'
+            ? ` — ${t('used as written. 5-field (min hour day month weekday) or 6-field cron.')}`
             : ''}
-        {value.trim() === '' && expression && ' (adjust any control to set it)'}
+        {value.trim() === '' && expression && ` (${t('adjust any control to set it')})`}
       </p>
     </>
   )

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { RemoteRepo, RepoNodeData } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function RepoInspector({ data, set }: Props) {
+  const { t } = useTranslation()
   const [repos, setRepos] = useState<RemoteRepo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -29,7 +31,7 @@ export function RepoInspector({ data, set }: Props) {
     setRepos(null)
     try {
       const r = await api.listGroupRepos(data.provider, group, data.credentialId, data.baseUrl)
-      if (!r.ok) setError(r.error ?? 'Could not list repositories.')
+      if (!r.ok) setError(r.error ?? t('Could not list repositories.'))
       setRepos(r.repos)
     } catch (e) {
       setError(errMessage(e))
@@ -54,13 +56,13 @@ export function RepoInspector({ data, set }: Props) {
 
   return (
     <>
-      <SelectField label="Provider" value={data.provider} onChange={(v) => set({ provider: v })}>
+      <SelectField label={t('Provider')} value={data.provider} onChange={(v) => set({ provider: v })}>
         <option value="github">github</option>
         <option value="gitlab">gitlab</option>
       </SelectField>
 
       <SelectField
-        label="Scope"
+        label={t('Scope')}
         value={groupMode ? 'group' : 'repo'}
         onChange={(v) => {
           setGroupMode(v === 'group')
@@ -69,31 +71,32 @@ export function RepoInspector({ data, set }: Props) {
           setRepos(null)
         }}
       >
-        <option value="repo">One repository</option>
+        <option value="repo">{t('One repository')}</option>
         <option value="group">
-          {isGitlab ? 'A whole GitLab group' : 'A whole GitHub organization'}
+          {isGitlab ? t('A whole GitLab group') : t('A whole GitHub organization')}
         </option>
       </SelectField>
 
       <CredentialField
-        label="Provider token"
+        label={t('Provider token')}
         value={data.credentialId}
         onChange={(v) => set({ credentialId: v })}
-        what="this repository"
+        what={t('this repository')}
       />
 
       {groupMode ? (
         <>
           <Field
-            label={isGitlab ? 'Group path' : 'Organization'}
+            label={isGitlab ? t('Group path') : t('Organization')}
             value={group}
-            placeholder={isGitlab ? 'acme/backend' : 'acme'}
+            placeholder={isGitlab ? t('acme/backend') : t('acme')}
             onChange={(v) => set({ group: v })}
           />
           <p className={styles.hint}>
-            Every repository in the {isGitlab ? 'group' : 'organization'} is cloned, resolved when
-            the run starts — so a repository added next week is picked up without editing this flow.
-            {isGitlab && ' Subgroups are included.'}
+            {isGitlab
+              ? t('Every repository in the group is cloned, resolved when the run starts — so a repository added next week is picked up without editing this flow.')
+              : t('Every repository in the organization is cloned, resolved when the run starts — so a repository added next week is picked up without editing this flow.')}
+            {isGitlab && ` ${t('Subgroups are included.')}`}
           </p>
 
           <div className={styles.mcpBtns}>
@@ -102,20 +105,22 @@ export function RepoInspector({ data, set }: Props) {
               onClick={() => void browse(group)}
               disabled={busy || group === ''}
             >
-              {busy ? 'Listing…' : only.length > 0 ? 'Edit selection' : 'Select specific repositories'}
+              {busy ? t('Listing…') : only.length > 0 ? t('Edit selection') : t('Select specific repositories')}
             </button>
           </div>
           <p className={styles.hint}>
             {only.length === 0 ? (
               <>
-                <b>All repositories</b> in this {isGitlab ? 'group' : 'organization'}. Tick some
-                below to narrow it down.
+                <b>{t('All repositories')}</b>{' '}
+                {isGitlab
+                  ? t('in this group. Tick some below to narrow it down.')
+                  : t('in this organization. Tick some below to narrow it down.')}
               </>
             ) : (
               <>
-                <b>{only.length} selected:</b> {only.join(', ')}.{' '}
+                <b>{t('{{n}} selected:', { n: only.length })}</b> {only.join(', ')}.{' '}
                 <button className={styles.linkBtn} onClick={() => set({ only: [] })}>
-                  use all instead
+                  {t('use all instead')}
                 </button>
               </>
             )}
@@ -124,19 +129,19 @@ export function RepoInspector({ data, set }: Props) {
       ) : (
         <>
           <Field
-            label="URL"
+            label={t('URL')}
             value={data.url}
-            placeholder="https://github.com/owner/repo"
+            placeholder={t('https://github.com/owner/repo')}
             onChange={(v) => set({ url: v })}
           />
           <p className={styles.hint}>
-            <b>Browse a {isGitlab ? 'group' : 'organization'}</b> instead of pasting a URL. Uses the
-            token above.
+            <b>{isGitlab ? t('Browse a group') : t('Browse a organization')}</b>{' '}
+            {t('instead of pasting a URL. Uses the token above.')}
           </p>
           <Field
-            label={isGitlab ? 'Group path' : 'Organization'}
+            label={isGitlab ? t('Group path') : t('Organization')}
             value={group}
-            placeholder={isGitlab ? 'acme/backend' : 'acme'}
+            placeholder={isGitlab ? t('acme/backend') : t('acme')}
             onChange={(v) => set({ group: v })}
           />
           <div className={styles.mcpBtns}>
@@ -145,12 +150,12 @@ export function RepoInspector({ data, set }: Props) {
               onClick={() => void browse(group)}
               disabled={busy || group === ''}
             >
-              {busy ? 'Listing…' : 'List repositories'}
+              {busy ? t('Listing…') : t('List repositories')}
             </button>
           </div>
           {isGitlab && (
             <p className={styles.hint}>
-              Subgroups are included, so a top-level group lists everything beneath it.
+              {t('Subgroups are included, so a top-level group lists everything beneath it.')}
             </p>
           )}
         </>
@@ -158,7 +163,7 @@ export function RepoInspector({ data, set }: Props) {
 
       {error && <p className={styles.hint}>{error}</p>}
       {repos && repos.length === 0 && !error && (
-        <p className={styles.hint}>No repositories found there.</p>
+        <p className={styles.hint}>{t('No repositories found there.')}</p>
       )}
       {repos && repos.length > 0 && (
         <div className={styles.repoList}>
@@ -174,7 +179,7 @@ export function RepoInspector({ data, set }: Props) {
               </span>
               <span className={styles.repoMeta}>
                 {r.defaultBranch}
-                {r.archived ? ' · archived' : ''}
+                {r.archived ? ` · ${t('archived')}` : ''}
               </span>
             </button>
           ))}
@@ -182,39 +187,38 @@ export function RepoInspector({ data, set }: Props) {
       )}
 
       <Field
-        label={groupMode ? 'Branch (blank = each repo’s default)' : 'Branch'}
+        label={groupMode ? t('Branch (blank = each repo’s default)') : t('Branch')}
         value={data.branch}
-        placeholder={groupMode ? 'leave blank' : 'main'}
+        placeholder={groupMode ? t('leave blank') : t('main')}
         onChange={(v) => set({ branch: v })}
       />
 
       <FineTuning>
         <Field
-          label="Server URL (self-hosted only)"
+          label={t('Server URL (self-hosted only)')}
           value={data.baseUrl ?? ''}
-          placeholder={isGitlab ? 'https://gitlab.empresa.com' : 'https://github.empresa.com/api/v3'}
+          placeholder={isGitlab ? t('https://gitlab.empresa.com') : t('https://github.empresa.com/api/v3')}
           onChange={(v) => set({ baseUrl: v })}
         />
         {groupMode && (
           <CheckboxField
-            label="Include archived repositories"
+            label={t('Include archived repositories')}
             checked={data.includeArchived ?? false}
             onChange={(v) => set({ includeArchived: v })}
           />
         )}
         <Field
-          label="Mount path"
+          label={t('Mount path')}
           value={data.mountPath}
-          placeholder={groupMode ? '/workspace' : '/workspace/repo'}
+          placeholder={groupMode ? t('/workspace') : t('/workspace/repo')}
           onChange={(v) => set({ mountPath: v })}
         />
       </FineTuning>
 
       <p className={styles.hint}>
-        In local mode {groupMode ? 'each repository is' : 'the repository is'} cloned into the run's
-        own working directory, so the agent can edit {groupMode ? 'them' : 'it'}, commit, push a
-        branch and open a pull/merge request. Pushing is already authenticated — the agent is never
-        handed a token to paste anywhere.
+        {groupMode
+          ? t("In local mode each repository is cloned into the run's own working directory, so the agent can edit them, commit, push a branch and open a pull/merge request. Pushing is already authenticated — the agent is never handed a token to paste anywhere.")
+          : t("In local mode the repository is cloned into the run's own working directory, so the agent can edit it, commit, push a branch and open a pull/merge request. Pushing is already authenticated — the agent is never handed a token to paste anywhere.")}
       </p>
     </>
   )

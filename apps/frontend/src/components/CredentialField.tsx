@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { Credential } from '../api/types.ts'
 import { SelectField } from './fields.tsx'
@@ -23,7 +24,8 @@ interface Props {
  * A referenced credential that no longer exists is called out rather than silently reading as
  * "none configured" — the two look identical at run time and need different fixes.
  */
-export function CredentialField({ label, value, onChange, what = 'this connection' }: Props) {
+export function CredentialField({ label, value, onChange, what }: Props) {
+  const { t } = useTranslation()
   const [credentials, setCredentials] = useState<Credential[]>([])
 
   useEffect(() => {
@@ -42,7 +44,7 @@ export function CredentialField({ label, value, onChange, what = 'this connectio
   return (
     <>
       <SelectField label={label} value={value} onChange={onChange}>
-        <option value="">— none —</option>
+        <option value="">{t('— none —')}</option>
         {credentials.map((c) => (
           <option key={c.id} value={c.id}>
             {c.label} ({c.hint ?? '••••'})
@@ -50,13 +52,15 @@ export function CredentialField({ label, value, onChange, what = 'this connectio
         ))}
       </SelectField>
       <p className={styles.hint}>
-        Stored under <b>Resources → Credentials</b>, encrypted, and never shown again. This node
-        keeps only its id, so the flow can be exported, duplicated or rolled back without carrying
-        the secret for {what}.
+        {t('Stored under')} <b>{t('Resources → Credentials')}</b>
+        {t(
+          ', encrypted, and never shown again. This node keeps only its id, so the flow can be exported, duplicated or rolled back without carrying the secret for {{what}}.',
+          { what: what ?? t('this connection') },
+        )}
       </p>
       {missing && (
         <p className={styles.hint}>
-          <b>The selected credential no longer exists.</b> Pick another one.
+          <b>{t('The selected credential no longer exists.')}</b> {t('Pick another one.')}
         </p>
       )}
     </>

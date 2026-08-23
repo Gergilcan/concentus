@@ -1,4 +1,5 @@
 import { BaseEdge, EdgeLabelRenderer, type EdgeProps, getBezierPath } from '@xyflow/react'
+import { useTranslation } from 'react-i18next'
 import { useFlowStore } from '../state/store.ts'
 import styles from './edges.module.scss'
 
@@ -13,6 +14,7 @@ export function DeletableEdge({
   markerEnd,
   style,
 }: EdgeProps) {
+  const { t } = useTranslation()
   const [path, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -34,7 +36,7 @@ export function DeletableEdge({
             e.stopPropagation()
             deleteEdge(id)
           }}
-          title="Remove connection"
+          title={t('Remove connection')}
         >
           ×
         </button>

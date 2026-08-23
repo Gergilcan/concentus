@@ -14,6 +14,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import './canvas-overrides.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { NODE_COLORS } from '../constants.ts'
 import type { NodeKind } from '../api/types.ts'
 import { NODE_DRAG_TYPE } from '../components/Palette.tsx'
@@ -66,6 +67,7 @@ function edgeHandleClass(e: Edge): string | null {
 }
 
 export function FlowCanvas() {
+  const { t } = useTranslation()
   const colorMode = useCanvasColorMode()
   const nodes = useFlowStore((s) => s.nodes)
   const edges = useFlowStore((s) => s.edges)
@@ -300,22 +302,27 @@ export function FlowCanvas() {
           <div className="replay-banner" role="status">
             <strong>
               {replay.divergences === 0
-                ? 'Replay: the current flow would take the same path.'
-                : `Replay: ${replay.divergences} divergence${replay.divergences === 1 ? '' : 's'} against the current flow.`}
+                ? t('Replay: the current flow would take the same path.')
+                : replay.divergences === 1
+                  ? t('Replay: 1 divergence against the current flow.')
+                  : t('Replay: {{n}} divergences against the current flow.', {
+                      n: replay.divergences,
+                    })}
             </strong>
             <span className="replay-banner-detail">
               {replay.nodes.some((n) => n.now === 'gone' && n.divergent)
-                ? ' Blocks that ran and no longer exist: ' +
-                  replay.nodes
-                    .filter((n) => n.now === 'gone' && n.divergent)
-                    .map((n) => n.label)
-                    .join(', ') +
-                  '.'
+                ? ' ' +
+                  t('Blocks that ran and no longer exist: {{names}}.', {
+                    names: replay.nodes
+                      .filter((n) => n.now === 'gone' && n.divergent)
+                      .map((n) => n.label)
+                      .join(', '),
+                  })
                 : ''}
-              {' Routing only — nothing was executed.'}
+              {' ' + t('Routing only — nothing was executed.')}
             </span>
             <button className="replay-banner-close" onClick={() => setReplay(null)}>
-              Close
+              {t('Close')}
             </button>
           </div>
         </Panel>

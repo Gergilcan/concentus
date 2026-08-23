@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { SignedInUser, SignInProvider } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -26,6 +27,7 @@ interface Props {
  * deployment's configuration, and further members are invited by an existing one.
  */
 export function SignIn({ onSignedIn, storeUnavailable, providers = [] }: Props) {
+  const { t } = useTranslation()
   // A refusal from the directory comes back as a top-level navigation, so it arrives in the URL
   // rather than in a response this screen awaited. Usually it is a domain this deployment does not
   // admit, which is a sentence somebody needs to read — not a silent bounce back to the form.
@@ -54,16 +56,16 @@ export function SignIn({ onSignedIn, storeUnavailable, providers = [] }: Props) 
         <div className={styles.brand}>
           <span className={styles.logo}>⬡</span> Concentus
         </div>
-        <p className={styles.lead}>Sign in to continue.</p>
+        <p className={styles.lead}>{t('Sign in to continue.')}</p>
 
         {storeUnavailable && (
           <p className={styles.warning} role="alert">
-            The backend cannot reach its database, so sign-in will fail until it is available.
+            {t('The backend cannot reach its database, so sign-in will fail until it is available.')}
           </p>
         )}
 
         <label className={styles.field}>
-          <span>Email</span>
+          <span>{t('Email')}</span>
           <input
             type="email"
             autoComplete="username"
@@ -75,7 +77,7 @@ export function SignIn({ onSignedIn, storeUnavailable, providers = [] }: Props) 
         </label>
 
         <label className={styles.field}>
-          <span>Password</span>
+          <span>{t('Password')}</span>
           <input
             type="password"
             autoComplete="current-password"
@@ -92,20 +94,20 @@ export function SignIn({ onSignedIn, storeUnavailable, providers = [] }: Props) 
         )}
 
         <button type="submit" className={styles.submit} disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
+          {busy ? t('Signing in…') : t('Sign in')}
         </button>
 
         {providers.length > 0 && (
           <>
-            <p className={styles.or}>or</p>
+            <p className={styles.or}>{t('or')}</p>
             <ProviderButtons providers={providers} verb="Continue" />
           </>
         )}
 
         <p className={styles.hint}>
-          No account? There is no sign-up here — on a self-hosted install that would let whoever
-          reaches the server first claim the organization. An administrator adds you under
-          Resources → Members.
+          {t(
+            'No account? There is no sign-up here — on a self-hosted install that would let whoever reaches the server first claim the organization. An administrator adds you under Resources → Members.',
+          )}
         </p>
       </form>
     </div>

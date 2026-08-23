@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { SignInProviderConfig } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -21,6 +22,7 @@ import panels from './panels.module.scss'
  * documentation somebody would have to go and find.
  */
 export function SignInProvidersPanel({ pushError }: { pushError: (m: string) => void }) {
+  const { t } = useTranslation()
   const [providers, setProviders] = useState<SignInProviderConfig[] | null>(null)
   const [redirectUri, setRedirectUri] = useState('')
   const [copied, setCopied] = useState(false)
@@ -52,19 +54,20 @@ export function SignInProvidersPanel({ pushError }: { pushError: (m: string) => 
     <div className={styles.roster}>
       <div className={styles.rosterHead}>
         <div>
-          <h3 className={styles.h4}>Sign-in providers</h3>
+          <h3 className={styles.h4}>{t('Sign-in providers')}</h3>
           <p className={panels.hint}>
-            A provider appears on the sign-in screen once it has a client id and a secret. One
-            without them would be a button that fails after somebody has already decided to use it.
+            {t(
+              'A provider appears on the sign-in screen once it has a client id and a secret. One without them would be a button that fails after somebody has already decided to use it.',
+            )}
           </p>
         </div>
       </div>
 
       <div className={styles.redirectBox}>
-        <span className={styles.redirectLabel}>Redirect URI — register exactly this</span>
+        <span className={styles.redirectLabel}>{t('Redirect URI — register exactly this')}</span>
         <code>{redirectUri}</code>
         <button className={styles.newBtn} onClick={() => void copyRedirect()}>
-          {copied ? 'Copied' : 'Copy'}
+          {copied ? t('Copied') : t('Copy')}
         </button>
       </div>
 
@@ -107,6 +110,7 @@ function ProviderCard({
     displayName: string
   }) => Promise<void>
 }) {
+  const { t } = useTranslation()
   const [clientId, setClientId] = useState(provider.clientId)
   const [clientSecret, setClientSecret] = useState('')
   const [tenant, setTenant] = useState(provider.tenant)
@@ -132,27 +136,27 @@ function ProviderCard({
       <header>
         <h4 className={styles.h4}>{provider.name}</h4>
         <span className={provider.enabled ? styles.providerOn : styles.providerOff}>
-          {provider.enabled ? 'on the sign-in screen' : 'not offered'}
+          {provider.enabled ? t('on the sign-in screen') : t('not offered')}
         </span>
       </header>
 
       <div className={styles.providerFields}>
         <label className={styles.field}>
-          <span>Client id</span>
+          <span>{t('Client id')}</span>
           <input value={clientId} onChange={(e) => setClientId(e.target.value)} />
         </label>
         <label className={styles.field}>
-          <span>Client secret</span>
+          <span>{t('Client secret')}</span>
           <input
             type="password"
             value={clientSecret}
-            placeholder={provider.hasSecret ? '•••••••• (unchanged)' : ''}
+            placeholder={provider.hasSecret ? t('•••••••• (unchanged)') : ''}
             onChange={(e) => setClientSecret(e.target.value)}
           />
         </label>
         {provider.wantsTenant && (
           <label className={styles.field}>
-            <span>Directory (tenant)</span>
+            <span>{t('Directory (tenant)')}</span>
             <input
               value={tenant}
               placeholder="organizations"
@@ -162,7 +166,7 @@ function ProviderCard({
         )}
         {provider.wantsIssuer && (
           <label className={styles.field}>
-            <span>Issuer</span>
+            <span>{t('Issuer')}</span>
             <input
               value={issuer}
               placeholder="https://id.company.com"
@@ -177,28 +181,29 @@ function ProviderCard({
           className={styles.saveBtn}
           disabled={busy || !ready}
           onClick={() => void save(true)}
-          title={ready ? undefined : 'A client id and a secret are what make the button work.'}
+          title={ready ? undefined : t('A client id and a secret are what make the button work.')}
         >
-          {busy ? 'Saving…' : provider.enabled ? 'Save' : 'Save and offer it'}
+          {busy ? t('Saving…') : provider.enabled ? t('Save') : t('Save and offer it')}
         </button>
         {provider.enabled && (
           <button className={styles.newBtn} disabled={busy} onClick={() => void save(false)}>
-            Stop offering it
+            {t('Stop offering it')}
           </button>
         )}
       </div>
 
       {provider.id === 'microsoft' && (
         <p className={panels.hint}>
-          Register an application in Entra ID, add the redirect URI above as a <b>Web</b> platform,
-          and grant it openid, profile and email. A directory id restricts sign-in to your company;
-          leaving it blank admits any work or school account.
+          {t('Register an application in Entra ID, add the redirect URI above as a')} <b>Web</b>{' '}
+          {t(
+            'platform, and grant it openid, profile and email. A directory id restricts sign-in to your company; leaving it blank admits any work or school account.',
+          )}
         </p>
       )}
       {provider.id === 'google' && (
         <p className={panels.hint}>
-          Create an OAuth client of type <b>Web application</b> in Google Cloud, with the redirect
-          URI above as an authorized redirect URI.
+          {t('Create an OAuth client of type')} <b>Web application</b>{' '}
+          {t('in Google Cloud, with the redirect URI above as an authorized redirect URI.')}
         </p>
       )}
     </section>

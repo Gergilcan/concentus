@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { AppNodeData } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
 import { useFlowStore } from '../state/store.ts'
@@ -44,6 +45,7 @@ const TAB_LABEL: Record<Tab, string> = {
 }
 
 export function Inspector() {
+  const { t } = useTranslation()
   const selectedId = useFlowStore((s) => s.selectedId)
   const node = useFlowStore((s) => s.nodes.find((n) => n.id === selectedId) ?? null)
   const update = useFlowStore((s) => s.updateNodeData)
@@ -68,13 +70,13 @@ export function Inspector() {
       return (
         <aside className={styles.inspector}>
           <div className={styles.inspectorHead}>
-            <h3 className={styles.h3} title="Created by the coordinator's plan for this run. It is not part of the drawn flow, so there is nothing to edit; the next run may plan different workers.">
-              Worker: {exec.label} ⓘ
+            <h3 className={styles.h3} title={t("Created by the coordinator's plan for this run. It is not part of the drawn flow, so there is nothing to edit; the next run may plan different workers.")}>
+              {t('Worker: {{label}} ⓘ', { label: exec.label })}
             </h3>
           </div>
-          <h4 className={styles.h3}>Input</h4>
+          <h4 className={styles.h3}>{t('Input')}</h4>
           <InputView exec={exec} />
-          <h4 className={styles.h3}>Output</h4>
+          <h4 className={styles.h3}>{t('Output')}</h4>
           <OutputView exec={exec} />
         </aside>
       )
@@ -85,25 +87,25 @@ export function Inspector() {
     return (
       <aside className={styles.inspector}>
         <div className={styles.inspectorHead}>
-          <h3 className={styles.h3}>Flow</h3>
+          <h3 className={styles.h3}>{t('Flow')}</h3>
         </div>
         <div className={styles.execTabs}>
-          {(['flow', 'versions'] as const).map((t) => (
+          {(['flow', 'versions'] as const).map((ft) => (
             <button
-              key={t}
-              className={cx(styles.execTab, flowTab === t && styles.execTabActive)}
-              onClick={() => setFlowTab(t)}
+              key={ft}
+              className={cx(styles.execTab, flowTab === ft && styles.execTabActive)}
+              onClick={() => setFlowTab(ft)}
             >
-              {t === 'flow' ? 'Properties' : 'Versions'}
+              {ft === 'flow' ? t('Properties') : t('Versions')}
             </button>
           ))}
         </div>
         {flowTab === 'flow' ? (
-          <div className={styles.empty}>Select a node to edit its settings.</div>
+          <div className={styles.empty}>{t('Select a node to edit its settings.')}</div>
         ) : flowId ? (
           <FlowVersions flowId={flowId} pushError={setVersionsError} />
         ) : (
-          <div className={styles.empty}>Save this flow to start its version history.</div>
+          <div className={styles.empty}>{t('Save this flow to start its version history.')}</div>
         )}
         {versionsError && <div className={styles.empty}>{versionsError}</div>}
       </aside>
@@ -130,24 +132,24 @@ export function Inspector() {
   return (
     <aside className={styles.inspector}>
       <div className={styles.inspectorHead}>
-        <h3 className={styles.h3}>{title(data)}</h3>
-        <button className={styles.dup} onClick={() => duplicate(id)} title="Duplicate this node (Ctrl+D)">
-          Duplicate
+        <h3 className={styles.h3}>{t(title(data))}</h3>
+        <button className={styles.dup} onClick={() => duplicate(id)} title={t('Duplicate this node (Ctrl+D)')}>
+          {t('Duplicate')}
         </button>
         <button className={styles.del} onClick={() => remove(id)}>
-          Delete
+          {t('Delete')}
         </button>
       </div>
 
       {hasExecTabs && (
         <div className={styles.execTabs}>
-          {tabs.map((t) => (
+          {tabs.map((tb) => (
             <button
-              key={t}
-              className={cx(styles.execTab, shownTab === t && styles.execTabActive)}
-              onClick={() => setTab(t)}
+              key={tb}
+              className={cx(styles.execTab, shownTab === tb && styles.execTabActive)}
+              onClick={() => setTab(tb)}
             >
-              {TAB_LABEL[t]}
+              {t(TAB_LABEL[tb])}
             </button>
           ))}
         </div>
@@ -155,7 +157,7 @@ export function Inspector() {
 
       {shownTab === 'input' && (
         <>
-          {!activeRunId && <div className={styles.empty}>Select a run below to see its data.</div>}
+          {!activeRunId && <div className={styles.empty}>{t('Select a run below to see its data.')}</div>}
           <InputView exec={exec} />
           {/* Only for agent blocks: a capability node has no instruction to run again, and only
               once there is a recorded input — the offer is to reproduce this block's conditions,
@@ -163,7 +165,7 @@ export function Inspector() {
           {activeRunId && data.kind === 'agent' && exec?.input && (
             <>
               <button className={styles.rerunBlock} onClick={() => setRerun(true)}>
-                Run this block again…
+                {t('Run this block again…')}
               </button>
               {rerun && (
                 <RerunBlockDialog
@@ -183,7 +185,7 @@ export function Inspector() {
       )}
       {shownTab === 'output' && (
         <>
-          {!activeRunId && <div className={styles.empty}>Select a run below to see its data.</div>}
+          {!activeRunId && <div className={styles.empty}>{t('Select a run below to see its data.')}</div>}
           <OutputView exec={exec} />
         </>
       )}

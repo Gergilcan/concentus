@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { McpToolInfo, ToolSearchStatus } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -32,6 +33,7 @@ function familyOf(name: string): string {
  * made: a read-only agent wants every `list_` and `get_` and none of the `delete_`.
  */
 export function McpToolPicker({ url, credentialId, selected, onChange }: Props) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   // Whether tool search will rank semantically. Its two halves — a Postgres extension and an
   // embedding model on the inference server — are configured in different places, and when either
@@ -53,37 +55,50 @@ export function McpToolPicker({ url, credentialId, selected, onChange }: Props) 
     <>
       <div className={styles.mcpBtns}>
         <button className={styles.previewBtn} onClick={() => setOpen(true)} disabled={!url.trim()}>
-          Choose tools…
+          {t('Choose tools…')}
         </button>
         {selected.length > 0 && (
           <button className={styles.linkBtn} onClick={() => onChange([])}>
-            Clear ({selected.length})
+            {t('Clear ({{n}})', { n: selected.length })}
           </button>
         )}
       </div>
 
       <p className={styles.hint}>
         {selected.length === 0 ? (
-          <span title="Every tool is a JSON schema in the prompt. Claude has the room; a self-hosted model's context often doesn't — give each agent a short list.">
-            <b>All tools</b> this server exposes go to the agent. ⓘ
+          <span
+            title={t(
+              "Every tool is a JSON schema in the prompt. Claude has the room; a self-hosted model's context often doesn't — give each agent a short list.",
+            )}
+          >
+            <b>{t('All tools')}</b> {t('this server exposes go to the agent.')} ⓘ
           </span>
         ) : (
           <>
-            <b>{selected.length} selected:</b> {selected.slice(0, 6).join(', ')}
-            {selected.length > 6 && ` … and ${selected.length - 6} more`}
+            <b>{t('{{n}} selected:', { n: selected.length })}</b> {selected.slice(0, 6).join(', ')}
+            {selected.length > 6 && ` … ${t('and {{n}} more', { n: selected.length - 6 })}`}
           </>
         )}
       </p>
 
       {toolSearch?.enabled && selected.length === 0 && (
         <p className={styles.hint}>
-          <span title="The agent describes what it needs and gets back the matching schemas; every tool stays callable.">
-            Above <b>{toolSearch.threshold}</b> tools the agent gets one search tool instead of
-            every schema. ⓘ
+          <span
+            title={t(
+              'The agent describes what it needs and gets back the matching schemas; every tool stays callable.',
+            )}
+          >
+            {t('Above')} <b>{toolSearch.threshold}</b>{' '}
+            {t('tools the agent gets one search tool instead of every schema.')} ⓘ
           </span>{' '}
           {toolSearch.vectorReady && toolSearch.modelPresent ? (
-            <span title={`Semantic ranking via ${toolSearch.embeddingModel}, served by the same model server as your chat model.`}>
-              ✓ semantic
+            <span
+              title={t(
+                'Semantic ranking via {{model}}, served by the same model server as your chat model.',
+                { model: toolSearch.embeddingModel },
+              )}
+            >
+              {t('✓ semantic')}
             </span>
           ) : (
             <>⚠ {toolSearch.detail}</>
@@ -111,6 +126,7 @@ function ToolDialog({
   onChange,
   onClose,
 }: Props & { onClose: () => void }) {
+  const { t } = useTranslation()
   const [tools, setTools] = useState<McpToolInfo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [needsAuth, setNeedsAuth] = useState(false)
@@ -137,7 +153,7 @@ function ToolDialog({
       const res = await api.listMcpTools(url.trim(), credentialId)
       if (!alive.current) return
       if (!res.ok) {
-        setError(res.error ?? 'Could not read this server’s tools.')
+        setError(res.error ?? t('Could not read this server’s tools.'))
         setNeedsAuth(res.needsAuth === true)
         return
       }
@@ -147,6 +163,7 @@ function ToolDialog({
     } finally {
       if (alive.current) setBusy(false)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, credentialId])
 
   useEffect(() => {
@@ -159,7 +176,7 @@ function ToolDialog({
     setSigning(true)
     setError(null)
     try {
-      const failed = await beginMcpSignIn(url.trim())
+      const failed = await beginMcpSignIn(url.trim(), (key, options) => t(key, options ?? {}))
       if (failed) {
         setError(failed)
         setSigning(false)
@@ -181,7 +198,7 @@ function ToolDialog({
         if (Date.now() < deadline) setTimeout(() => void poll(), 2000)
         else if (alive.current) {
           setSigning(false)
-          setError('The sign-in did not complete. Approve it in the tab that opened, then retry.')
+          setError(t('The sign-in did not complete. Approve it in the tab that opened, then retry.'))
           setNeedsAuth(true)
         }
       }
@@ -226,9 +243,13 @@ function ToolDialog({
   const allShownChosen = shownNames.length > 0 && shownNames.every((n) => draft.includes(n))
 
   return (
-    <Modal wide title={`Tools for this server${tools ? ` — ${draft.length} of ${tools.length}` : ''}`} onClose={onClose}>
-      {busy && <p className={modal.modalHint}>Reading the server’s tool list…</p>}
-      {signing && <p className={modal.modalHint}>Waiting for the sign-in to complete…</p>}
+    <Modal
+      wide
+      title={`${t('Tools for this server')}${tools ? ` — ${t('{{n}} of {{total}}', { n: draft.length, total: tools.length })}` : ''}`}
+      onClose={onClose}
+    >
+      {busy && <p className={modal.modalHint}>{t('Reading the server’s tool list…')}</p>}
+      {signing && <p className={modal.modalHint}>{t('Waiting for the sign-in to complete…')}</p>}
       {error && !signing && (
         <p className={modal.modalHint}>
           <b>{error}</b>
@@ -237,10 +258,10 @@ function ToolDialog({
       {needsAuth && !signing && (
         <div className={styles.mcpBtns}>
           <button className={styles.previewBtn} onClick={() => void signIn()}>
-            Sign in to this server
+            {t('Sign in to this server')}
           </button>
           <button className={styles.linkBtn} onClick={() => void load()}>
-            Retry
+            {t('Retry')}
           </button>
         </div>
       )}
@@ -248,11 +269,11 @@ function ToolDialog({
       {tools && (
         <>
           <label className={modal.field}>
-            <span>Search</span>
+            <span>{t('Search')}</span>
             <input
               autoFocus
               value={search}
-              placeholder="contact, invoice, tax…"
+              placeholder={t('contact, invoice, tax…')}
               onChange={(e) => setSearch(e.target.value)}
             />
           </label>
@@ -263,7 +284,7 @@ function ToolDialog({
               checked={onlyChosen}
               onChange={(e) => setOnlyChosen(e.target.checked)}
             />
-            <span>Show only the {draft.length} selected</span>
+            <span>{t('Show only the {{n}} selected', { n: draft.length })}</span>
           </label>
 
           <div className={styles.mcpBtns}>
@@ -272,11 +293,13 @@ function ToolDialog({
               onClick={() => (allShownChosen ? removeAll(shownNames) : addAll(shownNames))}
               disabled={shownNames.length === 0}
             >
-              {allShownChosen ? 'Deselect' : 'Select'} these {shownNames.length}
+              {allShownChosen
+                ? t('Deselect these {{n}}', { n: shownNames.length })
+                : t('Select these {{n}}', { n: shownNames.length })}
             </button>
             {draft.length > 0 && (
               <button className={styles.linkBtn} onClick={() => setDraft([])}>
-                Clear all
+                {t('Clear all')}
               </button>
             )}
           </div>
@@ -299,14 +322,14 @@ function ToolDialog({
                     {items.filter((t) => draft.includes(t.name)).length}/{items.length}
                   </span>
                 </button>
-                {items.map((t) => (
-                  <button key={t.name} className={styles.repoItem} onClick={() => toggle(t.name)}>
+                {items.map((tool) => (
+                  <button key={tool.name} className={styles.repoItem} onClick={() => toggle(tool.name)}>
                     <span>
-                      {draft.includes(t.name) ? '☑ ' : '☐ '}
-                      {t.name}
+                      {draft.includes(tool.name) ? '☑ ' : '☐ '}
+                      {tool.name}
                     </span>
-                    <span className={styles.repoMeta} title={t.description}>
-                      {t.description}
+                    <span className={styles.repoMeta} title={tool.description}>
+                      {tool.description}
                     </span>
                   </button>
                 ))}
@@ -314,21 +337,23 @@ function ToolDialog({
             ))}
             {shown.length === 0 && (
               <p className={modal.modalHint}>
-                Nothing matches {search ? `“${search}”` : 'the current filter'}.
+                {search
+                  ? t('Nothing matches “{{search}}”.', { search })
+                  : t('Nothing matches the current filter.')}
               </p>
             )}
           </div>
 
           <p className={modal.modalHint}>
-            Leaving this empty sends <b>every</b> tool — on a self-hosted model that can overflow
-            the context and truncate silently.
+            {t('Leaving this empty sends')} <b>{t('every')}</b>{' '}
+            {t('tool — on a self-hosted model that can overflow the context and truncate silently.')}
           </p>
         </>
       )}
 
       <div className={modal.modalActions}>
         <button className={styles.linkBtn} onClick={onClose}>
-          Cancel
+          {t('Cancel')}
         </button>
         <button
           className={styles.previewBtn}
@@ -337,7 +362,7 @@ function ToolDialog({
             onClose()
           }}
         >
-          Use {draft.length === 0 ? 'all tools' : `these ${draft.length}`}
+          {draft.length === 0 ? t('Use all tools') : t('Use these {{n}}', { n: draft.length })}
         </button>
       </div>
     </Modal>

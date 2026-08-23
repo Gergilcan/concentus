@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { EmbedderStatus, RerankerStatus } from '../api/types.ts'
 import styles from './resources.module.scss'
@@ -18,6 +19,7 @@ import styles from './resources.module.scss'
  * search works and merely ranks less well.
  */
 export function RetrievalModelsPanel() {
+  const { t } = useTranslation()
   const [embedder, setEmbedder] = useState<EmbedderStatus | null>(null)
   const [reranker, setReranker] = useState<RerankerStatus | null>(null)
   const downloading = useRef(false)
@@ -56,19 +58,21 @@ export function RetrievalModelsPanel() {
         error={embedder.error}
         onName={
           embedder.semantic && embedder.state !== 'READY'
-            ? `Semantic search is on via your model server. ${embedder.detail}`
-            : `Keyword and semantic search — ${embedder.model}, running inside the app.`
+            ? `${t('Semantic search is on via your model server.')} ${embedder.detail}`
+            : t('Keyword and semantic search — {{model}}, running inside the app.', { model: embedder.model })
         }
         offName={
           embedder.semantic
-            ? 'Semantic search is on via your model server.'
-            : 'Keyword search only — nothing ranks by meaning yet.'
+            ? t('Semantic search is on via your model server.')
+            : t('Keyword search only — nothing ranks by meaning yet.')
         }
-        offHelp="Keyword search finds exact words and always works. An embedding model adds meaning, so a question phrased differently from the document still finds it. Runs inside the app — no Ollama, no Docker. Documents already uploaded stay keyword-only until re-uploaded."
-        downloadingLabel="Downloading the embedding model"
-        action="Enable semantic search"
+        offHelp={t(
+          'Keyword search finds exact words and always works. An embedding model adds meaning, so a question phrased differently from the document still finds it. Runs inside the app — no Ollama, no Docker. Documents already uploaded stay keyword-only until re-uploaded.',
+        )}
+        downloadingLabel={t('Downloading the embedding model')}
+        action={t('Enable semantic search')}
         sizeMb={embedder.sizeMb}
-        removeTitle="Frees the disk space. Search keeps working on keywords until you download it again."
+        removeTitle={t('Frees the disk space. Search keeps working on keywords until you download it again.')}
         onDownload={() => {
           downloading.current = true
           void api.embedderDownload().then(() => setEmbedder({ ...embedder, state: 'DOWNLOADING', percent: 0 }))
@@ -82,13 +86,15 @@ export function RetrievalModelsPanel() {
           state={reranker.state}
           percent={reranker.percent}
           error={reranker.error}
-          onName={`Results reordered by ${reranker.model}, running inside the app.`}
-          offName="Results are not reordered."
-          offHelp="A reranker reads your question and each candidate passage together and scores the pair, which catches what two separately-computed embeddings cannot — the passage describing the right process for the wrong department. It runs over the handful of candidates a search already found, so it costs milliseconds, not a scan."
-          downloadingLabel="Downloading the reranker"
-          action="Enable reranking"
+          onName={t('Results reordered by {{model}}, running inside the app.', { model: reranker.model })}
+          offName={t('Results are not reordered.')}
+          offHelp={t(
+            'A reranker reads your question and each candidate passage together and scores the pair, which catches what two separately-computed embeddings cannot — the passage describing the right process for the wrong department. It runs over the handful of candidates a search already found, so it costs milliseconds, not a scan.',
+          )}
+          downloadingLabel={t('Downloading the reranker')}
+          action={t('Enable reranking')}
           sizeMb={reranker.sizeMb}
-          removeTitle="Frees the disk space. Search keeps working; results simply go back to the fused order."
+          removeTitle={t('Frees the disk space. Search keeps working; results simply go back to the fused order.')}
           onDownload={() => {
             downloading.current = true
             void api.rerankerDownload().then(() => setReranker({ ...reranker, state: 'DOWNLOADING', percent: 0 }))
@@ -116,6 +122,7 @@ function ModelRow(props: {
   onRemove: () => void
   hidden?: boolean
 }) {
+  const { t } = useTranslation()
   if (props.hidden) return null
 
   if (props.state === 'READY') {
@@ -124,7 +131,7 @@ function ModelRow(props: {
         <span className={styles.okDot}>●</span>
         <span>{props.onName}</span>
         <button className={styles.textLink} title={props.removeTitle} onClick={props.onRemove}>
-          Remove
+          {t('Remove')}
         </button>
       </div>
     )
@@ -150,7 +157,7 @@ function ModelRow(props: {
         {props.action}
       </button>
       <span className={styles.muted} title={props.offHelp}>
-        One-time {props.sizeMb} MB download · runs offline ⓘ
+        {t('One-time {{size}} MB download · runs offline', { size: props.sizeMb })} ⓘ
       </span>
       {props.state === 'ERROR' && <span className={styles.errText}>{props.error}</span>}
     </div>

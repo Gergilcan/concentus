@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { DatabaseDef, SqlNodeData, SqlPreview } from '../api/types.ts'
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function SqlInspector({ data, set }: Props) {
+  const { t } = useTranslation()
   const [preview, setPreview] = useState<SqlPreview | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -55,12 +57,12 @@ export function SqlInspector({ data, set }: Props) {
     <>
       {databases.length > 0 && (
         <SelectField
-          label="Use database (from Resources)"
+          label={t('Use database (from Resources)')}
           value=""
           onChange={useDatabase}
           className={styles.libraryField}
         >
-          <option value="">— choose a connection —</option>
+          <option value="">{t('— choose a connection —')}</option>
           {databases.map((d) => (
             <option key={d.id} value={d.id}>
               {d.label}
@@ -69,24 +71,24 @@ export function SqlInspector({ data, set }: Props) {
         </SelectField>
       )}
 
-      <Field label="Label" value={data.label} onChange={(v) => set({ label: v })} />
+      <Field label={t('Label')} value={data.label} onChange={(v) => set({ label: v })} />
       <Field
-        label="JDBC URL"
+        label={t('JDBC URL')}
         value={data.jdbcUrl}
-        placeholder="jdbc:postgresql://host:5432/db"
+        placeholder={t('jdbc:postgresql://host:5432/db')}
         onChange={(v) => set({ jdbcUrl: v })}
       />
-      <Field label="Username" value={data.username} onChange={(v) => set({ username: v })} />
+      <Field label={t('Username')} value={data.username} onChange={(v) => set({ username: v })} />
       <CredentialField
-        label="Password"
+        label={t('Password')}
         value={data.credentialId}
         onChange={(v) => set({ credentialId: v })}
-        what="this database"
+        what={t('this database')}
       />
-      <TextArea label="SQL query" rows={5} value={data.query} onChange={(v) => set({ query: v })} />
+      <TextArea label={t('SQL query')} rows={5} value={data.query} onChange={(v) => set({ query: v })} />
       <FineTuning>
         <Field
-          label="Max rows"
+          label={t('Max rows')}
           type="number"
           value={data.maxRows}
           onChange={(v) => set({ maxRows: Number(v) })}
@@ -94,7 +96,7 @@ export function SqlInspector({ data, set }: Props) {
       </FineTuning>
 
       <button className={styles.previewBtn} onClick={() => void runPreview()} disabled={loading}>
-        {loading ? 'Running…' : '▷ Preview query'}
+        {loading ? t('Running…') : t('▷ Preview query')}
       </button>
 
       {err && <div className={styles.previewErr}>{err}</div>}
@@ -102,7 +104,7 @@ export function SqlInspector({ data, set }: Props) {
       {preview && (
         <>
           <div className={styles.previewMeta}>
-            {preview.rowCount} row(s){preview.truncated ? ' (truncated)' : ''}
+            {t('{{n}} row(s)', { n: preview.rowCount })}{preview.truncated ? ` ${t('(truncated)')}` : ''}
           </div>
           <div className={styles.previewTable}>
             <table>

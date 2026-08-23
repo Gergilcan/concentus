@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -61,6 +62,7 @@ export function FlowsPage({
   onRetryRun,
   pushError,
 }: Props) {
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<Sort>('recent')
   /**
@@ -349,15 +351,15 @@ export function FlowsPage({
             {visible.length === 0 && draftTiles.length === 0 ? (
               <div className={styles.emptyCard}>
                 <div className={styles.emptyIcon}>⬡</div>
-                <h3>{flows.length === 0 ? 'No flows yet' : 'Nothing matches those filters'}</h3>
+                <h3>{flows.length === 0 ? t('No flows yet') : t('Nothing matches those filters')}</h3>
                 <p>
                   {flows.length === 0
-                    ? 'Create a flow, drop in a coordinator and a couple of sub-agents, and run it.'
-                    : 'Try a different name or tag.'}
+                    ? t('Create a flow, drop in a coordinator and a couple of sub-agents, and run it.')
+                    : t('Try a different name or tag.')}
                 </p>
                 {flows.length === 0 && (
                   <button className={styles.primary} onClick={onNew}>
-                    + New flow
+                    {t('+ New flow')}
                   </button>
                 )}
               </div>
@@ -367,7 +369,7 @@ export function FlowsPage({
             ) : (
               <>
                 {path !== '' && (
-                  <nav className={styles.crumbs} aria-label="Folder path">
+                  <nav className={styles.crumbs} aria-label={t('Folder path')}>
                     {crumbs.map((crumb, i) => (
                       <span key={crumb.path} className={styles.crumbSeg}>
                         {i > 0 && <span className={styles.crumbSep}>/</span>}
@@ -395,7 +397,7 @@ export function FlowsPage({
                       <button
                         key={full}
                         className={cx(styles.folderTile, dropTarget === full && styles.dropOver)}
-                        aria-label={`Folder ${name}`}
+                        aria-label={t('Folder {{name}}', { name })}
                         onClick={() => setPath(full)}
                         draggable
                         onDragStart={(e) => e.dataTransfer.setData(FOLDER_DND, full)}
@@ -417,7 +419,7 @@ export function FlowsPage({
                       <button
                         key={'draft:' + full}
                         className={cx(styles.folderTile, dropTarget === full && styles.dropOver)}
-                        aria-label={`Folder ${name}`}
+                        aria-label={t('Folder {{name}}', { name })}
                         onClick={() => setPath(full)}
                         onDragOver={dragOver(full)}
                         onDragLeave={() => setDropTarget(null)}
@@ -429,8 +431,8 @@ export function FlowsPage({
                         <span className={styles.folderName}>{name}</span>
                         <span
                           role="button"
-                          aria-label={`Remove empty folder ${name}`}
-                          title="Remove this empty folder"
+                          aria-label={t('Remove empty folder {{name}}', { name })}
+                          title={t('Remove this empty folder')}
                           className={styles.folderRemove}
                           onClick={(e) => {
                             e.stopPropagation()
@@ -445,8 +447,8 @@ export function FlowsPage({
                   {namingFolder ? (
                     <input
                       className={styles.folderNewInput}
-                      placeholder="Folder name (use / to nest)"
-                      aria-label="New folder name"
+                      placeholder={t('Folder name (use / to nest)')}
+                      aria-label={t('New folder name')}
                       autoFocus
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') commitFolder(e.currentTarget.value)
@@ -456,7 +458,7 @@ export function FlowsPage({
                     />
                   ) : (
                     <button className={styles.folderNew} onClick={() => setNamingFolder(true)}>
-                      + New folder
+                      {t('+ New folder')}
                     </button>
                   )}
                 </div>
@@ -466,7 +468,7 @@ export function FlowsPage({
                   tiles.length === 0 &&
                   draftTiles.length === 0 && (
                     <p className={styles.folderEmpty}>
-                      This folder is empty — drag a flow onto it, or set it in a flow's Settings.
+                      {t("This folder is empty — drag a flow onto it, or set it in a flow's Settings.")}
                     </p>
                   )
                 )}
@@ -482,9 +484,9 @@ export function FlowsPage({
               className={styles.sideToggle}
               aria-expanded={runsOpen}
               onClick={() => setRunsOpen(!runsOpen)}
-              title={runsOpen ? 'Hide recent executions' : 'Show recent executions'}
+              title={runsOpen ? t('Hide recent executions') : t('Show recent executions')}
             >
-              <span>Recent executions</span>
+              <span>{t('Recent executions')}</span>
               <span aria-hidden="true">{runsOpen ? '▸' : '◂'}</span>
             </button>
             {runsOpen && (

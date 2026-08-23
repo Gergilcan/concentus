@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { SettingEntry } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
+import { LANGS, type LangId, setLang, storedLang } from '../i18n/index.ts'
 import { setTheme, THEMES, useTheme } from '../utils/theme.ts'
 import { LicensePanel } from './LicensePanel.tsx'
 import { Spinner } from './Spinner.tsx'
@@ -19,25 +21,65 @@ import panels from './panels.module.scss'
  * browser rather than in the database, applies the instant it is chosen, and has no Save.
  */
 function ThemeSetting() {
+  const { t } = useTranslation()
   const theme = useTheme()
   return (
     <div className={styles.themeRow}>
       <div>
-        <label className={styles.themeLabel}>Appearance</label>
+        <label className={styles.themeLabel}>{t('Appearance')}</label>
         <p className={panels.hint}>
-          This browser only, and immediately — it is not saved with the settings below.
+          {t('This browser only, and immediately — it is not saved with the settings below.')}
         </p>
       </div>
       <div className={styles.themeChoices}>
-        {THEMES.map((t) => (
+        {THEMES.map((th) => (
           <button
-            key={t.id}
+            key={th.id}
             type="button"
-            className={t.id === theme ? styles.themeOn : styles.themeOff}
-            aria-pressed={t.id === theme}
-            onClick={() => setTheme(t.id)}
+            className={th.id === theme ? styles.themeOn : styles.themeOff}
+            aria-pressed={th.id === theme}
+            onClick={() => setTheme(th.id)}
           >
-            <span aria-hidden="true">{t.icon}</span> {t.label}
+            <span aria-hidden="true">{th.icon}</span> {t(th.label)}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The interface language, next to the theme — the two preferences that live in this browser
+ * rather than in the database, apply instantly, and have no Save.
+ *
+ * <p>"Auto" follows the browser's language and is the default: most people never have to find
+ * this control, because the app already spoke to them correctly the first time it opened.
+ */
+function LanguageSetting() {
+  const { t } = useTranslation()
+  const [lang, setLangState] = useState<LangId>(() => storedLang())
+  const choose = (id: LangId) => {
+    setLang(id)
+    setLangState(id)
+  }
+  return (
+    <div className={styles.themeRow}>
+      <div>
+        <label className={styles.themeLabel}>{t('Language')}</label>
+        <p className={panels.hint}>
+          {t('This browser only, and immediately — Auto follows your system language.')}
+        </p>
+      </div>
+      <div className={styles.themeChoices}>
+        {LANGS.map((l) => (
+          <button
+            key={l.id}
+            type="button"
+            className={l.id === lang ? styles.themeOn : styles.themeOff}
+            aria-pressed={l.id === lang}
+            onClick={() => choose(l.id)}
+          >
+            {l.id === 'auto' ? t('Auto') : l.label}
           </button>
         ))}
       </div>
@@ -68,6 +110,7 @@ const SOURCE_LABEL: Record<string, string> = {
  * does — and only the first is yours to clear.
  */
 export function SettingsPanel({ pushError }: { pushError: (m: string) => void }) {
+  const { t } = useTranslation()
   const [entries, setEntries] = useState<SettingEntry[] | null>(null)
   const [edits, setEdits] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
@@ -130,27 +173,35 @@ export function SettingsPanel({ pushError }: { pushError: (m: string) => void })
     <div className={styles.roster}>
       <div className={styles.rosterHead}>
         <div>
-          <h3 className={styles.h4}>Settings</h3>
+          <h3 className={styles.h4}>{t('Settings')}</h3>
           <p className={panels.hint}>
-            Limits, timeouts and allowlists for this organization. A blank field falls back to what
-            this deployment was started with, and then to the default.
+            {t(
+              'Limits, timeouts and allowlists for this organization. A blank field falls back to what this deployment was started with, and then to the default.',
+            )}
           </p>
         </div>
         <button className={styles.saveBtn} disabled={busy || pending === 0} onClick={() => void save()}>
-          {busy ? 'Saving…' : pending ? `Save ${pending} change${pending > 1 ? 's' : ''}` : 'Save'}
+          {busy
+            ? t('Saving…')
+            : pending > 1
+              ? t('Save {{count}} changes', { count: pending })
+              : pending
+                ? t('Save {{count}} change', { count: pending })
+                : t('Save')}
         </button>
       </div>
 
       <ThemeSetting />
+      <LanguageSetting />
 
       <LicensePanel />
 
       {saved && (
         <p className={styles.savedNote}>
-          Saved.{' '}
+          {t('Saved.')}{' '}
           {saved.restartRequired
-            ? 'Restart Concentus for it to take effect — these are read once, when the application starts.'
-            : 'In effect now.'}
+            ? t('Restart Concentus for it to take effect — these are read once, when the application starts.')
+            : t('In effect now.')}
         </p>
       )}
 
@@ -182,6 +233,7 @@ function SettingRow({
   draft: string | undefined
   onChange: (value: string) => void
 }) {
+  const { t } = useTranslation()
   const value = draft ?? entry.value
   const id = `setting-${entry.key}`
   const edited = draft !== undefined && draft !== entry.value
@@ -192,21 +244,21 @@ function SettingRow({
         <label htmlFor={id}>{entry.label}</label>
         <p>{entry.help}</p>
         <span className={styles.settingMeta}>
-          {SOURCE_LABEL[entry.source] ?? entry.source}
-          {entry.restartRequired && ' · needs a restart'}
+          {SOURCE_LABEL[entry.source] ? t(SOURCE_LABEL[entry.source]) : entry.source}
+          {entry.restartRequired && ` · ${t('needs a restart')}`}
         </span>
       </div>
       <div className={styles.settingControl}>
         {entry.type === 'BOOLEAN' ? (
           <select id={id} value={value || 'false'} onChange={(e) => onChange(e.target.value)}>
-            <option value="true">On</option>
-            <option value="false">Off</option>
+            <option value="true">{t('On')}</option>
+            <option value="false">{t('Off')}</option>
           </select>
         ) : entry.type === 'CHOICE' ? (
           <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
             {/* Blank is a real choice here: it is how a field goes back to the deployment's own
                 value rather than being pinned to one of the options. */}
-            <option value="">(unset)</option>
+            <option value="">{t('(unset)')}</option>
             {entry.options.map((option) => (
               <option key={option} value={option}>
                 {option}
@@ -220,9 +272,9 @@ function SettingRow({
             value={value}
             placeholder={
               entry.type === 'SECRET' && entry.hasValue
-                ? '•••••••• (unchanged)'
+                ? t('•••••••• (unchanged)')
                 : entry.type === 'LIST'
-                  ? 'comma, separated'
+                  ? t('comma, separated')
                   : ''
             }
             onChange={(e) => onChange(e.target.value)}

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { cx } from '../../utils/cx.ts'
 import { useFlowStore } from '../../state/store.ts'
 import styles from './nodes.module.scss'
@@ -24,11 +25,12 @@ const THEN: Record<string, string> = {
  * around the card (canvas-overrides.css) already carries the at-a-glance part.
  */
 export function NodeReplayBadge({ id }: { id: string }) {
+  const { t } = useTranslation()
   const entry = useFlowStore((s) => s.replay?.nodes.find((n) => n.nodeId === id))
   if (!entry) return null
   if (!entry.divergent && entry.now !== 'unknown') return null
-  const then = THEN[entry.then] ?? entry.then
-  const now = NOW[entry.now] ?? entry.now
+  const then = t(THEN[entry.then] ?? entry.then)
+  const now = t(NOW[entry.now] ?? entry.now)
   return (
     <div
       className={cx(styles.execBadge, entry.divergent ? styles.rpDivergent : styles.rpUnknown)}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { McpDef } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -68,6 +69,7 @@ export function AddMcpServerModal({
   onClose: () => void
   onSaved: (saved: McpDef) => void
 }) {
+  const { t } = useTranslation()
   const local = entry.auth === 'stdio'
   // A local server has both questions; a remote one launches nothing, so it has only the second.
   const steps: Step[] = local ? ['requirements', 'values'] : ['values']
@@ -110,25 +112,29 @@ export function AddMcpServerModal({
   }
 
   return (
-    <Modal title={`Set up ${entry.name}`} onClose={onClose}>
-      <p className={panels.hint}>{entry.note}</p>
+    <Modal title={t('Set up {{name}}', { name: entry.name })} onClose={onClose}>
+      <p className={panels.hint}>{t(entry.note)}</p>
       {steps.length > 1 && (
         <p className={panels.hint}>
-          Step {index + 1} of {steps.length} —{' '}
-          {step === 'requirements' ? 'what this machine needs to launch it' : 'what the server needs to know'}
+          {t('Step {{step}} of {{total}}', { step: index + 1, total: steps.length })} —{' '}
+          {step === 'requirements'
+            ? t('what this machine needs to launch it')
+            : t('what the server needs to know')}
         </p>
       )}
 
       {step === 'requirements' && (
         <>
           <p className={panels.hint}>
-            It runs on this machine as <code>{[entry.command, ...(entry.args ?? [])].join(' ')}</code>
+            {t('It runs on this machine as')}{' '}
+            <code>{[entry.command, ...(entry.args ?? [])].join(' ')}</code>
           </p>
           {/* The install button lives here: one click, the exact command shown before it runs. */}
           <RuntimeNotice command={entry.command ?? ''} />
           <p className={panels.hint}>
-            You can continue either way — this never blocks adding the server. It just means the
-            first run would fail to start it.
+            {t(
+              'You can continue either way — this never blocks adding the server. It just means the first run would fail to start it.',
+            )}
           </p>
         </>
       )}
@@ -136,12 +142,14 @@ export function AddMcpServerModal({
       {step === 'values' && local && (
         <>
           <p className={panels.hint}>
-            Environment variables this server reads. Mark the secret ones — those are stored in
-            <b> Resources → Credentials</b> and referenced by id, so the definition never holds a
-            token.
+            {t(
+              'Environment variables this server reads. Mark the secret ones — those are stored in',
+            )}
+            <b> {t('Resources → Credentials')}</b>{' '}
+            {t('and referenced by id, so the definition never holds a token.')}
           </p>
           {rows.length === 0 && (
-            <p className={panels.hint}>This server declares no environment variables.</p>
+            <p className={panels.hint}>{t('This server declares no environment variables.')}</p>
           )}
           {rows.map((row, i) => (
             <div key={i}>
@@ -150,7 +158,7 @@ export function AddMcpServerModal({
                   label={row.key}
                   value={row.value}
                   onChange={(v) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, value: v } : r)))}
-                  what="this MCP server"
+                  what={t('this MCP server')}
                 />
               ) : (
                 <Field
@@ -165,7 +173,7 @@ export function AddMcpServerModal({
               <label className={panels.hint}>
                 <input
                   type="checkbox"
-                  aria-label={`${row.key} — store as a credential`}
+                  aria-label={t('{{key}} — store as a credential', { key: row.key })}
                   checked={row.secret}
                   onChange={(e) =>
                     setRows((prev) =>
@@ -176,7 +184,7 @@ export function AddMcpServerModal({
                     )
                   }
                 />{' '}
-                Store as a credential
+                {t('Store as a credential')}
               </label>
             </div>
           ))}
@@ -186,15 +194,17 @@ export function AddMcpServerModal({
       {step === 'values' && !local && (
         <>
           <CredentialField
-            label="Access token"
+            label={t('Access token')}
             value={credentialId}
             onChange={setCredentialId}
-            what="this MCP server"
+            what={t('this MCP server')}
           />
           <p className={panels.hint}>
             {entry.authHeader
-              ? `Sent in the ${entry.authHeader} header, as this server expects.`
-              : 'Sent as an Authorization: Bearer header.'}
+              ? t('Sent in the {{header}} header, as this server expects.', {
+                  header: entry.authHeader,
+                })
+              : t('Sent as an Authorization: Bearer header.')}
           </p>
         </>
       )}
@@ -204,16 +214,16 @@ export function AddMcpServerModal({
       <div className={styles.crudActions}>
         {index > 0 && (
           <button className={styles.newBtn} disabled={saving} onClick={() => setStep(steps[index - 1])}>
-            Back
+            {t('Back')}
           </button>
         )}
         {last ? (
           <button className={styles.saveBtn} disabled={saving} onClick={() => void save()}>
-            {saving ? 'Adding…' : `Add ${entry.name}`}
+            {saving ? t('Adding…') : t('Add {{name}}', { name: entry.name })}
           </button>
         ) : (
           <button className={styles.saveBtn} onClick={() => setStep(steps[index + 1])}>
-            Next
+            {t('Next')}
           </button>
         )}
       </div>

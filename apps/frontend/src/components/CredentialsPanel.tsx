@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type {
   Credential,
@@ -64,6 +65,7 @@ const PRESETS: { name: string; config: Partial<OAuthCredentialConfig> }[] = [
  * what stops "rename it and save" from overwriting the password with a mask.
  */
 export function CredentialsPanel({ pushError }: { pushError: (m: string) => void }) {
+  const { t } = useTranslation()
   const [status, setStatus] = useState<CredentialStatus | null>(null)
   const [items, setItems] = useState<Credential[]>([])
   const [editing, setEditing] = useState<Credential | null>(null)
@@ -142,7 +144,7 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
     try {
       const started = await api.startOAuthSignIn(id)
       if (!started.ok || !started.authorizationUrl) {
-        pushError(started.error ?? 'The sign-in could not be started.')
+        pushError(started.error ?? t('The sign-in could not be started.'))
         return
       }
       // The SYSTEM browser: the desktop shell turns this into shell.openExternal. Never an
@@ -188,7 +190,8 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
   }
 
   const remove = async (c: Credential) => {
-    if (!confirm(`Delete the credential "${c.label}"? Any flow using it will stop working.`)) return
+    if (!confirm(t('Delete the credential "{{label}}"? Any flow using it will stop working.', { label: c.label })))
+      return
     try {
       await api.deleteCredential(c.id)
       await load()
@@ -201,12 +204,12 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
     return (
       <div className={styles.muted}>
         <p>
-          <b>Credential storage is disabled.</b> {status.hint}
+          <b>{t('Credential storage is disabled.')}</b> {status.hint}
         </p>
         <p>
-          Credentials are encrypted with AES-256-GCM before being written. Without a master key
-          there is nowhere safe to put them, so nothing is stored rather than being kept in plain
-          text.
+          {t(
+            'Credentials are encrypted with AES-256-GCM before being written. Without a master key there is nowhere safe to put them, so nothing is stored rather than being kept in plain text.',
+          )}
         </p>
       </div>
     )
@@ -216,10 +219,10 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
     <div className={styles.crud}>
       <div className={styles.crudList}>
         <div className={styles.crudListHead}>
-          <span>Credentials</span>
-          <button className={styles.newBtn} onClick={startCreate}>+ New</button>
+          <span>{t('Credentials')}</span>
+          <button className={styles.newBtn} onClick={startCreate}>{t('+ New')}</button>
         </div>
-        {items.length === 0 && <p className={styles.muted}>None yet.</p>}
+        {items.length === 0 && <p className={styles.muted}>{t('None yet.')}</p>}
         {items.map((c) => (
           <div
             key={c.id}
@@ -232,7 +235,9 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
               <div>{c.label}</div>
               <div className={styles.muted}>
                 {c.kind} · {c.hint ?? '••••'}
-                {c.lastUsedAt ? ` · used ${new Date(c.lastUsedAt).toLocaleDateString()}` : ' · never used'}
+                {c.lastUsedAt
+                  ? ` · ${t('used {{date}}', { date: new Date(c.lastUsedAt).toLocaleDateString() })}`
+                  : ` · ${t('never used')}`}
               </div>
             </div>
           </div>
@@ -241,16 +246,16 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
 
       <div className={styles.crudForm}>
         {!creating && !editing ? (
-          <p className={styles.muted}>Select a credential, or create one.</p>
+          <p className={styles.muted}>{t('Select a credential, or create one.')}</p>
         ) : (
           <form onSubmit={submit}>
-            <Field label="Label" value={label} onChange={setLabel} placeholder="Buzón presupuestos" />
+            <Field label={t('Label')} value={label} onChange={setLabel} placeholder={t('Buzón presupuestos')} />
 
             {creating && (
-              <SelectField label="Kind" value={kind} onChange={setKind}>
+              <SelectField label={t('Kind')} value={kind} onChange={setKind}>
                 {KINDS.map((k) => (
                   <option key={k.value} value={k.value}>
-                    {k.label}
+                    {t(k.label)}
                   </option>
                 ))}
               </SelectField>
@@ -272,37 +277,37 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
                 </div>
 
                 <Field
-                  label="Authorization URL"
+                  label={t('Authorization URL')}
                   value={oauth.authorizationUrl}
                   onChange={setOauthField('authorizationUrl')}
                   placeholder="https://accounts.google.com/o/oauth2/v2/auth"
                 />
                 <Field
-                  label="Token URL"
+                  label={t('Token URL')}
                   value={oauth.tokenUrl}
                   onChange={setOauthField('tokenUrl')}
                   placeholder="https://oauth2.googleapis.com/token"
                 />
                 <Field
-                  label="Client ID"
+                  label={t('Client ID')}
                   value={oauth.clientId}
                   onChange={setOauthField('clientId')}
                   placeholder="123.apps.googleusercontent.com"
                 />
                 <Field
-                  label={editing ? 'Client secret (leave blank to keep the current one)' : 'Client secret'}
+                  label={editing ? t('Client secret (leave blank to keep the current one)') : t('Client secret')}
                   value={oauth.clientSecret}
                   onChange={setOauthField('clientSecret')}
                   type="password"
                 />
                 <Field
-                  label="Scopes"
+                  label={t('Scopes')}
                   value={oauth.scope}
                   onChange={setOauthField('scope')}
                   placeholder="https://www.googleapis.com/auth/adwords"
                 />
                 <Field
-                  label="Extra authorization parameters"
+                  label={t('Extra authorization parameters')}
                   value={oauth.authParams}
                   onChange={setOauthField('authParams')}
                   placeholder="access_type=offline&prompt=consent"
@@ -311,15 +316,17 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
                 {oauthStatus && (
                   <div className={styles.hint}>
                     <p>
-                      Register this address as the redirect URI in the provider's console:{' '}
+                      {t("Register this address as the redirect URI in the provider's console:")}{' '}
                       <code>{oauthStatus.redirectUri}</code>
                     </p>
                     <p>
                       {oauthStatus.connected
                         ? oauthStatus.hasRefreshToken
-                          ? 'Connected.'
-                          : 'Connected, but the provider returned no refresh token — this stops working when the access token expires. Add access_type=offline&prompt=consent and connect again.'
-                        : 'Not connected yet.'}
+                          ? t('Connected.')
+                          : t(
+                              'Connected, but the provider returned no refresh token — this stops working when the access token expires. Add access_type=offline&prompt=consent and connect again.',
+                            )
+                        : t('Not connected yet.')}
                     </p>
                   </div>
                 )}
@@ -332,22 +339,23 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
                       disabled={busy}
                       onClick={() => void connect(editing.id)}
                     >
-                      {oauthStatus?.connected ? 'Connect again' : 'Connect'}
+                      {oauthStatus?.connected ? t('Connect again') : t('Connect')}
                     </button>
                   </div>
                 )}
 
                 <p className={styles.hint}>
-                  The sign-in opens in your browser and comes back to this app, which keeps the
-                  tokens encrypted and refreshes them on its own. A node reads one piece at a time:{' '}
+                  {t(
+                    'The sign-in opens in your browser and comes back to this app, which keeps the tokens encrypted and refreshes them on its own. A node reads one piece at a time:',
+                  )}{' '}
                   <code>credential:&lt;id&gt;:refresh_token</code>, <code>:client_id</code>,{' '}
-                  <code>:client_secret</code>, or <code>credential:&lt;id&gt;</code> for a live
-                  access token.
+                  <code>:client_secret</code>, {t('or')} <code>credential:&lt;id&gt;</code>{' '}
+                  {t('for a live access token.')}
                 </p>
               </>
             ) : (
               <label className={styles.field}>
-                <span>{editing ? 'New value (leave blank to keep the current one)' : 'Value'}</span>
+                <span>{editing ? t('New value (leave blank to keep the current one)') : t('Value')}</span>
                 <input
                   type="password"
                   autoComplete="new-password"
@@ -359,25 +367,26 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
             )}
 
             <p className={styles.hint}>
-              Encrypted before it is written, and never sent back — not to this screen, not to any
-              API, not to an administrator. To change it, type a new one.
+              {t(
+                'Encrypted before it is written, and never sent back — not to this screen, not to any API, not to an administrator. To change it, type a new one.',
+              )}
             </p>
             <p className={styles.hint}>
-              This protects a leaked database backup or a database-only compromise. It does not
-              protect against someone who compromises the server itself, since the key has to be
-              readable here to be usable.
+              {t(
+                'This protects a leaked database backup or a database-only compromise. It does not protect against someone who compromises the server itself, since the key has to be readable here to be usable.',
+              )}
             </p>
 
             <div className={styles.crudActions}>
               <button type="submit" className={styles.saveBtn} disabled={busy || !label || (creating && !isOAuth && !value)}>
-                {busy ? 'Saving…' : 'Save'}
+                {busy ? t('Saving…') : t('Save')}
               </button>
               <button type="button" className={styles.newBtn} onClick={cancel}>
-                Cancel
+                {t('Cancel')}
               </button>
               {editing && (
                 <button type="button" className={styles.delBtn} onClick={() => void remove(editing)}>
-                  Delete
+                  {t('Delete')}
                 </button>
               )}
             </div>

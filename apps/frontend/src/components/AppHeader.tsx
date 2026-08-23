@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import { AccountMenu } from './AccountMenu.tsx'
 import { AuthBadge } from './AuthBadge.tsx'
@@ -23,6 +24,7 @@ interface Props {
 }
 
 export function AppHeader({ view, onView, signedInAs, onSignOut }: Props) {
+  const { t } = useTranslation()
   // Both fields off the same fetch: the chip only means something while the license is still
   // valid (mid-grace, counting down). Once grace runs out, valid flips to false and graceDaysLeft
   // clamps to 0 rather than going back to null — the backend's memory of "how many days were left
@@ -62,7 +64,7 @@ export function AppHeader({ view, onView, signedInAs, onSignOut }: Props) {
             className={view === item.id ? styles.active : ''}
             onClick={() => onView(item.id)}
           >
-            {item.label}
+            {t(item.label)}
           </button>
         ))}
       </nav>
@@ -75,9 +77,9 @@ export function AppHeader({ view, onView, signedInAs, onSignOut }: Props) {
       {license.valid && license.graceDaysLeft != null && (
         <span
           className={styles.graceChip}
-          title="Your license has expired. Paste a new token in Resources → Settings before the grace window runs out."
+          title={t('Your license has expired. Paste a new token in Resources → Settings before the grace window runs out.')}
         >
-          License grace: {license.graceDaysLeft} days left
+          {t('License grace: {{n}} days left', { n: license.graceDaysLeft })}
         </span>
       )}
       <AuthBadge />

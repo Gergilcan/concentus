@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { api } from '../api/client.ts'
 import type { FlowVersionInfo } from '../api/types.ts'
 import { useFlowStore } from '../state/store.ts'
@@ -12,11 +14,11 @@ import styles from './flowVersions.module.scss'
  * Empty when nothing measurable changed — a save that only edited a prompt is a real save with
  * no shape change, and inventing "±0" for it would read as noise.
  */
-function diffHint(v: FlowVersionInfo): string {
+function diffHint(v: FlowVersionInfo, t: TFunction): string {
   const parts: string[] = []
-  if (v.nodesDelta) parts.push(`${v.nodesDelta > 0 ? '+' : ''}${v.nodesDelta} nodes`)
-  if (v.edgesDelta) parts.push(`${v.edgesDelta > 0 ? '+' : ''}${v.edgesDelta} links`)
-  if (v.renamed) parts.push('renamed')
+  if (v.nodesDelta) parts.push(t('{{delta}} nodes', { delta: `${v.nodesDelta > 0 ? '+' : ''}${v.nodesDelta}` }))
+  if (v.edgesDelta) parts.push(t('{{delta}} links', { delta: `${v.edgesDelta > 0 ? '+' : ''}${v.edgesDelta}` }))
+  if (v.renamed) parts.push(t('renamed'))
   return parts.join(' · ')
 }
 
@@ -39,6 +41,7 @@ export function FlowVersions({
   onRestored?: () => void
   pushError: (m: string) => void
 }) {
+  const { t } = useTranslation()
   const [versions, setVersions] = useState<FlowVersionInfo[] | null>(null)
   const [busy, setBusy] = useState(false)
   const previewVersion = useFlowStore((s) => s.previewVersion)
@@ -64,7 +67,7 @@ export function FlowVersions({
 
   const restore = async (version: number) => {
     if (!flowId) return
-    if (!confirm(`Restore version ${version}? The current version is kept in history.`)) return
+    if (!confirm(t('Restore version {{version}}? The current version is kept in history.', { version }))) return
     setBusy(true)
     try {
       const saved = await api.restoreFlowVersion(flowId, version)
@@ -118,49 +121,49 @@ export function FlowVersions({
       {previewVersion !== null && canvasShowsThisFlow && (
         <div className={styles.previewBar}>
           <span>
-            Previewing v{previewVersion} — nothing is saved until you restore it or save the canvas.
+            {t('Previewing v{{version}} — nothing is saved until you restore it or save the canvas.', { version: previewVersion })}
           </span>
           <button className={styles.ghost} disabled={busy} onClick={() => void backToLatest()}>
-            Back to latest
+            {t('Back to latest')}
           </button>
         </div>
       )}
       {versions.length === 0 ? (
         <div className={styles.empty}>
-          No history yet. Every save from now on adds a restorable version.
+          {t('No history yet. Every save from now on adds a restorable version.')}
         </div>
       ) : (
-        <ul className={styles.list} aria-label="Version history">
+        <ul className={styles.list} aria-label={t('Version history')}>
           {versions.map((v) => {
-            const hint = diffHint(v)
+            const hint = diffHint(v, t)
             return (
               <li key={v.version} className={styles.row}>
                 <span className={styles.num}>v{v.version}</span>
                 <span className={styles.name} title={v.name}>
                   {v.name}
                 </span>
-                <span className={styles.author} title={v.author ? `Saved by ${v.author}` : 'Saved before authorship was recorded'}>
+                <span className={styles.author} title={v.author ? t('Saved by {{author}}', { author: v.author }) : t('Saved before authorship was recorded')}>
                   {v.author ?? '—'}
                 </span>
                 <span className={styles.time}>{timeAgo(v.createdAt)}</span>
-                <span className={styles.shape} title={`${v.nodeCount} nodes, ${v.edgeCount} links`}>
+                <span className={styles.shape} title={t('{{nodes}} nodes, {{edges}} links', { nodes: v.nodeCount, edges: v.edgeCount })}>
                   {v.nodeCount}n/{v.edgeCount}e{hint && ` · ${hint}`}
                 </span>
                 {canvasShowsThisFlow && (
                   <button
                     className={styles.ghost}
                     disabled={busy}
-                    title="Load this revision onto the canvas without saving it"
+                    title={t('Load this revision onto the canvas without saving it')}
                     onClick={() => void preview(v.version)}
                   >
-                    Preview
+                    {t('Preview')}
                   </button>
                 )}
                 {v.version === latest ? (
-                  <span className={styles.current}>current</span>
+                  <span className={styles.current}>{t('current')}</span>
                 ) : (
                   <button className={styles.ghost} disabled={busy} onClick={() => void restore(v.version)}>
-                    Restore
+                    {t('Restore')}
                   </button>
                 )}
               </li>

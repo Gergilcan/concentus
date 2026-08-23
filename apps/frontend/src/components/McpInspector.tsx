@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { McpDef, McpNodeData, McpServerInfo } from '../api/types.ts'
 import { CredentialField } from './CredentialField.tsx'
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export function McpInspector({ data, set }: Props) {
+  const { t } = useTranslation()
   const [servers, setServers] = useState<McpServerInfo[]>([])
   const [defs, setDefs] = useState<McpDef[]>([])
   // When this server is signed in with OAuth, the token fields disappear: a grant makes them
@@ -60,8 +62,8 @@ export function McpInspector({ data, set }: Props) {
   return (
     <>
       {defs.length > 0 && (
-        <SelectField label="Use saved server (from Resources)" value="" onChange={useSaved}>
-          <option value="">— choose a saved MCP server —</option>
+        <SelectField label={t('Use saved server (from Resources)')} value="" onChange={useSaved}>
+          <option value="">{t('— choose a saved MCP server —')}</option>
           {defs.map((d) => (
             <option key={d.id} value={d.id}>
               {d.name}
@@ -72,12 +74,12 @@ export function McpInspector({ data, set }: Props) {
 
       {servers.length > 0 && (
         <SelectField
-          label="Select existing (from Claude Code)"
+          label={t('Select existing (from Claude Code)')}
           value=""
           onChange={selectExisting}
           className={styles.libraryField}
         >
-          <option value="">— choose a configured server —</option>
+          <option value="">{t('— choose a configured server —')}</option>
           {servers.map((s) => (
             <option key={s.name} value={s.name}>
               {s.name}
@@ -86,12 +88,12 @@ export function McpInspector({ data, set }: Props) {
         </SelectField>
       )}
 
-      <Field label="Name" value={data.name} onChange={(v) => set({ name: v })} />
+      <Field label={t('Name')} value={data.name} onChange={(v) => set({ name: v })} />
 
       <SelectField
         label={
-          <span title="Remote: an HTTP/SSE server reached by URL — most hosted MCPs. Command: a local process the run launches itself (npx, python…), speaking MCP over stdio — the kind whose README says 'add this to your mcp.json', like Google Ads. You can also paste that snippet under Resources → MCP Servers, into the selected server's own JSON box.">
-            Transport ⓘ
+          <span title={t("Remote: an HTTP/SSE server reached by URL — most hosted MCPs. Command: a local process the run launches itself (npx, python…), speaking MCP over stdio — the kind whose README says 'add this to your mcp.json', like Google Ads. You can also paste that snippet under Resources → MCP Servers, into the selected server's own JSON box.")}>
+            {t('Transport ⓘ')}
           </span>
         }
         value={isStdio ? 'stdio' : 'http'}
@@ -102,33 +104,33 @@ export function McpInspector({ data, set }: Props) {
           else set({ command: '', args: [], env: {} })
         }}
       >
-        <option value="http">Remote server (URL)</option>
-        <option value="stdio">Command (stdio) — launched per run</option>
+        <option value="http">{t('Remote server (URL)')}</option>
+        <option value="stdio">{t('Command (stdio) — launched per run')}</option>
       </SelectField>
 
       {isStdio ? (
         <>
           <Field
-            label="Command"
-            placeholder="npx"
+            label={t('Command')}
+            placeholder={t('npx')}
             value={data.command ?? ''}
             onChange={(v) => set({ command: v })}
           />
           <TextArea
-            label="Arguments (one per line)"
+            label={t('Arguments (one per line)')}
             rows={3}
-            placeholder={'-y\n@googleads/google-ads-mcp'}
+            placeholder={t('-y\n@googleads/google-ads-mcp')}
             value={(data.args ?? []).join('\n')}
             onChange={(v) => set({ args: v.split('\n').map((s) => s.trim()).filter(Boolean) })}
           />
           <TextArea
             label={
-              <span title="One KEY=value per line, passed to the launched process. A value of credential:<id> is resolved from Resources → Credentials when the run starts — that is how a developer token reaches the server without ever being stored in the flow.">
-                Environment (KEY=value per line) ⓘ
+              <span title={t('One KEY=value per line, passed to the launched process. A value of credential:<id> is resolved from Resources → Credentials when the run starts — that is how a developer token reaches the server without ever being stored in the flow.')}>
+                {t('Environment (KEY=value per line) ⓘ')}
               </span>
             }
             rows={3}
-            placeholder={'GOOGLE_ADS_DEVELOPER_TOKEN=credential:cred_123\nGOOGLE_ADS_LOGIN_CUSTOMER_ID=1234567890'}
+            placeholder={t('GOOGLE_ADS_DEVELOPER_TOKEN=credential:cred_123\nGOOGLE_ADS_LOGIN_CUSTOMER_ID=1234567890')}
             value={Object.entries(data.env ?? {}).map(([k, v]) => `${k}=${v}`).join('\n')}
             onChange={(v) => {
               const env: Record<string, string> = {}
@@ -146,21 +148,21 @@ export function McpInspector({ data, set }: Props) {
           <RuntimeNotice command={data.command ?? ''} />
           <p
             className={styles.hint}
-            title="The run launches this command itself and talks to it over stdio. The tool picker and OAuth don't apply; the agent sees every tool the server exposes."
+            title={t("The run launches this command itself and talks to it over stdio. The tool picker and OAuth don't apply; the agent sees every tool the server exposes.")}
           >
-            Launched by the run itself — nothing to sign in to. ⓘ
+            {t('Launched by the run itself — nothing to sign in to. ⓘ')}
           </p>
         </>
       ) : (
         <>
-          <Field label="URL" value={data.url} onChange={(v) => set({ url: v })} />
+          <Field label={t('URL')} value={data.url} onChange={(v) => set({ url: v })} />
           <McpOAuthConnect url={data.url} onStatus={setOauthConnected} />
           {oauthConnected !== true && (
             <CredentialField
-              label="Access token (optional)"
+              label={t('Access token (optional)')}
               value={data.credentialId}
               onChange={(v) => set({ credentialId: v })}
-              what="this MCP server"
+              what={t('this MCP server')}
             />
           )}
 
@@ -168,15 +170,15 @@ export function McpInspector({ data, set }: Props) {
             {oauthConnected !== true && (
               <SelectField
                 label={
-                  <span title="GitLab reads its tokens from PRIVATE-TOKEN without a Bearer prefix — sending one there makes the token wrong. Most other servers, GitHub included, take the default.">
-                    Send token in ⓘ
+                  <span title={t('GitLab reads its tokens from PRIVATE-TOKEN without a Bearer prefix — sending one there makes the token wrong. Most other servers, GitHub included, take the default.')}>
+                    {t('Send token in ⓘ')}
                   </span>
                 }
                 value={data.authHeader ?? ''}
                 onChange={(v) => set({ authHeader: v })}
               >
-                <option value="">Authorization: Bearer … (most servers, GitHub)</option>
-                <option value="PRIVATE-TOKEN">PRIVATE-TOKEN: … (GitLab)</option>
+                <option value="">{t('Authorization: Bearer … (most servers, GitHub)')}</option>
+                <option value="PRIVATE-TOKEN">{t('PRIVATE-TOKEN: … (GitLab)')}</option>
               </SelectField>
             )}
 

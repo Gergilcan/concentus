@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { BackendFlow, FlowRunNodeData } from '../api/types.ts'
 import { useFlowStore } from '../state/store.ts'
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function FlowRunInspector({ data, set }: Props) {
+  const { t } = useTranslation()
   const [flows, setFlows] = useState<BackendFlow[]>([])
   const currentId = useFlowStore((s) => s.flowId)
 
@@ -43,18 +45,18 @@ export function FlowRunInspector({ data, set }: Props) {
 
   return (
     <>
-      <Field label="Label" value={data.label} onChange={(v) => set({ label: v })} />
+      <Field label={t('Label')} value={data.label} onChange={(v) => set({ label: v })} />
 
       <SelectField
         label={
-          <span title="Any other saved flow. It runs with its own budget and its own permission mode — this flow's settings do not carry over.">
-            Flow to run ⓘ
+          <span title={t("Any other saved flow. It runs with its own budget and its own permission mode — this flow's settings do not carry over.")}>
+            {t('Flow to run ⓘ')}
           </span>
         }
         value={data.flowId}
         onChange={(v) => set({ flowId: v })}
       >
-        <option value="">— choose a flow —</option>
+        <option value="">{t('— choose a flow —')}</option>
         {choices.map((f) => (
           <option key={f.id} value={f.id}>
             {f.name}
@@ -64,26 +66,26 @@ export function FlowRunInspector({ data, set }: Props) {
 
       {legacy && (
         <p className={styles.hint}>
-          <b>Saved by an older version.</b>{' '}
+          <b>{t('Saved by an older version.')}</b>{' '}
           {legacy === 'after'
-            ? 'This box runs when the flow finishes, because that is what it was saved as — whatever it is wired to.'
-            : 'This box is a tool the agent may call, because that is what it was saved as. It does not run on its own.'}{' '}
-          Its saved setting still decides, so nothing about this flow changed under you.{' '}
+            ? t('This box runs when the flow finishes, because that is what it was saved as — whatever it is wired to.')
+            : t('This box is a tool the agent may call, because that is what it was saved as. It does not run on its own.')}{' '}
+          {t('Its saved setting still decides, so nothing about this flow changed under you.')}{' '}
           <button className={styles.linkBtn} onClick={() => set({ mode: undefined })}>
-            Let the wiring decide instead
+            {t('Let the wiring decide instead')}
           </button>
         </p>
       )}
 
       <p className={styles.hint}>
-        <b>{legacy ? 'What the wiring would say:' : 'When it runs is the wiring.'}</b>{' '}
+        <b>{legacy ? t('What the wiring would say:') : t('When it runs is the wiring.')}</b>{' '}
         {wiring === 'after'
-          ? 'This box is wired out of an agent, so it runs when the flow finishes, with the run’s final answer as its input.'
+          ? t('This box is wired out of an agent, so it runs when the flow finishes, with the run’s final answer as its input.')
           : wiring === 'before'
-            ? 'This box is wired into an agent, so it runs first and its answer becomes that agent’s context. The agent also gets a run_flow tool, to ask it again in its own words.'
+            ? t('This box is wired into an agent, so it runs first and its answer becomes that agent’s context. The agent also gets a run_flow tool, to ask it again in its own words.')
             : wiring === 'both'
-              ? 'Wired both ways: it runs before the agent AND again when the flow finishes. Unusual, but allowed.'
-              : 'Not wired to an agent yet, so it would never run. Connect it INTO an agent to run it first, or OUT of one to run it afterwards.'}
+              ? t('Wired both ways: it runs before the agent AND again when the flow finishes. Unusual, but allowed.')
+              : t('Not wired to an agent yet, so it would never run. Connect it INTO an agent to run it first, or OUT of one to run it afterwards.')}
       </p>
 
       {!handOff && (
@@ -93,26 +95,25 @@ export function FlowRunInspector({ data, set }: Props) {
             checked={data.waitForResult}
             onChange={(e) => set({ waitForResult: e.target.checked })}
           />
-          <span title="On: the agent waits and receives the other flow's answer. Off: it starts the flow and carries on.">
-            Wait for its answer ⓘ
+          <span title={t("On: the agent waits and receives the other flow's answer. Off: it starts the flow and carries on.")}>
+            {t('Wait for its answer ⓘ')}
           </span>
         </label>
       )}
 
       <p className={styles.hint}>
         {handOff
-          ? 'A failed or stopped run hands nothing on: the answer it would pass does not exist.'
+          ? t('A failed or stopped run hands nothing on: the answer it would pass does not exist.')
           : data.waitForResult
-            ? 'Waits for the answer, up to ten minutes; after that the child keeps going and the run is told which execution to check.'
-            : 'Starts the other flow and moves on — with nothing to inject, since there is no answer yet.'}
+            ? t('Waits for the answer, up to ten minutes; after that the child keeps going and the run is told which execution to check.')
+            : t('Starts the other flow and moves on — with nothing to inject, since there is no answer yet.')}
       </p>
       <p className={styles.hint}>
-        The other flow starts fresh: it sees only the text it is given, not this conversation. Loops
-        are refused — a flow already running further up the chain will not be started again.
+        {t('The other flow starts fresh: it sees only the text it is given, not this conversation. Loops are refused — a flow already running further up the chain will not be started again.')}
       </p>
       {choices.length === 0 && (
         <p className={styles.hint}>
-          There is no other saved flow yet. Save a second flow and it will appear here.
+          {t('There is no other saved flow yet. Save a second flow and it will appear here.')}
         </p>
       )}
     </>

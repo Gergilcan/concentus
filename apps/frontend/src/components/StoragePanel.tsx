@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
 import type { StorageConfig, StorageDraft } from '../api/types.ts'
@@ -18,6 +19,7 @@ type TableCount = { table: string; rows: number }
  * or, worse, to change it thinking they were adding a data source.
  */
 export function StoragePanel({ pushError }: { pushError: (message: string) => void }) {
+  const { t } = useTranslation()
   const [config, setConfig] = useState<StorageConfig | null>(null)
   const [mode, setMode] = useState<'embedded' | 'external'>('embedded')
   const [url, setUrl] = useState('')
@@ -61,7 +63,7 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
       const saved = await api.saveStorage(draft)
       setConfig(saved)
       setPassword(null)
-      setStatus(saved.restartRequired ? 'Saved. Restart Concentus to start using it.' : 'Saved.')
+      setStatus(saved.restartRequired ? t('Saved. Restart Concentus to start using it.') : t('Saved.'))
     } catch (e) {
       pushError(errMessage(e))
     }
@@ -73,56 +75,59 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
 
   return (
     <div className={`${styles.crudForm} ${styles.lone}`}>
-      <h3 className={styles.h4}>Application storage</h3>
+      <h3 className={styles.h4}>{t('Application storage')}</h3>
       <SelectField
-        label="Where Concentus stores its data"
+        label={t('Where Concentus stores its data')}
         value={mode}
         onChange={(v) => setMode(v === 'external' ? 'external' : 'embedded')}
       >
-        <option value="embedded">Embedded — ships with the app, nothing to install</option>
-        <option value="external">External PostgreSQL — your own server</option>
+        <option value="embedded">{t('Embedded — ships with the app, nothing to install')}</option>
+        <option value="external">{t('External PostgreSQL — your own server')}</option>
       </SelectField>
 
       {mode === 'embedded' ? (
         <p
           className={panels.hint}
-          title="A real PostgreSQL in your app-data folder, started and stopped with the app. No server, no credentials — but only as backed up as that folder is."
+          title={t(
+            'A real PostgreSQL in your app-data folder, started and stopped with the app. No server, no credentials — but only as backed up as that folder is.',
+          )}
         >
-          Ships with the app; nothing to install. ⓘ
+          {t('Ships with the app; nothing to install.')} ⓘ
         </p>
       ) : (
         <>
           <Field
-            label="JDBC URL"
+            label={t('JDBC URL')}
             value={url}
             placeholder="jdbc:postgresql://db.internal:5432/concentus"
             onChange={setUrl}
           />
-          <Field label="Username" value={username} onChange={setUsername} />
+          <Field label={t('Username')} value={username} onChange={setUsername} />
           <Field
-            label="Password"
+            label={t('Password')}
             type="password"
             value={password ?? ''}
-            placeholder={config.hasPassword ? '•••••••• (unchanged)' : ''}
+            placeholder={config.hasPassword ? t('•••••••• (unchanged)') : ''}
             onChange={setPassword}
           />
           <p
             className={panels.hint}
-            title="PostgreSQL only (the schema uses jsonb). An empty database is all it needs — tables are created on first connection. Switching alone copies nothing over; use 'Move my data' below to bring across what you already have."
+            title={t(
+              "PostgreSQL only (the schema uses jsonb). An empty database is all it needs — tables are created on first connection. Switching alone copies nothing over; use 'Move my data' below to bring across what you already have.",
+            )}
           >
-            For teams: shared, backed up, audited. Switching alone starts empty — move your data
-            below. ⓘ
+            {t('For teams: shared, backed up, audited. Switching alone starts empty — move your data below.')} ⓘ
           </p>
         </>
       )}
 
       <div className={styles.crudActions}>
         <button className={styles.saveBtn} onClick={() => void onSave()}>
-          Save
+          {t('Save')}
         </button>
         {mode === 'external' && (
           <button className={styles.newBtn} onClick={() => void onTest()} disabled={testing}>
-            {testing ? 'Testing…' : 'Test connection'}
+            {testing ? t('Testing…') : t('Test connection')}
           </button>
         )}
         {status && <span className={styles.status}>{status}</span>}
@@ -141,9 +146,12 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
       {pendingRestart && (
         <p
           className={panels.hint}
-          title="The setting is read at startup: every store opens its tables against one connection, so it cannot be swapped under a running app."
+          title={t(
+            'The setting is read at startup: every store opens its tables against one connection, so it cannot be swapped under a running app.',
+          )}
         >
-          <b>Restart required</b> — currently running on the <b>{config.activeMode}</b> database. ⓘ
+          <b>{t('Restart required')}</b> —{' '}
+          {t('currently running on the {{mode}} database.', { mode: config.activeMode })} ⓘ
         </p>
       )}
 
@@ -167,6 +175,7 @@ export function StoragePanel({ pushError }: { pushError: (message: string) => vo
  * comes the other way, out of the data directory this installation left behind.
  */
 function MigrateSection({ draft, activeMode }: { draft: StorageDraft; activeMode: string }) {
+  const { t } = useTranslation()
   const pulling = activeMode === 'external'
   const [contents, setContents] = useState<TableCount[] | null>(null)
   const [skip, setSkip] = useState<Set<string>>(new Set())
@@ -197,21 +206,25 @@ function MigrateSection({ draft, activeMode }: { draft: StorageDraft; activeMode
         from: pulling ? 'embedded' : 'active',
         skip: [...skip],
       })
-      const moved = r.copied.filter((t) => t.rows > 0)
+      const moved = r.copied.filter((c) => c.rows > 0)
       setReport(
         (r.totalRows === 0
-          ? 'Nothing new to copy — the target already holds everything.'
-          : `Copied ${r.totalRows} rows: ${moved.map((t) => `${t.rows} ${t.table}`).join(', ')}.`) +
+          ? t('Nothing new to copy — the target already holds everything.')
+          : t('Copied {{count}} rows: {{list}}.', {
+              count: r.totalRows,
+              list: moved.map((c) => `${c.rows} ${c.table}`).join(', '),
+            })) +
           (r.warnings.length ? ` ${r.warnings.join(' ')}` : '') +
+          ' ' +
           (pulling
-            ? ' Reload the page to see it.'
-            : ' Nothing here changed; switch above and restart when you are ready.'),
+            ? t('Reload the page to see it.')
+            : t('Nothing here changed; switch above and restart when you are ready.')),
       )
     } catch (e) {
       setFailed(true)
       // Half a copy is a normal outcome of a dropped connection, and repeating it is the fix: the
       // rows already across are not sent again.
-      setReport(`${errMessage(e)} Nothing was deleted; press Move again to continue.`)
+      setReport(`${errMessage(e)} ${t('Nothing was deleted; press Move again to continue.')}`)
     } finally {
       setBusy(false)
     }
@@ -227,15 +240,19 @@ function MigrateSection({ draft, activeMode }: { draft: StorageDraft; activeMode
         className={styles.h4}
         title={
           pulling
-            ? 'Opens the embedded database this installation left behind and copies every flow, agent, MCP server, credential, knowledge base and run into the PostgreSQL you are running on now. Rows already here are left exactly as they are — nothing is deleted or overwritten, so a copy that stops halfway is simply repeated.'
-            : 'Copies every flow, agent, MCP server, credential, knowledge base and run into the PostgreSQL configured above, over the connection this app already has — no pg_dump, nothing to install. Rows already there are left exactly as they are: nothing is deleted or overwritten, so a copy that stops halfway is simply repeated. It does not switch — the app keeps running on its current database until you save the setting above and restart.'
+            ? t(
+                'Opens the embedded database this installation left behind and copies every flow, agent, MCP server, credential, knowledge base and run into the PostgreSQL you are running on now. Rows already here are left exactly as they are — nothing is deleted or overwritten, so a copy that stops halfway is simply repeated.',
+              )
+            : t(
+                'Copies every flow, agent, MCP server, credential, knowledge base and run into the PostgreSQL configured above, over the connection this app already has — no pg_dump, nothing to install. Rows already there are left exactly as they are: nothing is deleted or overwritten, so a copy that stops halfway is simply repeated. It does not switch — the app keeps running on its current database until you save the setting above and restart.',
+              )
         }
       >
-        {pulling ? 'Bring my old data here' : 'Move my data to that database'} ⓘ
+        {pulling ? t('Bring my old data here') : t('Move my data to that database')} ⓘ
       </h3>
       <div className={styles.crudActions}>
         <button className={styles.newBtn} disabled={busy} onClick={() => void look()}>
-          {contents ? 'Refresh the list' : pulling ? 'See what is still there' : 'See what would move'}
+          {contents ? t('Refresh the list') : pulling ? t('See what is still there') : t('See what would move')}
         </button>
         <button
           className={styles.saveBtn}
@@ -243,11 +260,11 @@ function MigrateSection({ draft, activeMode }: { draft: StorageDraft; activeMode
           onClick={() => void move()}
           title={
             ready
-              ? 'Adds only; never deletes. Safe to press twice.'
-              : 'Fill in the external PostgreSQL above first — that is where the data goes.'
+              ? t('Adds only; never deletes. Safe to press twice.')
+              : t('Fill in the external PostgreSQL above first — that is where the data goes.')
           }
         >
-          {busy ? 'Moving…' : pulling ? 'Bring it across' : 'Move it now'}
+          {busy ? t('Moving…') : pulling ? t('Bring it across') : t('Move it now')}
         </button>
       </div>
 
@@ -281,9 +298,12 @@ function MigrateSection({ draft, activeMode }: { draft: StorageDraft; activeMode
       )}
       {contents && (
         <p className={panels.hint}>
-          {total.toLocaleString()} rows selected{pulling ? ' from the embedded database' : ''}.
-          Unticking run history or knowledge chunks moves your configuration now and leaves the
-          bulk for later — the copy can be repeated.
+          {pulling
+            ? t('{{count}} rows selected from the embedded database.', { count: total.toLocaleString() })
+            : t('{{count}} rows selected.', { count: total.toLocaleString() })}{' '}
+          {t(
+            'Unticking run history or knowledge chunks moves your configuration now and leaves the bulk for later — the copy can be repeated.',
+          )}
         </p>
       )}
       {report && (
@@ -308,6 +328,7 @@ function MigrateSection({ draft, activeMode }: { draft: StorageDraft; activeMode
  * working and each value is re-entered once.
  */
 function BackupSection() {
+  const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const [reenter, setReenter] = useState<string[]>([])
@@ -322,7 +343,7 @@ function BackupSection() {
       a.download = `concentus-export-${new Date().toISOString().slice(0, 10)}.json`
       a.click()
       URL.revokeObjectURL(a.href)
-      setNote('Exported. Credentials travel as names only — their values never leave this machine.')
+      setNote(t('Exported. Credentials travel as names only — their values never leave this machine.'))
     } catch (e) {
       setNote(errMessage(e))
     } finally {
@@ -340,7 +361,7 @@ function BackupSection() {
         .filter(([, n]) => n > 0)
         .map(([k, n]) => `${n} ${k}`)
       setNote(
-        (parts.length ? `Imported ${parts.join(', ')}.` : 'Nothing new to import.') +
+        (parts.length ? t('Imported {{list}}.', { list: parts.join(', ') }) : t('Nothing new to import.')) +
           (report.warnings.length ? ` ${report.warnings.join(' ')}` : ''),
       )
       setReenter(report.credentialsToReenter)
@@ -357,16 +378,18 @@ function BackupSection() {
     <div className={styles.subSection}>
       <h3
         className={styles.h4}
-        title="Everything as one .json: flows, agents, MCP servers, facades, databases, knowledge bases, skills and variables — importable on another machine with every cross-reference intact. Secrets never travel: credentials arrive as placeholders under their original ids, and you re-enter each value once. Knowledge documents and run history stay out."
+        title={t(
+          'Everything as one .json: flows, agents, MCP servers, facades, databases, knowledge bases, skills and variables — importable on another machine with every cross-reference intact. Secrets never travel: credentials arrive as placeholders under their original ids, and you re-enter each value once. Knowledge documents and run history stay out.',
+        )}
       >
-        Backup — export / import everything ⓘ
+        {t('Backup — export / import everything')} ⓘ
       </h3>
       <div className={styles.crudActions}>
         <button className={styles.newBtn} disabled={busy} onClick={() => void exportAll()}>
-          Export everything (.json)
+          {t('Export everything (.json)')}
         </button>
         <label className={styles.newBtn} aria-disabled={busy}>
-          Import from file…
+          {t('Import from file…')}
           <input
             type="file"
             hidden
@@ -382,8 +405,8 @@ function BackupSection() {
       {note && <p className={panels.hint}>{note}</p>}
       {reenter.length > 0 && (
         <p className={panels.hint}>
-          <b>Re-enter these credential values</b> under Resources → Credentials:{' '}
-          {reenter.join(', ')}.
+          <b>{t('Re-enter these credential values')}</b>{' '}
+          {t('under Resources → Credentials: {{list}}.', { list: reenter.join(', ') })}
         </p>
       )}
     </div>

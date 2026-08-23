@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { NodeExec, NodeExecStatus } from '../api/types.ts'
 import { money } from '../utils/format.ts'
 import { cx } from '../utils/cx.ts'
@@ -13,8 +14,9 @@ const STATUS_LABEL: Record<NodeExecStatus, string> = {
 }
 
 function StatusBadge({ status }: { status?: NodeExecStatus }) {
+  const { t } = useTranslation()
   const s = status ?? 'pending'
-  return <span className={cx(styles.statusPill, styles['st_' + s])}>{STATUS_LABEL[s]}</span>
+  return <span className={cx(styles.statusPill, styles['st_' + s])}>{t(STATUS_LABEL[s])}</span>
 }
 
 function fmt(n: number): string {
@@ -22,6 +24,7 @@ function fmt(n: number): string {
 }
 
 function TokenLine({ exec, onOpenContext }: { exec?: NodeExec; onOpenContext: () => void }) {
+  const { t } = useTranslation()
   if (!exec) return null
   // Cached tokens are shown apart from fresh input rather than added into it: resuming a session
   // re-reads the whole history from cache each turn, so cache reads dwarf everything else while
@@ -35,10 +38,10 @@ function TokenLine({ exec, onOpenContext }: { exec?: NodeExec; onOpenContext: ()
   const grew = ctx > 0 ? ctx - (exec.contextStartTokens ?? 0) : 0
   return (
     <div className={styles.tokenLine}>
-      tokens · in {fmt(exec.inputTokens)} · out {fmt(exec.outputTokens)}
+      {t('tokens · in {{in}} · out {{out}}', { in: fmt(exec.inputTokens), out: fmt(exec.outputTokens) })}
       {cached > 0 && (
-        <span title="Prompt re-read from cache each turn — billed at roughly a tenth of the input rate">
-          {' '}· cached {fmt(cached)}
+        <span title={t('Prompt re-read from cache each turn — billed at roughly a tenth of the input rate')}>
+          {' '}· {t('cached {{n}}', { n: fmt(cached) })}
         </span>
       )}
       {ctx > 0 && (
@@ -49,16 +52,15 @@ function TokenLine({ exec, onOpenContext }: { exec?: NodeExec; onOpenContext: ()
             className={styles.ctxOpen}
             onClick={onOpenContext}
             title={
-              `Context window in use after this block's latest message — its whole prompt plus ` +
-              `what it wrote, like /context in Claude Code.` +
-              (win > 0 ? ` ${fmt(ctx)} of ${fmt(win)} tokens.` : '') +
+              t("Context window in use after this block's latest message — its whole prompt plus what it wrote, like /context in Claude Code.") +
+              (win > 0 ? ` ${t('{{ctx}} of {{win}} tokens.', { ctx: fmt(ctx), win: fmt(win) })}` : '') +
               (grew > 0
-                ? ` It started at ${fmt(exec.contextStartTokens ?? 0)} (system prompt, tools, its task) and its work added ${fmt(grew)}.`
+                ? ` ${t('It started at {{start}} (system prompt, tools, its task) and its work added {{grew}}.', { start: fmt(exec.contextStartTokens ?? 0), grew: fmt(grew) })}`
                 : '') +
-              ' Click for the full breakdown.'
+              ' ' + t('Click for the full breakdown.')
             }
           >
-            ctx {fmt(ctx)}
+            {t('ctx')} {fmt(ctx)}
             {win > 0 && ` (${Math.round((ctx / win) * 100)}%)`}
             {grew > 0 && ` ↑${fmt(grew)}`}
           </button>
@@ -66,10 +68,10 @@ function TokenLine({ exec, onOpenContext }: { exec?: NodeExec; onOpenContext: ()
       )}
       {cost !== undefined && cost !== null && (
         <span
-          title={
-            `Estimated at ${exec.model ?? 'the configured'} rates, with cached tokens weighted. ` +
-            `Runs on a Claude subscription have no per-token bill — treat this as equivalent usage.`
-          }
+          title={t(
+            'Estimated at {{model}} rates, with cached tokens weighted. Runs on a Claude subscription have no per-token bill — treat this as equivalent usage.',
+            { model: exec.model ?? t('the configured') },
+          )}
         >
           {' '}· ≈{money(cost)}
         </span>
@@ -84,6 +86,7 @@ function TokenLine({ exec, onOpenContext }: { exec?: NodeExec; onOpenContext: ()
  * same blank box to the eye, so they are never allowed to share a message.
  */
 function OutputBody({ exec }: { exec: NodeExec }) {
+  const { t } = useTranslation()
   if (exec.format === 'table' && exec.columns) {
     return (
       <div className={styles.previewTable}>
@@ -109,13 +112,14 @@ function OutputBody({ exec }: { exec: NodeExec }) {
     )
   }
   if (exec.output) return <pre className={styles.execText}>{exec.output}</pre>
-  if (exec.status === 'running') return <div className={styles.empty}>Working…</div>
-  return <div className={styles.empty}>No output produced.</div>
+  if (exec.status === 'running') return <div className={styles.empty}>{t('Working…')}</div>
+  return <div className={styles.empty}>{t('No output produced.')}</div>
 }
 
 export function InputView({ exec }: { exec?: NodeExec }) {
+  const { t } = useTranslation()
   if (!exec || !exec.input) {
-    return <div className={styles.empty}>No input recorded yet for this run.</div>
+    return <div className={styles.empty}>{t('No input recorded yet for this run.')}</div>
   }
   return (
     <div>
@@ -126,10 +130,11 @@ export function InputView({ exec }: { exec?: NodeExec }) {
 }
 
 export function OutputView({ exec }: { exec?: NodeExec }) {
+  const { t } = useTranslation()
   // Declared before the early return: hooks cannot live behind a condition.
   const [ctxOpen, setCtxOpen] = useState(false)
   if (!exec) {
-    return <div className={styles.empty}>No output yet. Run this flow and it appears live.</div>
+    return <div className={styles.empty}>{t('No output yet. Run this flow and it appears live.')}</div>
   }
   return (
     <div>

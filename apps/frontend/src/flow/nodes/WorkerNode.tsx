@@ -1,4 +1,5 @@
 import type { Node, NodeProps } from '@xyflow/react'
+import { useTranslation } from 'react-i18next'
 import { NodeShell } from './NodeShell.tsx'
 import styles from './nodes.module.scss'
 
@@ -16,6 +17,7 @@ export type WorkerRFNode = Node<WorkerNodeData, 'worker'>
  * dashed border says "you did not draw this" — and disappears when another run is selected.
  */
 export function WorkerNode({ id, data, selected }: NodeProps<WorkerRFNode>) {
+  const { t } = useTranslation()
   return (
     <NodeShell
       id={id}
@@ -23,7 +25,7 @@ export function WorkerNode({ id, data, selected }: NodeProps<WorkerRFNode>) {
       selected={selected}
       icon="⚙"
       title={data.label || id}
-      badge="WORKER"
+      badge={t('WORKER')}
       showTargetHandle={false}
       showSourceHandle={false}
       showStatus

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { cx } from '../utils/cx.ts'
 import type { DashboardStats } from './flowsDashboard.ts'
 import { money } from './flowFormat.ts'
@@ -11,24 +12,27 @@ import styles from './flows.module.scss'
  * first run it collapses to that one fact in a line, and the space goes to the flows.
  */
 export function FlowsKpis({ stats }: { stats: DashboardStats }) {
+  const { t } = useTranslation()
   if (stats.executions === 0 && stats.active === 0) {
     return (
       <div className={styles.kpisQuiet}>
-        {stats.flows} flow{stats.flows === 1 ? '' : 's'} · nothing has run yet
+        {stats.flows === 1
+          ? t('{{n}} flow · nothing has run yet', { n: stats.flows })
+          : t('{{n}} flows · nothing has run yet', { n: stats.flows })}
       </div>
     )
   }
   return (
     <div className={styles.kpis}>
-      <Kpi label="Flows" value={String(stats.flows)} />
-      <Kpi label="Executions" value={String(stats.executions)} />
+      <Kpi label={t('Flows')} value={String(stats.flows)} />
+      <Kpi label={t('Executions')} value={String(stats.executions)} />
       <Kpi
-        label="Success rate"
+        label={t('Success rate')}
         value={stats.success === null ? '—' : `${stats.success}%`}
         tone={stats.success !== null && stats.success < 70 ? 'warn' : 'ok'}
       />
-      <Kpi label="Running now" value={String(stats.active)} tone={stats.active ? 'active' : undefined} />
-      <Kpi label="Est. cost" value={money(stats.cost)} />
+      <Kpi label={t('Running now')} value={String(stats.active)} tone={stats.active ? 'active' : undefined} />
+      <Kpi label={t('Est. cost')} value={money(stats.cost)} />
     </div>
   )
 }

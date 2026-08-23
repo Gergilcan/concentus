@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { McpDef } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -19,6 +20,7 @@ import styles from './resources.module.scss'
  * Name field above must not silently rewrite what they wrote.
  */
 export function McpServerJson({ def, onApplied }: { def: McpDef; onApplied: (saved: McpDef) => void }) {
+  const { t } = useTranslation()
   const [text, setText] = useState(() => formatServer(def))
   const [dirty, setDirty] = useState(false)
   const [note, setNote] = useState<string | null>(null)
@@ -63,7 +65,7 @@ export function McpServerJson({ def, onApplied }: { def: McpDef; onApplied: (sav
       onApplied(saved)
       setText(formatServer(saved))
       setDirty(false)
-      setNote(parsed.warnings.length > 0 ? `Saved. ${parsed.warnings.join(' ')}` : 'Saved')
+      setNote(parsed.warnings.length > 0 ? `${t('Saved.')} ${parsed.warnings.join(' ')}` : t('Saved'))
     } catch (e) {
       setNote(errMessage(e))
     } finally {
@@ -74,12 +76,16 @@ export function McpServerJson({ def, onApplied }: { def: McpDef; onApplied: (sav
   return (
     <div className={styles.serverJson}>
       <label className={styles.field}>
-        <span title="This one server in mcp.json's own shape — a URL, or the command/args/env of a server launched here. Paste a README's snippet straight in; its mcpServers wrapper is accepted and its key renames the server. Tokens belong in Resources → Credentials: reference them as credentialId, or as an env value credential:<id>.">
-          This server as JSON ⓘ
+        <span
+          title={t(
+            "This one server in mcp.json's own shape — a URL, or the command/args/env of a server launched here. Paste a README's snippet straight in; its mcpServers wrapper is accepted and its key renames the server. Tokens belong in Resources → Credentials: reference them as credentialId, or as an env value credential:<id>.",
+          )}
+        >
+          {t('This server as JSON')} ⓘ
         </span>
         <textarea
           className={styles.jsonEditor}
-          aria-label="This server as JSON"
+          aria-label={t('This server as JSON')}
           rows={10}
           spellCheck={false}
           value={text}
@@ -91,10 +97,10 @@ export function McpServerJson({ def, onApplied }: { def: McpDef; onApplied: (sav
       </label>
       <div className={styles.crudActions}>
         <button className={styles.saveBtn} disabled={busy} onClick={() => void save()}>
-          {busy ? 'Saving…' : 'Save JSON'}
+          {busy ? t('Saving…') : t('Save JSON')}
         </button>
         <button className={styles.newBtn} disabled={busy || !dirty} onClick={reset}>
-          Revert
+          {t('Revert')}
         </button>
         {note && <span className={panels.hint}>{note}</span>}
       </div>

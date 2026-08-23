@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { PluginInfo } from '../api/types.ts'
 import { Modal } from './Modal.tsx'
 import modal from './flows.module.scss'
@@ -30,6 +31,7 @@ function versionLabel(version?: string): string {
  * that chose nothing still ran with the CLI's defaults and behaved differently on the next machine.
  */
 export function PluginPicker({ plugins, selectedIds, onChange }: Props) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
 
   // Ids kept even when this machine has no such plugin installed — the machine that runs the flow
@@ -40,17 +42,19 @@ export function PluginPicker({ plugins, selectedIds, onChange }: Props) {
   return (
     <div
       className={styles.field}
-      title="Claude Code plugins this agent's runs load — exactly these, with every other installed plugin disabled for the run. None selected means none loaded. Claude backend only."
+      title={t(
+        "Claude Code plugins this agent's runs load — exactly these, with every other installed plugin disabled for the run. None selected means none loaded. Claude backend only.",
+      )}
     >
-      <span>Plugins ⓘ</span>
+      <span>{t('Plugins')} ⓘ</span>
 
       <div className={styles.mcpBtns}>
         <button className={styles.previewBtn} onClick={() => setOpen(true)}>
-          Choose plugins…
+          {t('Choose plugins…')}
         </button>
         {selectedIds.length > 0 && (
           <button className={styles.linkBtn} onClick={() => onChange([])}>
-            Clear ({selectedIds.length})
+            {t('Clear')} ({selectedIds.length})
           </button>
         )}
       </div>
@@ -58,19 +62,21 @@ export function PluginPicker({ plugins, selectedIds, onChange }: Props) {
       <p className={styles.hint}>
         {selectedIds.length === 0 ? (
           <>
-            <b>None</b> — runs load no plugins at all.
+            <b>{t('None')}</b> — {t('runs load no plugins at all.')}
           </>
         ) : (
           <>
-            <b>{selectedIds.length} loaded:</b> {selectedIds.slice(0, 3).join(', ')}
-            {selectedIds.length > 3 && ` … and ${selectedIds.length - 3} more`}
+            <b>{t('{{count}} loaded:', { count: selectedIds.length })}</b> {selectedIds.slice(0, 3).join(', ')}
+            {selectedIds.length > 3 && ` … ${t('and {{count}} more', { count: selectedIds.length - 3 })}`}
           </>
         )}
       </p>
 
       {missing.length > 0 && (
         <p className={styles.hint}>
-          ⚠ Not installed here: {missing.join(', ')} — the run will simply not load them.
+          {t('⚠ Not installed here: {{list}} — the run will simply not load them.', {
+            list: missing.join(', '),
+          })}
         </p>
       )}
 
@@ -87,6 +93,7 @@ export function PluginPicker({ plugins, selectedIds, onChange }: Props) {
 }
 
 function PluginDialog({ plugins, selectedIds, onChange, onClose }: Props & { onClose: () => void }) {
+  const { t } = useTranslation()
   const [search, setSearch] = useState('')
   const [onlyChosen, setOnlyChosen] = useState(false)
   // Committed on Assign, so leaving with Escape or the backdrop leaves the node as it was.
@@ -107,9 +114,16 @@ function PluginDialog({ plugins, selectedIds, onChange, onClose }: Props & { onC
   const allShownChosen = shownIds.length > 0 && shownIds.every((id) => draft.includes(id))
 
   return (
-    <Modal wide title={`Plugins for this agent — ${draft.length} of ${plugins.length}`} onClose={onClose}>
+    <Modal
+      wide
+      title={t('Plugins for this agent — {{selected}} of {{total}}', {
+        selected: draft.length,
+        total: plugins.length,
+      })}
+      onClose={onClose}
+    >
       <label className={modal.field}>
-        <span>Search</span>
+        <span>{t('Search')}</span>
         <input
           autoFocus
           value={search}
@@ -124,7 +138,7 @@ function PluginDialog({ plugins, selectedIds, onChange, onClose }: Props & { onC
           checked={onlyChosen}
           onChange={(e) => setOnlyChosen(e.target.checked)}
         />
-        <span>Show only the {draft.length} selected</span>
+        <span>{t('Show only the {{count}} selected', { count: draft.length })}</span>
       </label>
 
       <div className={styles.mcpBtns}>
@@ -139,11 +153,13 @@ function PluginDialog({ plugins, selectedIds, onChange, onClose }: Props & { onC
             )
           }
         >
-          {allShownChosen ? 'Deselect' : 'Select'} these {shownIds.length}
+          {allShownChosen
+            ? t('Deselect these {{count}}', { count: shownIds.length })
+            : t('Select these {{count}}', { count: shownIds.length })}
         </button>
         {draft.length > 0 && (
           <button className={styles.linkBtn} onClick={() => setDraft([])}>
-            Clear all
+            {t('Clear all')}
           </button>
         )}
       </div>
@@ -159,25 +175,27 @@ function PluginDialog({ plugins, selectedIds, onChange, onClose }: Props & { onC
                 selection and disables the rest, whether or not the CLI has them on today. */}
             <span className={styles.repoMeta}>
               {versionLabel(p.version)}
-              {p.enabled ? '' : ' · disabled in the CLI'}
+              {p.enabled ? '' : ` · ${t('disabled in the CLI')}`}
             </span>
           </button>
         ))}
         {shown.length === 0 && (
           <p className={modal.modalHint}>
-            Nothing matches {search ? `“${search}”` : 'the current filter'}.
+            {search
+              ? t('Nothing matches “{{query}}”.', { query: search })
+              : t('Nothing matches the current filter.')}
           </p>
         )}
       </div>
 
       <p className={modal.modalHint}>
-        A run loads <b>exactly</b> what is ticked here and disables every other installed plugin.
-        Nothing ticked means no plugins at all.
+        {t('A run loads')} <b>{t('exactly')}</b>{' '}
+        {t('what is ticked here and disables every other installed plugin. Nothing ticked means no plugins at all.')}
       </p>
 
       <div className={modal.modalActions}>
         <button className={styles.linkBtn} onClick={onClose}>
-          Cancel
+          {t('Cancel')}
         </button>
         <button
           className={styles.previewBtn}
@@ -186,7 +204,7 @@ function PluginDialog({ plugins, selectedIds, onChange, onClose }: Props & { onC
             onClose()
           }}
         >
-          {draft.length === 0 ? 'Load none' : `Load these ${draft.length}`}
+          {draft.length === 0 ? t('Load none') : t('Load these {{count}}', { count: draft.length })}
         </button>
       </div>
     </Modal>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { SwitchableAccount } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
@@ -42,6 +43,7 @@ export function AccountMenu({
   signedInAs: string
   onSignOut: () => void
 }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [accounts, setAccounts] = useState<SwitchableAccount[]>([])
   const [busy, setBusy] = useState<string | null>(null)
@@ -104,7 +106,7 @@ export function AccountMenu({
   const openAnotherWindow = async () => {
     setNote(null)
     const result = await shellAccounts?.openWindow()
-    if (result && !result.ok) setNote(result.error ?? 'The window could not be opened.')
+    if (result && !result.ok) setNote(result.error ?? t('The window could not be opened.'))
     else setOpen(false)
   }
 
@@ -117,7 +119,11 @@ export function AccountMenu({
         className={styles.avatarBtn}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Account: ${signedInAs}${role ? ` (${roleLabel(role)})` : ''}`}
+        aria-label={
+          role
+            ? t('Account: {{email}} ({{role}})', { email: signedInAs, role: roleLabel(role) })
+            : t('Account: {{email}}', { email: signedInAs })
+        }
         title={role ? `${signedInAs} — ${roleLabel(role)}` : signedInAs}
         onClick={() => setOpen((o) => !o)}
       >
@@ -163,8 +169,10 @@ export function AccountMenu({
                   <button
                     type="button"
                     className={styles.forgetBtn}
-                    title={`Forget ${a.email} on this device. Signing in again brings it back.`}
-                    aria-label={`Forget ${a.email}`}
+                    title={t('Forget {{email}} on this device. Signing in again brings it back.', {
+                      email: a.email,
+                    })}
+                    aria-label={t('Forget {{email}}', { email: a.email })}
                     disabled={busy === a.userId}
                     onClick={() => void forget(a)}
                   >
@@ -176,8 +184,8 @@ export function AccountMenu({
           )}
 
           <button type="button" role="menuitem" className={styles.accountAction} onClick={onSignOut}>
-            Add another account
-            <small>Signs this window out so you can sign in as somebody else. Both stay here.</small>
+            {t('Add another account')}
+            <small>{t('Signs this window out so you can sign in as somebody else. Both stay here.')}</small>
           </button>
 
           {shellAccounts && (
@@ -187,8 +195,8 @@ export function AccountMenu({
               className={styles.accountAction}
               onClick={() => void openAnotherWindow()}
             >
-              Open a second window
-              <small>Its own sign-in, side by side — the only way to have two roles on screen at once.</small>
+              {t('Open a second window')}
+              <small>{t('Its own sign-in, side by side — the only way to have two roles on screen at once.')}</small>
             </button>
           )}
 
@@ -199,7 +207,7 @@ export function AccountMenu({
               className={`${styles.accountAction} ${styles.accountSignOut}`}
               onClick={onSignOut}
             >
-              Sign out
+              {t('Sign out')}
             </button>
           </div>
 

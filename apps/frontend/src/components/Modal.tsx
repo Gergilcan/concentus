@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cx } from '../utils/cx.ts'
 import styles from './flows.module.scss'
 
@@ -27,6 +28,7 @@ export function Modal({
    */
   className?: string
 }) {
+  const { t } = useTranslation()
   // Read through a ref so the listener below can register once, on mount: re-registering on a
   // new onClose identity would push this dialog back to the top of the stack while a nested one
   // is open, and Escape would start closing the wrong one.
@@ -61,7 +63,7 @@ export function Modal({
       >
         <div className={styles.modalHead}>
           <h3>{title}</h3>
-          <button className={styles.icon} onClick={onClose} aria-label="Close">
+          <button className={styles.icon} onClick={onClose} aria-label={t('Close')}>
             ✕
           </button>
         </div>

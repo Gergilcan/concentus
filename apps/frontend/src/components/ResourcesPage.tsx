@@ -1,4 +1,5 @@
 import { Fragment, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { DatabaseDef, FacadeProfile, LibraryAgent, McpDef } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, EFFORT_OPTIONS } from '../constants.ts'
@@ -79,6 +80,7 @@ const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolea
 const isLocalServer = (draft: Record<string, unknown>) => String(draft.command ?? '').trim() !== ''
 
 export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
+  const { t } = useTranslation()
   const [tab, setTab] = useState<Tab>('agents')
   // Remounts the MCP CrudPanel after a catalog add, so the new definition appears in its list —
   // the panel loads on mount and has no other way to be told.
@@ -91,15 +93,17 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
   return (
     <div className={styles.resources}>
       <div className={styles.tabs}>
-        {TABS.filter((t) => !t.desktopOnly || shellBridge()).map((t) => (
-          <Fragment key={t.id}>
-            {t.startsAdmin && <span className={styles.tabDivider} aria-hidden="true" />}
+        {TABS.filter((td) => !td.desktopOnly || shellBridge()).map((td) => (
+          <Fragment key={td.id}>
+            {td.startsAdmin && <span className={styles.tabDivider} aria-hidden="true" />}
             <button
-              className={tab === t.id ? styles.active : ''}
-              onClick={() => setTab(t.id)}
-              title={t.title}
+              className={tab === td.id ? styles.active : ''}
+              onClick={() => setTab(td.id)}
+              // NAME passed through literally so the {{NAME}} in the Variables tab's tooltip
+              // survives interpolation in every language.
+              title={td.title ? t(td.title, { NAME: '{{NAME}}' }) : undefined}
             >
-              {t.label}
+              {t(td.label)}
             </button>
           </Fragment>
         ))}
@@ -110,9 +114,9 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
 
         {tab === 'agents' && (
           <CrudPanel<LibraryAgent>
-            title="Agents"
+            title={t('Agents')}
             fields={[
-              { key: 'name', label: 'Name' },
+              { key: 'name', label: t('Name') },
               {
                 key: 'model',
                 label: 'Model',
@@ -126,9 +130,9 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
                   />
                 ),
               },
-              { key: 'effort', label: 'Effort', type: 'select', options: [...EFFORT_OPTIONS] },
-              { key: 'maxTokens', label: 'Max tokens', type: 'number' },
-              { key: 'systemPrompt', label: 'System prompt', type: 'textarea' },
+              { key: 'effort', label: t('Effort'), type: 'select', options: [...EFFORT_OPTIONS] },
+              { key: 'maxTokens', label: t('Max tokens'), type: 'number' },
+              { key: 'systemPrompt', label: t('System prompt'), type: 'textarea' },
             ]}
             labelOf={(a) => a.name}
             idOf={(a) => a.id}
@@ -159,16 +163,16 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           )}
           <CrudPanel<McpDef>
             key={mcpListVersion}
-            title="MCP Servers"
+            title={t('MCP Servers')}
             fields={[
-              { key: 'name', label: 'Name', placeholder: 'linear' },
+              { key: 'name', label: t('Name'), placeholder: 'linear' },
               // The three below describe a remote server. A local one is a command, and its
               // command, arguments and environment are edited in its JSON box under the form.
-              { key: 'url', label: 'URL', placeholder: 'https://mcp.linear.app/mcp', hidden: isLocalServer },
-              { key: 'credentialId', label: 'Credential id (optional)', placeholder: 'from Resources -> Credentials', hidden: isLocalServer },
+              { key: 'url', label: t('URL'), placeholder: 'https://mcp.linear.app/mcp', hidden: isLocalServer },
+              { key: 'credentialId', label: t('Credential id (optional)'), placeholder: t('from Resources -> Credentials'), hidden: isLocalServer },
               {
                 key: 'authHeader',
-                label: 'Send token in',
+                label: t('Send token in'),
                 type: 'select',
                 options: ['', 'PRIVATE-TOKEN'],
                 hidden: isLocalServer,
@@ -200,11 +204,16 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
 
         {tab === 'variables' && (
           <CrudPanel<import('../api/types.ts').Variable>
-            title="Variables"
+            title={t('Variables')}
             fields={[
-              { key: 'name', label: 'Name (used as {{NAME}} in prompts)', placeholder: 'COMPANY' },
-              { key: 'value', label: 'Value', placeholder: 'ACME S.L.' },
-              { key: 'description', label: 'Description (optional)', placeholder: 'Legal company name' },
+              {
+                key: 'name',
+                // NAME passed through literally so the {{NAME}} example survives interpolation.
+                label: t('Name (used as {{NAME}} in prompts)', { NAME: '{{NAME}}' }),
+                placeholder: t('COMPANY'),
+              },
+              { key: 'value', label: t('Value'), placeholder: 'ACME S.L.' },
+              { key: 'description', label: t('Description (optional)'), placeholder: t('Legal company name') },
             ]}
             labelOf={(v) => v.name}
             idOf={(v) => v.id}
@@ -217,17 +226,21 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
 
         {tab === 'facades' && (
           <CrudPanel<FacadeProfile>
-            title="Facade profiles"
+            title={t('Facade profiles')}
             fields={[
-              { key: 'name', label: 'Name', placeholder: 'reader' },
-              { key: 'description', label: 'Description', placeholder: 'Read-only lookups for support workers' },
+              { key: 'name', label: t('Name'), placeholder: t('reader') },
+              { key: 'description', label: t('Description'), placeholder: t('Read-only lookups for support workers') },
               {
                 key: 'tools',
                 label: 'Allowed tools',
                 render: (value, onChange) => (
                   <label className={styles.field}>
-                    <span title="Case-insensitive substrings, one per line — 'contact' covers create_contact and list_contacts. Empty exposes every tool the worker's MCP nodes wire in (writes still gated below).">
-                      Allowed tools (one substring per line, empty = all) ⓘ
+                    <span
+                      title={t(
+                        "Case-insensitive substrings, one per line — 'contact' covers create_contact and list_contacts. Empty exposes every tool the worker's MCP nodes wire in (writes still gated below).",
+                      )}
+                    >
+                      {t('Allowed tools (one substring per line, empty = all)')} ⓘ
                     </span>
                     <textarea
                       rows={4}
@@ -246,7 +259,9 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
                 render: (value, onChange) => (
                   <label
                     className={styles.field}
-                    title="Write-shaped tools (create_*, send_*, anything not clearly a read) are not shown to the worker and refuse to run. The strictest setting; wins over dry-run."
+                    title={t(
+                      'Write-shaped tools (create_*, send_*, anything not clearly a read) are not shown to the worker and refuse to run. The strictest setting; wins over dry-run.',
+                    )}
                   >
                     <span>
                       <input
@@ -254,7 +269,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
                         checked={Boolean(value)}
                         onChange={(e) => onChange(e.target.checked)}
                       />{' '}
-                      Read-only — writes are blocked outright ⓘ
+                      {t('Read-only — writes are blocked outright')} ⓘ
                     </span>
                   </label>
                 ),
@@ -264,8 +279,12 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
                 label: 'Also reads',
                 render: (value, onChange) => (
                   <label className={styles.field}>
-                    <span title="Read or write is guessed from the verb a tool's name starts with — get, list, search, find, read, fetch, query, preview, download, describe, show, count, check, status, history, ping. Anything else counts as a write, because guessing the other way would execute something. That leaves real reads outside: run_gaql_query on Google Ads and run_report on Analytics are the most useful reads either server has, and read-only hides both. Name them here and they survive. Case-insensitive substrings, one per line.">
-                      Also treat as reads, whatever the name suggests ⓘ
+                    <span
+                      title={t(
+                        "Read or write is guessed from the verb a tool's name starts with — get, list, search, find, read, fetch, query, preview, download, describe, show, count, check, status, history, ping. Anything else counts as a write, because guessing the other way would execute something. That leaves real reads outside: run_gaql_query on Google Ads and run_report on Analytics are the most useful reads either server has, and read-only hides both. Name them here and they survive. Case-insensitive substrings, one per line.",
+                      )}
+                    >
+                      {t('Also treat as reads, whatever the name suggests')} ⓘ
                     </span>
                     <textarea
                       rows={3}
@@ -284,7 +303,9 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
                 render: (value, onChange) => (
                   <label
                     className={styles.field}
-                    title="Writes are visible and callable, but the facade answers 'DRY RUN — nothing was executed' and the worker reports the action as proposed. On by default: writes only really execute when you deliberately untick this."
+                    title={t(
+                      "Writes are visible and callable, but the facade answers 'DRY RUN — nothing was executed' and the worker reports the action as proposed. On by default: writes only really execute when you deliberately untick this.",
+                    )}
                   >
                     <span>
                       <input
@@ -292,7 +313,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
                         checked={value === undefined || value === null ? true : Boolean(value)}
                         onChange={(e) => onChange(e.target.checked)}
                       />{' '}
-                      Dry-run writes — simulate instead of executing ⓘ
+                      {t('Dry-run writes — simulate instead of executing')} ⓘ
                     </span>
                   </label>
                 ),
@@ -309,12 +330,12 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
 
         {tab === 'databases' && (
           <CrudPanel<DatabaseDef>
-            title="Databases"
+            title={t('Databases')}
             fields={[
-              { key: 'label', label: 'Label' },
-              { key: 'jdbcUrl', label: 'JDBC URL', placeholder: 'jdbc:postgresql://host:5432/db' },
-              { key: 'username', label: 'Username' },
-              { key: 'credentialId', label: 'Credential id', placeholder: 'from Resources -> Credentials' },
+              { key: 'label', label: t('Label') },
+              { key: 'jdbcUrl', label: t('JDBC URL'), placeholder: 'jdbc:postgresql://host:5432/db' },
+              { key: 'username', label: t('Username') },
+              { key: 'credentialId', label: t('Credential id'), placeholder: t('from Resources -> Credentials') },
             ]}
             labelOf={(d) => d.label}
             idOf={(d) => d.id}
