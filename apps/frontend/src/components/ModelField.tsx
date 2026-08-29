@@ -82,7 +82,12 @@ export function ModelField({
   )
 
   const known = useMemo(() => groups.flatMap((g) => g.models), [groups])
-  const [custom, setCustom] = useState(!known.includes(value) && value !== '')
+  // Custom when the author asked for it, or when the list does not know the value. Derived rather
+  // than decided once: a saved local model is unknown until the catalogue answers, and a field
+  // that decided "Custom…" at first render stayed there with the id in a text box after the
+  // list had learned it.
+  const [customChosen, setCustomChosen] = useState(false)
+  const custom = customChosen || (!known.includes(value) && value !== '')
 
   const group = groups.find((g) => g.models.includes(value))
   const rateFor = (model: string): ModelRate | undefined => catalog?.pricing[model]
@@ -98,10 +103,10 @@ export function ModelField({
           disabled={readOnly}
           onChange={(e) => {
             if (e.target.value === CUSTOM) {
-              setCustom(true)
+              setCustomChosen(true)
               return
             }
-            setCustom(false)
+            setCustomChosen(false)
             onChange(e.target.value)
           }}
         >
@@ -137,7 +142,12 @@ export function ModelField({
           value={value}
           placeholder={t('e.g. claude-opus-4-8')}
           readOnly={readOnly}
-          onChange={onChange}
+          onChange={(v) => {
+            // Typing here is asking for it: the box must not vanish mid-edit when the id is
+            // cleared or happens to pass through a listed one.
+            setCustomChosen(true)
+            onChange(v)
+          }}
         />
       )}
 
