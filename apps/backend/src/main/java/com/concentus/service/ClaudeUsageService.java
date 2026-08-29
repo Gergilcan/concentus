@@ -44,6 +44,13 @@ public class ClaudeUsageService {
     private final ObjectMapper mapper;
     private final PricingTable pricing;
     private final Path projectsDir;
+    private final com.concentus.config.Settings settings;
+    private final com.concentus.store.RunStore runStore;
+
+    /** Rolling seven days: conservative against a plan whose week resets on a fixed day. */
+    static final long WEEK_MILLIS = 7L * 24 * 60 * 60 * 1000;
+    /** Where a run starting now is told the allowance is nearly gone. */
+    public static final int WARN_PERCENT = 80;
 
     private volatile Map<String, Object> cached;
     private volatile long cachedAt;
@@ -51,15 +58,73 @@ public class ClaudeUsageService {
     // Explicit: the package-private constructor below exists for tests, and Spring will not
     // choose between two candidates on its own — the same lesson BuiltInEmbedder taught.
     @org.springframework.beans.factory.annotation.Autowired
-    public ClaudeUsageService(ObjectMapper mapper, PricingTable pricing) {
+    public ClaudeUsageService(ObjectMapper mapper, PricingTable pricing,
+                              com.concentus.config.Settings settings,
+                              com.concentus.store.RunStore runStore) {
         this(mapper, pricing,
-                Path.of(System.getProperty("user.home"), ".claude", "projects"));
+                Path.of(System.getProperty("user.home"), ".claude", "projects"), settings, runStore);
     }
 
     ClaudeUsageService(ObjectMapper mapper, PricingTable pricing, Path projectsDir) {
+        this(mapper, pricing, projectsDir, null, null);
+    }
+
+    ClaudeUsageService(ObjectMapper mapper, PricingTable pricing, Path projectsDir,
+                       com.concentus.config.Settings settings, com.concentus.store.RunStore runStore) {
         this.mapper = mapper;
         this.pricing = pricing;
         this.projectsDir = projectsDir;
+        this.settings = settings;
+        this.runStore = runStore;
+    }
+
+    /**
+     * Where this machine's runs stand against the plan's weekly allowance for non-interactive
+     * use.
+     *
+     * @param allowanceUsd the plan's figure, API-equivalent dollars
+     * @param runsUsd      what Concentus runs on the subscription cost in the last seven days —
+     *                     the part of the allowance this app is responsible for
+     * @param machineUsd   every Claude Code session on the machine in the same window, for scale
+     * @param percent      runs against the allowance, whole percent, may exceed 100
+     * @param state        ok | warn | exhausted
+     */
+    public record Allowance(double allowanceUsd, double runsUsd, double machineUsd, int percent, String state) {
+
+        public double remainingUsd() {
+            return Math.max(0d, allowanceUsd - runsUsd);
+        }
+
+        public boolean nearlyGone() {
+            return percent >= WARN_PERCENT;
+        }
+
+        public boolean exhausted() {
+            return percent >= 100;
+        }
+    }
+
+    /**
+     * The allowance meter, or null when no allowance is configured. Measured, not asked: the
+     * runs' own cost records are the numerator. Anthropic's meter also counts headless use that
+     * never went through this app — a GitHub Action, a script — which this cannot see, so the
+     * figure is a floor and the page says so.
+     */
+    public Allowance allowance() {
+        if (settings == null || runStore == null) return null;
+        double allowance = settings.decimal("usage.weekly-allowance-usd", 0d);
+        if (allowance <= 0) return null;
+        long since = System.currentTimeMillis() - WEEK_MILLIS;
+        double runs = runStore.spendUsdOnBackendSince("local", since);
+        double machine = 0d;
+        Object windows = summary().get("windows");
+        if (windows instanceof Map<?, ?> w && w.get("week") instanceof Map<?, ?> week
+                && week.get("estimatedUsd") instanceof Number n) {
+            machine = n.doubleValue();
+        }
+        int percent = (int) Math.floor(runs / allowance * 100d);
+        String state = percent >= 100 ? "exhausted" : percent >= WARN_PERCENT ? "warn" : "ok";
+        return new Allowance(allowance, runs, machine, percent, state);
     }
 
     /** One assistant message's worth of usage. */
@@ -89,6 +154,23 @@ public class ClaudeUsageService {
         out.put("days", perDay(samples));
         cached = out;
         cachedAt = now;
+        return out;
+    }
+
+    /** The summary with the allowance meter beside it, for the page. */
+    public Map<String, Object> summaryWithAllowance() {
+        Map<String, Object> out = new LinkedHashMap<>(summary());
+        Allowance a = allowance();
+        if (a != null) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("allowanceUsd", a.allowanceUsd());
+            m.put("runsUsd", a.runsUsd());
+            m.put("machineUsd", a.machineUsd());
+            m.put("remainingUsd", a.remainingUsd());
+            m.put("percent", a.percent());
+            m.put("state", a.state());
+            out.put("allowance", m);
+        }
         return out;
     }
 

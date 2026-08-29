@@ -101,6 +101,24 @@ public class RunStore {
      * What this flow has spent since {@code sinceMillis} — the budget gate's one query.
      * Zero when persistence is down: a broken database must not also stop every budgeted flow.
      */
+    /**
+     * What every run on one execution backend has cost since a moment, across all flows — the
+     * figure a subscription's allowance is measured against. Backend rather than flow, because
+     * the allowance belongs to the login, not to a drawing.
+     */
+    public double spendUsdOnBackendSince(String backend, long sinceMillis) {
+        if (!isAvailable()) return 0d;
+        try {
+            Double sum = jdbc.queryForObject(
+                    "select coalesce(sum(cost_usd), 0) from runs where backend = ? and created_at >= ?",
+                    Double.class, backend, sinceMillis);
+            return sum == null ? 0d : sum;
+        } catch (Exception e) {
+            log.debug("spend query failed: {}", e.getMessage());
+            return 0d;
+        }
+    }
+
     public double spendUsdSince(String flowId, long sinceMillis) {
         if (!isAvailable()) return 0d;
         try {

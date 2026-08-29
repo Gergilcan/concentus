@@ -20,6 +20,6 @@ public class UsageController {
 
     @GetMapping
     public Map<String, Object> summary() {
-        return usage.summary();
+        return usage.summaryWithAllowance();
     }
 }

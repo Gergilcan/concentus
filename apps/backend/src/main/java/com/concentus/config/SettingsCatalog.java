@@ -38,6 +38,7 @@ public final class SettingsCatalog {
     public static final String GROUP_PRICING = "Pricing";
     public static final String GROUP_TELEMETRY = "Traces and metrics";
     public static final String GROUP_KNOWLEDGE = "Knowledge";
+    public static final String GROUP_USAGE = "Usage";
 
     private static final List<SettingDef> ALL = List.of(
             number("runs.max-concurrent", GROUP_RUNS, "Runs at once",
@@ -56,6 +57,14 @@ public final class SettingsCatalog {
                             + "four workers is thirty-two processes — and this is the cap on the "
                             + "product. A worker that does not fit waits, and its run says so. "
                             + "Applies without a restart.", true),
+
+            number("usage.weekly-allowance-usd", GROUP_USAGE, "Weekly allowance for runs (API-equivalent $)",
+                    "What your Claude plan lets non-interactive Claude Code use spend in a week, as the "
+                            + "API-equivalent dollars the Usage page already prices tokens in. Anthropic "
+                            + "meters that use separately from your interactive sessions and does not "
+                            + "expose the figure; put here what your plan says. The Usage page then shows "
+                            + "how far this machine's runs are from it, and a run that starts past 80% "
+                            + "says so in its log. 0 or blank turns the meter off.", true),
 
             number("knowledge.context-chars", GROUP_KNOWLEDGE, "Retrieved text per source",
                     "How much of a knowledge base may reach an agent in one run, in characters "

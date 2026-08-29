@@ -1327,7 +1327,24 @@ export interface UsageDay extends UsageWindow {
   date: string
 }
 
+/**
+ * Where this machine's runs stand against the plan's weekly allowance for non-interactive use.
+ * Present only when the allowance is configured (Settings → Usage).
+ */
+export interface UsageAllowance {
+  allowanceUsd: number
+  /** Concentus runs on the subscription, last 7 days — the part of the allowance this app spent. */
+  runsUsd: number
+  /** Every Claude Code session on this machine in the same window, for scale. */
+  machineUsd: number
+  remainingUsd: number
+  /** Whole percent of the allowance the runs used; may exceed 100. */
+  percent: number
+  state: 'ok' | 'warn' | 'exhausted'
+}
+
 export interface UsageSummary {
+  allowance?: UsageAllowance
   available: boolean
   windows: { last5h: UsageWindow; today: UsageWindow; week: UsageWindow }
   models: Array<{ model: string } & Omit<UsageWindow, 'messages'>>

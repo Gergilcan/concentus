@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
-import type { UsageDay, UsageSummary } from '../api/types.ts'
+import type { UsageAllowance, UsageDay, UsageSummary } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { money } from '../utils/format.ts'
 import styles from './usage.module.scss'
@@ -46,6 +46,35 @@ function SevenDays({ days }: { days: UsageDay[] }) {
         })}
       </div>
     </>
+  )
+}
+
+/**
+ * The allowance meter: what this machine's runs used of the plan's weekly allowance for
+ * non-interactive use. A bar, because the question is "how close", and a number under it,
+ * because a bar cannot be quoted. Runs are the numerator — headless use that never went
+ * through this app (a script, a GitHub Action) counts on Anthropic's side and not here, so
+ * the figure is a floor and the label says so.
+ */
+function Allowance({ a }: { a: UsageAllowance }) {
+  const { t } = useTranslation()
+  const width = Math.min(100, a.percent)
+  const tone = a.state === 'exhausted' ? styles.meterOver : a.state === 'warn' ? styles.meterWarn : styles.meterOk
+  return (
+    <div className={styles.meter} title={t("Runs on this machine's subscription in the last 7 days, against the allowance set in Settings → Usage. Non-interactive use that never went through Concentus counts on Anthropic's side but not here, so this is a floor. Rolling 7 days, which is conservative against a plan that resets on a fixed day.")}>
+      <div className={styles.meterHead}>
+        <span className={styles.tileLabel}>{t('Weekly allowance for runs')} ⓘ</span>
+        <span className={styles.meterPct}>{a.percent}%</span>
+      </div>
+      <div className={styles.meterTrack}>
+        <div className={`${styles.meterFill} ${tone}`} style={{ width: `${width}%` }} />
+      </div>
+      <div className={styles.tileDetail}>
+        {a.state === 'exhausted'
+          ? t('{{used}} of {{allowance}} — spent. Runs on the subscription wait for the window to reset, or fall back if the flow says so.', { used: money(a.runsUsd), allowance: money(a.allowanceUsd) })
+          : t('{{used}} of {{allowance}} — {{left}} left · whole machine: {{machine}}', { used: money(a.runsUsd), allowance: money(a.allowanceUsd), left: money(a.remainingUsd), machine: money(a.machineUsd) })}
+      </div>
+    </div>
   )
 }
 
@@ -132,6 +161,14 @@ export function UsagePage() {
           )
         })}
       </div>
+
+      {data.allowance ? (
+        <Allowance a={data.allowance} />
+      ) : (
+        <p className={styles.note}>
+          {t('Set your plan\'s weekly allowance for non-interactive use under Settings → Usage, and this page shows how far the runs are from it.')}
+        </p>
+      )}
 
       {data.days && data.days.length > 0 && <SevenDays days={data.days} />}
 
