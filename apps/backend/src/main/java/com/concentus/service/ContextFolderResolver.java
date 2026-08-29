@@ -62,6 +62,26 @@ public class ContextFolderResolver {
 
     /** Why this folder may not be used, or null when it is allowed. */
     public String rejectionReason(String raw) {
+        String containment = containmentReason(raw);
+        if (containment != null) return containment;
+        if (!Files.isDirectory(Path.of(raw).toAbsolutePath().normalize())) {
+            return "not an existing directory";
+        }
+        return null;
+    }
+
+    /**
+     * Why this path may not be used, judged on where it points alone — or null when it sits
+     * under an allowed root, whether or not it exists yet.
+     *
+     * <p>Split from {@link #rejectionReason} for the folder-watch trigger, which is configured
+     * before the folder it watches is necessarily there: "outside the roots" is a mistake to
+     * refuse, "not created yet" is a state to wait out, and one answer for both would make the
+     * doctor call a flow broken for a folder the person is about to create. A path that does not
+     * exist cannot be resolved through symlinks, so it is judged as written; the moment it exists
+     * the real path is what is checked again, before anything is read.
+     */
+    public String containmentReason(String raw) {
         if (raw == null || raw.isBlank()) return "empty path";
         if (roots.isEmpty()) {
             return "no context roots are configured — set `local.context-roots` to the directories "
@@ -73,8 +93,6 @@ public class ContextFolderResolver {
         } catch (Exception e) {
             return "not a valid path";
         }
-        if (!Files.isDirectory(p)) return "not an existing directory";
-
         Path real = canonical(p);
         for (Path root : roots) {
             if (real.startsWith(root)) return null;

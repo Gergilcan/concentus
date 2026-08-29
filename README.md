@@ -107,13 +107,22 @@ concentus/
   - **Webhook** — an external POST (e.g. a Linear issue/comment) starts a run with the event
     payload as input. Authentication is provider-agnostic: you name the **validation parameter**
     the provider sends its proof in, and paste the **secret** the provider issued (we never mint
-    one). See [Webhook authentication](#webhook-authentication).
+    one). A **Provider** preset on the node — GitHub, GitLab, Linear — fills the parameter in and
+    says where that provider shows its secret; *Custom* is for everything else, and nothing
+    changes on the wire either way. See [Webhook authentication](#webhook-authentication).
   - **Another flow** — the flow only runs when another one calls it, through a *Run another flow*
     node there. The child runs with its own budget and its own permission mode; a flow already
     running further up the chain is refused, and chains stop at three deep.
   - **Mail (IMAP)** — a run starts for each message matching the node's conditions: folder, from,
     subject, body, unread, flagged, has-attachments. The message can then be moved, flagged or
     marked read. See [Mail-triggered flows](#mail-triggered-flows-imap).
+  - **Folder watch** — files appearing or changing in a host folder start a run, with the list of
+    changed paths as the input. The folder must sit under `LOCAL_CONTEXT_ROOTS`, the same
+    allowlist that guards what agents may read; an optional pattern (`*.pdf`) says which files
+    count, and a quiet time (5 s by default) turns a batch dropped together into one run rather
+    than one per file. Polled by listing rather than with the OS watcher, so it works on network
+    shares too; what was last seen is remembered across restarts. There is no Slack
+    slash-command trigger: one needs a public URL to answer on, which this backend does not have.
 - **Executions** are the runs a flow produces (manual, prompt, cron, or webhook), listed with their
   trigger in the bottom panel. Outcomes are colour-coded: green succeeded, red failed, blue running,
   and **grey stopped** — a run you stopped by hand is neither a success nor a failure, so it is
@@ -767,6 +776,11 @@ accepted if its value is **either**:
 
 Notes:
 
+- **Presets** — the node's *Provider* select fills the parameter in for the common cases and says
+  where that provider shows its secret: **GitHub** (`X-Hub-Signature-256`, signed), **GitLab**
+  (`X-Gitlab-Token`, echoed verbatim), **Linear** (`Linear-Signature`, signed — the default).
+  *Custom* is any other header or query parameter. A preset is a convenience for the form only;
+  the rule above is what the backend applies whatever the parameter is called.
 - **Linear** — Settings → API → Webhooks → New webhook. Paste `/api/webhooks/{flowId}` as the URL,
   then copy the **signing secret** Linear shows on the webhook's detail page into the Secret field
   and leave the parameter as `Linear-Signature`.

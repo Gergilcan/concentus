@@ -14,10 +14,52 @@ interface Props {
   set: (patch: Record<string, unknown>) => void
 }
 
+/**
+ * Where the common providers put their proof, and where they show the secret.
+ *
+ * Presets, not code paths: the backend verifies HMAC-or-static-token whatever the parameter is
+ * called, so choosing a provider only fills the parameter name in. It is derived from that name
+ * rather than stored on the node — the wire sees nothing but `authParam`, and a stored "provider"
+ * could quietly disagree with it after someone edits the parameter by hand.
+ */
+const WEBHOOK_PROVIDERS = [
+  {
+    id: 'github',
+    label: 'GitHub',
+    authParam: 'X-Hub-Signature-256',
+    hint: 'Repository → Settings → Webhooks → Add webhook. The "Secret" field there is what you paste below; GitHub signs every delivery with it.',
+  },
+  {
+    id: 'gitlab',
+    label: 'GitLab',
+    authParam: 'X-Gitlab-Token',
+    hint: 'Project → Settings → Webhooks. The "Secret token" field there is sent back verbatim on every delivery.',
+  },
+  {
+    id: 'linear',
+    label: 'Linear',
+    authParam: 'Linear-Signature',
+    hint: "Settings → API → Webhooks → New webhook. Linear shows a signing secret on the webhook's page once it is created.",
+  },
+] as const
+
+type WebhookProvider = (typeof WEBHOOK_PROVIDERS)[number]['id'] | 'custom'
+
+function providerFor(authParam: string | undefined): WebhookProvider {
+  const name = (authParam ?? '').trim().toLowerCase()
+  return WEBHOOK_PROVIDERS.find((p) => p.authParam.toLowerCase() === name)?.id ?? 'custom'
+}
+
 export function InputInspector({ data, set }: Props) {
   const { t } = useTranslation()
   const flowId = useFlowStore((s) => s.flowId)
   const [copied, setCopied] = useState(false)
+  // "Custom" chosen while the parameter still spells a preset: remembered against that value, so
+  // the select does not snap back to the preset until the parameter is actually changed.
+  const [customFor, setCustomFor] = useState<string | null>(null)
+  const provider: WebhookProvider =
+    customFor !== null && customFor === data.authParam ? 'custom' : providerFor(data.authParam)
+  const providerHint = WEBHOOK_PROVIDERS.find((p) => p.id === provider)?.hint
   const [credentials, setCredentials] = useState<Credential[]>([])
 
   // Loaded regardless of mode: the hook must not be conditional, and the list is small.
@@ -53,17 +95,26 @@ export function InputInspector({ data, set }: Props) {
         <option value="cron">{t('Automatic — run on a cron schedule')}</option>
         <option value="webhook">{t('Webhook — start on an external event')}</option>
         <option value="mail">{t('Mail — start when a matching email arrives (IMAP)')}</option>
+        <option value="watch">{t('Folder watch — start when files appear or change in a folder')}</option>
         <option value="subflow">{t('Another flow — this flow runs when another one calls it')}</option>
       </SelectField>
 
       {data.mode !== 'manual' && (
         <TextArea
-          label={data.mode === 'webhook' ? t('Instruction (prepended to the event)') : t('Execution prompt')}
+          label={
+            data.mode === 'webhook'
+              ? t('Instruction (prepended to the event)')
+              : data.mode === 'watch'
+                ? t('Instruction (prepended to the list of changed files)')
+                : t('Execution prompt')
+          }
           rows={4}
           placeholder={
             data.mode === 'webhook'
               ? t('A Linear issue/comment event arrived. Triage it and take the right action.')
-              : t('Build the login page: backend endpoint + React form, wired to the DB.')
+              : data.mode === 'watch'
+                ? t('New PDFs arrived. Extract each invoice and record it in Holded.')
+                : t('Build the login page: backend endpoint + React form, wired to the DB.')
           }
           value={data.prompt}
           onChange={(v) => set({ prompt: v })}
@@ -100,8 +151,73 @@ export function InputInspector({ data, set }: Props) {
         <CronBuilder value={data.cron ?? ''} onChange={(v) => set({ cron: v })} />
       )}
 
+      {data.mode === 'watch' && (
+        <>
+          <Field
+            label={t('Folder to watch')}
+            value={data.watchPath ?? ''}
+            placeholder="C:\drop\incoming · /srv/drop/incoming"
+            onChange={(v) => set({ watchPath: v })}
+          />
+          <p className={styles.hint}>
+            {t('A folder on the machine running Concentus. It must sit under one of the context roots')}{' '}
+            (<code>LOCAL_CONTEXT_ROOTS</code>){' '}
+            {t('— the same allowlist that decides what agents may read. The doctor says so when it does not.')}
+          </p>
+          <Field
+            label={t('Files that count')}
+            value={data.watchGlob ?? ''}
+            placeholder="*.pdf"
+            onChange={(v) => set({ watchGlob: v })}
+          />
+          <p className={styles.hint}>
+            {t('A pattern such as')} <code>*.pdf</code> {t('or')} <code>invoices/*.csv</code>.{' '}
+            {t('Leave blank for every file.')}
+          </p>
+          <Field
+            label={t('Quiet time before a run (seconds)')}
+            type="number"
+            value={data.watchDebounceSeconds ?? 5}
+            onChange={(v) => set({ watchDebounceSeconds: Number(v) || 5 })}
+          />
+          <p className={styles.hint}>
+            {t('Changes are held until the folder has been quiet this long, so a batch of files dropped together becomes one run with the whole list — not one run per file, and not a run on a half-copied file.')}
+          </p>
+          <p className={styles.hint}>
+            {t('The agent receives the folder and the time as')} <i>{t('verified')}</i>{' '}
+            {t('metadata, and the changed paths fenced as untrusted — a file name is text whoever wrote the file chose.')}
+          </p>
+          {!flowId && (
+            <p className={styles.hint}>
+              <b>{t('Save the flow')}</b> {t('to start watching — a trigger only runs for a saved flow.')}
+            </p>
+          )}
+        </>
+      )}
+
       {data.mode === 'webhook' && (
         <>
+          <SelectField
+            label={t('Provider')}
+            value={provider}
+            onChange={(v) => {
+              const preset = WEBHOOK_PROVIDERS.find((p) => p.id === v)
+              if (preset) {
+                setCustomFor(null)
+                set({ authParam: preset.authParam })
+              } else {
+                setCustomFor(data.authParam)
+              }
+            }}
+          >
+            {WEBHOOK_PROVIDERS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+            <option value="custom">{t('Custom')}</option>
+          </SelectField>
+          {providerHint && <p className={styles.hint}>{t(providerHint)}</p>}
           <Field
             label={t('Validation parameter')}
             value={data.authParam}
@@ -316,7 +432,7 @@ export function InputInspector({ data, set }: Props) {
         </>
       )}
 
-      {data.mode !== 'webhook' && data.mode !== 'mail' && (
+      {data.mode !== 'webhook' && data.mode !== 'mail' && data.mode !== 'watch' && (
         <p className={styles.hint}>
           {data.mode === 'manual' && t('The run starts idle — type the first instruction in the console.')}
           {data.mode === 'prompt' && t('Pressing Run auto-sends this prompt as the first turn.')}

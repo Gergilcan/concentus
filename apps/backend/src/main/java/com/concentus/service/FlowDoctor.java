@@ -45,11 +45,14 @@ public class FlowDoctor {
     private final OrgContext orgContext;
     /** Resolves the profile a worker names, to say what it will withhold. */
     private final com.concentus.store.FacadeProfileStore facades;
+    /** The allowlist a watched folder must sit under — the same one agents' context folders obey. */
+    private final ContextFolderResolver contextRoots;
 
     public FlowDoctor(LocalClaudeSupport claude, FlowCompiler compiler, CredentialResolver credentials,
                       McpOAuthStore mcpOAuth, PluginRegistry plugins, RuntimeProbe runtimes,
                       RunStore runStore, VariableStore variables, OrgContext orgContext,
-                      com.concentus.store.FacadeProfileStore facades) {
+                      com.concentus.store.FacadeProfileStore facades,
+                      ContextFolderResolver contextRoots) {
         this.claude = claude;
         this.compiler = compiler;
         this.credentials = credentials;
@@ -60,6 +63,7 @@ public class FlowDoctor {
         this.variables = variables;
         this.orgContext = orgContext;
         this.facades = facades;
+        this.contextRoots = contextRoots;
     }
 
     /** Everything worth knowing before pressing Run. An empty list means "nothing found". */
@@ -314,7 +318,12 @@ public class FlowDoctor {
         for (FlowNode node : flow.nodesOrEmpty()) {
             if (!"input".equals(node.type())) continue;
             Map<String, Object> data = node.dataOrEmpty();
-            if (!"cron".equals(text(data, "mode"))) continue;
+            String mode = text(data, "mode");
+            if ("watch".equals(mode)) {
+                checkWatch(node, data, findings);
+                continue;
+            }
+            if (!"cron".equals(mode)) continue;
             String cron = text(data, "cron");
             if (cron.isBlank()) {
                 findings.add(DoctorFinding.error("trigger", "The schedule is empty.",
@@ -332,6 +341,45 @@ public class FlowDoctor {
         if (!flow.enabledOrDefault()) {
             findings.add(DoctorFinding.warn("trigger", "This flow is paused.",
                     "Scheduled runs are off until it is enabled again; manual runs still work.", null));
+        }
+    }
+
+    /**
+     * A folder-watch trigger that will not watch anything.
+     *
+     * <p>Two different findings for two different situations, and the split is the point: a
+     * folder outside the allowed roots is refused and stays refused until the flow or the
+     * configuration changes, so that is an error. A folder that is not there yet is something the
+     * person is about to create — the watcher starts on its own once it exists — so calling the
+     * flow broken for it would be crying wolf.
+     */
+    private void checkWatch(FlowNode node, Map<String, Object> data, List<DoctorFinding> findings) {
+        String path = text(data, "watchPath");
+        if (path.isBlank()) {
+            findings.add(DoctorFinding.error("trigger", "The watched folder is empty.",
+                    "Set one on the Input node — nothing is watched as it is.", node.id()));
+            return;
+        }
+        String reason = contextRoots.containmentReason(path);
+        if (reason != null) {
+            findings.add(DoctorFinding.error("trigger",
+                    "The watched folder cannot be used: " + reason + ".",
+                    "Point it at a folder under the configured context roots, or add its root to "
+                            + "`local.context-roots`.", node.id()));
+        } else if (!java.nio.file.Files.isDirectory(java.nio.file.Path.of(path))) {
+            findings.add(DoctorFinding.warn("trigger",
+                    "The watched folder does not exist yet (" + path + ").",
+                    "Create it — watching starts on its own once it is there.", node.id()));
+        }
+        String glob = text(data, "watchGlob");
+        if (glob.isBlank()) return;
+        try {
+            java.nio.file.FileSystems.getDefault().getPathMatcher("glob:" + glob);
+        } catch (RuntimeException e) {
+            findings.add(DoctorFinding.error("trigger",
+                    "\"" + glob + "\" is not a valid file pattern, so nothing would ever match.",
+                    "Use a glob such as *.pdf or invoices/*.csv, or leave it blank for every file.",
+                    node.id()));
         }
     }
 

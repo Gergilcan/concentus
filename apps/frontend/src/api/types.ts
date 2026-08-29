@@ -258,8 +258,11 @@ export type GroupNodeData = {
 
 export type InputNodeData = {
   kind: 'input'
-  /** 'subflow' = this flow is started by another flow, never on its own. */
-  mode: 'manual' | 'prompt' | 'cron' | 'webhook' | 'mail' | 'subflow'
+  /**
+   * 'subflow' = this flow is started by another flow, never on its own.
+   * 'watch' = files appearing or changing in a host folder start it.
+   */
+  mode: 'manual' | 'prompt' | 'cron' | 'webhook' | 'mail' | 'subflow' | 'watch'
   /** Shadow: triggered runs plan and stop — watch what a trigger WOULD do before trusting it. */
   shadow?: boolean
   prompt: string
@@ -268,6 +271,17 @@ export type InputNodeData = {
   secret: string
   /** Header (or query param) carrying the signature/token, e.g. `Linear-Signature`. */
   authParam: string
+
+  // --- watch mode (a host folder) ------------------------------------------
+  /**
+   * The folder to watch. Must sit under the deployment's context roots — the same allowlist that
+   * guards what agents may read — which the backend enforces and the doctor reports.
+   */
+  watchPath?: string
+  /** Which files count: a glob such as `*.pdf`; blank means every file. */
+  watchGlob?: string
+  /** Seconds the folder must stay quiet before a batch of changes becomes one run. */
+  watchDebounceSeconds?: number
   /**
    * How much the claude CLI may do without asking, for runs of this flow.
    *

@@ -49,13 +49,15 @@ public class FlowController {
     private final com.concentus.service.FlowGenerator generator;
     private final GoldenStatusService goldenStatus;
     private final com.concentus.service.FlowDoctor flowDoctor;
+    private final com.concentus.service.FolderWatchService folderWatch;
 
     public FlowController(FlowStore store, RunService runService, ScheduleService scheduler,
                           MailTriggerService mailTriggers, FlowVersionStore versions,
                           FlowMemoryStore memory, OrgContext orgContext,
                           com.concentus.service.FlowGenerator generator,
                           GoldenStatusService goldenStatus,
-                          com.concentus.service.FlowDoctor flowDoctor) {
+                          com.concentus.service.FlowDoctor flowDoctor,
+                          com.concentus.service.FolderWatchService folderWatch) {
         this.store = store;
         this.runService = runService;
         this.scheduler = scheduler;
@@ -66,6 +68,7 @@ public class FlowController {
         this.generator = generator;
         this.goldenStatus = goldenStatus;
         this.flowDoctor = flowDoctor;
+        this.folderWatch = folderWatch;
     }
 
     @GetMapping
@@ -241,11 +244,13 @@ public class FlowController {
     }
 
     /**
-     * Both schedulers, after any write: they pick up new, changed and removed cron and mail
-     * triggers — including a flow that was merely paused, which is a schedule change too.
+     * Every scheduler, after any write: they pick up new, changed and removed cron, mail and
+     * folder-watch triggers — including a flow that was merely paused, which is a schedule
+     * change too.
      */
     private void rescheduleTriggers() {
         scheduler.reschedule();
         mailTriggers.reschedule();
+        folderWatch.reschedule();
     }
 }
