@@ -19,6 +19,7 @@ const TRIGGER_LABEL: Record<string, string> = {
   webhook: '⚡ hook',
   mail: '✉ mail',
   golden: '⭐ golden',
+  eval: '✓ eval',
 }
 
 interface Props {

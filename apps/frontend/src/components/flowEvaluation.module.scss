@@ -1,0 +1,283 @@
+@use '../styles/theme' as t;
+
+/* The Evaluations dialog: a flow's cases above, its scores below. Laid out like the Versions
+   list it sits next to — one look for the two halves of "did this edit make it better". */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.hint {
+  margin: 0;
+  color: t.$muted;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.h4 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$muted;
+}
+
+.empty {
+  color: t.$muted;
+  font-size: 12px;
+}
+
+.list,
+.caseList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px 9px;
+  border: 1px solid t.$border;
+  border-radius: 8px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.name {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The judge, as a small monospace tag: it is a rule, not a word. */
+.chip {
+  font-family: monospace;
+  font-size: 10px;
+  color: t.$muted;
+  border: 1px solid t.$border;
+  border-radius: 5px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.expected {
+  flex: 2 1 160px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: t.$muted;
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid t.$border;
+  border-radius: 8px;
+  background: t.$panel-2;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+
+  span {
+    color: t.$muted;
+  }
+
+  input,
+  select,
+  textarea {
+    background: t.$bg;
+    border: 1px solid t.$border;
+    color: t.$text;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font: inherit;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+}
+
+.formActions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.ghost {
+  background: t.$panel;
+  border: 1px solid t.$border;
+  color: t.$text;
+  border-radius: t.$radius;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: t.$accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.primary {
+  background: t.$accent;
+  border: 1px solid t.$accent;
+  color: t.$on-accent;
+  border-radius: t.$radius;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+/* "v7 8/10 → v8 10/10": the one line the dialog exists for, set larger than everything under it. */
+.headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: 8px 10px;
+  border: 1px solid t.$border;
+  border-radius: 8px;
+  background: t.$panel-2;
+  font-size: 15px;
+}
+
+.headlineLabel {
+  font-size: 11px;
+  color: t.$muted;
+  margin-right: var(--sp-2);
+}
+
+.headlineScore {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.arrow {
+  color: t.$muted;
+  margin: 0 6px;
+}
+
+.num {
+  font-family: monospace;
+  color: t.$accent;
+  flex: 0 0 auto;
+}
+
+.score {
+  font-family: monospace;
+  font-weight: 600;
+}
+
+.allPassed {
+  color: t.$ok;
+}
+
+.someFailed {
+  color: t.$danger;
+}
+
+.running {
+  font-size: 11px;
+  color: t.$warn;
+}
+
+.time {
+  margin-left: auto;
+  color: t.$muted;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.toggle {
+  background: transparent;
+  border: none;
+  color: t.$muted;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 12px;
+
+  &:hover {
+    color: t.$text;
+  }
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.caseList {
+  padding-left: 18px;
+}
+
+.caseRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: 4px 8px;
+  font-size: 12px;
+  flex-wrap: wrap;
+  border-left: 2px solid t.$border;
+}
+
+.pass {
+  color: t.$ok;
+  flex: 0 0 auto;
+}
+
+.fail {
+  color: t.$danger;
+  flex: 0 0 auto;
+}
+
+/* The judge's reason, verbatim. It may be long; it is the part worth reading. */
+.why {
+  flex: 3 1 200px;
+  min-width: 0;
+  color: t.$muted;
+  overflow-wrap: anywhere;
+}

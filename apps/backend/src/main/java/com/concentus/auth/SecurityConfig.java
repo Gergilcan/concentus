@@ -204,7 +204,10 @@ public class SecurityConfig {
                             "/api/flows/*/run", "/api/runs", "/api/runs/*/commands",
                             "/api/runs/*/approve", "/api/runs/*/reject", "/api/runs/*/stop",
                             "/api/runs/*/retry", "/api/runs/*/nodes/*/rerun",
-                            "/api/runs/*/golden", "/api/runs/*/golden/rerun")
+                            "/api/runs/*/golden", "/api/runs/*/golden/rerun",
+                            // Running an evaluation is running the flow, once per case. Editing
+                            // its cases changes what "right" means, and stays a write below.
+                            "/api/flows/*/evals/run")
                             .hasAnyRole(Accounts.ROLE_OPERATOR, Accounts.ROLE_MEMBER, Accounts.ROLE_ADMIN)
                     // Everything left changes what the work IS — flows, agents, servers,
                     // credentials, knowledge. Denied by default rather than listed: a route added

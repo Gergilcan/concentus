@@ -1372,6 +1372,63 @@ export interface EvalRun {
   results: EvalCaseResult[]
 }
 
+// --- Flow evaluations -------------------------------------------------------
+
+/**
+ * How a case decides. Three are free string checks; `llm` asks a model whether the answer
+ * satisfies the expectation — the only judge that can grade meaning, and the only one that costs
+ * a model call per case on top of the run itself.
+ */
+export type FlowEvalJudge = 'contains' | 'regex' | 'exact' | 'llm'
+
+/** One case of a flow's dataset: what to run the flow with, and how to tell whether the answer is right. */
+export interface FlowEvalCase {
+  id: string
+  flowId: string
+  name: string
+  input: string
+  expected: string
+  judge: FlowEvalJudge
+  createdAt: number
+}
+
+/** What the form sends: the server owns the flow id and the creation time. */
+export interface FlowEvalCaseInput {
+  id?: string
+  name: string
+  input: string
+  expected: string
+  judge: FlowEvalJudge
+}
+
+/** One case in one evaluation. `runId` is null when no run could be started; `why` says so. */
+export interface FlowEvalCaseResult {
+  caseId: string
+  name: string
+  runId: string | null
+  passed: boolean
+  why: string
+  /** An excerpt of the run's final answer; the whole answer is on the run. */
+  output?: string | null
+}
+
+/**
+ * One evaluation of a flow: every case run against one revision and judged. `cases` grows while
+ * it is `running`; `flowVersion` is the headline, because a score is only worth something next to
+ * the one from the previous version.
+ */
+export interface FlowEvalResult {
+  id: string
+  flowId: string
+  flowVersion: number
+  startedAt: number
+  finishedAt?: number | null
+  status: 'running' | 'done'
+  cases: FlowEvalCaseResult[]
+  passed: number
+  total: number
+}
+
 /** The cross-encoder that reorders results by reading the question and the passage together. */
 export interface RerankerStatus {
   state: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'READY' | 'ERROR'
