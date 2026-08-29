@@ -96,6 +96,31 @@ class LicenseServiceTest {
     // nothing else, so proving those two here is proving every gate.
 
     @Test
+    void enterpriseFeatures_areEnterpriseOnly_andTheRefusalNamesTheTier(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("license.key"), TestLicenses.token("team-test.license"));
+        LicenseService team = new LicenseService(TestLicenses.verifier(), dir, "", at("2026-08-22"));
+        assertTrue(team.teamTier());
+        assertFalse(team.enterpriseTier());
+        assertFalse(team.allows(Feature.ORG_POLICIES));
+        assertTrue(team.refusal(Feature.ORG_POLICIES).contains("Organization policies is an Enterprise feature"));
+        assertTrue(team.refusal(Feature.ORG_POLICIES).contains("upgrade"));
+
+        Files.writeString(dir.resolve("license.key"), TestLicenses.token("enterprise-test.license"));
+        LicenseService enterprise = new LicenseService(TestLicenses.verifier(), dir, "", at("2026-08-22"));
+        assertTrue(enterprise.enterpriseTier());
+        assertFalse(enterprise.teamTier());
+        assertTrue(enterprise.allows(Feature.ORG_POLICIES));
+        assertNull(enterprise.refusal(Feature.ORG_POLICIES));
+
+        // A free installation is one person on their own machine: no cap applies, no feature either.
+        Files.deleteIfExists(dir.resolve("license.key"));
+        LicenseService free = new LicenseService(TestLicenses.verifier(), dir, "", at("2026-08-22"));
+        assertFalse(free.teamTier());
+        assertFalse(free.allows(Feature.AUDIT_EXPORT));
+        assertTrue(free.refusal(Feature.AUDIT_EXPORT).contains("Install an enterprise license"));
+    }
+
+    @Test
     void teamLicense_unlocksTheSameGatesAsEnterprise(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("license.key"), TestLicenses.token("team-test.license"));
         LicenseService s = new LicenseService(TestLicenses.verifier(), dir, "", at("2026-08-22"));

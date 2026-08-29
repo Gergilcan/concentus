@@ -122,6 +122,42 @@ public class LicenseService {
     }
 
     /**
+     * Whether the active license is the Enterprise tier — the one that carries the features in
+     * {@link Feature}. A team license is a paid license and unlocks everything
+     * {@link #enterpriseActive()} guards; it does not carry these.
+     */
+    public boolean enterpriseTier() {
+        License license = loaded.license;
+        return enterpriseActive() && license != null && License.TIER_ENTERPRISE.equalsIgnoreCase(license.tier());
+    }
+
+    /**
+     * Whether a Team-or-higher deployment is in force: the caps in {@link Feature} (retention,
+     * service accounts, endpoint rate) apply exactly here — a paid license that is NOT Enterprise.
+     * A free installation is one person on their own machine and is never capped.
+     */
+    public boolean teamTier() {
+        return enterpriseActive() && !enterpriseTier();
+    }
+
+    /** The one question every Enterprise gate asks. */
+    public boolean allows(Feature feature) {
+        return enterpriseTier();
+    }
+
+    /**
+     * Why a feature is refused, in words for the panel or an API error: names the feature and
+     * the tier that has it. Null when it is allowed.
+     */
+    public String refusal(Feature feature) {
+        if (allows(feature)) return null;
+        return feature.label + " is an Enterprise feature"
+                + (teamTier() ? " — the Team license covers everything a team of up to ten needs to work "
+                        + "together; this is one of the things an organization asks for. Write in to upgrade."
+                        : ". Install an enterprise license to use it.");
+    }
+
+    /**
      * How many seats this installation may use. Never null and never "unlimited": no license, an
      * unverifiable one, an individual license, or a paid one past its grace window all mean exactly
      * one — a single-user installation is always allowed to keep working.
