@@ -1545,5 +1545,10 @@
   "Pink": "Rosa",
   "What the next person reading this flow should know.": "Lo que debería saber la próxima persona que lea este flow.",
   "Notes are for people. The run never reads them, and the pre-run check never mentions them.": "Las notas son para personas. La ejecución nunca las lee y la revisión previa nunca las menciona.",
-  "Drop blocks inside the frame and they move with it; drag a block out to release it. Select the frame to resize it from its corners. Deleting the frame keeps the blocks.": "Suelta bloques dentro del marco y se mueven con él; arrastra un bloque fuera para soltarlo. Selecciona el marco para cambiar su tamaño desde las esquinas. Borrar el marco conserva los bloques."
+  "Drop blocks inside the frame and they move with it; drag a block out to release it. Select the frame to resize it from its corners. Deleting the frame keeps the blocks.": "Suelta bloques dentro del marco y se mueven con él; arrastra un bloque fuera para soltarlo. Selecciona el marco para cambiar su tamaño desde las esquinas. Borrar el marco conserva los bloques.",
+  "Blocks": "Bloques",
+  "Go to block: {{name}} ({{kind}})": "Ir al bloque: {{name}} ({{kind}})",
+  "Minimap": "Minimapa",
+  "Show the minimap": "Mostrar el minimapa",
+  "Hide the minimap": "Ocultar el minimapa"
 }

@@ -9,7 +9,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { AppHeader, NAV, type View } from './components/AppHeader.tsx'
 import { CommandPalette } from './components/CommandPalette.tsx'
-import { type Command } from './components/commandPalette.ts'
+import { blockCommands, type Command } from './components/commandPalette.ts'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { timeAgo } from './components/flowFormat.ts'
 import { FlowsPage } from './components/FlowsPage.tsx'
@@ -211,6 +211,7 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
   const [commandsOpen, setCommandsOpen] = useState(false)
   // The executions panel sits under the flow being edited, so it shows that flow's runs only.
   const openFlowId = useFlowStore((s) => s.flowId)
+  const requestFocus = useFlowStore((s) => s.requestFocus)
   const [toast, setToast] = useState<string | null>(null)
   // Every Studio panel folds away: on a laptop the canvas is the work and the chrome is the tax.
   const [paletteOpen, togglePalette] = usePanelOpen('studio.palette')
@@ -261,10 +262,15 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
 
   /**
    * What the palette can reach. Ordered by how often it is what someone wants: where to go, then
-   * their flows, then the runs they might be looking for, then the theme.
+   * the blocks of the flow they have open, then their flows, then the runs they might be looking
+   * for, then the theme.
    *
    * Runs are capped: the palette is for reaching things by name, and a thousand rows of
    * near-identical run ids is a list nobody scrolls.
+   *
+   * The blocks are read from the store as the palette OPENS rather than subscribed to: every
+   * drag on the canvas rewrites the nodes array, and a subscription here would re-render the
+   * whole workspace on each pixel of it for a list nobody can see until they press Ctrl+K.
    */
   const commands = useMemo<Command[]>(() => {
     const out: Command[] = NAV.map((nav) => ({
@@ -273,6 +279,16 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
       label: nav.label,
       run: () => setView(nav.id),
     }))
+    if (commandsOpen) {
+      out.push(
+        ...blockCommands(useFlowStore.getState().nodes, t, (id) => {
+          // The canvas answers the request once it is on screen; from the dashboard that is a
+          // view switch away.
+          setView('studio')
+          requestFocus(id)
+        }),
+      )
+    }
     for (const flow of flows) {
       if (!flow.id) continue
       const id = flow.id
@@ -308,7 +324,7 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
       })
     }
     return out
-  }, [flows, runs, openFlow, runFlow, openRun, setView, t])
+  }, [flows, runs, openFlow, runFlow, openRun, setView, t, commandsOpen, requestFocus])
 
   function renderView(): ReactNode {
     switch (view) {

@@ -133,7 +133,10 @@ concentus/
   snaps it to its neighbours' edges and centres with Figma-style alignment guides. Wires are
   tinted by the output they leave from — the on-error path is red and dashed, the else path amber —
   so the failure path reads at a distance, not only at the handle. A focused block opens with
-  `Enter`.
+  `Enter`. `Ctrl/⌘+K` lists every block of the open flow as **Go to block: name (kind)** and
+  centres the canvas on the one you pick; a theme-coloured **minimap** sits in the corner, toggled
+  from the ▦ button next to the zoom controls (on by default on windows 900px and wider, and your
+  choice is remembered).
 - **Run** — how a flow executes depends on your credential:
   - **Local (subscription):** the `claude` CLI runs the coordinator + sub-agents (mapped to Claude
     Code subagents via `--agents`/`.claude/agents`) on your machine. Each command is a turn in the

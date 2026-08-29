@@ -1,6 +1,6 @@
-// Values that used to be duplicated across node/inspector components and the
-// canvas store. Node color hexes mirror `styles/_theme.scss` ($agent/$mcp/$repo/$sql) —
-// keep the two in sync if either changes.
+// Values that used to be duplicated across node/inspector components and the canvas store.
+// Colours are NOT here: the node cards and the minimap both read the theme tokens in
+// `styles/global.scss`, so there is no second table to keep in step with them.
 
 /** Default model assigned to a freshly-created agent node. */
 export const DEFAULT_MODEL = 'claude-opus-4-8'
@@ -40,21 +40,6 @@ export const EFFORT_OPTIONS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 
 /** Default max-output-tokens for a freshly-created agent node. */
 export const DEFAULT_MAX_TOKENS = 16000
-
-/** Node-kind accent colors, used for the minimap and node left-borders. */
-export const NODE_COLORS: Record<string, string> = {
-  agent: '#6ea8fe',
-  coordinator: '#b98cff',
-  mcp: '#63e6be',
-  repo: '#ffd43b',
-  sql: '#ff922b',
-  knowledge: '#b98cff',
-  api: '#e64980',
-  input: '#51cf66',
-  merge: '#ffa94d',
-  verifier: '#94d82d',
-  default: '#888',
-}
 
 /** Poll intervals (ms) used by the run console / auth badge. */
 export const RUN_POLL_INTERVAL_MS = 1500

@@ -449,6 +449,15 @@ interface FlowState {
   selectNode: (id: string | null) => void
   openNodeDetails: () => void
   closeNodeDetails: () => void
+  /**
+   * A block the canvas should bring into view. Set by the command palette, which has no React
+   * Flow instance and should not need one; the canvas answers it — centring the viewport on the
+   * block — and clears it. Held here so a request made while the Studio is not on screen is
+   * answered the moment it is.
+   */
+  focusNodeId: string | null
+  requestFocus: (id: string) => void
+  clearFocus: () => void
 
   // Copy / paste / duplicate of canvas blocks.
   clipboard: Clipboard | null
@@ -777,6 +786,16 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   },
 
   selectNode: (id) => set({ selectedId: id }),
+  focusNodeId: null,
+  requestFocus: (id) =>
+    set((s) => ({
+      focusNodeId: id,
+      selectedId: id,
+      // Selected on the canvas too, not only inspected: the ring is how the eye finds the block
+      // the viewport just travelled to.
+      nodes: s.nodes.map((n) => (n.selected !== (n.id === id) ? { ...n, selected: n.id === id } : n)),
+    })),
+  clearFocus: () => set({ focusNodeId: null }),
   openNodeDetails: () => set({ detailsOpen: true }),
   closeNodeDetails: () => set({ detailsOpen: false }),
   setName: (name) => set({ name }),
@@ -794,6 +813,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       nodes: [],
       edges: [],
       selectedId: null,
+      focusNodeId: null,
       previewVersion: null,
       // A new drawing starts a new history: undoing across flows would resurrect the wrong one.
       past: [],
@@ -865,6 +885,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         sourceHandle: e.sourceHandle ?? null,
       })),
       selectedId: null,
+      focusNodeId: null,
       // Any load lands on the saved flow unless the caller says otherwise; Preview re-sets this
       // right after. Clearing it here means no path can leave the banner claiming a revision the
       // canvas no longer shows.

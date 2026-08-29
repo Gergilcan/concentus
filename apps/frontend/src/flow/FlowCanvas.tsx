@@ -1,6 +1,7 @@
 import {
   Background,
   BackgroundVariant,
+  ControlButton,
   Controls,
   type Edge,
   type EdgeTypes,
@@ -13,9 +14,8 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './canvas-overrides.css'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { NODE_COLORS } from '../constants.ts'
 import type { NodeKind } from '../api/types.ts'
 import { NODE_DRAG_TYPE } from '../components/Palette.tsx'
 import { type AppNode, useFlowStore } from '../state/store.ts'
@@ -23,14 +23,8 @@ import { cx } from '../utils/cx.ts'
 import { DeletableEdge } from './DeletableEdge.tsx'
 import { applyHelperLines, type HelperLines, NO_LINES } from './helperLines.ts'
 import { edgeKinClass, kinClass, kinship } from './kinship.ts'
+import { initialMinimap, minimapColor, persistMinimap } from './minimap.ts'
 import { nodeTypes } from './nodeTypes.ts'
-
-// Minimap swatch per node kind, read straight from the shared table. The if-chain this replaces
-// made adding a node kind a two-file edit and ignored entries the table already had — 'knowledge'
-// nodes were grey on the minimap for no reason anyone chose.
-function nodeColor(type = 'default'): string {
-  return NODE_COLORS[type] ?? NODE_COLORS.default
-}
 
 const edgeTypes: EdgeTypes = { deletable: DeletableEdge }
 
@@ -157,6 +151,34 @@ export function FlowCanvas() {
   const duplicateSelection = useFlowStore((s) => s.duplicateSelection)
   const settleDrop = useFlowStore((s) => s.settleDrop)
 
+  // The map's on/off is the user's, remembered; the window width only decides the first time.
+  const [minimap, setMinimap] = useState(() => initialMinimap())
+  const toggleMinimap = () =>
+    setMinimap((on) => {
+      persistMinimap(!on)
+      return !on
+    })
+
+  // The command palette's "Go to block": it asks through the store, and the canvas answers when
+  // it has an instance to answer with — which may be a moment after mounting, if the palette
+  // also switched the view to the Studio. fitView rather than setCenter because it reads the
+  // node's absolute place, frames included, and a cap at 1:1 keeps one block from filling the
+  // screen the way an uncapped fit would.
+  const focusNodeId = useFlowStore((s) => s.focusNodeId)
+  const clearFocus = useFlowStore((s) => s.clearFocus)
+  const answerFocus = useCallback(
+    (id: string) => {
+      const instance = rf.current
+      if (!instance) return
+      void instance.fitView({ nodes: [{ id }], duration: 300, maxZoom: 1, padding: 2 })
+      clearFocus()
+    },
+    [clearFocus],
+  )
+  useEffect(() => {
+    if (focusNodeId) answerFocus(focusNodeId)
+  }, [focusNodeId, answerFocus])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Enter on a focused node opens its properties — the canvas is Tab-navigable, and a block
@@ -267,7 +289,11 @@ export function FlowCanvas() {
       onPaneClick={() => selectNode(null)}
       // The instance is captured here rather than through useReactFlow(), which would need this
       // component split around a ReactFlowProvider to be inside its own context.
-      onInit={(instance) => (rf.current = instance)}
+      onInit={(instance) => {
+        rf.current = instance
+        const pending = useFlowStore.getState().focusNodeId
+        if (pending) answerFocus(pending)
+      }}
       onDragOver={(e) => {
         if (!e.dataTransfer.types.includes(NODE_DRAG_TYPE)) return
         // Both required: without preventDefault the browser refuses the drop outright, and
@@ -299,10 +325,26 @@ export function FlowCanvas() {
       defaultEdgeOptions={{ type: 'deletable', animated: true }}
     >
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
-      {/* A minimap over a graph you can already see whole navigates nothing, and it takes a
-          200x150 bite out of the canvas to do it. It arrives when the graph outgrows the screen. */}
-      {allNodes.length > 8 && <MiniMap pannable zoomable nodeColor={(n) => nodeColor(n.type)} />}
-      <Controls />
+      {/* Painted in the theme's own tokens — the swatch a node gets is the colour its card wears
+          on its left border, so the map is the drawing at a distance, not a legend to learn. */}
+      {minimap && (
+        <MiniMap
+          pannable
+          zoomable
+          nodeColor={(n) => minimapColor(n.type)}
+          ariaLabel={t('Minimap')}
+        />
+      )}
+      <Controls>
+        <ControlButton
+          onClick={toggleMinimap}
+          title={minimap ? t('Hide the minimap') : t('Show the minimap')}
+          aria-label={minimap ? t('Hide the minimap') : t('Show the minimap')}
+          aria-pressed={minimap}
+        >
+          ▦
+        </ControlButton>
+      </Controls>
       {/* Alignment guides, drawn in flow coordinates so they pan and zoom with the drawing. */}
       <ViewportPortal>
         {helperLines.vertical !== null && (

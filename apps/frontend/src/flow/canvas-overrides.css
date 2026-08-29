@@ -163,6 +163,25 @@
   cursor: pointer;
 }
 
+/*
+ * The minimap in the app's own theme. React Flow's colorMode switch only knows its two greys;
+ * the panel token, the border and a mask cut from the page's ground make it part of the chrome
+ * in all three themes rather than a grey card floating over them.
+ */
+.react-flow__minimap {
+  --xy-minimap-background-color: var(--panel);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--bg) 60%, transparent);
+  --xy-minimap-mask-stroke-color: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* The map toggle: on, it wears the accent so the button says which state it is in. */
+.react-flow__controls-button[aria-pressed='true'] {
+  color: var(--accent);
+}
+
 /* Alignment guides while dragging. 100000px long and centred by the -50000px translate, so the
    line covers any drawing without measuring it. */
 .helper-line {
