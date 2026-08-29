@@ -38,8 +38,10 @@ public record WorkPlan(String goal, List<WorkItem> items) {
      * @param profile        facade profile by NAME (as shown to the planner); resolved to
      *                       {@link #profileId} server-side
      * @param profileId      resolved profile id — filled by the server, never trusted from input
-     * @param dependsOn      not supported yet; must be empty. Present in the shape so a planner
-     *                       that sends it gets a real answer instead of silent parallelism
+     * @param dependsOn      ids of the items this one waits for. It starts when they have all
+     *                       finished and receives their reports at the end of its prompt; a
+     *                       dependency that failed fails it without a launch. Every id must
+     *                       name another item, and the graph must not loop
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record WorkItem(String id, String title, String prompt, List<String> context,
@@ -61,6 +63,16 @@ public record WorkPlan(String goal, List<WorkItem> items) {
 
         public List<String> contextFoldersOrEmpty() {
             return contextFolders == null ? List.of() : contextFolders;
+        }
+
+        /** The ids this item waits for, trimmed; blanks dropped. */
+        public List<String> dependsOnOrEmpty() {
+            if (dependsOn == null) return List.of();
+            List<String> out = new ArrayList<>();
+            for (String d : dependsOn) {
+                if (d != null && !d.isBlank()) out.add(d.trim());
+            }
+            return out;
         }
 
         /** A copy with the server-resolved profile id. */
@@ -105,23 +117,82 @@ public record WorkPlan(String goal, List<WorkItem> items) {
             if (item.prompt() == null || item.prompt().isBlank()) {
                 out.add("Item '" + id + "' has no prompt — a worker with no instruction does nothing.");
             }
-            if (item.dependsOn() != null && !item.dependsOn().isEmpty()) {
-                out.add("Item '" + id + "' declares dependsOn, which is not supported yet: items "
-                        + "run in parallel. Fold dependent steps into one item, or leave the "
-                        + "second step to the merge.");
+            for (String dep : item.dependsOnOrEmpty()) {
+                if (dep.equals(id)) {
+                    out.add("Item '" + id + "' depends on itself.");
+                } else if (list.stream().noneMatch(o -> o.id() != null && o.id().trim().equals(dep))) {
+                    out.add("Item '" + id + "' depends on '" + dep + "', which is not an item of this plan.");
+                }
             }
+        }
+        for (String cycle : cycles(list)) {
+            out.add("These items wait for each other in a loop, so none of them could ever start: "
+                    + cycle + ". Break the loop.");
+        }
+        // Two items may touch one file only when they cannot run at the same time — one waits
+        // for the other, directly or through others. Everything else is a parallel write.
+        for (WorkItem item : list) {
+            String id = item.id() == null ? "" : item.id().trim();
+            if (id.isEmpty()) continue;
             for (String file : item.filesOrEmpty()) {
                 if (file == null || file.isBlank()) continue;
                 // Normalized so "src\A.java" and "src/A.java" collide as they would on disk.
                 String key = file.trim().replace('\\', '/').toLowerCase(Locale.ROOT);
                 String owner = fileOwner.putIfAbsent(key, id);
-                if (owner != null && !owner.equals(id)) {
+                if (owner != null && !owner.equals(id) && !ordered(list, owner, id)) {
                     out.add("Items '" + owner + "' and '" + id + "' both declare the file '"
                             + file.trim() + "'. No two parallel items may touch the same file — "
-                            + "repartition the work.");
+                            + "repartition the work, or make one depend on the other.");
                 }
             }
         }
         return out;
+    }
+
+    /** Whether one of the two items waits for the other, directly or through others. */
+    private static boolean ordered(List<WorkItem> items, String a, String b) {
+        return reaches(items, a, b, new java.util.HashSet<>()) || reaches(items, b, a, new java.util.HashSet<>());
+    }
+
+    private static boolean reaches(List<WorkItem> items, String from, String to, java.util.Set<String> seen) {
+        if (!seen.add(from)) return false;
+        for (WorkItem item : items) {
+            if (item.id() == null || !item.id().trim().equals(from)) continue;
+            for (String dep : item.dependsOnOrEmpty()) {
+                if (dep.equals(to) || reaches(items, dep, to, seen)) return true;
+            }
+        }
+        return false;
+    }
+
+    /** Every dependency loop, each named once by the ids on it. */
+    private static List<String> cycles(List<WorkItem> items) {
+        List<String> out = new ArrayList<>();
+        java.util.Set<String> reported = new java.util.HashSet<>();
+        for (WorkItem item : items) {
+            String id = item.id() == null ? "" : item.id().trim();
+            if (id.isEmpty() || reported.contains(id)) continue;
+            List<String> path = new ArrayList<>();
+            if (loopFrom(items, id, id, path, new java.util.HashSet<>())) {
+                reported.addAll(path);
+                out.add(String.join(" → ", path) + " → " + id);
+            }
+        }
+        return out;
+    }
+
+    private static boolean loopFrom(List<WorkItem> items, String start, String at,
+                                    List<String> path, java.util.Set<String> seen) {
+        if (!seen.add(at)) return false;
+        path.add(at);
+        for (WorkItem item : items) {
+            if (item.id() == null || !item.id().trim().equals(at)) continue;
+            for (String dep : item.dependsOnOrEmpty()) {
+                if (dep.equals(start)) return true;
+                if (loopFrom(items, start, dep, path, seen)) return true;
+            }
+        }
+        path.remove(path.size() - 1);
+        return false;
     }
 }

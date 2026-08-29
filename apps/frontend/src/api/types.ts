@@ -367,8 +367,9 @@ export type AgentNodeData = {
    *
    * Empty/absent = Claude Code subagents inside one CLI session (the behaviour every flow had
    * before this existed). `fanout` = one independent `claude` process per sub-agent: own
-   * workspace, own instructions, own model, true parallelism — and, for now, no MCP servers and
-   * no repository clones inside workers (the run console says so on every fan-out turn).
+   * workspace, own instructions, own model, true parallelism. Repositories wired to a worker are cloned into its
+   * workspace; its changes reach the merge step as patches, and the merge commits and opens the
+   * pull request.
    */
   execution?: 'subagents' | 'fanout' | ''
   /**

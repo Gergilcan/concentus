@@ -116,6 +116,15 @@ public class AgentRun {
      */
     public final java.util.Set<String> workersPrepared = ConcurrentHashMap.newKeySet();
     /**
+     * Each worker's own clones, by node id — and the merge step's under its id. Per worker
+     * because two workers editing one working tree at the same time is the corruption the
+     * plan's file rule exists to prevent, and a clone each makes the rule unnecessary.
+     */
+    public final Map<String, java.util.List<com.concentus.git.GitWorkspace.Checkout>> workerCheckouts =
+            new ConcurrentHashMap<>();
+    /** What each worker changed in each of its clones, as patches: worker node id → folder → patch. */
+    public final Map<String, Map<String, String>> workerPatches = new ConcurrentHashMap<>();
+    /**
      * Each worker's facade profile, frozen when its workspace is prepared. Frozen like
      * {@link #permissionMode}: editing a profile mid-run must not widen what an already-running
      * worker may do — the next run picks the edit up.

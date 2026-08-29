@@ -55,7 +55,8 @@ class FanoutExecutorTest {
         return new FanoutExecutor(new LocalClaudeSupport("claude"),
                 new RagContextInjector(null, null, new ContextAssembler(12000), null), new PreRunSubflows(null), new ContextFolderResolver(""),
                 new com.fasterxml.jackson.databind.ObjectMapper(), profiles, null, null, null,
-                dataDir.toString(), "bypassPermissions", 8734, 4, timeoutSeconds, retries, starter);
+                dataDir.toString(), "bypassPermissions", 8734, 4, timeoutSeconds, retries,
+                new com.concentus.git.GitWorkspace(null, false, 1, 0), starter);
     }
 
     private static AgentSpec spec(String nodeId, String name, String cliName, String prompt) {

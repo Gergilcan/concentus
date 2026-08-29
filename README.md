@@ -292,9 +292,24 @@ restart.
   workers ran and failed, how much retrying propped the run up, the verifier's kill rate, and
   the wall-clock versus sequential time — the parallelism the fan-out actually bought.
 
-Two current limits, said where you can plan around them: repository nodes are **not cloned into
-workers** yet (a flow that pushes code stays on subagents execution), and workers run against
-your Claude login — pointing them at a local model gateway is future work.
+**Repositories in workers.** A repository node wired to a worker is cloned into that worker's own
+workspace — one clone per worker, so two workers can never write one working tree at the same
+time. Workers have no shell, so they edit files and cannot commit: when a worker finishes,
+Concentus takes everything it changed in each checkout as a patch and hands the patches to the
+merge step, which has its own fresh clones and a shell. The merge applies them (`git apply
+--3way`), runs the checks, and commits, pushes on a branch and opens the pull request — exactly
+the hand-back the shared session performs, done once and after verification instead of N times
+unverified. Plan-born workers get every repository on the canvas.
+
+**Items that wait for others.** A plan item may list `dependsOn`: it starts once those items have
+finished and receives their reports appended to its prompt; a dependency that failed fails it
+without a launch, and the box says which. The plan check refuses unknown ids and loops, and two
+items ordered this way may declare the same file — the rule against shared files exists to stop
+concurrent writes, and ordered steps never write concurrently. The planner is told to prefer
+parallel items and to reach for `dependsOn` only when a step genuinely needs another's result.
+
+One current limit, said where you can plan around it: workers run against your Claude login —
+pointing them at a local model gateway is future work.
 
 ## Install
 

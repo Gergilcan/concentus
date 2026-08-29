@@ -90,8 +90,10 @@ public class PlanToolsController {
         t.put("description", "Submit the fan-out plan: the independent work items Concentus "
                 + "will run as parallel worker processes. Call it exactly once, when your plan "
                 + "is complete. A rejected plan returns every problem at once — fix them all and "
-                + "resubmit. At most " + maxItems + " items; no two items may declare the same "
-                + "file; dependsOn is not supported (items run in parallel).");
+                + "resubmit. At most " + maxItems + " items; no two PARALLEL items may declare "
+                + "the same file. Items run in parallel unless an item lists dependsOn: it then "
+                + "starts once those items finished and receives their reports at the end of its "
+                + "prompt; a failed dependency fails it without a launch.");
         t.set("inputSchema", planSchema());
         return result;
     }
@@ -119,8 +121,15 @@ public class PlanToolsController {
                         + "project context.")
                 .putObject("items").put("type", "string");
         ip.putObject("files").put("type", "array")
-                .put("description", "Paths this item will touch. Two items declaring the same "
-                        + "file reject the whole plan.")
+                .put("description", "Paths this item will touch. Two parallel items declaring "
+                        + "the same file reject the whole plan; items ordered by dependsOn may "
+                        + "share one.")
+                .putObject("items").put("type", "string");
+        ip.putObject("dependsOn").put("type", "array")
+                .put("description", "Ids of items this one must wait for. It starts when they "
+                        + "have all finished and gets their reports appended to its prompt. "
+                        + "Prefer no dependencies; use this only when a step genuinely needs "
+                        + "another's result. No loops.")
                 .putObject("items").put("type", "string");
         ip.putObject("contextFolders").put("type", "array")
                 .put("description", "Host folders this worker should read (must be inside the "

@@ -141,13 +141,6 @@ public class FlowDoctor {
                     verifier.nodeId));
         }
 
-        if (!compiled.allRepos().isEmpty()) {
-            findings.add(DoctorFinding.warn("fanout",
-                    "Repository nodes are not cloned into independent workers yet, so this flow's "
-                            + compiled.allRepos().size() + " repository node(s) do nothing here.",
-                    "A flow that must read or push code belongs on subagents execution for now.",
-                    null));
-        }
     }
 
     /** Whether this worker's profile leaves it able to reach the servers drawn onto its node. */

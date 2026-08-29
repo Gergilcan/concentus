@@ -63,12 +63,23 @@ public class FanoutExecutor {
     /** Seam for tests: spawning is the one thing a unit test cannot do for real. */
     interface ProcessStarter {
         Process start(List<String> args, Path workdir) throws IOException;
+
+        /**
+         * With extra environment — the push credentials of the process's checkouts. Default so
+         * the fake starters in tests, which have no repositories, stay two-argument lambdas.
+         */
+        default Process start(List<String> args, Path workdir, java.util.Map<String, String> env)
+                throws IOException {
+            return start(args, workdir);
+        }
     }
 
     private final LocalClaudeSupport support;
     private final RagContextInjector ragInjector;
     /** Flows wired INTO an agent, run before it — the same rule the shared-session path follows. */
     private final PreRunSubflows preRunSubflows;
+    /** Clones a worker's repositories into its workspace and takes its changes back out as patches. */
+    private final com.concentus.git.GitWorkspace gitWorkspace;
     private final ContextFolderResolver contextFolders;
     private final ObjectMapper mapper;
     private final com.concentus.store.FacadeProfileStore profiles;
@@ -106,7 +117,8 @@ public class FanoutExecutor {
                           @Value("${server.port:8734}") int serverPort,
                           com.concentus.config.Settings settings,
                           com.concentus.telemetry.Telemetry telemetry,
-                          ProcessCeiling ceiling) {
+                          ProcessCeiling ceiling,
+                          com.concentus.git.GitWorkspace gitWorkspace) {
         // Through Settings rather than as placeholders, so what somebody set under Resources →
         // Settings is what a fan-out actually runs with. The package-private constructor below
         // still takes plain values — it is what tests build, and they are about what a limit does
@@ -116,9 +128,21 @@ public class FanoutExecutor {
                 settings.get("local.permission-mode", "bypassPermissions"), serverPort,
                 settings.number("workers.max-concurrent", 4),
                 settings.number("workers.timeout-seconds", 900),
-                settings.number("workers.retries", 1), (args, workdir) ->
-                        new ProcessBuilder(args).directory(workdir.toFile())
-                                .redirectErrorStream(true).start());
+                settings.number("workers.retries", 1), gitWorkspace, new ProcessStarter() {
+                    @Override
+                    public Process start(List<String> args, Path workdir) throws IOException {
+                        return start(args, workdir, java.util.Map.of());
+                    }
+
+                    @Override
+                    public Process start(List<String> args, Path workdir, java.util.Map<String, String> env)
+                            throws IOException {
+                        ProcessBuilder pb = new ProcessBuilder(args).directory(workdir.toFile())
+                                .redirectErrorStream(true);
+                        pb.environment().putAll(env);
+                        return pb.start();
+                    }
+                });
         // After the delegation rather than through it: the constructor below is what tests build,
         // and none of them has anything to say about telemetry or the process ceiling.
         this.telemetry = telemetry;
@@ -132,10 +156,12 @@ public class FanoutExecutor {
                    PluginRegistry pluginRegistry,
                    com.concentus.store.SkillStore skillStore, SkillService skillService,
                    String dataDir, String permissionMode, int serverPort, int maxConcurrent,
-                   int timeoutSeconds, int retries, ProcessStarter starter) {
+                   int timeoutSeconds, int retries, com.concentus.git.GitWorkspace gitWorkspace,
+                   ProcessStarter starter) {
         this.support = support;
         this.ragInjector = ragInjector;
         this.preRunSubflows = preRunSubflows;
+        this.gitWorkspace = gitWorkspace;
         this.contextFolders = contextFolders;
         this.mapper = mapper;
         this.profiles = profiles;
@@ -193,32 +219,18 @@ public class FanoutExecutor {
             List<AgentSpec> specs = syntheticWorkers(run, flow, plan);
             List<WorkPlan.WorkItem> items = plan.itemsOrEmpty();
             for (int i = 0; i < specs.size(); i++) {
-                jobs.add(new WorkerJob(specs.get(i), items.get(i).prompt()));
+                WorkPlan.WorkItem item = items.get(i);
+                jobs.add(new WorkerJob(specs.get(i), item.prompt(), item.id().trim(), item.dependsOnOrEmpty()));
             }
         }
 
+        long waiting = jobs.stream().filter(j -> !j.dependsOn().isEmpty()).count();
         run.emit(RunEvent.of("system", "Fan-out: " + jobs.size() + " independent worker "
                 + "process(es), up to " + timeoutSeconds + "s each. Each has its own workspace, "
-                + "instructions and model; none can delegate further."));
-        sayWhatIsMissing(run, flow);
+                + "instructions and model; none can delegate further."
+                + (waiting == 0 ? "" : " " + waiting + " of them wait for other items' reports first.")));
 
-        List<Future<Outcome>> futures = new ArrayList<>();
-        for (WorkerJob job : jobs) {
-            futures.add(pool.submit(() -> runWorker(run, job.spec(), cmd, job.prompt())));
-        }
-
-        List<Outcome> outcomes = new ArrayList<>();
-        for (int i = 0; i < futures.size(); i++) {
-            try {
-                outcomes.add(futures.get(i).get());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                outcomes.add(new Outcome(jobs.get(i).spec(), false, null, "interrupted while waiting"));
-            } catch (Exception e) {
-                outcomes.add(new Outcome(jobs.get(i).spec(), false,
-                        null, "worker thread failed: " + e.getMessage()));
-            }
-        }
+        List<Outcome> outcomes = runJobs(run, jobs, cmd);
 
         long failed = outcomes.stream().filter(o -> !o.ok()).count();
         writeCombinedReport(run, coordExec, outcomes, failed);
@@ -379,9 +391,13 @@ public class FanoutExecutor {
                 Rules the submission enforces:
                 - Each item: a short unique id, and a self-contained prompt (the worker sees
                   nothing else of this conversation — repeat what it needs in `context`).
-                - Declare the files each item will touch; two items sharing a file reject the plan.
-                - No dependencies between items — they run in parallel. A step that must come
-                  after everything else belongs to the merge, not to an item.
+                - Declare the files each item will touch; two parallel items sharing a file reject
+                  the plan.
+                - Items run in parallel unless an item lists `dependsOn`: it then starts once
+                  those items have finished and gets their reports at the end of its prompt (a
+                  failed dependency fails it without running). Prefer parallel; use dependsOn
+                  only when a step genuinely needs another's result. A step that must come
+                  after everything else still belongs to the merge, not to an item.
                 - After the plan is accepted, finish with a one-line summary. Do not keep working.
                 """);
         List<com.concentus.model.FacadeProfile> available = profiles.list();
@@ -437,16 +453,162 @@ public class FanoutExecutor {
             s.contextFolders = item.contextFoldersOrEmpty();
             s.facadeProfileId = item.profileId() == null ? "" : item.profileId();
             s.mcpServers = coord.mcpServers;
+            // The canvas's repositories are the coordinator's; a plan-born worker gets them all,
+            // because the plan cannot wire a node it does not have.
+            s.repositories = coord.repositories;
             run.syntheticWorkers.put(s.nodeId, s);
             out.add(s);
         }
         return out;
     }
 
+    // ---------------------------------------------------------------- the schedule
+
+    /**
+     * Runs the jobs, as many at once as the pool allows, each one starting the moment every
+     * item it depends on has finished.
+     *
+     * <p>The plain fan-out — nothing depends on anything — submits everything at once, which
+     * is what this does when no job names a dependency. A job that does waits, then gets the
+     * reports it waited for appended to its prompt: that is the only channel, deliberately, so
+     * a dependent step reads a finished report rather than a sibling's half-done workspace.
+     * A dependency that failed fails the dependent without a launch; its box says which.
+     *
+     * <p>Outcomes come back in job order whatever order the work finished in, because the
+     * combined report, the verdict and the merge all read them positionally.
+     */
+    private List<Outcome> runJobs(AgentRun run, List<WorkerJob> jobs, String cmd) {
+        int n = jobs.size();
+        Outcome[] outcomes = new Outcome[n];
+        java.util.Map<String, Integer> indexById = new java.util.HashMap<>();
+        for (int i = 0; i < n; i++) {
+            if (jobs.get(i).itemId() != null) indexById.put(jobs.get(i).itemId(), i);
+        }
+        boolean[] started = new boolean[n];
+        boolean[] finished = new boolean[n];
+        java.util.concurrent.CompletionService<Integer> completions =
+                new java.util.concurrent.ExecutorCompletionService<>(pool);
+        int running = 0;
+        int remaining = n;
+        while (remaining > 0) {
+            for (int i = 0; i < n; i++) {
+                if (started[i]) continue;
+                WorkerJob job = jobs.get(i);
+                List<Integer> deps = new ArrayList<>();
+                for (String id : job.dependsOn()) {
+                    Integer at = indexById.get(id);
+                    if (at != null) deps.add(at);
+                }
+                boolean ready = true;
+                for (int d : deps) ready &= finished[d];
+                if (!ready) continue;
+                started[i] = true;
+                Integer failedDep = null;
+                for (int d : deps) {
+                    if (!outcomes[d].ok()) {
+                        failedDep = d;
+                        break;
+                    }
+                }
+                if (failedDep != null) {
+                    AgentSpec dep = jobs.get(failedDep).spec();
+                    String why = "'" + dep.name + "', which this step waits for, failed: "
+                            + outcomes[failedDep].error() + " — so this step did not run.";
+                    NodeExec exec = run.nodeExec(job.spec().nodeId,
+                            job.spec().nodeId.startsWith("worker:") ? "worker" : "agent", job.spec().name);
+                    markFailed(exec, why);
+                    run.emit(RunEvent.of("system", why, job.spec().name, job.spec().nodeId));
+                    outcomes[i] = new Outcome(job.spec(), false, null, why);
+                    finished[i] = true;
+                    remaining--;
+                    run.settled(job.spec().nodeId);
+                    continue;
+                }
+                String prompt = deps.isEmpty() ? job.prompt() : withDependencyReports(job, jobs, deps, outcomes);
+                if (!deps.isEmpty()) {
+                    run.emit(RunEvent.of("system", "Starting '" + job.spec().name + "' now that "
+                            + deps.stream().map(d -> "'" + jobs.get(d).spec().name + "'")
+                                    .collect(Collectors.joining(", ")) + " finished.",
+                            job.spec().name, job.spec().nodeId));
+                }
+                final int at = i;
+                completions.submit(() -> {
+                    try {
+                        outcomes[at] = runWorker(run, job.spec(), cmd, prompt);
+                    } catch (RuntimeException e) {
+                        outcomes[at] = new Outcome(job.spec(), false, null, "worker thread failed: " + e.getMessage());
+                    }
+                    return at;
+                });
+                running++;
+            }
+            if (running == 0) {
+                // Nothing running and nothing startable: a loop the plan check should have refused.
+                // Named rather than waited on forever.
+                for (int i = 0; i < n; i++) {
+                    if (finished[i]) continue;
+                    outcomes[i] = new Outcome(jobs.get(i).spec(), false, null,
+                            "waits for items that never finished (a dependency loop)");
+                    finished[i] = true;
+                    remaining--;
+                }
+                break;
+            }
+            try {
+                int done = completions.take().get();
+                finished[done] = true;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                for (int i = 0; i < n; i++) {
+                    if (!finished[i]) {
+                        outcomes[i] = new Outcome(jobs.get(i).spec(), false, null, "interrupted while waiting");
+                        finished[i] = true;
+                    }
+                }
+                break;
+            } catch (java.util.concurrent.ExecutionException e) {
+                // The callable never throws — it stores the failure — so this is a pool problem.
+                // The finished flag is settled below by elimination.
+                for (int i = 0; i < n; i++) {
+                    if (started[i] && !finished[i] && outcomes[i] == null) {
+                        outcomes[i] = new Outcome(jobs.get(i).spec(), false, null, "worker thread failed: " + e.getMessage());
+                        finished[i] = true;
+                        break;
+                    }
+                }
+            }
+            running--;
+            remaining--;
+        }
+        return new ArrayList<>(java.util.Arrays.asList(outcomes));
+    }
+
+    /** The job's prompt with the reports it waited for at the end, each under the item's name. */
+    private static String withDependencyReports(WorkerJob job, List<WorkerJob> jobs, List<Integer> deps,
+                                                Outcome[] outcomes) {
+        StringBuilder sb = new StringBuilder(job.prompt());
+        sb.append("\n\n## Reports from the steps this one waited for\n");
+        for (int d : deps) {
+            WorkerJob dep = jobs.get(d);
+            sb.append("\n### ").append(dep.spec().name)
+                    .append(dep.itemId() == null ? "" : " (" + dep.itemId() + ")").append("\n");
+            String text = outcomes[d].finalText();
+            sb.append(text == null || text.isBlank() ? "(the step finished without a report)" : text.trim()).append("\n");
+        }
+        return sb.toString();
+    }
+
     // ---------------------------------------------------------------- one worker
 
-    /** One spawn: which spec runs, and the exact prompt it gets. */
-    private record WorkerJob(AgentSpec spec, String prompt) {
+    /**
+     * One spawn: which spec runs, and the exact prompt it gets. {@code itemId} and
+     * {@code dependsOn} are the plan's words for a plan-born worker; a drawn sub-agent has
+     * neither and starts at once.
+     */
+    private record WorkerJob(AgentSpec spec, String prompt, String itemId, List<String> dependsOn) {
+        WorkerJob(AgentSpec spec, String prompt) {
+            this(spec, prompt, null, List.of());
+        }
     }
 
     private record Outcome(AgentSpec spec, boolean ok, String finalText, String error) {
@@ -490,6 +652,7 @@ public class FanoutExecutor {
         // No Bash, deliberately: a fan-out is N unattended processes, and N shells is N times
         // the blast radius. Verification commands belong to the single merge step.
         Outcome outcome = finish(exec, execute(run, spec, exec, cmd, userText, workdir, dirs, "Task,Bash"));
+        if (outcome.ok()) collectPatches(run, spec);
         // A crashed worker is settled: its error branch can run now, while the others go on.
         if (!outcome.ok() && !"TERMINATED".equals(run.status)) run.settled(spec.nodeId);
         return outcome;
@@ -565,7 +728,10 @@ public class FanoutExecutor {
 
         Process proc;
         try {
-            proc = starter.start(args, workdir);
+            // The push credentials of this process's own clones, on its environment and nowhere
+            // on disk — the same rule the shared session follows.
+            proc = starter.start(args, workdir, com.concentus.git.GitWorkspace.environmentFor(
+                    run.workerCheckouts.getOrDefault(spec.nodeId, List.of())));
         } catch (IOException e) {
             return new Attempt(false, false, null, "failed to start claude: " + e.getMessage());
         }
@@ -682,6 +848,9 @@ public class FanoutExecutor {
         Files.createDirectories(workdir);
         if (!run.workersPrepared.add(spec.nodeId)) return;
 
+        // The worker's own clones, in its own workspace: the repositories wired to its node.
+        cloneInto(run, spec, workdir, spec.repositories);
+
         ragInjector.inject(spec, run, m -> run.emit(RunEvent.of("system", m)));
         preRunSubflows.inject(spec, run, m -> run.emit(RunEvent.of("system", m)));
         boolean facade = resolveFacade(run, spec);
@@ -715,6 +884,8 @@ public class FanoutExecutor {
                     to confirm — never claim it was done.
                     """);
         }
+        LocalClaudeExecutor.appendRepositoryNote(
+                run.workerCheckouts.getOrDefault(spec.nodeId, List.of()), md, false);
         appendSystemPrompt(spec, md);
         LocalClaudeExecutor.appendContextFolderNote(spec, md);
         Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
@@ -1416,6 +1587,10 @@ public class FanoutExecutor {
 
         ragInjector.inject(merger, run, m -> run.emit(RunEvent.of("system", m)));
         preRunSubflows.inject(merger, run, m -> run.emit(RunEvent.of("system", m)));
+        // Every repository on the canvas, cloned fresh for the merge: it is the one process with
+        // a shell, so it is the one that applies the workers' patches, runs the checks and pushes.
+        cloneInto(run, merger, workdir, run.compiled == null ? List.of() : run.compiled.allRepos());
+        List<String> patchFiles = writeWorkerPatches(run, workdir);
 
         StringBuilder md = new StringBuilder();
         md.append("""
@@ -1426,6 +1601,21 @@ public class FanoutExecutor {
                 commands (tests, diffs) to verify claims; the workers could not, so unverified
                 claims are yours to check, not to repeat.
                 """);
+        LocalClaudeExecutor.appendRepositoryNote(
+                run.workerCheckouts.getOrDefault(merger.nodeId, List.of()), md, true);
+        if (!patchFiles.isEmpty()) {
+            md.append("\n## Patches from the workers\n\n");
+            md.append("The workers could not run git; their changes to the repositories arrived as "
+                    + "patches, one per worker and checkout, under `./patches/`:\n\n");
+            for (String line : patchFiles) md.append("- ").append(line).append('\n');
+            md.append("""
+
+                    Apply each inside the matching checkout with `git apply --3way <patch>`, resolve
+                    whatever conflicts between workers, run the checks, and only then commit, push
+                    on a branch and open the pull request as described above. A patch that does
+                    not apply is a fact for your report, not something to reconstruct by hand.
+                    """);
+        }
         appendSystemPrompt(merger, md);
         LocalClaudeExecutor.appendContextFolderNote(merger, md);
         Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
@@ -1435,6 +1625,32 @@ public class FanoutExecutor {
         // an empty config on the grounds that reconciling happens on disk — which was true of the
         // reconciling and silent about everything a flow draws onto that node.
         writeWorkerMcpConfig(run, merger, workdir, resolveFacade(run, merger));
+    }
+
+    /**
+     * Writes every worker's patches under {@code workdir/patches} and returns one line per file
+     * for the merge's instructions: which worker, which checkout. The patch is the change; the
+     * worker's report is what it says about the change, and the merge gets both.
+     */
+    private static List<String> writeWorkerPatches(AgentRun run, Path workdir) throws IOException {
+        List<String> lines = new ArrayList<>();
+        if (run.workerPatches.isEmpty()) return lines;
+        Path dir = workdir.resolve("patches");
+        Files.createDirectories(dir);
+        for (var byWorker : run.workerPatches.entrySet()) {
+            String worker = byWorker.getKey();
+            AgentSpec spec = run.syntheticWorkers.get(worker);
+            if (spec == null && run.compiled != null) {
+                spec = run.compiled.allAgents().stream().filter(a -> worker.equals(a.nodeId)).findFirst().orElse(null);
+            }
+            String name = spec == null ? worker : spec.name;
+            for (var byFolder : byWorker.getValue().entrySet()) {
+                String file = LocalClaudeExecutor.sanitize(name) + "--" + byFolder.getKey() + ".patch";
+                Files.writeString(dir.resolve(file), byFolder.getValue(), StandardCharsets.UTF_8);
+                lines.add("`patches/" + file + "` — " + name + "'s changes to `./" + byFolder.getKey() + "`");
+            }
+        }
+        return lines;
     }
 
     /** The merge's input: the goal, each worker's outcome, and where their real files sit. */
@@ -1472,15 +1688,37 @@ public class FanoutExecutor {
     }
 
     /**
-     * What this executor knowingly leaves out, said at the start of every turn. A canvas showing
-     * an MCP node wired to a worker that quietly cannot reach it is the failure mode this
-     * codebase keeps paying for — the honest line is cheaper.
+     * Clones repositories into one step's workspace and records them under its node id, saying
+     * in the log what arrived and what could not.
      */
-    private void sayWhatIsMissing(AgentRun run, CompiledFlow flow) {
-        if (!flow.allRepos().isEmpty()) {
-            run.emit(RunEvent.of("system", "Fan-out note: repository nodes are not cloned into "
-                    + "workers yet. A flow that must push code still belongs on subagents "
-                    + "execution for now."));
+    private void cloneInto(AgentRun run, AgentSpec spec, Path workdir, List<AgentSpec.RepoSpec> repos) {
+        if (gitWorkspace == null || repos == null || repos.isEmpty()) return;
+        List<com.concentus.git.GitWorkspace.Checkout> checkouts = gitWorkspace.prepare(repos, workdir);
+        run.workerCheckouts.put(spec.nodeId, checkouts);
+        for (com.concentus.git.GitWorkspace.Checkout c : checkouts) {
+            run.emit(RunEvent.of("system", c.ok()
+                    ? "Cloned " + c.spec().url + " into " + spec.name + "'s workspace as ./" + c.folderName()
+                    : "Could not clone " + c.spec().url + " for " + spec.name + ": " + c.error(),
+                    spec.name, spec.nodeId));
+        }
+    }
+
+    /**
+     * A finished worker's changes to its clones, taken as patches for the merge step. Taken by
+     * Concentus, not asked of the worker: a worker has no shell, and a patch it wrote by hand
+     * would be a description of a change rather than the change.
+     */
+    private void collectPatches(AgentRun run, AgentSpec spec) {
+        if (gitWorkspace == null) return;
+        for (com.concentus.git.GitWorkspace.Checkout c : run.workerCheckouts.getOrDefault(spec.nodeId, List.of())) {
+            if (!c.ok()) continue;
+            String patch = gitWorkspace.patchOf(c.directory());
+            if (patch == null) continue;
+            run.workerPatches.computeIfAbsent(spec.nodeId, k -> new java.util.concurrent.ConcurrentHashMap<>())
+                    .put(c.folderName(), patch);
+            run.emit(RunEvent.of("system", "Collected " + spec.name + "'s changes to ./" + c.folderName()
+                    + " as a patch (" + patch.lines().count() + " lines) for the merge step.",
+                    spec.name, spec.nodeId));
         }
     }
 

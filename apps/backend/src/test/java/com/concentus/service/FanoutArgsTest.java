@@ -22,7 +22,8 @@ class FanoutArgsTest {
         return new FanoutExecutor(new LocalClaudeSupport("claude"),
                 new RagContextInjector(null, null, new ContextAssembler(12000), null), new PreRunSubflows(null), new ContextFolderResolver(""),
                 new com.fasterxml.jackson.databind.ObjectMapper(), null, null, null, null,
-                "data", "bypassPermissions", 8734, 2, 900, 1, (args, dir) -> {
+                "data", "bypassPermissions", 8734, 2, 900, 1,
+                new com.concentus.git.GitWorkspace(null, false, 1, 0), (args, dir) -> {
                     throw new UnsupportedOperationException("arg tests never spawn");
                 });
     }

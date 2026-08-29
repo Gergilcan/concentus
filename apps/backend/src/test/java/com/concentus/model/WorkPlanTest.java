@@ -18,6 +18,41 @@ class WorkPlanTest {
         return new WorkPlan.WorkItem(id, null, prompt, null, files, null, null, null, null, null);
     }
 
+    private static WorkPlan.WorkItem after(String id, List<String> files, String... deps) {
+        return new WorkPlan.WorkItem(id, null, "do " + id, null, files, null, null, null, null, List.of(deps));
+    }
+
+    @Test
+    void dependenciesMustNameItemsOfThePlanAndMustNotLoop() {
+        WorkPlan plan = new WorkPlan("goal", List.of(
+                after("a", null, "b"),
+                after("b", null, "a"),
+                after("c", null, "c"),
+                after("d", null, "ghost")));
+
+        List<String> problems = plan.problems(8);
+
+        assertThat(problems).anySatisfy(p -> assertThat(p).contains("loop").contains("a → b → a"));
+        assertThat(problems).anySatisfy(p -> assertThat(p).contains("'c' depends on itself"));
+        assertThat(problems).anySatisfy(p -> assertThat(p).contains("'ghost', which is not an item"));
+    }
+
+    @Test
+    void orderedItemsMayShareAFileParallelOnesMayNot() {
+        // b waits for a: they never write the file at the same moment, so the rule that exists
+        // to stop concurrent writes has nothing to stop.
+        WorkPlan ordered = new WorkPlan("goal", List.of(
+                after("a", List.of("src/Shared.java")),
+                after("b", List.of("src/Shared.java"), "a"),
+                after("c", List.of("src/Shared.java"), "b")));
+        assertThat(ordered.problems(8)).isEmpty();
+
+        WorkPlan parallel = new WorkPlan("goal", List.of(
+                after("a", List.of("src/Shared.java")),
+                after("b", List.of("src/Shared.java"))));
+        assertThat(parallel.problems(8)).anySatisfy(p -> assertThat(p).contains("both declare the file"));
+    }
+
     @Test
     void aSoundPlanHasNoProblems() {
         WorkPlan plan = new WorkPlan("goal", List.of(
@@ -71,9 +106,10 @@ class WorkPlanTest {
                 item("a", "x", null), item("b", "x", null), item("c", "x", null)));
         assertThat(big.problems(2)).anySatisfy(p -> assertThat(p).contains("Too many"));
 
+        // A dependency on an item that is not in the plan is the one thing dependsOn cannot mean.
         WorkPlan deps = new WorkPlan("goal", List.of(new WorkPlan.WorkItem(
                 "a", null, "x", null, null, null, null, null, null, List.of("b"))));
-        assertThat(deps.problems(8)).anySatisfy(p -> assertThat(p).contains("dependsOn"));
+        assertThat(deps.problems(8)).anySatisfy(p -> assertThat(p).contains("'b', which is not an item"));
     }
 
     @Test
@@ -82,9 +118,10 @@ class WorkPlanTest {
                 item("a", "", List.of("f")),
                 item("a", "ok", null),
                 item("b", "ok", List.of("f")),
-                new WorkPlan.WorkItem("c", null, "x", null, null, null, null, null, null, List.of("a"))));
+                new WorkPlan.WorkItem("c", null, "x", null, null, null, null, null, null, List.of("nobody"))));
 
-        // Missing prompt, duplicate id, shared file across ids, dependsOn: four problems, one reply.
+        // Missing prompt, duplicate id, shared file across parallel ids, an unknown dependency:
+        // four problems, one reply.
         assertThat(plan.problems(8)).hasSizeGreaterThanOrEqualTo(4);
     }
 }

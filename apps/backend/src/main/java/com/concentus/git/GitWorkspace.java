@@ -169,6 +169,45 @@ public class GitWorkspace {
         }
     }
 
+    /**
+     * Everything changed in a checkout since it was cloned, as one patch — new files included,
+     * which is why it stages first — or null when nothing changed.
+     *
+     * <p>This is how a worker's work leaves its workspace. A worker has no shell, so it cannot
+     * commit or push; the merge step, which has one, applies the patch into a clone of its own
+     * and pushes from there. Binary so an added image survives the trip.
+     */
+    public String patchOf(Path checkout) {
+        try {
+            git(checkout, "add", "-A");
+            String patch = git(checkout, "diff", "--cached", "--binary");
+            return patch == null || patch.isBlank() ? null : patch;
+        } catch (IOException e) {
+            log.warn("patch of {}: {}", checkout, e.getMessage());
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+    }
+
+    private String git(Path dir, String... args) throws IOException, InterruptedException {
+        List<String> cmd = new ArrayList<>();
+        cmd.add("git");
+        cmd.addAll(List.of(args));
+        ProcessBuilder pb = new ProcessBuilder(cmd).directory(dir.toFile()).redirectErrorStream(true);
+        pb.environment().put("GIT_TERMINAL_PROMPT", "0");
+        Process p = pb.start();
+        // UTF-8 explicitly: a patch carries file content, and the platform charset is Cp1252 here.
+        String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        if (!p.waitFor(cloneTimeoutSeconds, TimeUnit.SECONDS)) {
+            p.destroyForcibly();
+            throw new IOException("git " + args[0] + " timed out");
+        }
+        if (p.exitValue() != 0) throw new IOException("git " + args[0] + " failed: " + firstLine(out));
+        return out;
+    }
+
     private static void writeCredentialHelper(Path repo, String envVar) {
         try {
             new ProcessBuilder("git", "config", "--local", "credential.helper", helperScript(envVar))

@@ -384,7 +384,9 @@ class FlowDoctorTest {
     }
 
     @Test
-    void aRepositoryInAFanOutFlowIsNamedAsDoingNothing() {
+    void aRepositoryInAFanOutFlowIsNoLongerAFinding() {
+        // Repositories are cloned into the worker they are wired to, and their changes reach the
+        // merge as patches — the warning that said otherwise would now be the wrong thing to say.
         Map<String, Object> repo = new HashMap<>();
         repo.put("url", "https://github.com/example/thing");
         repo.put("provider", "github");
@@ -392,7 +394,7 @@ class FlowDoctorTest {
                 List.of(worker("w-1", "Analista", null), new FlowNode("r-1", "repo", null, repo)),
                 List.of(new FlowEdge("e2", "a-1", "w-1"), new FlowEdge("e3", "r-1", "w-1")));
 
-        assertThat(ofArea(doctor.check(flow), "fanout")).anySatisfy(f ->
-                assertThat(f.message()).contains("not cloned into independent workers"));
+        assertThat(ofArea(doctor.check(flow), "fanout")).noneSatisfy(f ->
+                assertThat(f.message()).contains("not cloned"));
     }
 }

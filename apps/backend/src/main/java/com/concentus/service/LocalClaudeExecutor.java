@@ -284,9 +284,9 @@ public class LocalClaudeExecutor {
      * driven by an email from a stranger must not be one commit away from a protected branch, and
      * a proposal a human reviews is the whole point of the workflow.
      */
-    private static void appendRepositoryNote(AgentRun run, StringBuilder md) {
-        List<GitWorkspace.Checkout> ok = run.checkouts.stream().filter(GitWorkspace.Checkout::ok).toList();
-        List<GitWorkspace.Checkout> failed = run.checkouts.stream().filter(c -> !c.ok()).toList();
+    static void appendRepositoryNote(List<GitWorkspace.Checkout> checkouts, StringBuilder md, boolean mayPush) {
+        List<GitWorkspace.Checkout> ok = checkouts.stream().filter(GitWorkspace.Checkout::ok).toList();
+        List<GitWorkspace.Checkout> failed = checkouts.stream().filter(c -> !c.ok()).toList();
         if (ok.isEmpty() && failed.isEmpty()) return;
 
         md.append("\n## Repositories checked out for you\n\n");
@@ -306,6 +306,20 @@ public class LocalClaudeExecutor {
         }
 
         if (ok.isEmpty()) return;
+        if (!mayPush) {
+            // A worker: it can read and change the files, and that is all. Its changes leave as
+            // a patch the merge step applies — said here so it neither tries git nor claims a
+            // push it could not have made.
+            md.append("""
+
+                They are yours to read and change. You cannot run git here: when you finish, the
+                changes you made inside these folders are collected as a patch and handed to the
+                merge step, which applies them, runs the checks and opens the pull request. Edit
+                the files themselves; do not describe changes you did not make, and do not claim
+                anything was committed or pushed.
+                """);
+            return;
+        }
         md.append("""
 
             They are real clones with a working remote, and pushing is already authenticated — you
