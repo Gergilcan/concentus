@@ -76,12 +76,12 @@ test('checkoutSessionParams: monthly — quantity is the seats, unit_amount the 
   assert.equal(p.cancel_url, 'https://example.test/?checkout=cancelled#license')
 })
 
-test('checkoutSessionParams: annual — a year per seat at 12 × 0.9 months, the discount named in the description', () => {
+test('checkoutSessionParams: annual — a year per seat at 12 × 0.8 months, the discount named in the description', () => {
   const p = checkoutSessionParams({ seats: 5, term: 'annual', email: 'ops@example.com' }, PRICING, 'https://example.test')
   assert.equal(p.line_items[0].quantity, 5)
-  assert.equal(p.line_items[0].price_data.unit_amount, 12960)
+  assert.equal(p.line_items[0].price_data.unit_amount, 11520)
   assert.match(p.line_items[0].price_data.product_data.name, /one year/)
-  assert.match(p.line_items[0].price_data.product_data.description, /10%/)
+  assert.match(p.line_items[0].price_data.product_data.description, /20%/)
   assert.equal(p.metadata.term, 'annual')
 })
 
@@ -136,7 +136,7 @@ test('a good order creates the session with the computed line item and answers i
     const form = new URLSearchParams(stub.calls[0].init.body)
     assert.equal(form.get('mode'), 'payment')
     assert.equal(form.get('line_items[0][quantity]'), '4')
-    assert.equal(form.get('line_items[0][price_data][unit_amount]'), '12960')
+    assert.equal(form.get('line_items[0][price_data][unit_amount]'), '11520')
     assert.equal(form.get('metadata[seats]'), '4')
     assert.equal(form.get('metadata[term]'), 'annual')
     assert.equal(form.get('metadata[email]'), 'ops@example.com')

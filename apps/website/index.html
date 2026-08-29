@@ -1104,7 +1104,7 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
         <div class="method panel" data-reveal>
           <span class="eyebrow" style="color:var(--text)">Team</span>
           <h3>Up to ten seats, bought here</h3>
-          <p>The same three features as Enterprise, without the email: pick seats and term, pay by card, and the license lands in your inbox minutes after checkout. Annual is 10% cheaper.</p>
+          <p>The same three features as Enterprise, without the email: pick seats and term, pay by card, and the license lands in your inbox minutes after checkout. 25 € per seat per month; 20 € when you pay the year at once.</p>
           <ul class="lic-features">
             <li>Shared database</li>
             <li>Team members and roles, up to your seats</li>
@@ -1116,7 +1116,7 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
             <fieldset class="term">
               <legend>Term</legend>
               <label><input type="radio" name="term" value="monthly" checked /> Monthly</label>
-              <label><input type="radio" name="term" value="annual" /> Annual (−10%)</label>
+              <label><input type="radio" name="term" value="annual" /> Annual (−20%)</label>
             </fieldset>
             <label for="team-email">Email — where the license goes</label>
             <input id="team-email" name="email" type="email" required autocomplete="email" />
@@ -1374,7 +1374,7 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
       price.textContent = money(unit * n, pricing.currency) + (annual ? ' per year' : ' per month');
       var small = document.createElement('small');
       small.textContent = n + (n === 1 ? ' seat' : ' seats') + ' × ' + money(unit, pricing.currency)
-        + (annual ? ' — 10% under twelve monthly payments' : '');
+        + (annual ? ' — 20% under twelve monthly payments' : '');
       price.appendChild(small);
       buy.hidden = false;
     }

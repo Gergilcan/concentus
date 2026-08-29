@@ -1105,7 +1105,7 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
         <div class="method panel" data-reveal>
           <span class="eyebrow" style="color:var(--text)">Team</span>
           <h3>Fins a deu seients, comprat aquí</h3>
-          <p>Les mateixes tres funcions que Enterprise, sense l'email: tria seients i termini, paga amb targeta i la llicència arriba a la teva bústia minuts després del pagament. Anual surt un 10% més barat.</p>
+          <p>Les mateixes tres funcions que Enterprise, sense l'email: tria seients i termini, paga amb targeta i la llicència arriba a la teva bústia minuts després del pagament. 25 € per seient al mes; 20 € si pagues l'any de cop.</p>
           <ul class="lic-features">
             <li>Base de dades compartida</li>
             <li>Membres i rols, fins als teus seients</li>
@@ -1117,7 +1117,7 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
             <fieldset class="term">
               <legend>Termini</legend>
               <label><input type="radio" name="term" value="monthly" checked /> Mensual</label>
-              <label><input type="radio" name="term" value="annual" /> Anual (−10%)</label>
+              <label><input type="radio" name="term" value="annual" /> Anual (−20%)</label>
             </fieldset>
             <label for="team-email">Email — on va la llicència</label>
             <input id="team-email" name="email" type="email" required autocomplete="email" />
@@ -1374,7 +1374,7 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
       price.textContent = money(unit * n, pricing.currency) + (annual ? ' l\'any' : ' al mes');
       var small = document.createElement('small');
       small.textContent = n + (n === 1 ? ' seient' : ' seients') + ' × ' + money(unit, pricing.currency)
-        + (annual ? ' — un 10% menys que dotze pagaments mensuals' : '');
+        + (annual ? ' — un 20% menys que dotze pagaments mensuals' : '');
       price.appendChild(small);
       buy.hidden = false;
     }
