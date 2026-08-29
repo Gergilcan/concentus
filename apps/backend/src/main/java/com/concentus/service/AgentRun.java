@@ -109,10 +109,10 @@ public class AgentRun {
     public volatile PricingTable pricing;
 
     /**
-     * Repositories cloned into this run.s working directory, with the environment variable each
-     * one.s credential helper reads. Per run rather than per flow: two runs of the same
+     * Repositories cloned into this run's working directory, with the environment variable each
+     * one's credential helper reads. Per run rather than per flow: two runs of the same
      * mail-triggered flow can overlap, and one working tree would have them writing over each
-     * other.s branch mid-edit.
+     * other's branch mid-edit.
      */
     public volatile java.util.List<com.concentus.git.GitWorkspace.Checkout> checkouts = java.util.List.of();
 
@@ -219,24 +219,6 @@ public class AgentRun {
     public final Map<String, com.concentus.llm.McpClient> mcpClients = new ConcurrentHashMap<>();
 
     /**
-     * What the workers of this run have told each other.
-     *
-     * <p>Independent workers each get their own process and their own context window, which is
-     * what makes them independent and also what makes five of them research the same thing five
-     * times. Nothing reached from one worker to another: the coordinator's plan went out, the
-     * reports came back, and in between they were blind to each other.
-     *
-     * <p>Append-only, and shared. A worker that learns something the others would waste time
-     * re-learning says so, and the others can read it. It costs one tool call and saves whatever
-     * the duplicated work would have cost — which in a fan-out is the largest avoidable expense
-     * there is.
-     *
-     * <p>On the run rather than in the database, because it is scratch: it belongs to this
-     * attempt, not to the flow, and a note that outlived its run would be read next time as a
-     * fact about a different question. Each note is also emitted as an event, so the run report
-     * keeps a record without a table that has to be cleaned up.
-     */
-    /**
      * The label of the first block that failed, or null when none did (or none said so).
      *
      * <p>For the branch wired to the error output: "the run failed" is not something a recovery
@@ -328,6 +310,24 @@ public class AgentRun {
      */
     public volatile String lastVerdictSummary;
 
+    /**
+     * What the workers of this run have told each other.
+     *
+     * <p>Independent workers each get their own process and their own context window, which is
+     * what makes them independent and also what makes five of them research the same thing five
+     * times. Nothing reached from one worker to another: the coordinator's plan went out, the
+     * reports came back, and in between they were blind to each other.
+     *
+     * <p>Append-only, and shared. A worker that learns something the others would waste time
+     * re-learning says so, and the others can read it. It costs one tool call and saves whatever
+     * the duplicated work would have cost — which in a fan-out is the largest avoidable expense
+     * there is.
+     *
+     * <p>On the run rather than in the database, because it is scratch: it belongs to this
+     * attempt, not to the flow, and a note that outlived its run would be read next time as a
+     * fact about a different question. Each note is also emitted as an event, so the run report
+     * keeps a record without a table that has to be cleaned up.
+     */
     public final java.util.List<SharedNote> sharedNotes =
             java.util.Collections.synchronizedList(new java.util.ArrayList<>());
 
@@ -684,6 +684,18 @@ public class AgentRun {
         this.flowId = flowId;
         this.flowName = flowName;
         this.mode = mode;
+    }
+
+    /**
+     * Ends the run on an error: the status, the reason, and the line in the log, together. Every
+     * executor used to stamp the three by hand, which is how one of them could forget the line.
+     * Persisting and notifying stay with the run service — an executor mid-turn is not the place
+     * to write to the database.
+     */
+    public void fail(String message) {
+        status = "ERROR";
+        error = message;
+        emit(RunEvent.of("error", message));
     }
 
     public void emit(RunEvent e) {

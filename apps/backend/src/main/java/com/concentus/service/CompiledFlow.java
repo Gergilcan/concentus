@@ -29,11 +29,6 @@ public record CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, Age
         this(coordinator, subAgents, null, null, List.of(), List.of());
     }
 
-    /** The shape every caller had before the verifier node existed: no verifier. */
-    public CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger) {
-        this(coordinator, subAgents, merger, null, List.of(), List.of());
-    }
-
     /** The shape every caller had before flows could run other flows. */
     public CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger,
                         AgentSpec verifier) {
@@ -63,6 +58,18 @@ public record CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, Age
         List<AgentSpec> all = new ArrayList<>(1 + subAgents.size());
         all.add(coordinator);
         all.addAll(subAgents);
+        return all;
+    }
+
+    /**
+     * {@link #allAgents()} plus the merge and verifier steps when the flow draws them — every spec
+     * a run may execute, for the callers that must touch each one (a variable substitution, a
+     * model fallback, a label lookup) rather than only the ones a shared session registers.
+     */
+    public List<AgentSpec> allSpecs() {
+        List<AgentSpec> all = allAgents();
+        if (merger != null) all.add(merger);
+        if (verifier != null) all.add(verifier);
         return all;
     }
 

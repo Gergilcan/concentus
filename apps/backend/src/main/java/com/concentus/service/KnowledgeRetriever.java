@@ -269,7 +269,7 @@ public class KnowledgeRetriever {
             // filter and once to rank. Parsing and constructing a tsquery four times per search
             // is measurable on a large base, and this is the branch that dominates a search
             // there: ranking cannot use the index, so every matching row is scored.
-            List<Ranked> rows = jdbc.query("""
+            return jdbc.query("""
                     with q as (select to_tsquery('spanish', ?) || to_tsquery('english', ?) as tsq)
                     select doc_name, seq, content, ts_rank_cd(lexeme, q.tsq) as rank
                       from knowledge_chunks, q
@@ -280,7 +280,6 @@ public class KnowledgeRetriever {
                     (rs, i) -> new Ranked(rs.getString("doc_name"), rs.getInt("seq"),
                             rs.getString("content"), i + 1, rs.getDouble("rank")),
                     terms, terms, baseId, BRANCH_CANDIDATES);
-            return rows;
         } catch (RuntimeException e) {
             // A database that has not run V12, or an external one where the column is missing.
             // Semantic search still works, so this is a degraded search rather than a failed one.

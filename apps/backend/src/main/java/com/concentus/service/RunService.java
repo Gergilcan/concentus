@@ -20,7 +20,6 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -291,13 +290,12 @@ public class RunService {
         if (exec == null) return;
         if (run.initialPrompt != null && !run.initialPrompt.isBlank()) {
             exec.appendOutput(run.initialPrompt);
-            exec.status = "passed";
         } else {
             // Manual mode: nothing was handed over, and saying so beats an empty panel that reads
             // as a node that failed to produce anything.
             exec.appendOutput("_Waiting for the first message — this run starts when you send one._");
-            exec.status = "passed";
         }
+        exec.status = "passed";
         exec.endedAt = System.currentTimeMillis();
     }
 
@@ -327,11 +325,6 @@ public class RunService {
         }
     }
 
-    /**
-     * Starts a run. When {@code initialPromptOverride} is non-null it becomes the first turn
-     * (used by webhook triggers to inject the event payload); otherwise the Input node's own
-     * prompt is used for prompt/cron modes.
-     */
     private boolean billsPerToken(String backend) {
         return backends.byId(backend).map(ExecutionBackend::billsPerToken).orElse(true);
     }
@@ -341,16 +334,16 @@ public class RunService {
                 .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
     }
 
-    /**
-     * Arms the ceiling on a run that is about to execute. The month's spend so far is read
-     * once, here: reading it on every usage report would be a database query per token count.
-     */
     /** The organization's monthly ceiling, or null: zero and absent both mean "none". */
     private Double orgCeiling() {
         Double ceiling = policies == null ? null : policies.monthlyBudgetUsd();
         return ceiling != null && ceiling > 0 ? ceiling : null;
     }
 
+    /**
+     * Arms the ceiling on a run that is about to execute. The month's spend so far is read
+     * once, here: reading it on every usage report would be a database query per token count.
+     */
     private void armBudget(AgentRun run, FlowGraph flow) {
         boolean flowCeiling = flow.id() != null && flow.budgetUsd() != null && flow.budgetUsd() > 0;
         Double orgCeiling = orgCeiling();
@@ -394,12 +387,7 @@ public class RunService {
             }
             // Every agent of the flow, not only the coordinator: a fan-out on the fallback is a
             // fan-out on the fallback.
-            List<AgentSpec> all = new ArrayList<>();
-            all.add(compiled.coordinator());
-            all.addAll(compiled.subAgents());
-            if (compiled.merger() != null) all.add(compiled.merger());
-            if (compiled.verifier() != null) all.add(compiled.verifier());
-            for (AgentSpec spec : all) {
+            for (AgentSpec spec : compiled.allSpecs()) {
                 if (spec.model == null) spec.model = new AgentSpec.ModelSpec();
                 spec.model.id = model;
             }
@@ -504,6 +492,11 @@ public class RunService {
         return run.toSummary();
     }
 
+    /**
+     * Starts a run. When {@code initialPromptOverride} is non-null it becomes the first turn
+     * (used by webhook triggers to inject the event payload); otherwise the Input node's own
+     * prompt is used for prompt/cron modes.
+     */
     public RunSummary start(FlowGraph flow, String initialPromptOverride) {
         return start(flow, initialPromptOverride, null);
     }
@@ -657,13 +650,6 @@ public class RunService {
     }
 
     /**
-     * The signed-in person behind this request, or null.
-     *
-     * <p>Read from the security context rather than injected, so nothing about running a flow
-     * depends on authentication being switched on: with accounts off there is no context, no name,
-     * and the run is credited to nobody — which is the truth on a single-user desktop install.
-     */
-    /**
      * The organization a launch belongs to.
      *
      * <p>The signed-in person's when there is one — they could only have reached a flow of their
@@ -679,6 +665,13 @@ public class RunService {
                 .orElseGet(orgContext::defaultOrganizationId);
     }
 
+    /**
+     * The signed-in person behind this request, or null.
+     *
+     * <p>Read from the security context rather than injected, so nothing about running a flow
+     * depends on authentication being switched on: with accounts off there is no context, no name,
+     * and the run is credited to nobody — which is the truth on a single-user desktop install.
+     */
     private static String signedInEmail() {
         var auth = org.springframework.security.core.context.SecurityContextHolder.getContext()
                 .getAuthentication();
@@ -973,15 +966,7 @@ public class RunService {
      */
     public RunSummary retry(String runId) {
         AgentRun old = require(runId);
-        if (old.flowJson == null) {
-            throw new IllegalStateException("This execution has no stored flow to retry.");
-        }
-        FlowGraph flow;
-        try {
-            flow = mapper.readValue(old.flowJson, FlowGraph.class);
-        } catch (Exception e) {
-            throw new IllegalStateException("Stored flow for this execution could not be read: " + e.getMessage());
-        }
+        FlowGraph flow = storedFlowOf(old, "retry");
         AgentRun run = launch(flow, old.initialPrompt, null, null);
         // A retry replays the ORIGINAL revision, so it carries the original's version number.
         // launch() stamped the flow's current version, which for an edited flow would label this
@@ -1006,18 +991,10 @@ public class RunService {
         if (isInFlight(old.status)) {
             throw new IllegalStateException("This execution is still running. Stop it first, or wait for it.");
         }
-        if (old.flowJson == null) {
-            throw new IllegalStateException("This execution has no stored flow to resume.");
-        }
-        FlowGraph flow;
-        try {
-            flow = mapper.readValue(old.flowJson, FlowGraph.class);
-        } catch (Exception e) {
-            throw new IllegalStateException("Stored flow for this execution could not be read: " + e.getMessage());
-        }
+        FlowGraph flow = storedFlowOf(old, "resume");
         List<NodeExec> boxes = old.nodeExecList();
         boolean fanout = old.compiled != null && old.compiled.coordinator() != null
-                && "fanout".equals(old.compiled.coordinator().execution);
+                && old.compiled.fanout();
         AgentRun run = launch(flow, old.initialPrompt, null, r -> {
             r.resumeOf = old.id;
             r.priorExecs = fanout ? boxes : null;
@@ -1030,6 +1007,21 @@ public class RunService {
         runStore.persist(run);
         auditStarted(run, com.concentus.audit.AuditKinds.RUN_RESUMED, Map.of("of", old.id));
         return run.toSummary();
+    }
+
+    /**
+     * The flow snapshot a run executed, for starting it again. Refuses in words that name the
+     * action — a retry and a resume read the same snapshot and fail the same two ways.
+     */
+    private FlowGraph storedFlowOf(AgentRun old, String action) {
+        if (old.flowJson == null) {
+            throw new IllegalStateException("This execution has no stored flow to " + action + ".");
+        }
+        try {
+            return mapper.readValue(old.flowJson, FlowGraph.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Stored flow for this execution could not be read: " + e.getMessage());
+        }
     }
 
     /**
@@ -1347,9 +1339,7 @@ public class RunService {
 
     private void fail(AgentRun run, String message) {
         telemetry.count("concentus.runs.finished", "status", "ERROR");
-        run.status = "ERROR";
-        run.error = message;
-        run.emit(RunEvent.of("error", message));
+        run.fail(message);
         runStore.persist(run);
         notifier.runFailed(run);
     }

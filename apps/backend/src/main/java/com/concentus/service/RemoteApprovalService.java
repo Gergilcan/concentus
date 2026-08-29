@@ -155,7 +155,7 @@ public class RemoteApprovalService {
         notifyTeams(run, "⏳ \"" + flowName(run) + "\" is waiting for approval",
                 "Approve or reject from Concentus (run " + run.id + ")",
                 ", or react in Slack.", ". This channel cannot carry your reply.");
-        watchSlack(run, approve, reject);
+        watchSlack(run, "approval", approve, reject, null);
         watchTelegram(run, "approval", approve, reject, null);
     }
 
@@ -194,49 +194,6 @@ public class RemoteApprovalService {
         });
     }
 
-    // ------------------------------------------------------------------ slack
-
-    private void watchSlack(AgentRun run, Runnable approve, Runnable reject) {
-        String channel = run.approvalSlackChannel;
-        if (channel == null || channel.isBlank()) return;
-        String token = credentials.resolve(run.approvalSlackCredentialId);
-        if (token == null || token.isBlank()) {
-            run.emit(RunEvent.of("system", "Slack approval is configured but its bot-token "
-                    + "credential resolves to nothing — approve from the app instead."));
-            return;
-        }
-
-        ObjectNode body = mapper.createObjectNode();
-        body.put("channel", channel.trim());
-        body.put("text", "⏳ Concentus: \"" + flowName(run) + "\" is waiting for approval.\n\n"
-                + finalOutputExcerpt(run)
-                + "\n\nReact with ✅ to approve or ❌ to reject. (run " + run.id + ")");
-        JsonNode res;
-        try {
-            res = slack(token, "chat.postMessage", body);
-        } catch (Exception e) {
-            run.emit(RunEvent.of("system", "Slack approval request could not be sent: "
-                    + e.getMessage() + " — approve from the app instead."));
-            return;
-        }
-        if (!res.path("ok").asBoolean(false)) {
-            // Slack's error names are the actionable part: channel_not_found means the id is
-            // wrong, not_in_channel means the bot was never invited.
-            run.emit(RunEvent.of("system", "Slack rejected the approval request ("
-                    + res.path("error").asText("unknown error")
-                    + ") — approve from the app instead."));
-            return;
-        }
-
-        Watch w = new Watch(run, "approval", token, res.path("channel").asText(channel.trim()),
-                res.path("ts").asText(), approve, reject, null);
-        watches.put(run.id, w);
-        w.task = scheduler.scheduleWithFixedDelay(() -> pollOnce(run.id), POLL_SECONDS,
-                POLL_SECONDS, TimeUnit.SECONDS);
-        run.emit(RunEvent.of("system",
-                "Approval request posted to Slack — a ✅ reaction there approves this run."));
-    }
-
     // ------------------------------------------------------------------ questions
 
     /**
@@ -251,47 +208,71 @@ public class RemoteApprovalService {
         notifyTeams(run, "❓ \"" + flowName(run) + "\" asked you something",
                 "Answer from Concentus (run " + run.id + ")",
                 ", or reply in the Slack thread.", ". This channel cannot carry your reply.");
-        watchSlackAnswer(run, answer);
+        watchSlack(run, "answer", null, null, answer);
         watchTelegram(run, "answer", null, null, answer);
     }
 
-    private void watchSlackAnswer(AgentRun run, java.util.function.Consumer<String> answer) {
+    // ------------------------------------------------------------------ slack
+
+    /**
+     * Posts the request or the question to the flow's Slack channel and starts polling it. One
+     * method for both waits, like the Telegram one: the wording differs, the protocol — resolve
+     * the token, post, check Slack's answer, watch the message — does not.
+     */
+    private void watchSlack(AgentRun run, String kind, Runnable approve, Runnable reject,
+                            java.util.function.Consumer<String> answer) {
         String channel = run.approvalSlackChannel;
         if (channel == null || channel.isBlank()) return;
+        boolean answering = "answer".equals(kind);
         String token = credentials.resolve(run.approvalSlackCredentialId);
         if (token == null || token.isBlank()) {
-            run.emit(RunEvent.of("system", "Slack is configured for this flow but its bot-token "
-                    + "credential resolves to nothing — answer from the app instead."));
+            run.emit(RunEvent.of("system", (answering
+                    ? "Slack is configured for this flow but its bot-token "
+                    : "Slack approval is configured but its bot-token ")
+                    + "credential resolves to nothing — " + (answering ? "answer" : "approve")
+                    + " from the app instead."));
             return;
         }
 
         ObjectNode body = mapper.createObjectNode();
         body.put("channel", channel.trim());
-        body.put("text", "❓ Concentus: \"" + flowName(run) + "\" asked you something.\n\n"
-                + finalOutputExcerpt(run)
-                + "\n\nReply in this thread and the run continues with your answer. (run "
-                + run.id + ")");
+        body.put("text", answering
+                ? "❓ Concentus: \"" + flowName(run) + "\" asked you something.\n\n"
+                        + finalOutputExcerpt(run)
+                        + "\n\nReply in this thread and the run continues with your answer. (run "
+                        + run.id + ")"
+                : "⏳ Concentus: \"" + flowName(run) + "\" is waiting for approval.\n\n"
+                        + finalOutputExcerpt(run)
+                        + "\n\nReact with ✅ to approve or ❌ to reject. (run " + run.id + ")");
         JsonNode res;
         try {
             res = slack(token, "chat.postMessage", body);
         } catch (Exception e) {
-            run.emit(RunEvent.of("system", "The question could not be sent to Slack: "
-                    + e.getMessage() + " — answer from the app instead."));
+            run.emit(RunEvent.of("system", (answering
+                    ? "The question could not be sent to Slack: "
+                    : "Slack approval request could not be sent: ")
+                    + e.getMessage() + " — " + (answering ? "answer" : "approve")
+                    + " from the app instead."));
             return;
         }
         if (!res.path("ok").asBoolean(false)) {
-            run.emit(RunEvent.of("system", "Slack rejected the question ("
-                    + res.path("error").asText("unknown error") + ") — answer from the app instead."));
+            // Slack's error names are the actionable part: channel_not_found means the id is
+            // wrong, not_in_channel means the bot was never invited.
+            run.emit(RunEvent.of("system", "Slack rejected the "
+                    + (answering ? "question" : "approval request") + " ("
+                    + res.path("error").asText("unknown error") + ") — "
+                    + (answering ? "answer" : "approve") + " from the app instead."));
             return;
         }
 
-        Watch w = new Watch(run, "answer", token, res.path("channel").asText(channel.trim()),
-                res.path("ts").asText(), null, null, answer);
+        Watch w = new Watch(run, kind, token, res.path("channel").asText(channel.trim()),
+                res.path("ts").asText(), approve, reject, answer);
         watches.put(run.id, w);
         w.task = scheduler.scheduleWithFixedDelay(() -> pollOnce(run.id), POLL_SECONDS,
                 POLL_SECONDS, TimeUnit.SECONDS);
-        run.emit(RunEvent.of("system",
-                "Question posted to Slack — a reply in that thread continues this run."));
+        run.emit(RunEvent.of("system", answering
+                ? "Question posted to Slack — a reply in that thread continues this run."
+                : "Approval request posted to Slack — a ✅ reaction there approves this run."));
     }
 
     /**

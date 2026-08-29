@@ -110,13 +110,6 @@ public final class FlowGates {
     }
 
     /**
-     * What feeds this node, looking through any gates drawn in between; null when nothing does.
-     *
-     * <p>For anything asking "is this hand-off wired to an agent", a gate must be transparent. The
-     * wire agent → condition → flow is one wire with a rule on it, and reading it as two would
-     * make drawing the rule detach the branch from the agent it belongs to.
-     */
-    /**
      * Which output of which block a branch hangs off.
      *
      * <p>{@code handle} is the block's output as the wire names it — null for the main one, or one
@@ -150,9 +143,7 @@ public final class FlowGates {
      * they always did.
      */
     public static Origin originOf(FlowGraph flow, String nodeId) {
-        Map<String, FlowNode> byId = new LinkedHashMap<>();
-        for (FlowNode n : flow.nodesOrEmpty()) byId.put(n.id(), n);
-
+        Map<String, FlowNode> byId = byId(flow);
         Set<String> seen = new LinkedHashSet<>();
         String current = nodeId;
         while (current != null && seen.add(current)) {
@@ -172,10 +163,15 @@ public final class FlowGates {
         return new Origin(null, null);
     }
 
+    /**
+     * What feeds this node, looking through any gates drawn in between; null when nothing does.
+     *
+     * <p>For anything asking "is this hand-off wired to an agent", a gate must be transparent. The
+     * wire agent → condition → flow is one wire with a rule on it, and reading it as two would
+     * make drawing the rule detach the branch from the agent it belongs to.
+     */
     public static String sourceThroughGates(FlowGraph flow, String nodeId) {
-        Map<String, FlowNode> byId = new LinkedHashMap<>();
-        for (FlowNode n : flow.nodesOrEmpty()) byId.put(n.id(), n);
-
+        Map<String, FlowNode> byId = byId(flow);
         Set<String> seen = new LinkedHashSet<>();
         String current = nodeId;
         while (current != null && seen.add(current)) {
@@ -194,15 +190,6 @@ public final class FlowGates {
     }
 
     /**
-     * The gates on the way into a node, in drawn order — the one nearest the agent first.
-     *
-     * <p>Walked backwards from the target and then reversed, because a chain is drawn forwards but
-     * only its far end is known here. Each step takes the first gate feeding the current node: a
-     * gate with two gates feeding it is a drawing with two answers, and picking one silently beats
-     * neither of the alternatives, so the walk stays deterministic and the canvas stays honest by
-     * not offering that shape.
-     */
-    /**
      * A gate on the way to a branch, and which of its outputs the branch hangs from.
      *
      * <p>{@code inverted} is a condition wired from its <b>else</b> output: the branch runs when
@@ -211,10 +198,17 @@ public final class FlowGates {
     record GateHop(FlowNode gate, boolean inverted) {
     }
 
+    /**
+     * The gates on the way into a node, in drawn order — the one nearest the agent first.
+     *
+     * <p>Walked backwards from the target and then reversed, because a chain is drawn forwards but
+     * only its far end is known here. Each step takes the first gate feeding the current node: a
+     * gate with two gates feeding it is a drawing with two answers, and picking one silently beats
+     * neither of the alternatives, so the walk stays deterministic and the canvas stays honest by
+     * not offering that shape.
+     */
     private static List<GateHop> gatesInto(FlowGraph flow, String nodeId) {
-        Map<String, FlowNode> byId = new LinkedHashMap<>();
-        for (FlowNode n : flow.nodesOrEmpty()) byId.put(n.id(), n);
-
+        Map<String, FlowNode> byId = byId(flow);
         List<GateHop> backwards = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         String current = nodeId;
@@ -241,6 +235,13 @@ public final class FlowGates {
         return "condition".equalsIgnoreCase(type) || "foreach".equalsIgnoreCase(type);
     }
 
+    /** The flow's nodes by id, for the walks here and in {@link RunReplay}. */
+    static Map<String, FlowNode> byId(FlowGraph flow) {
+        Map<String, FlowNode> byId = new LinkedHashMap<>();
+        for (FlowNode n : flow.nodesOrEmpty()) byId.put(n.id(), n);
+        return byId;
+    }
+
     /** Whether one piece of text passes a condition node. */
     private static boolean passes(Map<String, Object> data, String text) {
         String test = str(data, "test", "not_empty");
@@ -248,7 +249,7 @@ public final class FlowGates {
         boolean caseSensitive = bool(data, "caseSensitive", false);
         String haystack = caseSensitive ? text : text.toLowerCase();
         String needle = caseSensitive ? value : value.toLowerCase();
-        boolean result = switch (test.toLowerCase()) {
+        return switch (test.toLowerCase()) {
             case "contains" -> haystack.contains(needle);
             case "not_contains" -> !haystack.contains(needle);
             case "equals" -> haystack.trim().equals(needle.trim());
@@ -257,7 +258,6 @@ public final class FlowGates {
             // an answer at all" — the check people reach for first and the one they forget.
             default -> !text.isBlank();
         };
-        return result;
     }
 
     /**

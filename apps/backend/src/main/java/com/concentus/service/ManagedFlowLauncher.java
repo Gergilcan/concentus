@@ -7,7 +7,6 @@ import com.anthropic.models.beta.agents.BetaManagedAgentsAgent;
 import com.anthropic.models.beta.agents.BetaManagedAgentsAgentToolset20260401Params;
 import com.anthropic.models.beta.agents.BetaManagedAgentsMcpToolsetParams;
 import com.anthropic.models.beta.agents.BetaManagedAgentsModel;
-import com.anthropic.models.beta.agents.BetaManagedAgentsUrlMcpServerParams;
 import com.anthropic.models.beta.environments.BetaCloudConfigParams;
 import com.anthropic.models.beta.environments.BetaUnrestrictedNetwork;
 import com.anthropic.models.beta.environments.EnvironmentCreateParams;

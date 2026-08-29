@@ -102,16 +102,15 @@ public class LocalModelAgentExecutor {
     public void runTurn(AgentRun run, CompiledFlow flow, String userText) {
         AgentSpec coordinator = flow.coordinator();
         if (!catalog.serves(coordinator.model.id)) {
-            fail(run, unavailableMessage(coordinator.model.id));
+            run.fail(unavailableMessage(coordinator.model.id));
             return;
         }
 
         if (!run.modelContextPrepared) {
             // Injected once, not per turn — re-running the query every turn would re-read the
             // database and re-append the same rows to the prompt.
-            ragInjector.inject(coordinator, run, m -> run.emit(RunEvent.of("system", m)));
-            for (AgentSpec sub : flow.subAgents()) {
-                ragInjector.inject(sub, run, m -> run.emit(RunEvent.of("system", m)));
+            for (AgentSpec agent : flow.allAgents()) {
+                ragInjector.inject(agent, run, m -> run.emit(RunEvent.of("system", m)));
             }
             run.modelContextPrepared = true;
             run.emit(RunEvent.of("system", "Running on your own hardware — " + coordinator.model.id
@@ -146,10 +145,10 @@ public class LocalModelAgentExecutor {
             if (!"TERMINATED".equals(run.status)) run.status = "IDLE";
         } catch (LlmException e) {
             markFailed(exec, e.getMessage());
-            fail(run, e.getMessage());
+            run.fail(e.getMessage());
         } catch (RuntimeException e) {
             markFailed(exec, e.getMessage());
-            fail(run, "Run failed: " + e.getMessage());
+            run.fail("Run failed: " + e.getMessage());
         }
     }
 
@@ -779,11 +778,5 @@ public class LocalModelAgentExecutor {
         exec.status = "failed";
         exec.error = error;
         exec.endedAt = System.currentTimeMillis();
-    }
-
-    private static void fail(AgentRun run, String message) {
-        run.status = "ERROR";
-        run.error = message;
-        run.emit(RunEvent.of("error", message));
     }
 }
