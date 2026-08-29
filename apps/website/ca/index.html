@@ -351,18 +351,32 @@
   .method .actions { margin-top: auto; padding-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
   /* ---------------------------- pricing / license ---------------------------- */
-  /* Same card as .methods, two of them instead of five — the free form and the enterprise pitch. */
-  .plans { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 40px; }
+  /* Same card as .methods, three of them — the free form, the self-serve team card, the enterprise pitch. */
+  .plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 40px; }
   .lic-features { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
   .lic-features li { font-size: 14.5px; color: var(--muted); padding-left: 20px; position: relative; }
   .lic-features li::before { content: '✓'; position: absolute; left: 0; color: var(--accent); }
   .lic-form { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
   .lic-form label { font-size: 12px; color: var(--muted); }
-  .lic-form input[type="text"], .lic-form input[type="email"] {
+  .lic-form input[type="text"], .lic-form input[type="email"], .lic-form input[type="number"] {
     width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
     border-radius: 6px; padding: 9px 12px; font: inherit; font-size: 14px;
   }
   .lic-form input:hover { border-color: var(--accent); }
+  .lic-form .term { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .lic-form .term legend { font-size: 12px; color: var(--muted); padding: 0; margin-bottom: 6px; float: left; width: 100%; }
+  .lic-form .term label { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--text); cursor: pointer; }
+  .lic-form .term input { accent-color: var(--accent); }
+  /* The team card's price line: filled by /api/pricing, never by this file. */
+  .lic-price { font-size: 15px; color: var(--text); margin-top: 4px; min-height: 1.4em; }
+  .lic-price small { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  /* The buy button is a .btn, whose display would otherwise beat the UA's hidden rule. */
+  .lic-form [hidden] { display: none !important; }
+  /* The trial: one wide card under the three plans — the pitch on the left, the form on the right. */
+  .trial { margin-top: 20px; padding: 22px 24px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px 40px; align-items: start; }
+  .trial h3 { font-size: 16.5px; font-weight: 600; margin-top: 12px; }
+  .trial p { font-size: 14.5px; color: var(--muted); margin-top: 10px; line-height: 1.55; }
+  .trial .lic-form { margin-top: 0; }
   /* The honeypot: present in the DOM for a bot to fill, invisible and unreachable for a person —
      off-screen rather than display:none, which some scripts skip when picking fields to fill. */
   .lic-form .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
@@ -444,6 +458,7 @@
     .uses { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .trade { flex-direction: column; gap: 18px; }
     .plans { grid-template-columns: minmax(0, 1fr); }
+    .trial { grid-template-columns: minmax(0, 1fr); }
   }
   @media (max-width: 900px) {
     .sheet { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 32px 24px; }
@@ -1061,18 +1076,18 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
           <span class="eyebrow">06 · Preus</span>
           <h2>Gratis per a un. Per seient a partir d'aquí.</h2>
         </div>
-        <p class="lede">Una persona, un titular, gratis per sempre — l'app també funciona sense cap llicència, amb el mateix límit d'un seient. Enterprise desbloqueja la base de dades compartida, més d'un membre i SSO.</p>
+        <p class="lede">Una persona, un titular, gratis per sempre — l'app també funciona sense llicència, amb el mateix límit d'un seient. Team (fins a deu seients, comprat aquí) i Enterprise desbloquegen la base de dades compartida, més d'un membre i SSO.</p>
       </div>
 
       <div class="plans">
         <div class="method panel" data-reveal>
           <span class="eyebrow" style="color:var(--text)">Individual</span>
           <h3>Gratis</h3>
-          <p>Una llicència amb el teu nom — l'app també funciona sense, amb el mateix límit d'un seient. Escriu el teu nom i el teu correu i t'arriba a la safata d'entrada.</p>
+          <p>Una llicència amb el teu nom — l'app també funciona sense, amb el mateix límit d'un seient. Escriu el teu nom i el teu email i t'arriba a la bústia.</p>
           <form class="lic-form" id="license-form">
             <label for="lic-name">Nom</label>
             <input id="lic-name" name="name" type="text" required maxlength="200" autocomplete="name" />
-            <label for="lic-email">Correu</label>
+            <label for="lic-email">Email</label>
             <input id="lic-email" name="email" type="email" required autocomplete="email" />
             <!-- Honeypot: hidden from people, filled in by bots that fill in every field they find.
                  The function on the other end swallows it silently rather than saying so. -->
@@ -1081,25 +1096,78 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
               <input id="lic-company" name="company" type="text" tabindex="-1" autocomplete="off" />
             </div>
             <button class="btn go" type="submit" id="lic-submit">Vull la meva llicència</button>
-            <p class="note" style="margin-top:8px">T'enviarem la llicència per correu i, de tant en tant, novetats del producte — dona't de
-            baixa quan vulguis.</p>
+            <p class="note" style="margin-top:8px">T'enviarem la llicència per email i, de tant en tant,
+            novetats del producte — dona't de baixa quan vulguis.</p>
             <p class="lic-msg" id="lic-msg" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+
+        <div class="method panel" data-reveal>
+          <span class="eyebrow" style="color:var(--text)">Team</span>
+          <h3>Fins a deu seients, comprat aquí</h3>
+          <p>Les mateixes tres funcions que Enterprise, sense l'email: tria seients i termini, paga amb targeta i la llicència arriba a la teva bústia minuts després del pagament. Anual surt un 10% més barat.</p>
+          <ul class="lic-features">
+            <li>Base de dades compartida</li>
+            <li>Membres i rols, fins als teus seients</li>
+            <li>SSO</li>
+          </ul>
+          <form class="lic-form" id="team-form">
+            <label for="team-seats">Seients</label>
+            <input id="team-seats" name="seats" type="number" min="1" max="10" step="1" value="3" required inputmode="numeric" />
+            <fieldset class="term">
+              <legend>Termini</legend>
+              <label><input type="radio" name="term" value="monthly" checked /> Mensual</label>
+              <label><input type="radio" name="term" value="annual" /> Anual (−10%)</label>
+            </fieldset>
+            <label for="team-email">Email — on va la llicència</label>
+            <input id="team-email" name="email" type="email" required autocomplete="email" />
+            <!-- Filled by /api/pricing, never by this file: the number is an env var in Vercel. While
+                 none is configured this reads "to be announced" and the buy button is not shown. -->
+            <p class="lic-price" id="team-price" aria-live="polite">Carregant preus…</p>
+            <button class="btn go" type="submit" id="team-buy" hidden>Comprar</button>
+            <a class="btn" id="team-contact" href="mailto:gila791@hotmail.com?subject=Concentus%20team" hidden>Escriu-nos</a>
+            <p class="lic-msg" id="team-msg" role="status" aria-live="polite"></p>
           </form>
         </div>
 
         <div class="method panel" data-reveal>
           <span class="eyebrow" style="color:var(--text)">Enterprise</span>
           <h3>Per seient, mensual o anual</h3>
-          <p>La facturació anual és un 10% més barata. Encara no hi ha preus publicats aquí — escriu-nos i acordem amb tu seients i termini.</p>
+          <p>Més de deu seients, factura en lloc de targeta, o un contracte. La facturació anual surt un 10% més barata. Aquí encara no hi ha preus impresos — escriu-nos i acordem seients i termini amb tu.</p>
           <ul class="lic-features">
             <li>Base de dades compartida</li>
-            <li>Membres d'equip i rols</li>
+            <li>Membres i rols</li>
             <li>SSO</li>
           </ul>
           <div class="actions">
-            <a class="btn go" href="mailto:gila791@hotmail.com?subject=Concentus%20enterprise">Contacta'ns</a>
+            <a class="btn go" href="mailto:gila791@hotmail.com?subject=Concentus%20enterprise">Contacta amb nosaltres</a>
           </div>
         </div>
+      </div>
+
+      <div class="trial panel" id="trial" data-reveal>
+        <div>
+          <span class="eyebrow" style="color:var(--text)">Prova-ho abans</span>
+          <h3>Catorze dies de les funcions d'equip, sense targeta</h3>
+          <p>Una llicència de prova per a fins a deu seients, a la teva bústia en un minut: la base de dades compartida, membres, SSO — tot el que desbloqueja una llicència d'equip o enterprise. Quan s'acaba, la instal·lació torna a un seient; no s'esborra res.</p>
+        </div>
+        <form class="lic-form" id="trial-form">
+          <label for="trial-name">Nom</label>
+          <input id="trial-name" name="name" type="text" required maxlength="200" autocomplete="name" />
+          <label for="trial-company">Empresa o equip (el nom que portarà la llicència)</label>
+          <input id="trial-company" name="company" type="text" maxlength="200" autocomplete="organization" />
+          <label for="trial-email">Email</label>
+          <input id="trial-email" name="email" type="email" required autocomplete="email" />
+          <label for="trial-seats">Seients (d'1 a 10)</label>
+          <input id="trial-seats" name="seats" type="number" min="1" max="10" step="1" value="5" required inputmode="numeric" />
+          <!-- Honeypot, as on the free form — named "website" because "company" is a real field here. -->
+          <div class="hp" aria-hidden="true">
+            <label for="trial-website">Web</label>
+            <input id="trial-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+          </div>
+          <button class="btn go" type="submit" id="trial-submit">Comença la prova</button>
+          <p class="lic-msg" id="trial-msg" role="status" aria-live="polite"></p>
+        </form>
       </div>
     </div>
   </section>
@@ -1208,7 +1276,7 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
 
         var line = document.getElementById('release-line');
         if (line) {
-          line.textContent = 'Última: ' + rel.tag_name +
+          line.textContent = 'Darrera: ' + rel.tag_name +
             (rel.prerelease ? ' (versió preliminar)' : '') +
             (rel.published_at ? ' · ' + new Date(rel.published_at).toLocaleDateString() : '');
         }
@@ -1228,7 +1296,7 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
     if (!form) return;
     var submit = document.getElementById('lic-submit');
     var msg = document.getElementById('lic-msg');
-    var GENERIC = 'Si aquesta adreça és vàlida, la teva llicència va de camí.';
+    var GENERIC = 'Si aquesta adreça és vàlida, la teva llicència està de camí.';
 
     form.addEventListener('submit', function (e) {
       e.preventDefault();
@@ -1251,6 +1319,142 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       }).then(done, done); // .then(onFulfilled, onRejected): an HTTP error and a network failure both land here
+    });
+  })();
+
+  // Team card. The price comes from /api/pricing — an env var in Vercel, printed nowhere in this
+  // file — so while none is configured the card says so and the buy button is never shown:
+  // nothing false, nothing chargeable. The arithmetic below is the same one api/_lib/pricing.mjs
+  // does for the Stripe line item, in integer cents, so what is shown is what is charged.
+  (function () {
+    var form = document.getElementById('team-form');
+    if (!form) return;
+    var seatsInput = document.getElementById('team-seats');
+    var emailInput = document.getElementById('team-email');
+    var price = document.getElementById('team-price');
+    var buy = document.getElementById('team-buy');
+    var contact = document.getElementById('team-contact');
+    var msg = document.getElementById('team-msg');
+    var UNANNOUNCED = 'Preu per anunciar — escriu-nos i acordem seients i termini amb tu.';
+    var FAILED = 'El pagament no s\'ha pogut iniciar — no s\'ha cobrat res. Escriu-nos i ho resolem.';
+    var pricing = null;
+
+    function term() {
+      var checked = form.querySelector('input[name="term"]:checked');
+      return checked ? checked.value : 'monthly';
+    }
+    function seats() {
+      var n = parseInt(seatsInput.value, 10);
+      return n >= 1 && n <= 10 ? n : null;
+    }
+    function money(cents, currency) {
+      try {
+        return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency.toUpperCase() }).format(cents / 100);
+      } catch (e) {
+        return (cents / 100).toFixed(2) + ' ' + currency.toUpperCase();
+      }
+    }
+    function render() {
+      if (!pricing || pricing.monthlyPerSeat == null) {
+        price.textContent = UNANNOUNCED;
+        buy.hidden = true;
+        contact.hidden = false;
+        return;
+      }
+      contact.hidden = true;
+      var n = seats();
+      if (!n) {
+        price.textContent = 'Seients: d\'1 a 10. Més enllà, Enterprise.';
+        buy.hidden = true;
+        return;
+      }
+      var monthlyCents = Math.round(pricing.monthlyPerSeat * 100);
+      var annual = term() === 'annual';
+      var unit = annual ? Math.round(monthlyCents * 12 * (1 - pricing.annualDiscount)) : monthlyCents;
+      price.textContent = money(unit * n, pricing.currency) + (annual ? ' l\'any' : ' al mes');
+      var small = document.createElement('small');
+      small.textContent = n + (n === 1 ? ' seient' : ' seients') + ' × ' + money(unit, pricing.currency)
+        + (annual ? ' — un 10% menys que dotze pagaments mensuals' : '');
+      price.appendChild(small);
+      buy.hidden = false;
+    }
+
+    fetch('/api/pricing')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (p) { pricing = p; render(); }, function () { pricing = null; render(); });
+    form.addEventListener('input', render);
+    form.addEventListener('change', render);
+
+    // Back from Stripe: the URL says how it ended, the card says what happens next.
+    var back = /[?&]checkout=(success|cancelled)/.exec(window.location.search);
+    if (back) {
+      msg.textContent = back[1] === 'success'
+        ? 'Pagat — gràcies. La teva llicència està de camí a l\'adreça que vas donar a Stripe, amb l\'assumpte "Your Concentus team license".'
+        : 'Pagament cancel·lat — no s\'ha cobrat res.';
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var n = seats();
+      if (!n || !emailInput.value) return;
+      buy.disabled = true;
+      msg.textContent = 'Obrint el pagament…';
+      fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seats: n, term: term(), email: emailInput.value }),
+      }).then(function (r) {
+        return r.json().then(function (body) { return { ok: r.ok, body: body }; });
+      }).then(function (r) {
+        if (r.ok && r.body && r.body.url) { window.location.href = r.body.url; return; }
+        msg.textContent = (r.body && r.body.error) || FAILED;
+        buy.disabled = false;
+      }, function () {
+        msg.textContent = FAILED;
+        buy.disabled = false;
+      });
+    });
+  })();
+
+  // Trial form. Same shape as the free license form: one generic line whatever happened, because
+  // the function on the other end confirms nothing about any address. The one exception is a
+  // 503 — trials not open yet — which is about the site, not the address, and is shown as said.
+  (function () {
+    var form = document.getElementById('trial-form');
+    if (!form) return;
+    var submit = document.getElementById('trial-submit');
+    var msg = document.getElementById('trial-msg');
+    var GENERIC = 'Si aquesta adreça és vàlida, la teva llicència de prova està de camí.';
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      submit.disabled = true;
+      msg.textContent = '';
+
+      var body = {
+        name: document.getElementById('trial-name').value,
+        company: document.getElementById('trial-company').value,
+        email: document.getElementById('trial-email').value,
+        seats: parseInt(document.getElementById('trial-seats').value, 10),
+        website: document.getElementById('trial-website').value, // honeypot — left blank by a person
+      };
+
+      function done() {
+        msg.textContent = GENERIC;
+        submit.disabled = false;
+      }
+
+      fetch('/api/trial', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(function (r) {
+        if (r.status !== 503) { done(); return; }
+        return r.json().then(function (b) {
+          msg.textContent = (b && b.error) || GENERIC;
+          submit.disabled = false;
+        }, done);
+      }, done);
     });
   })();
 </script>
