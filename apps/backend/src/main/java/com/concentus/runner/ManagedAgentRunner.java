@@ -120,19 +120,14 @@ final class ManagedAgentRunner implements AgentRunner {
 
         // MCP servers + one mcp_toolset tool per server (github + gitlab, per config).
         for (McpServerSpec mcp : spec.mcpServers) {
-            builder.addMcpServer(BetaManagedAgentsUrlMcpServerParams.builder()
-                    .type(BetaManagedAgentsUrlMcpServerParams.Type.URL)
-                    .name(mcp.name)
-                    .url(mcp.url)
-                    .build());
+            builder.addMcpServer(ManagedMcpServers.urlServer(mcp));
+            if (ManagedMcpServers.carriesToken(mcp)) {
+                System.err.println("[info] MCP server '" + mcp.name + "' declared to the managed session with its credential.");
+            }
             builder.addTool(BetaManagedAgentsMcpToolsetParams.builder()
                     .type(BetaManagedAgentsMcpToolsetParams.Type.MCP_TOOLSET)
                     .mcpServerName(mcp.name)
                     .build());
-            if (mcp.resolveToken() != null) {
-                System.err.println("[info] MCP server '" + mcp.name + "' has a token; managed-mode MCP auth "
-                        + "requires a vault (see README). Declared without auth for now.");
-            }
         }
 
         // Skills injected as raw JSON to stay tolerant of SDK version differences.

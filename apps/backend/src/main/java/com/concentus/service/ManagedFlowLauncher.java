@@ -117,11 +117,8 @@ public class ManagedFlowLauncher {
                         .build());
 
         for (McpServerSpec mcp : spec.mcpServers) {
-            builder.addMcpServer(BetaManagedAgentsUrlMcpServerParams.builder()
-                    .type(BetaManagedAgentsUrlMcpServerParams.Type.URL)
-                    .name(mcp.name)
-                    .url(mcp.url)
-                    .build());
+            // With the server's credential when the node has one — see ManagedAgentRunner.urlServer.
+            builder.addMcpServer(com.concentus.runner.ManagedMcpServers.urlServer(mcp));
             builder.addTool(BetaManagedAgentsMcpToolsetParams.builder()
                     .type(BetaManagedAgentsMcpToolsetParams.Type.MCP_TOOLSET)
                     .mcpServerName(mcp.name)
