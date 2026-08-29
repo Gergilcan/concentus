@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
-import type { SignInProviderConfig } from '../api/types.ts'
+import type { SignInProviderConfig, SignInProvidersList } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
+import { WRITE_IN_URL } from './LicensePanel.tsx'
 import { Spinner } from './Spinner.tsx'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
@@ -20,33 +21,35 @@ import panels from './panels.module.scss'
  * same way the first time — the address in the directory does not match the one the application
  * asks for — so it is computed from the request and offered to be copied, instead of described in
  * documentation somebody would have to go and find.
+ *
+ * <p>What the license withholds is said here too, in the backend's own words, next to the thing it
+ * withholds: a custom issuer on a Team license is listed and marked inactive rather than hidden,
+ * and the domain allowlist says why it does nothing. The alternative — a form that saves and a
+ * sign-in screen that quietly declines to show the result — is the failure this panel exists to
+ * avoid.
  */
 export function SignInProvidersPanel({ pushError }: { pushError: (m: string) => void }) {
   const { t } = useTranslation()
-  const [providers, setProviders] = useState<SignInProviderConfig[] | null>(null)
-  const [redirectUri, setRedirectUri] = useState('')
+  const [list, setList] = useState<SignInProvidersList | null>(null)
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
 
   const load = () => {
     api
       .listSignInProviders()
-      .then((r) => {
-        setProviders(r.providers)
-        setRedirectUri(r.redirectUri)
-      })
+      .then(setList)
       .catch((e) => {
-        setProviders([])
+        setList({ providers: [], redirectUri: '', live: [], allowedDomains: '', domainJitRefusal: null })
         pushError(errMessage(e))
       })
   }
 
   useEffect(load, [])
 
-  if (!providers) return <Spinner />
+  if (!list) return <Spinner />
 
   const copyRedirect = async () => {
-    await navigator.clipboard.writeText(redirectUri)
+    await navigator.clipboard.writeText(list.redirectUri)
     setCopied(true)
   }
 
@@ -65,13 +68,15 @@ export function SignInProvidersPanel({ pushError }: { pushError: (m: string) => 
 
       <div className={styles.redirectBox}>
         <span className={styles.redirectLabel}>{t('Redirect URI — register exactly this')}</span>
-        <code>{redirectUri}</code>
+        <code>{list.redirectUri}</code>
         <button className={styles.newBtn} onClick={() => void copyRedirect()}>
           {copied ? t('Copied') : t('Copy')}
         </button>
       </div>
 
-      {providers.map((provider) => (
+      <DomainAllowlist domains={list.allowedDomains} refusal={list.domainJitRefusal} />
+
+      {list.providers.map((provider) => (
         <ProviderCard
           key={provider.id}
           provider={provider}
@@ -79,8 +84,7 @@ export function SignInProvidersPanel({ pushError }: { pushError: (m: string) => 
           onSave={async (update) => {
             setBusy(provider.id)
             try {
-              const r = await api.saveSignInProvider(update)
-              setProviders(r.providers)
+              setList(await api.saveSignInProvider(update))
             } catch (e) {
               pushError(errMessage(e))
             } finally {
@@ -89,6 +93,45 @@ export function SignInProvidersPanel({ pushError }: { pushError: (m: string) => 
           }}
         />
       ))}
+    </div>
+  )
+}
+
+/**
+ * Who a provider admits without an invitation.
+ *
+ * <p>Read-only in every case: the list is startup configuration (AUTH_ALLOWED_DOMAINS), shown here
+ * because the screen that offers the providers is where somebody asks "and who gets in". On a
+ * Team license the answer is nobody uninvited — automatic accounts are Enterprise — so the field
+ * is disabled with that sentence rather than showing a list nothing acts on.
+ */
+function DomainAllowlist({ domains, refusal }: { domains: string; refusal: string | null }) {
+  const { t } = useTranslation()
+  return (
+    <div>
+      <label className={styles.field}>
+        <span>{t('Domains whose people get an account on first sign-in')}</span>
+        <input
+          value={domains}
+          disabled
+          placeholder={refusal ? '' : t('any address a provider vouches for')}
+          aria-describedby="domain-allowlist-note"
+        />
+      </label>
+      {refusal ? (
+        <p id="domain-allowlist-note" className={styles.refusal}>
+          {refusal} {t('Add people under Members instead; they sign in with the providers below.')}{' '}
+          <a className={styles.textLink} href={WRITE_IN_URL}>
+            {t('Write in')}
+          </a>
+        </p>
+      ) : (
+        <p id="domain-allowlist-note" className={panels.hint}>
+          {t(
+            'Set at startup with AUTH_ALLOWED_DOMAINS. Blank admits any address a provider vouches for; people you add under Members sign in either way.',
+          )}
+        </p>
+      )}
     </div>
   )
 }
@@ -116,6 +159,9 @@ function ProviderCard({
   const [tenant, setTenant] = useState(provider.tenant)
   const [issuer, setIssuer] = useState(provider.issuer)
 
+  // Withheld by the license: the fields stay readable, so a registration made under another
+  // license is visibly still there, but nothing here can be saved or offered.
+  const inactive = provider.refusal != null
   const ready = clientId.trim() !== '' && (provider.hasSecret || clientSecret.trim() !== '')
 
   const save = (enabled: boolean) =>
@@ -132,24 +178,38 @@ function ProviderCard({
     }).then(() => setClientSecret(''))
 
   return (
-    <section className={styles.providerCard}>
+    <section className={inactive ? `${styles.providerCard} ${styles.providerInactive}` : styles.providerCard}>
       <header>
         <h4 className={styles.h4}>{provider.name}</h4>
-        <span className={provider.enabled ? styles.providerOn : styles.providerOff}>
-          {provider.enabled ? t('on the sign-in screen') : t('not offered')}
+        <span className={provider.enabled && !inactive ? styles.providerOn : styles.providerOff}>
+          {inactive
+            ? t('Enterprise — inactive')
+            : provider.enabled
+              ? t('on the sign-in screen')
+              : t('not offered')}
         </span>
       </header>
+
+      {inactive && (
+        <p className={styles.refusal}>
+          {provider.refusal}{' '}
+          <a className={styles.textLink} href={WRITE_IN_URL}>
+            {t('Write in')}
+          </a>
+        </p>
+      )}
 
       <div className={styles.providerFields}>
         <label className={styles.field}>
           <span>{t('Client id')}</span>
-          <input value={clientId} onChange={(e) => setClientId(e.target.value)} />
+          <input value={clientId} disabled={inactive} onChange={(e) => setClientId(e.target.value)} />
         </label>
         <label className={styles.field}>
           <span>{t('Client secret')}</span>
           <input
             type="password"
             value={clientSecret}
+            disabled={inactive}
             placeholder={provider.hasSecret ? t('•••••••• (unchanged)') : ''}
             onChange={(e) => setClientSecret(e.target.value)}
           />
@@ -159,6 +219,7 @@ function ProviderCard({
             <span>{t('Directory (tenant)')}</span>
             <input
               value={tenant}
+              disabled={inactive}
               placeholder="organizations"
               onChange={(e) => setTenant(e.target.value)}
             />
@@ -169,6 +230,7 @@ function ProviderCard({
             <span>{t('Issuer')}</span>
             <input
               value={issuer}
+              disabled={inactive}
               placeholder="https://id.company.com"
               onChange={(e) => setIssuer(e.target.value)}
             />
@@ -179,13 +241,19 @@ function ProviderCard({
       <div className={styles.crudActions}>
         <button
           className={styles.saveBtn}
-          disabled={busy || !ready}
+          disabled={busy || !ready || inactive}
           onClick={() => void save(true)}
-          title={ready ? undefined : t('A client id and a secret are what make the button work.')}
+          title={
+            inactive
+              ? (provider.refusal ?? undefined)
+              : ready
+                ? undefined
+                : t('A client id and a secret are what make the button work.')
+          }
         >
           {busy ? t('Saving…') : provider.enabled ? t('Save') : t('Save and offer it')}
         </button>
-        {provider.enabled && (
+        {provider.enabled && !inactive && (
           <button className={styles.newBtn} disabled={busy} onClick={() => void save(false)}>
             {t('Stop offering it')}
           </button>

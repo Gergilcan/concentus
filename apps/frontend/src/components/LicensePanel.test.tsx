@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { LicensePanel } from './LicensePanel.tsx'
 
@@ -12,6 +12,12 @@ vi.mock('../api/client.ts', () => ({
   },
 }))
 
+/** Two of the backend's nine, enough to tell a tick from a lock. */
+const FEATURES = (allowed: boolean) => [
+  { key: 'GENERIC_OIDC', label: 'Custom identity providers (any OpenID Connect issuer)', allowed },
+  { key: 'OTEL_EXPORT', label: 'OpenTelemetry export to your collector', allowed },
+]
+
 const NONE = {
   tier: null,
   licensee: null,
@@ -21,6 +27,7 @@ const NONE = {
   valid: false,
   problem: 'No license installed. Paste a token below, or request one.',
   trial: false,
+  features: FEATURES(false),
 }
 
 const VALID = {
@@ -32,6 +39,7 @@ const VALID = {
   valid: true,
   problem: null,
   trial: false,
+  features: FEATURES(true),
 }
 
 /** An ISO date `days` from now — computed here, not fixed, so the countdown assertion holds on any day the test runs. */
@@ -125,5 +133,33 @@ describe('LicensePanel', () => {
     expect(await screen.findByText('The server is not answering.')).toBeInTheDocument()
     expect(screen.queryByRole('status')).toBeNull()
     expect(screen.getByLabelText('License token')).toBeInTheDocument()
+  })
+
+  // "What this license unlocks": the same list whatever is installed, a tick or a lock on each
+  // line, so a free or Team install sees what the next tier has and where to ask for it.
+  it('lists every feature with a lock, and the write-in link, when the license has none of them', async () => {
+    getLicense.mockResolvedValue({ ...VALID, tier: 'team', seats: 3, features: FEATURES(false) })
+    render(<LicensePanel />)
+
+    expect(await screen.findByText('What this license unlocks')).toBeInTheDocument()
+    const line = screen.getByText('OpenTelemetry export to your collector').closest('li')
+    expect(line).not.toBeNull()
+    expect(within(line as HTMLElement).getByText('🔒')).toBeInTheDocument()
+    expect(screen.getAllByText('🔒')).toHaveLength(2)
+    expect(screen.queryByText('✓')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Write in' })).toHaveAttribute(
+      'href',
+      expect.stringMatching(/^mailto:/),
+    )
+  })
+
+  it('lists every feature with a tick, and no write-in link, on an enterprise license', async () => {
+    getLicense.mockResolvedValue(VALID)
+    render(<LicensePanel />)
+
+    expect(await screen.findByText('What this license unlocks')).toBeInTheDocument()
+    expect(screen.getAllByText('✓')).toHaveLength(2)
+    expect(screen.queryByText('🔒')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Write in' })).toBeNull()
   })
 })

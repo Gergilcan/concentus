@@ -1,14 +1,18 @@
 package com.concentus.web;
 
 import com.concentus.auth.OrgContext;
+import com.concentus.license.Feature;
 import com.concentus.license.License;
 import com.concentus.license.LicenseService;
+import com.concentus.license.LicenseStatus;
 import com.concentus.license.TestLicenses;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.http.ResponseEntity;
 
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -88,5 +92,39 @@ class LicenseControllerTest {
         LicenseController controller = new LicenseController(license, nonAdminContext(), mock(com.concentus.audit.AuditService.class));
 
         assertThat(controller.status()).isNotNull(); // does not throw for a non-admin caller
+    }
+
+    // The "what this license unlocks" list: every Feature, in the enum's order, with a tick or a
+    // lock — the same nine lines whatever is installed, so a free or Team install sees what the
+    // next tier has rather than a blank.
+
+    @Test
+    void the_status_lists_every_feature_locked_when_nothing_is_installed(@TempDir Path dir) throws Exception {
+        LicenseController controller = new LicenseController(TestLicenses.serviceOn(dir), nonAdminContext(), mock(com.concentus.audit.AuditService.class));
+
+        List<LicenseStatus.FeatureStatus> features = controller.status().features();
+
+        assertThat(features).extracting(LicenseStatus.FeatureStatus::key)
+                .containsExactly(Arrays.stream(Feature.values()).map(Feature::name).toArray(String[]::new));
+        assertThat(features).extracting(LicenseStatus.FeatureStatus::label)
+                .contains(Feature.GENERIC_OIDC.label, Feature.OTEL_EXPORT.label);
+        assertThat(features).allMatch(f -> !f.allowed());
+    }
+
+    @Test
+    void the_status_lists_every_feature_locked_on_a_team_license(@TempDir Path dir) throws Exception {
+        TestLicenses.installFixture(dir, "team-test.license");
+        LicenseController controller = new LicenseController(TestLicenses.serviceOn(dir), nonAdminContext(), mock(com.concentus.audit.AuditService.class));
+
+        assertThat(controller.status().features()).hasSize(Feature.values().length).allMatch(f -> !f.allowed());
+    }
+
+    @Test
+    void the_status_lists_every_feature_unlocked_on_an_enterprise_license(@TempDir Path dir) throws Exception {
+        TestLicenses.installFixture(dir, "enterprise-test.license");
+        LicenseController controller = new LicenseController(TestLicenses.serviceOn(dir), nonAdminContext(), mock(com.concentus.audit.AuditService.class));
+
+        assertThat(controller.status().features()).hasSize(Feature.values().length)
+                .allMatch(LicenseStatus.FeatureStatus::allowed);
     }
 }

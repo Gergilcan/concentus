@@ -184,4 +184,110 @@ class OidcRegistryTest {
 
         assertThatCode(registry::requireEnterpriseToRegister).doesNotThrowAnyException();
     }
+
+    // The second gate — Feature.GENERIC_OIDC: which paid license. Team signs in with the presets;
+    // an issuer of the company's own is Enterprise. Free never reaches this (it cannot register a
+    // provider at all), and what it reads from the environment is left exactly alone.
+
+    /** A registry on a fixture license, reading {@code env}. */
+    private static OidcRegistry registryOn(String fixture, MockEnvironment env) throws Exception {
+        Path dir = Files.createTempDirectory("oidc-registry-test-" + fixture);
+        TestLicenses.installFixture(dir, fixture);
+        return new OidcRegistry(settingsFrom(env), TestLicenses.serviceOn(dir));
+    }
+
+    /** Microsoft beside a custom issuer, both with credentials — both usable, license aside. */
+    private static MockEnvironment microsoftAndOkta() {
+        return env()
+                .withProperty("app.auth.oidc.providers", "microsoft,okta")
+                .withProperty("app.auth.oidc.microsoft.client-id", "ms-id")
+                .withProperty("app.auth.oidc.microsoft.client-secret", "ms-secret")
+                .withProperty("app.auth.oidc.okta.issuer", "https://acme.okta.com")
+                .withProperty("app.auth.oidc.okta.client-id", "okta-id")
+                .withProperty("app.auth.oidc.okta.client-secret", "okta-secret");
+    }
+
+    private static final String GENERIC_OIDC_REFUSAL =
+            "Custom identity providers (any OpenID Connect issuer) is an Enterprise feature";
+
+    @Test
+    void on_a_team_license_a_custom_issuer_is_not_offered_but_the_presets_are() throws Exception {
+        OidcRegistry registry = registryOn("team-test.license", microsoftAndOkta());
+
+        assertThat(registry.all()).extracting(OidcRegistry.Configured::id).containsExactly("microsoft");
+        assertThat(registry.byId("okta")).isEmpty();
+        // The panel still lists it, marked with the feature's own sentence — the registration is
+        // withheld, not lost.
+        assertThat(registry.refusalFor(OidcProvider.of("okta", "https://acme.okta.com", null, null, null)))
+                .contains(GENERIC_OIDC_REFUSAL).contains("Team license");
+        assertThat(registry.refusalFor(OidcProvider.of("google", null, null, null, null))).isNull();
+    }
+
+    @Test
+    void on_a_team_license_registering_a_custom_issuer_is_refused_with_the_features_sentence() throws Exception {
+        OidcRegistry registry = registryOn("team-test.license", env());
+
+        assertThatThrownBy(() -> registry.requireAllowedToRegister("generic"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(GENERIC_OIDC_REFUSAL);
+        assertThatCode(() -> registry.requireAllowedToRegister("google")).doesNotThrowAnyException();
+        assertThatCode(() -> registry.requireAllowedToRegister("microsoft")).doesNotThrowAnyException();
+        // Discord is a preset — a shape this application ships, not an issuer somebody brought.
+        assertThatCode(() -> registry.requireAllowedToRegister("discord")).doesNotThrowAnyException();
+    }
+
+    // A "google" whose endpoints point at a company's own Keycloak is a custom issuer wearing a
+    // preset's name; the name is not what the license covers.
+    @Test
+    void on_a_team_license_a_preset_with_restated_endpoints_is_a_custom_issuer() throws Exception {
+        MockEnvironment env = env()
+                .withProperty("app.auth.oidc.providers", "google")
+                .withProperty("app.auth.oidc.google.client-id", "id")
+                .withProperty("app.auth.oidc.google.client-secret", "secret")
+                .withProperty("app.auth.oidc.google.authorization-url", "https://sso.acme.com/auth")
+                .withProperty("app.auth.oidc.google.token-url", "https://sso.acme.com/token")
+                .withProperty("app.auth.oidc.google.userinfo-url", "https://sso.acme.com/me");
+
+        assertThat(registryOn("team-test.license", env).any()).isFalse();
+        // The same registration is a Google preset again the moment its endpoints are its own.
+        assertThat(registryOn("team-test.license", env()
+                .withProperty("app.auth.oidc.providers", "google")
+                .withProperty("app.auth.oidc.google.client-id", "id")
+                .withProperty("app.auth.oidc.google.client-secret", "secret")).any()).isTrue();
+    }
+
+    // A tenant is the one thing a Microsoft preset legitimately changes about its issuer.
+    @Test
+    void on_a_team_license_microsoft_with_a_tenant_is_still_the_preset() throws Exception {
+        MockEnvironment env = env()
+                .withProperty("app.auth.oidc.providers", "microsoft")
+                .withProperty("app.auth.oidc.microsoft.tenant", "11112222-3333-4444-5555-666677778888")
+                .withProperty("app.auth.oidc.microsoft.client-id", "id")
+                .withProperty("app.auth.oidc.microsoft.client-secret", "secret");
+
+        assertThat(registryOn("team-test.license", env).byId("microsoft")).isPresent();
+    }
+
+    @Test
+    void on_an_enterprise_license_a_custom_issuer_is_offered_like_any_other() throws Exception {
+        OidcRegistry registry = registryOn("enterprise-test.license", microsoftAndOkta());
+
+        assertThat(registry.all()).extracting(OidcRegistry.Configured::id)
+                .containsExactly("microsoft", "okta");
+        assertThat(registry.refusalFor(OidcProvider.of("okta", "https://acme.okta.com", null, null, null)))
+                .isNull();
+        assertThatCode(() -> registry.requireAllowedToRegister("generic")).doesNotThrowAnyException();
+    }
+
+    // Free is one person on their own machine: the license withholds nothing from what the
+    // environment configured (registering is refused earlier, by requireEnterpriseToRegister).
+    @Test
+    void without_a_license_a_custom_issuer_from_the_environment_is_read_unchanged() throws Exception {
+        OidcRegistry registry = registryFrom(microsoftAndOkta());
+
+        assertThat(registry.all()).extracting(OidcRegistry.Configured::id)
+                .containsExactly("microsoft", "okta");
+        assertThat(registry.refusalFor(OidcProvider.of("generic", "https://id.acme.com", null, null, null)))
+                .isNull();
+    }
 }

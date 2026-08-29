@@ -4,12 +4,14 @@ import java.nio.file.Path;
 import java.time.Clock;
 
 /**
- * The one enforcement point that runs before there is a Spring context to ask.
+ * The enforcement points that run before there is a Spring context to ask.
  *
  * <p>{@link com.concentus.store.EmbeddedPostgresConfig} decides whether to open an external
  * PostgreSQL inside a {@code @Bean} method — before {@link LicenseService} exists as a bean, and
- * arguably before it is safe to assume anything about the context is wired yet. Static and
- * Spring-free so that decision doesn't need one.
+ * arguably before it is safe to assume anything about the context is wired yet. And {@link
+ * com.concentus.telemetry.TelemetryLicenseGate} decides whether the OTLP exporter may exist at
+ * all, earlier still, while the environment is being assembled. Static and Spring-free so neither
+ * decision needs a bean.
  *
  * <p>Deliberately thin: this builds a throwaway {@link LicenseService} off the same two sources
  * (the {@code CONCENTUS_LICENSE} environment variable, then {@code license.key} in the data
@@ -21,6 +23,20 @@ public final class LicenseCheck {
     private static final String LICENSE_URL = "https://www.concentus-ai.com/#license";
 
     private LicenseCheck() { }
+
+    /**
+     * The license as the real bean will read it, for a caller that runs before the bean exists.
+     * The same two sources and the same verifier; the only thing a caller adds is the two
+     * property values it can read where a static helper cannot.
+     *
+     * @param teamPublicKeySpki the {@code license.team-public-key} property's value; blank means
+     *                          the team tier is off here
+     */
+    public static LicenseService serviceBeforeContext(Path dataDir, String teamPublicKeySpki) {
+        return new LicenseService(
+                LicenseVerifier.forProduction(System.getenv(LicenseVerifier.ENV_TEST_KEYS), teamPublicKeySpki),
+                dataDir, System.getenv(LicenseService.ENV_VAR), Clock.systemUTC());
+    }
 
     /**
      * What an external-database configuration is allowed to mean under the installed license.

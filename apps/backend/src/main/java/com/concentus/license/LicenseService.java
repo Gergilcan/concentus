@@ -13,6 +13,8 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -93,14 +95,27 @@ public class LicenseService {
     public LicenseStatus status() {
         License license = loaded.license;
         if (license == null) {
-            return new LicenseStatus(null, null, null, null, null, false, loaded.problem, false);
+            return new LicenseStatus(null, null, null, null, null, false, loaded.problem, false,
+                    features());
         }
         String expires = license.expires() == null ? null : license.expires().toString();
         Integer graceDaysLeft = graceDaysLeft(license);
         boolean valid = License.TIER_INDIVIDUAL.equals(license.tier()) || enterpriseActive();
         String problem = valid ? null : expiredBeyondGraceProblem(license);
         return new LicenseStatus(license.tier(), license.licensee(), license.seats(), expires,
-                graceDaysLeft, valid, problem, isTrial(license));
+                graceDaysLeft, valid, problem, isTrial(license), features());
+    }
+
+    /**
+     * Every {@link Feature} with whether this license has it, in the enum's order. Always the
+     * whole list, never only the unlocked part: the panel shows the same nine lines to a free, a
+     * Team and an Enterprise installation, so what the next tier would unlock is visible from
+     * every one of them rather than being a blank where the locks would have been.
+     */
+    private List<LicenseStatus.FeatureStatus> features() {
+        return Arrays.stream(Feature.values())
+                .map(f -> new LicenseStatus.FeatureStatus(f.name(), f.label, allows(f)))
+                .toList();
     }
 
     /** The trial flag as a plain boolean: absent on every license minted before trials existed. */
@@ -143,6 +158,20 @@ public class LicenseService {
     /** The one question every Enterprise gate asks. */
     public boolean allows(Feature feature) {
         return enterpriseTier();
+    }
+
+    /**
+     * Where a gate actually bites: a Team deployment asking for an Enterprise feature.
+     *
+     * <p>Not simply {@code !allows(feature)}, because that is also true of a free installation —
+     * one person on their own machine, whom {@link Feature} promises never to limit. A free
+     * install keeps exporting its traces to its own collector and keeps creating the first
+     * account that arrives; it is the shared, paid-for-but-not-Enterprise deployment that is told
+     * no. The gates that hold a feature back (rather than merely print a lock beside it) ask this,
+     * so "free is unchanged" is one line here and not a second condition to forget at each of them.
+     */
+    public boolean withheld(Feature feature) {
+        return teamTier() && !allows(feature);
     }
 
     /**

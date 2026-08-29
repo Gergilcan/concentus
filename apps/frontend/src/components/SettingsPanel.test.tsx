@@ -137,4 +137,25 @@ describe('SettingsPanel', () => {
 
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
+
+  // A row the license holds back is still a row — disabled, with the backend's sentence and the
+  // one link that fixes it — rather than a switch that saves and then does nothing.
+  it('shows a withheld setting disabled, with the refusal and the write-in link', async () => {
+    const TRACES = {
+      ...RUNS,
+      key: 'management.otlp.tracing.export.enabled',
+      group: 'Traces and metrics',
+      label: 'Send traces',
+      type: 'BOOLEAN' as const,
+      value: 'true',
+      refusal: 'OpenTelemetry export to your collector is an Enterprise feature — write in to upgrade.',
+    }
+    listSettings.mockResolvedValue({ settings: [RUNS, TRACES] })
+    await open()
+
+    expect(screen.getByLabelText('Send traces')).toBeDisabled()
+    expect(screen.getByLabelText('Runs at once')).not.toBeDisabled()
+    expect(screen.getByText(/OpenTelemetry export to your collector is an Enterprise feature/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Write in' })).toHaveAttribute('href', expect.stringMatching(/^mailto:/))
+  })
 })

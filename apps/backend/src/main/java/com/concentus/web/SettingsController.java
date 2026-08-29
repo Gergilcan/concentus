@@ -7,6 +7,7 @@ import com.concentus.config.SettingDef;
 import com.concentus.config.Settings;
 import com.concentus.config.SettingsCatalog;
 import com.concentus.config.SettingsStore;
+import com.concentus.license.LicenseService;
 import org.springframework.core.env.Environment;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -40,14 +41,16 @@ public class SettingsController {
     private final OrgContext orgContext;
     /** Which key changed and by whom; the value stays out of the trail, secret or not. */
     private final AuditService audit;
+    private final LicenseService license;
 
     public SettingsController(SettingsStore store, Settings settings, Environment environment,
-                              OrgContext orgContext, AuditService audit) {
+                              OrgContext orgContext, AuditService audit, LicenseService license) {
         this.store = store;
         this.settings = settings;
         this.environment = environment;
         this.orgContext = orgContext;
         this.audit = audit;
+        this.license = license;
     }
 
     /** Where a value came from, which decides what the screen says next to it. */
@@ -81,6 +84,11 @@ public class SettingsController {
             entry.put("restartRequired", def.restartRequired());
             entry.put("options", def.options());
             entry.put("source", source.name());
+            // Null for every ordinary setting, and for a gated one wherever it works — Enterprise,
+            // and free, which the license never limits. Only a Team install gets the sentence,
+            // and the screen turns it into a disabled row that says which tier has the feature.
+            entry.put("refusal", def.enterpriseOnly() != null && license.withheld(def.enterpriseOnly())
+                    ? license.refusal(def.enterpriseOnly()) : null);
             if (def.type() == SettingDef.Type.SECRET) {
                 // Never read back. What the screen needs is whether there is one, so it can show a
                 // filled field without the value ever being reachable through this API — and
