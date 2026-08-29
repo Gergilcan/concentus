@@ -139,7 +139,8 @@ export function MembersPanel({ pushError }: { pushError: (m: string) => void }) 
               : members.length === 1
                 ? t('{{count}} account.', { count: members.length })
                 : t('{{count}} accounts.', { count: members.length })}{' '}
-            {t('Roles are enforced on every request, not only on screen.')}
+            {t('Roles are enforced on every request, not only on screen.')}{' '}
+            {t('Service accounts — tokens for machines — do not use seats; they have a tab of their own.')}
           </p>
         </div>
         <button className={styles.newBtn} onClick={() => setAdding((open) => !open)}>

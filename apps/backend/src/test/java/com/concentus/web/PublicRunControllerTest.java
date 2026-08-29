@@ -1,5 +1,9 @@
 package com.concentus.web;
 
+import com.concentus.config.Settings;
+import com.concentus.license.Feature;
+import com.concentus.license.LicenseService;
+import com.concentus.license.TestLicenses;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.FlowNode;
 import com.concentus.model.RunEvent;
@@ -9,12 +13,14 @@ import com.concentus.service.RunService;
 import com.concentus.store.FlowStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -44,12 +50,29 @@ class PublicRunControllerTest {
     private final RunService runService = mock(RunService.class);
     private final AgentRun run = new AgentRun("run_1", "f1", "Flow", "local");
 
+    /** Empty, so the license read from it is "none" — the free installation every test but the tier ones is. */
+    @TempDir
+    Path dir;
+    private LicenseService free;
+
     private PublicRunController controller() {
         return controller(new RateLimiter(1_000, 60_000));
     }
 
     private PublicRunController controller(RateLimiter limiter) {
-        return new PublicRunController(flows, runService, limiter, Duration.ofMillis(1));
+        return controller(limiter, free, Settings.none());
+    }
+
+    private PublicRunController controller(RateLimiter limiter, LicenseService license, Settings settings) {
+        return new PublicRunController(flows, runService, license, settings, limiter, Duration.ofMillis(1));
+    }
+
+    /** A license service reading {@code fixture} — the tier the tests about the rate are about. */
+    private LicenseService licensed(String fixture) throws Exception {
+        Path licensed = dir.resolve(fixture.replace(".license", ""));
+        java.nio.file.Files.createDirectories(licensed);
+        TestLicenses.installFixture(licensed, fixture);
+        return TestLicenses.serviceOn(licensed);
     }
 
     private static FlowGraph flow(String id, Map<String, Object> inputData) {
@@ -77,7 +100,8 @@ class PublicRunControllerTest {
     }
 
     @BeforeEach
-    void aPublishedFlowAndARunThatStarts() {
+    void aPublishedFlowAndARunThatStarts() throws Exception {
+        free = TestLicenses.serviceOn(dir);
         when(flows.get("f1")).thenReturn(Optional.of(flow("f1", published(TOKEN))));
         Map<String, Object> unpublished = new HashMap<>(published(TOKEN));
         unpublished.put("published", false);
@@ -157,8 +181,11 @@ class PublicRunControllerTest {
     }
 
     @Test
-    void requestsAreRateLimitedPerToken() {
-        PublicRunController c = controller(new RateLimiter(2, 60_000));
+    void requestsAreRateLimitedPerToken() throws Exception {
+        // The allowance is the tier's, not the limiter's own ceiling; a small one is an Enterprise
+        // deployment with the setting turned down.
+        Settings two = Settings.of(Map.of("endpoints.rate-per-minute", "2"));
+        PublicRunController c = controller(new RateLimiter(1_000, 60_000), licensed("enterprise-test.license"), two);
         c.run("f1", input("one"), false, null, bearing(TOKEN));
         c.run("f1", input("two"), false, null, bearing(TOKEN));
 
@@ -166,7 +193,8 @@ class PublicRunControllerTest {
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
         // Wrong tokens are counted too — that is what throttles a guess.
-        PublicRunController guessed = controller(new RateLimiter(1, 60_000));
+        Settings one = Settings.of(Map.of("endpoints.rate-per-minute", "1"));
+        PublicRunController guessed = controller(new RateLimiter(1_000, 60_000), licensed("enterprise-test.license"), one);
         assertThatThrownBy(() -> guessed.run("f1", input("x"), false, null, bearing("guess")))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED));
@@ -303,5 +331,59 @@ class PublicRunControllerTest {
         assertThatThrownBy(() -> controller().chat("f1", "wrong"))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED));
+    }
+
+    // ---- the rate is the tier's ----
+
+    /** Calls {@code n} times with {@code wait=false}; the run mock answers instantly. */
+    private static void call(PublicRunController c, int n) {
+        for (int i = 0; i < n; i++) c.run("f1", input("go"), false, null, bearing(TOKEN));
+    }
+
+    private static ResponseStatusException tooMany(PublicRunController c) {
+        return (ResponseStatusException) org.assertj.core.api.Assertions.catchThrowable(
+                () -> c.run("f1", input("one more"), false, null, bearing(TOKEN)));
+    }
+
+    // The figure the endpoint has always had, and the body names it and where it comes from.
+    @Test
+    void aFreeInstallationKeepsSixtyAMinuteWhateverTheSettingSays() {
+        Settings ignored = Settings.of(Map.of("endpoints.rate-per-minute", "0"));
+        PublicRunController c = controller(new RateLimiter(1_000, 60_000), free, ignored);
+        assertThat(c.allowancePerMinute()).isEqualTo(60);
+        call(c, 60);
+
+        ResponseStatusException e = tooMany(c);
+        assertThat(e.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(e.getReason()).contains("60 a minute").contains("free installation");
+    }
+
+    // Team is the constant beside the feature, and the setting is not Team's to change.
+    @Test
+    void aTeamDeploymentIsHeldToTheTeamConstant() throws Exception {
+        Settings ignored = Settings.of(Map.of("endpoints.rate-per-minute", "0"));
+        PublicRunController c = controller(new RateLimiter(1_000, 60_000), licensed("team-test.license"), ignored);
+        assertThat(c.allowancePerMinute()).isEqualTo(Feature.TEAM_ENDPOINT_RATE_PER_MINUTE);
+        call(c, Feature.TEAM_ENDPOINT_RATE_PER_MINUTE);
+
+        ResponseStatusException e = tooMany(c);
+        assertThat(e.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(e.getReason()).contains(Feature.TEAM_ENDPOINT_RATE_PER_MINUTE + " a minute").contains("Team license");
+    }
+
+    // The feature Enterprise carries: no limit unless an admin puts one back.
+    @Test
+    void anEnterpriseDeploymentIsUnlimitedUntilTheSettingSaysOtherwise() throws Exception {
+        LicenseService enterprise = licensed("enterprise-test.license");
+        PublicRunController unlimited = controller(new RateLimiter(1_000, 60_000), enterprise, Settings.none());
+        assertThat(unlimited.allowancePerMinute()).isZero();
+        call(unlimited, 200);   // more than any tier's figure, and nothing refuses it
+
+        Settings five = Settings.of(Map.of("endpoints.rate-per-minute", "5"));
+        PublicRunController limited = controller(new RateLimiter(1_000, 60_000), enterprise, five);
+        call(limited, 5);
+        ResponseStatusException e = tooMany(limited);
+        assertThat(e.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(e.getReason()).contains("5 a minute").contains("Enterprise").contains("endpoints.rate-per-minute");
     }
 }

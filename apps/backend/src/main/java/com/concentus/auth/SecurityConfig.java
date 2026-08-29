@@ -53,6 +53,11 @@ import java.util.Map;
  * asks which database to use before the first account exists. It presents a token generated for the
  * launch it started, and {@link ShellTokenFilter} turns that into a principal for the three storage
  * routes it may use — so the rules above are unchanged rather than relaxed.
+ *
+ * <p>Machines have a way in of their own: a service account token ({@code Authorization: Bearer
+ * csa_…}), which {@link ServiceAccountTokenFilter} turns into a real principal — the account's
+ * organization and role — on any route. Nothing below is loosened for it: the request is then
+ * authorized by the same method-and-path rules as a signed-in person with that role.
  */
 @Configuration
 @EnableWebSecurity
@@ -116,6 +121,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain apiSecurity(HttpSecurity http, ObjectMapper mapper,
                                           PersistentTokenBasedRememberMeServices rememberMe,
+                                          ServiceAccountStore serviceAccounts,
                                           @Value("${app.shell-token:}") String shellToken) throws Exception {
         CsrfTokenRequestAttributeHandler csrfHandler = new CsrfTokenRequestAttributeHandler();
         // The SPA reads the XSRF-TOKEN cookie and echoes it in a header, so the raw token — not a
@@ -125,6 +131,7 @@ public class SecurityConfig {
         // Built here rather than as a bean on purpose: Spring Boot registers every Filter bean with
         // the servlet container as well, which would run it on requests this chain never sees.
         ShellTokenFilter shell = new ShellTokenFilter(shellToken);
+        ServiceAccountTokenFilter machines = new ServiceAccountTokenFilter(serviceAccounts, mapper);
 
         http
             .securityMatcher("/api/**", "/ws/**")
@@ -153,7 +160,12 @@ public class SecurityConfig {
                     // before the first account exists and so has no session to protect either. Not
                     // a path exemption: the matcher only holds for a request that already carries
                     // the token this launch generated — see ShellTokenFilter.
-                    .ignoringRequestMatchers(shell::authenticates))
+                    .ignoringRequestMatchers(shell::authenticates)
+                    // And a request presenting a service account token. The bearer header IS the
+                    // proof of intent a CSRF token exists to supply: a page cannot attach one to a
+                    // cross-site request without a preflight this server never approves. Shape
+                    // only here; a token that resolves to nothing is refused by the filter itself.
+                    .ignoringRequestMatchers(machines::presentsToken))
             .authorizeHttpRequests(auth -> auth
                     .requestMatchers("/api/webhooks/**", "/api/internal/**", "/api/public/**").permitAll()
                     .requestMatchers("/api/runs/*/tools", "/api/runs/*/workers/*/tools",
@@ -221,6 +233,8 @@ public class SecurityConfig {
             // browser keeps the principal it arrived with, and only a request that has none can be
             // answered for by the shell's token.
             .addFilterBefore(shell, UsernamePasswordAuthenticationFilter.class)
+            // Same position and the same rule: a request that already carries a principal keeps it.
+            .addFilterBefore(machines, UsernamePasswordAuthenticationFilter.class)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                     .sessionFixation(f -> f.migrateSession()))
             .exceptionHandling(e -> e

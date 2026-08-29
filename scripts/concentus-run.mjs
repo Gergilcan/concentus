@@ -83,6 +83,11 @@ export function parseArgs(argv) {
     // command line is a CI job with a password in its logs.
     email: process.env.CONCENTUS_EMAIL ?? null,
     password: process.env.CONCENTUS_PASSWORD ?? null,
+    // A service account token (Resources → Service accounts) is the right credential for a
+    // machine: its own name and role rather than a person's account, revocable on its own, and
+    // no session to sign into. Environment only, on purpose — there is no --token flag to leave
+    // it in the process list.
+    token: process.env.CONCENTUS_TOKEN ?? null,
   }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
@@ -117,6 +122,9 @@ const USAGE = `Usage: node scripts/concentus-run.mjs <flow.json> [options]
   --email ADDRESS  Account to sign in as. Defaults to CONCENTUS_EMAIL.
   --password PASS  Its password. Defaults to CONCENTUS_PASSWORD; prefer the variable, since an
                    argument ends up in the job's log and in the process list.
+
+Or, for a machine: CONCENTUS_TOKEN=csa_… — a service account token minted under Resources →
+Service accounts. It replaces the sign-in entirely and is only ever read from the environment.
 
 Exit codes: ${EXIT.completed} completed · ${EXIT.failed} failed · ${EXIT.needsHuman} needs a human ·
             ${EXIT.timedOut} timed out · ${EXIT.usage} usage/setup problem
@@ -252,17 +260,54 @@ function cookieHeader() {
 }
 
 /**
+ * The service account token this process runs as, when it has one instead of a sign-in.
+ *
+ * <p>Sent as a bearer on every request. The backend turns it into a principal — the account's
+ * organization and role — before the session's own authentication runs, and exempts the request
+ * from CSRF: the header is the proof of intent a CSRF token exists to supply, since no page in a
+ * browser can attach one cross-site. So there is no cookie jar to fill and nothing to sign into.
+ */
+let bearerToken = null
+
+/**
  * Signs in, so the rest of this script can do anything at all.
  *
  * <p>Every endpoint below needs an account — there is no unauthenticated mode any more, and there
  * was no honest way to keep one: a backend a script can drive without credentials is a backend
  * anybody who can reach it can drive. The CSRF token comes back as a readable cookie and goes back
  * out as a header, exactly as the browser does it.
+ *
+ * <p>With a service account token there is nothing to sign into: the token is checked once here,
+ * so a revoked one fails as a setup problem before any run starts rather than as a failed run.
  */
 async function signIn(base, args) {
+  if (args.token) {
+    bearerToken = args.token
+    const res = await fetch(`${base}/api/account/session`, { headers: authHeaders() })
+    const text = await res.text()
+    let session = null
+    try {
+      session = JSON.parse(text)
+    } catch {
+      /* not JSON — reported below */
+    }
+    if (!res.ok || !session?.signedIn) {
+      let message = text
+      try {
+        message = JSON.parse(text).error ?? text
+      } catch {
+        /* not JSON — the body is the message */
+      }
+      throw new Error(
+        `CONCENTUS_TOKEN was refused (${res.status}): ${message || 'not a working service account token'}`,
+      )
+    }
+    return session
+  }
   if (!args.email || !args.password) {
     throw new Error(
-      'This backend requires an account. Set CONCENTUS_EMAIL and CONCENTUS_PASSWORD (or pass '
+      'This backend requires an account. Set CONCENTUS_TOKEN (a service account token from '
+        + 'Resources → Service accounts), or CONCENTUS_EMAIL and CONCENTUS_PASSWORD (or pass '
         + '--email and --password).',
     )
   }
@@ -299,12 +344,18 @@ function csrfToken() {
   return value ? decodeURIComponent(value) : null
 }
 
+/** The bearer header when this process runs as a service account; nothing otherwise. */
+function authHeaders() {
+  return bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}
+}
+
 async function api(base, path_, init) {
   const token = csrfToken()
   const res = await fetch(`${base}/api${path_}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders(),
       ...(jar.size ? { Cookie: cookieHeader() } : {}),
       ...(token && init?.method && init.method !== 'GET' ? { 'X-XSRF-TOKEN': token } : {}),
       ...(init?.headers ?? {}),

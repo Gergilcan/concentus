@@ -598,6 +598,21 @@ export const api = {
   /** Drops an account from this browser. Signing into it again brings it back. */
   forgetAccount: (userId: string) => req<void>(`/account/accounts/${userId}`, { method: 'DELETE' }),
   /** Everyone in the caller's own organization. Password hashes never leave the backend. */
+  // Tokens for machines. Admin only; the token is in the create answer and nowhere else.
+  listServiceAccounts: () => req<import('./types.ts').ServiceAccountListing>('/service-accounts'),
+  createServiceAccount: (name: string, role: string) =>
+    req<import('./types.ts').CreatedServiceAccount>('/service-accounts', {
+      method: 'POST',
+      body: JSON.stringify({ name, role }),
+    }),
+  renameServiceAccount: (id: string, name: string) =>
+    req<import('./types.ts').ServiceAccount>(`/service-accounts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+    }),
+  revokeServiceAccount: (id: string) =>
+    req<import('./types.ts').ServiceAccount>(`/service-accounts/${id}/revoke`, { method: 'POST' }),
+
   listMembers: () => req<import('./types.ts').Member[]>('/account/members'),
   addMember: (email: string, password: string, role: string) =>
     req<import('./types.ts').Member>('/account/members', {

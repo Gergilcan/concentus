@@ -1070,6 +1070,39 @@ export interface Member {
   createdAt: number
 }
 
+/** A token for a machine: a name, a role no higher than MEMBER, and no seat. */
+export interface ServiceAccount {
+  id: string
+  organizationId: string
+  name: string
+  /** VIEWER | OPERATOR | MEMBER — never ADMIN, so a token cannot mint tokens. */
+  role: string
+  /** The admin who minted it, when known. */
+  createdBy: string | null
+  createdAt: number
+  /** The last request that presented the token, at minute resolution; null until the first. */
+  lastUsedAt: number | null
+  /** Set once revoked; the row stays as the audit of what could act as this organization. */
+  revokedAt: number | null
+}
+
+/** The list, with what the create button needs to be honest about the Team cap. */
+export interface ServiceAccountListing {
+  accounts: ServiceAccount[]
+  /** How many tokens still work. */
+  active: number
+  /** The cap in force (Team), or null where nothing caps it (free, Enterprise). */
+  limit: number | null
+  /** Why one more cannot be minted right now, or null while it can. */
+  refusal: string | null
+}
+
+/** The one answer that carries the token: it is shown once and never stored. */
+export interface CreatedServiceAccount {
+  account: ServiceAccount
+  token: string
+}
+
 /** One identity provider a person may sign in with, or could once it is registered. */
 export interface SignInProvider {
   id: string
