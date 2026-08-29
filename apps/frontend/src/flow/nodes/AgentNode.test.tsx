@@ -67,6 +67,20 @@ describe('AgentNode', () => {
     expect(screen.getByText('Coordinator')).toBeInTheDocument()
   })
 
+  it('shows the link glyph beside the name of a block linked to a library agent', () => {
+    // The card shows the block's copy; the run uses whatever the library says today. The glyph
+    // is how the canvas says so before a run surprises anyone.
+    renderAgentNode({ data: agentData({ kind: 'agent', name: 'Reviewer', libraryAgentId: 'a1', libraryVersion: 2 }) })
+
+    expect(screen.getByText('Reviewer')).toBeInTheDocument()
+    expect(screen.getByText('⛓')).toHaveAttribute('title', 'linked to library agent Reviewer, v2')
+  })
+
+  it('shows no link glyph on a block that is not linked', () => {
+    renderAgentNode({ data: agentData({ kind: 'agent', name: 'Reviewer' }) })
+    expect(screen.queryByText('⛓')).not.toBeInTheDocument()
+  })
+
   it('shows the model and the whole system prompt, leaving the clamp to CSS', () => {
     const systemPrompt = 'x'.repeat(120)
     renderAgentNode({ data: agentData({ model: 'claude-3-5', systemPrompt }) })

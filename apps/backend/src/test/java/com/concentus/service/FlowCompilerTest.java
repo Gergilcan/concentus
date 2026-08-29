@@ -408,4 +408,85 @@ class FlowCompilerTest {
         // "inherit all"; an empty list would instead mean "none".
         assertThat(compiled.coordinator().tools).isEmpty();
     }
+
+    // ---------------------------------------------------------- library links
+
+    private static com.concentus.model.LibraryAgent reviewer(long version) {
+        return new com.concentus.model.LibraryAgent("lib-reviewer", "Reviewer", "claude-sonnet-4-5",
+                "medium", 9000, "Review the diff for correctness.", "Use for every review.", version);
+    }
+
+    /** A block that linked the reviewer at v1 and still carries that version's copy of the fields. */
+    private static FlowNode linkedWorker() {
+        Map<String, Object> data = new java.util.HashMap<>();
+        data.put("name", "Old copy");
+        data.put("model", "claude-opus-4-8");
+        data.put("effort", "high");
+        data.put("maxTokens", 16000);
+        data.put("systemPrompt", "stale prompt");
+        data.put("description", "stale routing");
+        data.put("libraryAgentId", "lib-reviewer");
+        data.put("libraryVersion", 1);
+        // The per-flow half: what this reviewer gets to use HERE.
+        data.put("tools", List.of("Read", "Grep"));
+        data.put("retries", 2);
+        data.put("fallbackModelId", "claude-opus-4-8");
+        data.put("contextFolders", List.of("C:/code/wirej"));
+        data.put("facadeProfileId", "fp-readonly");
+        return new FlowNode("w1", "agent", "subagent", data);
+    }
+
+    private static FlowGraph leadWith(FlowNode worker) {
+        return new FlowGraph("f1", "Flow", "managed", List.of(agent("a1", "coordinator", "Lead"), worker),
+                List.of(edge("a1", "w1")), null, List.<String>of(), null, null);
+    }
+
+    @Test
+    void aLinkedBlockTakesItsDefinitionFromTheLibraryAndKeepsItsOwnPerFlowFields() {
+        // The library has moved to v3 since the block linked it; the block's copy is v1's. The run
+        // must get v3 — that is what a link is for — without anyone re-saving the flow.
+        FlowCompiler linked = new FlowCompiler(
+                id -> id.equals("lib-reviewer") ? java.util.Optional.of(reviewer(3)) : java.util.Optional.empty());
+
+        AgentSpec spec = linked.compile(leadWith(linkedWorker())).subAgents().get(0);
+
+        assertThat(spec.name).isEqualTo("Reviewer");
+        assertThat(spec.model.id).isEqualTo("claude-sonnet-4-5");
+        assertThat(spec.model.effort).isEqualTo("medium");
+        assertThat(spec.model.maxTokens).isEqualTo(9000);
+        assertThat(spec.systemPrompt).isEqualTo("Review the diff for correctness.");
+        assertThat(spec.description).isEqualTo("Use for every review.");
+        // The library says what the agent is; the flow says what it may use here.
+        assertThat(spec.tools).containsExactly("Read", "Grep");
+        assertThat(spec.retries).isEqualTo(2);
+        assertThat(spec.fallbackModelId).isEqualTo("claude-opus-4-8");
+        assertThat(spec.contextFolders).containsExactly("C:/code/wirej");
+        assertThat(spec.facadeProfileId).isEqualTo("fp-readonly");
+    }
+
+    @Test
+    void aLinkedBlockWhoseLibraryAgentIsGoneIsRefusedNamingTheBlockAndTheId() {
+        // The default compiler resolves nothing — exactly what a deleted agent looks like. Running
+        // the block's stale copy instead would run a reviewer somebody deleted on purpose.
+        assertThatThrownBy(() -> compiler.compile(leadWith(linkedWorker())))
+                .isInstanceOf(FlowCompiler.MissingLibraryAgent.class)
+                .hasMessageContaining("'Old copy'")
+                .hasMessageContaining("lib-reviewer")
+                .satisfies(e -> assertThat(((FlowCompiler.MissingLibraryAgent) e).nodeId()).isEqualTo("w1"));
+    }
+
+    @Test
+    void anUnlinkedBlockNeverAsksTheLibrary() {
+        // A library that answers every id: if the compiler asked for an unlinked block, "Old copy"
+        // would come back as "Reviewer" and a plain block would silently change under a link it
+        // never made.
+        FlowCompiler eager = new FlowCompiler(id -> java.util.Optional.of(reviewer(3)));
+        FlowNode plain = new FlowNode("w1", "agent", "subagent",
+                Map.of("name", "Old copy", "systemPrompt", "own prompt"));
+
+        AgentSpec spec = eager.compile(leadWith(plain)).subAgents().get(0);
+
+        assertThat(spec.name).isEqualTo("Old copy");
+        assertThat(spec.systemPrompt).isEqualTo("own prompt");
+    }
 }

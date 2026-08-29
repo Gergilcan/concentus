@@ -35,8 +35,39 @@ function coordinatorData(overrides: Partial<AgentNodeData> = {}): AgentNodeData 
   }
 }
 
+/** The library's researcher, at the version a test says. */
+function researcher(version: number): LibraryAgent {
+  return {
+    id: 'a1',
+    name: 'Researcher',
+    model: 'claude-3-5',
+    effort: 'medium',
+    maxTokens: 8000,
+    systemPrompt: 'You research things.',
+    description: 'good at research',
+    version,
+  }
+}
+
+/** A block linked to the researcher, carrying the copy it took at `stampedVersion`. */
+function linkedData(stampedVersion: number, overrides: Partial<AgentNodeData> = {}): AgentNodeData {
+  return coordinatorData({
+    kind: 'agent',
+    libraryAgentId: 'a1',
+    libraryVersion: stampedVersion,
+    name: 'Researcher',
+    model: 'claude-3-5',
+    effort: 'medium',
+    maxTokens: 8000,
+    systemPrompt: 'You research things.',
+    description: 'good at research',
+    ...overrides,
+  })
+}
+
 // AgentInspector edits an agent node's data via the shared Field/SelectField/TextArea
-// components and additionally offers a "load from library" shortcut backed by api.listAgents().
+// components, and offers the agent library two ways: a live link (the block follows the library
+// agent) or a one-off copy of its fields, both backed by api.listAgents().
 describe('AgentInspector', () => {
   beforeEach(() => {
     listAgentsMock.mockResolvedValue([])
@@ -86,34 +117,27 @@ describe('AgentInspector', () => {
     expect(set).toHaveBeenCalledWith({ fallbackModelId: 'claude-opus-4-8' })
   })
 
-  it('does not show the library dropdown until listAgents resolves with entries', async () => {
+  it('does not show the library dropdowns until listAgents resolves with entries', async () => {
     listAgentsMock.mockResolvedValue([
       { id: 'a1', name: 'Researcher', model: 'claude-opus-4-8', effort: 'high', maxTokens: 8000, systemPrompt: 'x' },
     ])
     render(<AgentInspector data={coordinatorData()} set={vi.fn()} />)
 
-    expect(screen.queryByLabelText('Load from library')).not.toBeInTheDocument()
-    await waitFor(() => expect(screen.getByLabelText('Load from library')).toBeInTheDocument())
-    expect(screen.getByText('Researcher (claude-opus-4-8)')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Link to a library agent/)).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText(/Link to a library agent/)).toBeInTheDocument())
+    expect(screen.getByLabelText(/Copy fields once/)).toBeInTheDocument()
+    expect(screen.getAllByText('Researcher (claude-opus-4-8)')).toHaveLength(2)
   })
 
-  it('applies a chosen library agent onto the node via `set`', async () => {
-    const libraryAgent: LibraryAgent = {
-      id: 'a1',
-      name: 'Researcher',
-      model: 'claude-3-5',
-      effort: 'medium',
-      maxTokens: 8000,
-      systemPrompt: 'You research things.',
-      description: 'good at research',
-    }
-    listAgentsMock.mockResolvedValue([libraryAgent])
+  it('"Copy fields once" applies a library agent onto the node and remembers nothing', async () => {
+    listAgentsMock.mockResolvedValue([researcher(3)])
     const set = vi.fn()
     render(<AgentInspector data={coordinatorData()} set={set} />)
 
-    const select = await screen.findByLabelText('Load from library')
+    const select = await screen.findByLabelText(/Copy fields once/)
     fireEvent.change(select, { target: { value: 'a1' } })
 
+    // The old behaviour, exactly: six fields, no id, no version.
     expect(set).toHaveBeenCalledWith({
       name: 'Researcher',
       model: 'claude-3-5',
@@ -124,12 +148,133 @@ describe('AgentInspector', () => {
     })
   })
 
-  it('falls back to an empty library (no dropdown) when listAgents rejects', async () => {
+  it('"Link to a library agent" stamps the id and the version alongside a copy of the fields', async () => {
+    listAgentsMock.mockResolvedValue([researcher(3)])
+    const set = vi.fn()
+    render(<AgentInspector data={coordinatorData()} set={set} />)
+
+    const select = await screen.findByLabelText(/Link to a library agent/)
+    fireEvent.change(select, { target: { value: 'a1' } })
+
+    // The copy is for the card and this panel; the run reads the library through the id.
+    expect(set).toHaveBeenCalledWith({
+      libraryAgentId: 'a1',
+      libraryVersion: 3,
+      name: 'Researcher',
+      model: 'claude-3-5',
+      effort: 'medium',
+      maxTokens: 8000,
+      systemPrompt: 'You research things.',
+      description: 'good at research',
+    })
+  })
+
+  it('falls back to an empty library (no dropdowns) when listAgents rejects', async () => {
     listAgentsMock.mockRejectedValue(new Error('network down'))
     render(<AgentInspector data={coordinatorData()} set={vi.fn()} />)
 
     await screen.findByLabelText('Name')
-    expect(screen.queryByLabelText('Load from library')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Link to a library agent/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Copy fields once/)).not.toBeInTheDocument()
+  })
+
+  // ------------------------------------------------------------------ linked blocks
+
+  it('a linked block shows the chip, freezes the definition fields and leaves per-flow ones editable', async () => {
+    listAgentsMock.mockResolvedValue([researcher(3)])
+    const set = vi.fn()
+    render(<AgentInspector data={linkedData(3)} set={set} />)
+
+    expect(await screen.findByText(/linked to library · v3/)).toBeInTheDocument()
+    // No picker on a block that already follows an agent: the chip is the picker's answer.
+    expect(screen.queryByLabelText(/Link to a library agent/)).not.toBeInTheDocument()
+
+    // What the agent IS comes from the library, so it is shown here and not edited here.
+    expect(screen.getByLabelText('Name')).toHaveAttribute('readonly')
+    expect(screen.getByLabelText('Model')).toBeDisabled()
+    expect(screen.getByLabelText(/Delegate when/)).toHaveAttribute('readonly')
+    expect(screen.getByLabelText('System prompt')).toHaveAttribute('readonly')
+    fireEvent.click(screen.getByText('Fine-tuning'))
+    expect(screen.getByLabelText('Effort')).toBeDisabled()
+    expect(screen.getByLabelText('Max tokens')).toHaveAttribute('readonly')
+
+    // What it gets to use HERE is the flow's business, link or no link.
+    const tools = screen.getByLabelText(/Allowed tools/)
+    expect(tools).not.toHaveAttribute('readonly')
+    fireEvent.change(tools, { target: { value: 'Read, Grep' } })
+    expect(set).toHaveBeenCalledWith({ tools: ['Read', 'Grep'] })
+  })
+
+  it('"Unlink (keep a copy)" drops the reference and keeps the values as the block\'s own', async () => {
+    listAgentsMock.mockResolvedValue([researcher(3)])
+    const set = vi.fn()
+    render(<AgentInspector data={linkedData(3)} set={set} />)
+
+    fireEvent.click(await screen.findByText('Unlink (keep a copy)'))
+
+    expect(set).toHaveBeenCalledWith({
+      libraryAgentId: undefined,
+      libraryVersion: undefined,
+      name: 'Researcher',
+      model: 'claude-3-5',
+      effort: 'medium',
+      maxTokens: 8000,
+      systemPrompt: 'You research things.',
+      description: 'good at research',
+    })
+  })
+
+  it('a block stamped behind the library lists what changed, and "Take the current version" re-stamps it', async () => {
+    // The library moved to v3 and rewrote the prompt; the block still carries v1's copy.
+    listAgentsMock.mockResolvedValue([researcher(3)])
+    const set = vi.fn()
+    render(<AgentInspector data={linkedData(1, { systemPrompt: 'old prompt' })} set={set} />)
+
+    expect(await screen.findByText(/v1 → v3/)).toBeInTheDocument()
+    // One line per field that differs — and only those: the name did not change, so no line.
+    // (The read-only textarea below also holds "old prompt"; the diff's struck-out copy is the
+    // one this is about.)
+    expect(screen.getByText('old prompt', { selector: 's' })).toBeInTheDocument()
+    expect(screen.getByText(/→ You research things\./)).toBeInTheDocument()
+    expect(screen.queryByText('Researcher', { selector: 's' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Take the current version'))
+
+    expect(set).toHaveBeenCalledWith({
+      libraryVersion: 3,
+      name: 'Researcher',
+      model: 'claude-3-5',
+      effort: 'medium',
+      maxTokens: 8000,
+      systemPrompt: 'You research things.',
+      description: 'good at research',
+    })
+  })
+
+  it('a block at the current version offers nothing to take', async () => {
+    listAgentsMock.mockResolvedValue([researcher(3)])
+    render(<AgentInspector data={linkedData(3)} set={vi.fn()} />)
+
+    await screen.findByText(/linked to library · v3/)
+    expect(screen.queryByText('Take the current version')).not.toBeInTheDocument()
+  })
+
+  it('says so when the linked library agent no longer exists, once the library has answered', async () => {
+    listAgentsMock.mockResolvedValue([])
+    render(<AgentInspector data={linkedData(2, { libraryAgentId: 'gone' })} set={vi.fn()} />)
+
+    expect(await screen.findByText(/no longer exists \(gone\)/)).toBeInTheDocument()
+    // The way out is still offered; the fields it keeps are the block's copy.
+    expect(screen.getByText('Unlink (keep a copy)')).toBeInTheDocument()
+  })
+
+  it('does not call the linked agent deleted when the library could not be fetched', async () => {
+    listAgentsMock.mockRejectedValue(new Error('network down'))
+    render(<AgentInspector data={linkedData(2)} set={vi.fn()} />)
+
+    await screen.findByText(/linked to library · v2/)
+    await waitFor(() => expect(listAgentsMock).toHaveBeenCalled())
+    expect(screen.queryByText(/no longer exists/)).not.toBeInTheDocument()
   })
 
   it('picks installed plugins in a dialog and writes the whole selection at once', async () => {

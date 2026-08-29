@@ -746,7 +746,6 @@
   "Linear-Signature": "Linear-Signature",
   "List repositories": "Listar repositorios",
   "Listing…": "Listando…",
-  "Load from library": "Cargar de la biblioteca",
   "Load it again": "Volver a cargarlo",
   "Load none": "No cargar ninguno",
   "Load operations": "Cargar operaciones",
@@ -1589,5 +1588,17 @@
   "Go to block: {{name}} ({{kind}})": "Ir al bloque: {{name}} ({{kind}})",
   "Minimap": "Minimapa",
   "Show the minimap": "Mostrar el minimapa",
-  "Hide the minimap": "Ocultar el minimapa"
+  "Hide the minimap": "Ocultar el minimapa",
+  "Link to a library agent ⓘ": "Vincular a un agente de la biblioteca ⓘ",
+  "Copy fields once ⓘ": "Copiar los campos una vez ⓘ",
+  "The block follows the library agent: name, model, effort, max tokens, system prompt and routing are read from the library at every run, so an edit under Resources → Agents reaches every flow that links it. Tools, skills, plugins, folders and the rest stay this block's own.": "El bloque sigue al agente de la biblioteca: nombre, modelo, esfuerzo, máximo de tokens, prompt de sistema y enrutado se leen de la biblioteca en cada ejecución, así que una edición en Recursos → Agentes llega a todos los flujos que lo vinculan. Herramientas, skills, plugins, carpetas y el resto siguen siendo propios de este bloque.",
+  "Copies the definition fields onto this block once and forgets where they came from — the way \"Load from library\" always worked. Later edits to the library agent do not reach this block.": "Copia los campos de definición en este bloque una vez y olvida de dónde vienen — como siempre funcionó \"Cargar de la biblioteca\". Las ediciones posteriores del agente de la biblioteca no llegan a este bloque.",
+  "linked to library · v{{n}}": "vinculado a la biblioteca · v{{n}}",
+  "Unlink (keep a copy)": "Desvincular (conservar una copia)",
+  "This library agent no longer exists ({{id}}). A run refuses to start until the block is unlinked — its copy of the fields stays — or linked to another agent.": "Este agente de la biblioteca ya no existe ({{id}}). Una ejecución se niega a arrancar hasta que el bloque se desvincule — su copia de los campos se conserva — o se vincule a otro agente.",
+  "The library agent changed since this block linked it (v{{from}} → v{{to}}). The next run uses the new version; take it to refresh the copy this block shows.": "El agente de la biblioteca cambió desde que este bloque lo vinculó (v{{from}} → v{{to}}). La próxima ejecución usa la versión nueva; tómala para refrescar la copia que muestra este bloque.",
+  "No field differs — the library agent was saved again without changes.": "Ningún campo difiere — el agente de la biblioteca se guardó de nuevo sin cambios.",
+  "Take the current version": "Tomar la versión actual",
+  "These fields come from the library agent. Unlink the block to edit them here, or edit the agent under Resources → Agents.": "Estos campos vienen del agente de la biblioteca. Desvincula el bloque para editarlos aquí, o edita el agente en Recursos → Agentes.",
+  "linked to library agent {{name}}, v{{n}}": "vinculado al agente de biblioteca {{name}}, v{{n}}"
 }

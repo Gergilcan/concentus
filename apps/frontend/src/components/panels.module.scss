@@ -228,6 +228,52 @@
   }
 }
 
+/* A block linked to a library agent: the chip says so above the fields it governs, which are
+   shown but not editable, and the diff below it says what the library changed since. */
+.linkedHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+
+  strong {
+    margin-right: auto;
+    font-size: 12.5px;
+  }
+}
+
+.linkedChip {
+  font-size: 10.5px;
+  color: t.$agent;
+  border: 1px solid t.$agent;
+  border-radius: 10px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.linkedDiff {
+  border: 1px dashed t.$border;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 6px 0 10px;
+  font-size: 12px;
+
+  ul {
+    margin: 6px 0 8px;
+    padding-left: 18px;
+  }
+
+  li {
+    margin-bottom: 3px;
+    word-break: break-word;
+  }
+
+  s {
+    color: t.$muted;
+  }
+}
+
 .inspectorHead {
   display: flex;
   align-items: center;

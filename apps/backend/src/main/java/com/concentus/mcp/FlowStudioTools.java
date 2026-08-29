@@ -245,6 +245,10 @@ public class FlowStudioTools implements StudioToolset {
                             tools [allowlist, e.g. ["Read","Grep","Glob"] to make a reviewer
                                    read-only — the one permission enforced per agent],
                             skillIds, plugins.
+                            libraryAgentId (+ libraryVersion) links the block to a library agent
+                            (list_resources kind=agents): name, model, systemPrompt, description,
+                            maxTokens and effort are then read from the library at every run, so
+                            editing the library agent reaches every flow that links it.
                             Coordinator only: permissionMode ("default" | "acceptEdits" |
                             "bypassPermissions" | "plan" — bypassPermissions is the only one that
                             works unattended) and execution ("" for Claude Code subagents in one

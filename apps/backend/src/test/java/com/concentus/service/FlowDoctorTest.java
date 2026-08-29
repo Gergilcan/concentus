@@ -6,9 +6,11 @@ import com.concentus.model.DoctorFinding;
 import com.concentus.model.FlowEdge;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.FlowNode;
+import com.concentus.model.LibraryAgent;
 import com.concentus.model.RuntimeCheck;
 import com.concentus.model.RuntimeStatus;
 import com.concentus.secrets.CredentialResolver;
+import com.concentus.store.AgentLibraryStore;
 import com.concentus.store.RunStore;
 import com.concentus.store.VariableStore;
 import com.concentus.support.LocalClaudeSupport;
@@ -45,9 +47,15 @@ class FlowDoctorTest {
     private final VariableStore variables = mock(VariableStore.class);
     private final com.concentus.store.FacadeProfileStore facades =
             mock(com.concentus.store.FacadeProfileStore.class);
+    private final AgentLibraryStore agentLibrary = mock(AgentLibraryStore.class);
 
-    private final FlowDoctor doctor = new FlowDoctor(claude, new FlowCompiler(), credentials,
-            mcpOAuth, plugins, runtimes, runStore, variables, new OrgContext("default"), facades);
+    private final FlowDoctor doctor = doctorWith(new FlowCompiler());
+
+    /** The doctor over a given compiler: the library tests need one that resolves a linked block. */
+    private FlowDoctor doctorWith(FlowCompiler compiler) {
+        return new FlowDoctor(claude, compiler, credentials, mcpOAuth, plugins, runtimes, runStore,
+                variables, new OrgContext("default"), facades, agentLibrary);
+    }
 
     @BeforeEach
     void healthyMachine() {
@@ -451,5 +459,65 @@ class FlowDoctorTest {
         data.put("credentialId", "cred_mail");
 
         assertThat(doctor.check(flowWithMail(data))).isEmpty();
+    }
+
+    // ---------------------------------------------------------------- the library
+
+    private static FlowNode linkedCoordinator(long stampedVersion) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("name", "Coord");
+        data.put("systemPrompt", "Do the thing.");
+        data.put("libraryAgentId", "lib-1");
+        data.put("libraryVersion", stampedVersion);
+        return new FlowNode("a-1", "agent", "coordinator", data);
+    }
+
+    private static LibraryAgent libraryReviewer(long version) {
+        return new LibraryAgent("lib-1", "Reviewer", "claude-x", "high", 1000, "Review.", "", version);
+    }
+
+    @Test
+    void aBlockStampedBehindTheLibraryAgentsVersionIsWarnedAboutOnTheBlock() {
+        LibraryAgent current = libraryReviewer(4);
+        when(agentLibrary.get("lib-1")).thenReturn(Optional.of(current));
+        FlowDoctor doctor = doctorWith(new FlowCompiler(id -> Optional.of(current)));
+
+        List<DoctorFinding> findings = doctor.check(flow(List.of(input("manual", ""), linkedCoordinator(2))));
+
+        // A warning, not an error: the run works, and runs the new version — the point of a link.
+        // What the person has not seen is the change, so the finding says where to look.
+        assertThat(ofArea(findings, "graph")).isEmpty();
+        List<DoctorFinding> library = ofArea(findings, "library");
+        assertThat(library).hasSize(1);
+        assertThat(library.get(0).level()).isEqualTo("warn");
+        assertThat(library.get(0).where()).isEqualTo("a-1");
+        assertThat(library.get(0).message()).contains("Reviewer").contains("v2 → v4");
+        assertThat(library.get(0).fix()).contains("Take the current version");
+    }
+
+    @Test
+    void aBlockAtTheLibraryAgentsCurrentVersionIsNothingToReport() {
+        LibraryAgent current = libraryReviewer(4);
+        when(agentLibrary.get("lib-1")).thenReturn(Optional.of(current));
+        FlowDoctor doctor = doctorWith(new FlowCompiler(id -> Optional.of(current)));
+
+        assertThat(doctor.check(flow(List.of(input("manual", ""), linkedCoordinator(4))))).isEmpty();
+    }
+
+    @Test
+    void aLinkedBlockWhoseLibraryAgentWasDeletedIsAnErrorOnTheBlock() {
+        // Neither the doctor's store nor the compiler's resolver knows lib-1 any more.
+        when(agentLibrary.get("lib-1")).thenReturn(Optional.empty());
+
+        List<DoctorFinding> findings = doctor.check(flow(List.of(input("manual", ""), linkedCoordinator(2))));
+
+        // One finding, on the block, not a generic "does not compile" on the whole flow: the fix
+        // is on the block (unlink) or under Resources → Agents, not somewhere on the canvas.
+        assertThat(ofArea(findings, "graph")).isEmpty();
+        List<DoctorFinding> library = ofArea(findings, "library");
+        assertThat(library).hasSize(1);
+        assertThat(library.get(0).level()).isEqualTo("error");
+        assertThat(library.get(0).where()).isEqualTo("a-1");
+        assertThat(library.get(0).message()).contains("'Coord'").contains("lib-1");
     }
 }

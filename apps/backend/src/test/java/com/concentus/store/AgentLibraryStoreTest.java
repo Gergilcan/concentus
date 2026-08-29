@@ -129,4 +129,73 @@ class AgentLibraryStoreTest {
         assertThatThrownBy(() -> store.delete("../escape"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    // ---------------------------------------------------------------- versions
+
+    @Test
+    void everySaveOfAnExistingAgentIsANewVersionAndTheClientsNumberIsNotTheCounter(@TempDir Path dir) {
+        AgentLibraryStore store = store(dir);
+
+        LibraryAgent first = store.save(new LibraryAgent(null, "Reviewer", "claude-x", "high", 1000, ""));
+        assertThat(first.version()).isEqualTo(1);
+
+        LibraryAgent second = store.save(
+                new LibraryAgent(first.id(), "Reviewer", "claude-x", "high", 1000, "Be strict."));
+        assertThat(second.version()).isEqualTo(2);
+
+        // A stale form sending "version 1" again still lands on 3: the store is the only one
+        // counting, otherwise two people editing the same agent could both produce a "v2".
+        LibraryAgent third = store.save(
+                new LibraryAgent(first.id(), "Reviewer", "claude-x", "high", 1000, "Be stricter.", "", 1));
+        assertThat(third.version()).isEqualTo(3);
+        assertThat(store.get(first.id()).orElseThrow().version()).isEqualTo(3);
+        assertThat(store.list()).filteredOn(a -> a.id().equals(first.id()))
+                .extracting(LibraryAgent::version).containsExactly(3L);
+    }
+
+    @Test
+    void aRowWrittenBeforeVersionsExistedReadsAsVersionOne(@TempDir Path dir) {
+        AgentLibraryStore store = store(dir);
+        // What a row from an older build looks like: no version, no description.
+        TestDatabase.jdbc().update(
+                "insert into resources (kind, id, sort_key, json, updated_at) values ('agent', 'old', 'Old', ?, 0)",
+                "{\"id\":\"old\",\"name\":\"Old\",\"model\":\"claude-x\",\"effort\":\"high\","
+                        + "\"maxTokens\":1000,\"systemPrompt\":\"\"}");
+
+        LibraryAgent old = store.get("old").orElseThrow();
+
+        // A block that linked it before versions existed carries no stamp either (0), so the
+        // doctor's "behind" comparison must see the first version, not a zero it would call stale.
+        assertThat(old.version()).isEqualTo(1);
+        assertThat(old.description()).isEqualTo("");
+        // And its first edit is the second version, as it would be for any other agent.
+        assertThat(store.save(old).version()).isEqualTo(2);
+    }
+
+    @Test
+    void aBackupRestoredIntoAnEmptyLibraryKeepsTheVersionsItsFlowsWereStampedWith(@TempDir Path dir) {
+        AgentLibraryStore store = store(dir);
+
+        LibraryAgent restored = store.save(
+                new LibraryAgent("agent_restored", "Restored", "claude-x", "high", 1000, "", "", 7));
+
+        // An unknown id keeps the number it came with: the flows in the same bundle link v7, and
+        // resetting it to 1 would leave them "ahead" of a library that has not changed at all.
+        assertThat(restored.version()).isEqualTo(7);
+        assertThat(store.get("agent_restored").orElseThrow().version()).isEqualTo(7);
+    }
+
+    @Test
+    void descriptionRoundTripsAndNullReadsBackEmpty(@TempDir Path dir) {
+        AgentLibraryStore store = store(dir);
+
+        LibraryAgent saved = store.save(
+                new LibraryAgent(null, "Reviewer", "claude-x", "high", 1000, "", "Use for reviews.", 0));
+        assertThat(store.get(saved.id()).orElseThrow().description()).isEqualTo("Use for reviews.");
+
+        LibraryAgent bare = store.save(
+                new LibraryAgent(null, "Bare", "claude-x", "high", 1000, "", null, 0));
+        assertThat(bare.description()).isEqualTo("");
+        assertThat(store.get(bare.id()).orElseThrow().description()).isEqualTo("");
+    }
 }

@@ -61,7 +61,8 @@ public class AgentLibraryStore extends JsonStore<LibraryAgent> {
 
     @Override
     protected LibraryAgent withId(LibraryAgent a, String id) {
-        return new LibraryAgent(id, a.name(), a.model(), a.effort(), a.maxTokens(), a.systemPrompt());
+        return new LibraryAgent(id, a.name(), a.model(), a.effort(), a.maxTokens(), a.systemPrompt(),
+                a.description(), a.version());
     }
 
     @Override
@@ -73,16 +74,27 @@ public class AgentLibraryStore extends JsonStore<LibraryAgent> {
      * Normalises before storing, so {@code save} and {@code list} agree on every field — a null
      * system prompt reads back as "" either way, and a missing model is the default rather than
      * null waiting to break a run.
+     *
+     * <p>Every save of an existing agent is a new version. The counter is what a linked block
+     * compares itself against: a block stamped with version 3 of an agent now at version 5 is
+     * told the agent changed since it linked it. The client's own version number is ignored for
+     * a known id — the store is the only one counting — and honoured for a new one, so a backup
+     * restored into an empty library keeps the numbers the blocks in the restored flows carry.
      */
     @Override
     public LibraryAgent save(LibraryAgent a) {
+        long version = a.id() == null || a.id().isBlank()
+                ? a.version()
+                : get(a.id()).map(existing -> existing.version() + 1).orElse(a.version());
         return super.save(new LibraryAgent(
                 a.id(),
                 a.name() == null || a.name().isBlank() ? "Untitled agent" : a.name(),
                 a.model() == null || a.model().isBlank() ? DEFAULT_MODEL : a.model(),
                 a.effort() == null || a.effort().isBlank() ? DEFAULT_EFFORT : a.effort(),
                 a.maxTokens() > 0 ? a.maxTokens() : DEFAULT_MAX_TOKENS,
-                a.systemPrompt() == null ? "" : a.systemPrompt()));
+                a.systemPrompt() == null ? "" : a.systemPrompt(),
+                a.description() == null ? "" : a.description(),
+                version));
     }
 
     /** Reads the YAML AgentSpec files the file-backed version wrote. */
@@ -123,7 +135,8 @@ public class AgentLibraryStore extends JsonStore<LibraryAgent> {
                 ? spec.model.maxTokens : DEFAULT_MAX_TOKENS;
         String name = (spec.name == null || spec.name.isBlank()) ? id : spec.name;
         return new LibraryAgent(id, name, model, effort, maxTokens,
-                spec.systemPrompt == null ? "" : spec.systemPrompt);
+                spec.systemPrompt == null ? "" : spec.systemPrompt,
+                spec.description == null ? "" : spec.description, 1);
     }
 
     private static boolean isYaml(Path p) {

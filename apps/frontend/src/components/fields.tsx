@@ -41,14 +41,16 @@ interface SelectFieldProps {
   onChange: (value: string) => void
   children: ReactNode
   className?: string
+  /** A select has no read-only state, so this disables it — the value is shown, not editable. */
+  readOnly?: boolean
 }
 
-export function SelectField({ label, value, onChange, children, className }: SelectFieldProps) {
+export function SelectField({ label, value, onChange, children, className, readOnly }: SelectFieldProps) {
   const id = useId()
   return (
     <label className={cx(styles.field, className)} htmlFor={id}>
       <span>{label}</span>
-      <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select id={id} value={value} disabled={readOnly} onChange={(e) => onChange(e.target.value)}>
         {children}
       </select>
     </label>
@@ -62,14 +64,22 @@ interface TextAreaFieldProps {
   rows?: number
   placeholder?: string
   className?: string
+  readOnly?: boolean
 }
 
-export function TextArea({ label, value, onChange, rows, placeholder, className }: TextAreaFieldProps) {
+export function TextArea({ label, value, onChange, rows, placeholder, className, readOnly }: TextAreaFieldProps) {
   const id = useId()
   return (
     <label className={cx(styles.field, className)} htmlFor={id}>
       <span>{label}</span>
-      <textarea id={id} rows={rows} placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
+      <textarea
+        id={id}
+        rows={rows}
+        placeholder={placeholder}
+        value={value}
+        readOnly={readOnly}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </label>
   )
 }
