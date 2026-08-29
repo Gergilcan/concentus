@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PLAINTEXT_PREFIX, isValidKey, resolveDataKey, type DataKeyPorts } from './data-key'
+import { PLAINTEXT_PREFIX, isValidKey, resolveDataKey, type DataKeyPorts } from '../src/data-key'
 
 /**
  * The decision that picks the credential key, against a faked keyring and disk.

@@ -19,6 +19,7 @@ const cred = (id: string, label: string, hint: string | null = null): Credential
   createdAt: 0,
   updatedAt: 0,
   lastUsedAt: null,
+  locked: false,
 })
 
 // A node keeps a credential's id, never the secret: the flow is saved into version history and
