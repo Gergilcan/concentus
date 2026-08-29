@@ -4,11 +4,11 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Concentus — la app de escritorio para orquestar agentes</title>
-<meta name="description" content="Una app de escritorio para Windows y Linux. Diseña flows multiagente en un lienzo, conéctales herramientas MCP y bases de datos, y ejecútalos con la suscripción de Claude que ya tienes en tu máquina. Sin servidor, sin base de datos que instalar, sin API key." />
+<meta name="description" content="Una app de escritorio para Windows, macOS y Linux. Diseña flows multiagente en un lienzo, conéctales herramientas MCP y bases de datos, y ejecútalos con la suscripción de Claude que ya tienes en tu máquina. Sin servidor, sin base de datos que instalar, sin API key." />
 <meta name="theme-color" content="#0e1117" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="Concentus" />
-<meta property="og:description" content="Conecta un equipo de agentes de IA en un lienzo y ejecútalo con tu propio Claude. Una app de escritorio para Windows y Linux — nada que desplegar." />
+<meta property="og:description" content="Conecta un equipo de agentes de IA en un lienzo y ejecútalo con tu propio Claude. Una app de escritorio para Windows, macOS y Linux — nada que desplegar." />
 <meta property="og:site_name" content="Concentus" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Concentus" />
@@ -102,6 +102,7 @@
     font-family: var(--mono); font-size: 11px; text-transform: uppercase;
     letter-spacing: 0.16em; color: var(--muted);
   }
+  .position { font-size: 1.05rem; color: var(--accent); margin: 14px 0 0; max-width: 40ch; font-weight: 600; }
   .lede { font-size: 16.5px; line-height: 1.64; color: var(--muted); text-wrap: pretty; }
   .cap { font-family: var(--mono); font-size: 11.5px; color: var(--muted); line-height: 1.6; }
 
@@ -500,6 +501,7 @@
       <a class="navbtn" href="#download">Instalar</a>
       <a class="navbtn" href="#license">Precios</a>
       <a class="navbtn" href="/es/docs">Docs</a>
+      <a class="navbtn" href="/changelog">Changelog</a>
     </nav>
     <div class="nav-right">
       <nav class="lang" aria-label="Idioma"><a href="/" hreflang="en" lang="en">EN</a><span>·</span><a href="/es" hreflang="es" lang="es" class="on" aria-current="page">ES</a><span>·</span><a href="/ca" hreflang="ca" lang="ca">CA</a></nav>
@@ -517,13 +519,14 @@
       <div>
         <div class="eyebrow" style="display:flex;align-items:center;gap:8px">
           <span style="width:6px;height:6px;border-radius:50%;background:var(--mcp);display:block"></span>
-          App de escritorio · Windows y Linux
+          App de escritorio · Windows, macOS y Linux
         </div>
         <h1>Dibuja el equipo.<br>Ejecútalo con tu propio Claude.</h1>
+        <p class="position">Piensa en Dify o n8n, pero para agentes que leen y cambian código — en tu propia máquina, con un verificador que puede decir que no.</p>
         <p class="lede">Concentus es una aplicación de escritorio para conectar flows multiagente en un lienzo y ejecutarlos sobre tus propios repositorios, tus propias bases de datos y la suscripción de Claude que ya tienes en tu máquina. Sin servidor que desplegar, sin base de datos que aprovisionar, sin API key que pegar.</p>
 
         <div class="hero-actions">
-          <a class="btn go lg" href="#download">Descargar para Windows o Linux</a>
+          <a class="btn go lg" href="#download">Descargar para Windows, macOS o Linux</a>
           <a class="btn lg" href="#" data-gh>Ver el código</a>
         </div>
 
