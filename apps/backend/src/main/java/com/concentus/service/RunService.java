@@ -568,6 +568,10 @@ public class RunService {
         // A new turn means whatever was asked before has been answered. Cleared here rather than
         // when the answer arrives, so the next question — a different question — gets posted.
         run.answerRemoteNotified = false;
+        // A block that settles mid-turn — a worker that failed, the verifier's final word — can
+        // fire what is wired to its second output right away. Installed here because this is
+        // the one place with both the run and its drawn graph; the executor only reports ids.
+        run.midRunHandOffs = nodeId -> subflows.handOffMidRun(run, flowOf(run).orElse(null), nodeId);
         try {
             // Dispatched through the registry rather than an if-chain, so adding a backend — or
             // moving one behind a network call — does not mean editing this method.

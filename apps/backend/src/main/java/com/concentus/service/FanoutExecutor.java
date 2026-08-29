@@ -244,6 +244,9 @@ public class FanoutExecutor {
             surviving = applyVerdict(run, verdict, outcomes);
             surviving = escalateRejected(run, verifier, cmd, userText, surviving);
             if ("ERROR".equals(run.status) || "TERMINATED".equals(run.status)) return;
+            // The verifier's word is final here — after the escalation, never before — so what is
+            // wired to its rejected output runs now, not after the merge.
+            run.settled(verifier.nodeId);
             if (surviving.stream().noneMatch(Outcome::ok)) {
                 fail(run, "The verifier rejected every worker's output — nothing survived to "
                         + "merge. Each rejection's reason is on its worker's box.");
@@ -486,7 +489,10 @@ public class FanoutExecutor {
 
         // No Bash, deliberately: a fan-out is N unattended processes, and N shells is N times
         // the blast radius. Verification commands belong to the single merge step.
-        return finish(exec, execute(run, spec, exec, cmd, userText, workdir, dirs, "Task,Bash"));
+        Outcome outcome = finish(exec, execute(run, spec, exec, cmd, userText, workdir, dirs, "Task,Bash"));
+        // A crashed worker is settled: its error branch can run now, while the others go on.
+        if (!outcome.ok() && !"TERMINATED".equals(run.status)) run.settled(spec.nodeId);
+        return outcome;
     }
 
     /** The attempts loop shared by workers and the merge step. Does not settle NodeExec status. */
@@ -1280,6 +1286,7 @@ public class FanoutExecutor {
 
     private void markVerifierFailed(AgentRun run, NodeExec exec, String error) {
         markFailed(exec, error);
+        if (exec != null) run.settled(exec.nodeId);
         if (!"TERMINATED".equals(run.status)) {
             fail(run, "The verification step failed: " + error + " The workers' combined report "
                     + "above still stands, but it is UNVERIFIED — the run stops rather than "

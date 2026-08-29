@@ -206,6 +206,35 @@ public class AgentRun {
         return null;
     }
 
+    /**
+     * Hand-offs already started for this run, by the drawn node's id — a recovery branch fired
+     * the moment its block settled must not fire again when the run ends.
+     */
+    public final java.util.Set<String> firedHandOffs = ConcurrentHashMap.newKeySet();
+    /** Set when a recovery branch (error or rejected) fired at any point of this run. */
+    public volatile boolean recoveryFired;
+    /**
+     * Where a settled block is reported to, while the run is still going. Installed by the run
+     * service, which is the only place that has both the run and the drawn graph; the executors
+     * only know a block has finished. Null when nobody is listening.
+     */
+    public volatile Consumer<String> midRunHandOffs;
+
+    /**
+     * A block has reached its final state — failed, or judged by the verifier — and whatever is
+     * wired to its second output may run now rather than after the merge. Never throws: a
+     * hand-off that cannot start is the branch's problem, said in the log, not the worker's.
+     */
+    public void settled(String nodeId) {
+        Consumer<String> hook = midRunHandOffs;
+        if (hook == null || nodeId == null) return;
+        try {
+            hook.accept(nodeId);
+        } catch (RuntimeException e) {
+            emit(RunEvent.of("system", "A branch wired to '" + nodeId + "' could not start: " + e.getMessage()));
+        }
+    }
+
     /** Whether one block's box records a failure. */
     public boolean nodeFailed(String nodeId) {
         NodeExec exec = nodeExecOrNull(nodeId);

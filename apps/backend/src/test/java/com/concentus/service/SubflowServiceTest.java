@@ -382,6 +382,50 @@ class SubflowServiceTest {
     }
 
     @Test
+    void a_settled_block_fires_its_own_branch_mid_run_and_the_end_of_the_run_does_not_repeat_it() {
+        AgentRun parent = fanoutRun("RUNNING");
+        com.concentus.model.NodeExec w1 = parent.nodeExec("w1", "agent", "Ads writer");
+        w1.status = "failed";
+        w1.error = "timed out";
+        com.concentus.model.FlowGraph graph = fanoutGraph("w1", com.concentus.model.FlowEdge.ERROR);
+
+        SubflowService service = service();
+        // The verifier settling says nothing about w1's branch: only the settled block's own.
+        service.handOffMidRun(parent, graph, "v");
+        verify(runs, never()).startSubflow(any(), anyString(), any());
+
+        service.handOffMidRun(parent, graph, "w1");
+        verify(runs, org.mockito.Mockito.times(1)).startSubflow(any(),
+                org.mockito.ArgumentMatchers.startsWith("Ads writer failed: timed out"), any());
+
+        // The run goes on and finishes; the branch that already ran is not started twice, and the
+        // main hand-offs (none drawn here) are the only thing the end of the run looks at.
+        parent.status = "COMPLETED";
+        parent.restoreEvents(List.of(com.concentus.model.RunEvent.of("agent_message", "Merged.")));
+        service.handOffAfter(parent, graph);
+        verify(runs, org.mockito.Mockito.times(1)).startSubflow(any(), anyString(), any());
+    }
+
+    @Test
+    void a_branch_that_fired_mid_run_still_counts_as_handling_a_run_that_then_failed() {
+        AgentRun parent = fanoutRun("RUNNING");
+        parent.nodeExec("w1", "agent", "Ads writer").verdict = "rejected";
+        parent.nodeExec("w2", "agent", "Ads reviewer").verdict = "rejected";
+        com.concentus.model.FlowGraph graph = fanoutGraph("v", com.concentus.model.FlowEdge.REJECTED);
+
+        SubflowService service = service();
+        service.handOffMidRun(parent, graph, "v");
+        verify(runs).startSubflow(any(), org.mockito.ArgumentMatchers.contains("# Verification report"), any());
+
+        parent.status = "ERROR";
+        parent.error = "The verifier rejected every worker's output — nothing survived to merge.";
+        service.handOffAfter(parent, graph);
+
+        verify(runs, org.mockito.Mockito.times(1)).startSubflow(any(), anyString(), any());
+        assertThat(parent.status).isEqualTo("COMPLETED");
+    }
+
+    @Test
     void a_run_the_verifier_rejected_entirely_is_handled_by_its_rejected_branch() {
         AgentRun parent = fanoutRun("ERROR");
         parent.error = "The verifier rejected every worker's output — nothing survived to merge.";

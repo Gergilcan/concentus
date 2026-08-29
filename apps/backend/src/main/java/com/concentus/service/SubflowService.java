@@ -145,8 +145,27 @@ public class SubflowService {
      * is what a flow drawn before gates existed does.
      */
     public void handOffAfter(AgentRun run, com.concentus.model.FlowGraph graph) {
+        handOff(run, graph, null);
+    }
+
+    /**
+     * The recovery branches of ONE block, the moment it settled — a worker that just failed, the
+     * verifier that just gave its final word — without waiting for the rest of the run.
+     *
+     * <p>The mail saying "the Ads worker was rejected" is worth more before the merge than after
+     * it; and a run with no error branch drawn loses nothing, because nothing fires here that
+     * {@link #handOffAfter} would not have fired later. What fired is remembered on the run, so
+     * the end of the run does not start it a second time.
+     */
+    public void handOffMidRun(AgentRun run, com.concentus.model.FlowGraph graph, String settledNodeId) {
+        if (graph == null || settledNodeId == null) return;
+        handOff(run, graph, settledNodeId);
+    }
+
+    private void handOff(AgentRun run, com.concentus.model.FlowGraph graph, String onlyFrom) {
         if (run.compiled == null || run.compiled.afterFlows().isEmpty()) return;
-        if (run.handOffsFired) return;
+        boolean finalCall = onlyFrom == null;
+        if (finalCall && run.handOffsFired) return;
 
         // A failed run used to start nothing at all, which is what made a failure something you
         // found out about afterwards. Now the wires say which is which, and WHOSE: a branch on
@@ -154,7 +173,9 @@ public class SubflowService {
         // THAT block failed — a worker that crashed while the others carried the run to
         // completion still fires its own branch; one on the verifier's rejected output runs when
         // the verifier's final word on any worker was a rejection.
-        boolean failed = !"COMPLETED".equals(run.status);
+        // Mid-run the run is still going, so nothing here reads as "the run failed": only the
+        // settled block's own branches are considered, on that block's own facts.
+        boolean failed = finalCall && !"COMPLETED".equals(run.status);
         // A failure nobody pinned on a block — "every worker failed", a budget — belongs to the
         // coordinator, the block that stands for the run.
         boolean unattributed = failed && run.failedNodeLabel() == null;
@@ -162,9 +183,11 @@ public class SubflowService {
         java.util.Map<String, String> payloads = new java.util.LinkedHashMap<>();
         boolean recoveryFired = false;
         for (AgentSpec.SubflowSpec drawn : run.compiled.afterFlows()) {
+            if (run.firedHandOffs.contains(drawn.nodeId)) continue;
             FlowGates.Origin origin = graph == null
                     ? new FlowGates.Origin(null, null)
                     : FlowGates.originOf(graph, drawn.nodeId);
+            if (!finalCall && (origin.onMain() || !onlyFrom.equals(origin.sourceId()))) continue;
             String payload = null;
             if (origin.onMain()) {
                 // A run that completed saying nothing still hands off: the branch was drawn to
@@ -184,7 +207,7 @@ public class SubflowService {
         }
 
         if (toRun.isEmpty()) {
-            if (failed) {
+            if (failed && !run.recoveryFired) {
                 String where = run.failedNodeLabel();
                 run.emit(com.concentus.model.RunEvent.of("system", (where == null
                         ? "This run did not complete, and nothing is wired to its coordinator's error output"
@@ -192,11 +215,14 @@ public class SubflowService {
                         + ", so none of its " + run.compiled.afterFlows().size()
                         + " hand-off(s) were started."));
             }
+            if (finalCall) settle(run, failed);
             return;
         }
 
-        run.handOffsFired = true;
+        if (finalCall) run.handOffsFired = true;
+        if (recoveryFired) run.recoveryFired = true;
         for (AgentSpec.SubflowSpec drawn : toRun) {
+            run.firedHandOffs.add(drawn.nodeId);
             String output = payloads.get(drawn.nodeId);
             FlowGates.Decision decision = graph == null
                     ? new FlowGates.Decision(List.of(output == null ? "" : output), null)
@@ -226,12 +252,18 @@ public class SubflowService {
             }
         }
 
-        // Handled, and therefore not a failure any more. Somebody drew what should happen when
-        // this goes wrong and it happened; leaving the run red would report an unattended failure
-        // and put a flow in the drifted column for working as designed. A rejected branch counts:
-        // a run that failed because the verifier rejected everything, with a branch drawn for
-        // exactly that, did what it was drawn to do.
-        if (failed && recoveryFired) {
+        if (finalCall) settle(run, failed);
+    }
+
+    /**
+     * Handled, and therefore not a failure any more. Somebody drew what should happen when this
+     * goes wrong and it happened; leaving the run red would report an unattended failure and put
+     * a flow in the drifted column for working as designed. A rejected branch counts: a run that
+     * failed because the verifier rejected everything, with a branch drawn for exactly that, did
+     * what it was drawn to do. A branch that fired mid-run counts the same — the run remembers.
+     */
+    private static void settle(AgentRun run, boolean failed) {
+        if (failed && run.recoveryFired) {
             run.status = "COMPLETED";
             run.emit(com.concentus.model.RunEvent.of("system",
                     "The failure was handled by the branch wired to the failing block's second "
