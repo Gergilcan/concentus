@@ -7,6 +7,8 @@ import { AgentInspector } from './AgentInspector.tsx'
 import { GroupInspector, NoteInspector } from './AnnotationInspectors.tsx'
 import { ApiInspector } from './ApiInspector.tsx'
 import { ConditionInspector, ForEachInspector } from './GateInspectors.tsx'
+import { hasChanges } from './diff.ts'
+import { DiffList } from './DiffView.tsx'
 import { FlowVersions } from './FlowVersions.tsx'
 import { InputInspector } from './InputInspector.tsx'
 import { InputView, OutputView } from './NodeExecView.tsx'
@@ -41,13 +43,14 @@ function title(data: AppNodeData): string {
   return 'Repository'
 }
 
-type Tab = 'properties' | 'input' | 'output' | 'logs'
+type Tab = 'properties' | 'input' | 'output' | 'logs' | 'changes'
 
 const TAB_LABEL: Record<Tab, string> = {
   properties: 'Properties',
   input: 'Input',
   output: 'Output',
   logs: 'Logs',
+  changes: 'Changes',
 }
 
 export function Inspector() {
@@ -60,6 +63,10 @@ export function Inspector() {
   const activeRunId = useFlowStore((s) => s.activeRunId)
   const flowId = useFlowStore((s) => s.flowId)
   const exec = useFlowStore((s) => (selectedId ? s.runExecByNode[selectedId] : undefined))
+  const runDiffs = useFlowStore((s) => s.runDiffs)
+  // This block's checkouts with something to show. A checkout read and found unchanged is not
+  // a tab: the run-level view says "nothing changed"; the block only speaks when it did something.
+  const nodeDiffs = runDiffs.filter((d) => d.nodeId === selectedId && hasChanges(d))
   const [tab, setTab] = useState<Tab>('properties')
   // Whether the "run this block again" dialog is open. Reset by closing it, not by changing
   // selection: it names the block it was opened from and carries that block's recorded input.
@@ -84,6 +91,14 @@ export function Inspector() {
           <InputView exec={exec} />
           <h4 className={styles.h3}>{t('Output')}</h4>
           <OutputView exec={exec} />
+          {/* Plan-born workers get every repository on the canvas, so their diff is the one
+              most worth reading — and they have no tabs to put it behind. */}
+          {activeRunId && nodeDiffs.length > 0 && (
+            <>
+              <h4 className={styles.h3}>{t('Changes')}</h4>
+              <DiffList runId={activeRunId} diffs={nodeDiffs} />
+            </>
+          )}
         </aside>
       )
     }
@@ -133,6 +148,11 @@ export function Inspector() {
       : data.kind === 'input'
         ? ['properties', 'output']
         : ['properties', 'input', 'output']
+  // Changes only for the kinds that clone a repository, and only once this run's read of that
+  // block's checkouts found something: an empty tab would be a promise the run did not keep.
+  if ((data.kind === 'agent' || data.kind === 'coordinator' || data.kind === 'merge') && nodeDiffs.length > 0) {
+    tabs.push('changes')
+  }
   const shownTab: Tab = hasExecTabs && tabs.includes(tab) ? tab : 'properties'
 
   return (
@@ -195,6 +215,7 @@ export function Inspector() {
           <OutputView exec={exec} />
         </>
       )}
+      {shownTab === 'changes' && activeRunId && <DiffList runId={activeRunId} diffs={nodeDiffs} />}
 
       {shownTab === 'properties' && (data.kind === 'agent' || data.kind === 'coordinator') && <AgentInspector data={data} set={set} />}
 

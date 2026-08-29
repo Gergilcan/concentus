@@ -1589,5 +1589,20 @@
   "Go to block: {{name}} ({{kind}})": "Ir al bloque: {{name}} ({{kind}})",
   "Minimap": "Minimapa",
   "Show the minimap": "Mostrar el minimapa",
-  "Hide the minimap": "Ocultar el minimapa"
+  "Hide the minimap": "Ocultar el minimapa",
+  "Changes": "Cambios",
+  "Download .patch": "Descargar .patch",
+  "Refresh": "Actualizar",
+  "Read the checkouts again, as they stand on disk now.": "Vuelve a leer los checkouts tal como están ahora en disco.",
+  "{{n}} file changed": "{{n}} archivo cambiado",
+  "{{n}} files changed": "{{n}} archivos cambiados",
+  "No changes in ./{{folder}}.": "Sin cambios en ./{{folder}}.",
+  "No repository changes yet. When an agent edits a repository, its diff appears here.": "Todavía no hay cambios en los repositorios. Cuando un agente edite un repositorio, su diff aparece aquí.",
+  "Nothing changed in the repositories this run touched.": "Nada cambió en los repositorios que tocó esta ejecución.",
+  "Binary file": "Archivo binario",
+  "… {{n}} more lines — download the patch to see them all": "… {{n}} líneas más — descarga el patch para verlas todas",
+  "new file": "archivo nuevo",
+  "deleted": "eliminado",
+  "What the agents did to the repositories, as patches — read it before trusting the pull request the report links to": "Lo que los agentes hicieron en los repositorios, como patches — léelo antes de fiarte del pull request que enlaza el informe",
+  "Could not download the patch: {{error}}": "No se pudo descargar el patch: {{error}}"
 }

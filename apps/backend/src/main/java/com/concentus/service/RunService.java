@@ -1125,6 +1125,7 @@ public class RunService {
                 run.outputUsdPerMTok = outputUsdPerMTok;
                 run.restoreEvents(row.events());
                 run.restoreNodeExecs(row.nodeExecs());
+                run.restorePatches(row.patches());
                 if (interrupted) {
                     run.emit(RunEvent.of("system", "The backend restarted while this run was in "
                             + "flight. Resume starts it again keeping every block that had passed."));

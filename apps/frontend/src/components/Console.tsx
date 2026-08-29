@@ -9,9 +9,13 @@ import { agentKey } from '../utils/agentKey.ts'
 import { cx } from '../utils/cx.ts'
 import { hueOf } from '../utils/hueOf.ts'
 import { compact, kindOf } from './flowFormat.ts'
+import { hasChanges } from './diff.ts'
+import { RunChanges } from './DiffView.tsx'
 import { RunTimeline } from './RunTimeline.tsx'
 import { Spinner } from './Spinner.tsx'
 import styles from './runs.module.scss'
+
+type ConsoleView = 'output' | 'timeline' | 'changes'
 
 // One derived notice rendered in two places, instead of the same strings written twice with
 // complementary conditions — the copies had already drifted. A healthy socket says nothing.
@@ -51,7 +55,25 @@ export function Console({
   const [agentFilter, setAgentFilter] = useState<string | null>(null)
   // The log is hidden rather than unmounted when the timeline is showing: it owns the scroll
   // position and the auto-scroll-to-bottom effect, both of which a remount would throw away.
-  const [view, setView] = useState<'output' | 'timeline'>('output')
+  const [view, setView] = useState<ConsoleView>('output')
+  // What the run did to the repositories. The view exists only for runs that cloned something;
+  // switching to a run that did not must not leave the strip on a tab that is no longer there.
+  const diffs = useFlowStore((s) => s.runDiffs)
+  const setRunDiffs = useFlowStore((s) => s.setRunDiffs)
+  const [refreshingDiffs, setRefreshingDiffs] = useState(false)
+  const views: ConsoleView[] = diffs.length > 0 ? ['output', 'timeline', 'changes'] : ['output', 'timeline']
+  const shownView: ConsoleView = views.includes(view) ? view : 'output'
+  const changed = diffs.filter(hasChanges).length
+  const refreshDiffs = async () => {
+    setRefreshingDiffs(true)
+    try {
+      setRunDiffs(await api.getRunDiffs(runId))
+    } catch (e) {
+      setErr(errMessage(e))
+    } finally {
+      setRefreshingDiffs(false)
+    }
+  }
 
   useEffect(() => {
     clearRunEvents()
@@ -258,25 +280,31 @@ export function Console({
           when". Both are views of the same run, so they share this strip rather than living in
           two places. */}
       <div className={styles.viewTabs}>
-        {(['output', 'timeline'] as const).map((v) => (
+        {views.map((v) => (
           <button
             key={v}
-            className={cx(styles.viewTab, view === v && styles.viewTabActive)}
+            className={cx(styles.viewTab, shownView === v && styles.viewTabActive)}
             onClick={() => setView(v)}
             title={
               v === 'output'
                 ? t('The run’s output, line by line')
-                : t('One bar per block over the run’s own span — overlapping bars are real parallelism, gaps are dead time')
+                : v === 'timeline'
+                  ? t('One bar per block over the run’s own span — overlapping bars are real parallelism, gaps are dead time')
+                  : t('What the agents did to the repositories, as patches — read it before trusting the pull request the report links to')
             }
           >
-            {v === 'output' ? t('Output') : t('Timeline')}
+            {v === 'output' ? t('Output') : v === 'timeline' ? t('Timeline') : t('Changes')}
+            {v === 'changes' && changed > 0 && ` (${changed})`}
           </button>
         ))}
       </div>
 
-      {view === 'timeline' && <RunTimeline nodes={Object.values(execByNode)} />}
+      {shownView === 'timeline' && <RunTimeline nodes={Object.values(execByNode)} />}
+      {shownView === 'changes' && (
+        <RunChanges runId={runId} diffs={diffs} onRefresh={refreshDiffs} refreshing={refreshingDiffs} />
+      )}
 
-      <div className={styles.log} hidden={view !== 'output'}>
+      <div className={styles.log} hidden={shownView !== 'output'}>
         {events.length === 0 && (
           <div className={styles.logMuted}>{connNotice ?? <Spinner label={t('Waiting for output')} />}</div>
         )}

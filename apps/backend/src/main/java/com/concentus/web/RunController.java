@@ -5,11 +5,16 @@ import com.concentus.model.FlowGraph;
 import com.concentus.model.NodeExecReport;
 import com.concentus.model.RunComparison;
 import com.concentus.model.RunDetail;
+import com.concentus.model.RunPatch;
 import com.concentus.model.RunSummary;
 import com.concentus.service.AgentRun;
+import com.concentus.service.RunDiffService;
 import com.concentus.service.RunService;
 import com.concentus.store.FlowStore;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,10 +33,12 @@ public class RunController {
 
     private final RunService runService;
     private final FlowStore flows;
+    private final RunDiffService diffs;
 
-    public RunController(RunService runService, FlowStore flows) {
+    public RunController(RunService runService, FlowStore flows, RunDiffService diffs) {
         this.runService = runService;
         this.flows = flows;
+        this.diffs = diffs;
     }
 
     @GetMapping
@@ -90,6 +97,36 @@ public class RunController {
         // Graph metrics likewise: derived from the node records on every read, never accrued.
         return new NodeExecReport(run.pricedNodeExecList(), run.totalInputTokens,
                 run.totalOutputTokens, run.estimatedCostUsd(), run.graphMetrics());
+    }
+
+    /**
+     * What the agents did to the repositories: one diff per checkout, read from the working tree
+     * now while it exists, from the run's own record when it no longer does. Read-only — the
+     * merge step is what pushes; this is what a person reads before trusting that push.
+     */
+    @GetMapping("/{id}/diffs")
+    public List<RunPatch> diffs(@PathVariable String id) {
+        return diffs.diffsOf(requireRun(id));
+    }
+
+    /** One checkout's diff as a file, for {@code git apply} or a reviewer's own tools. */
+    @GetMapping("/{id}/diffs/{nodeId}/{folder}.patch")
+    public ResponseEntity<String> patchFile(@PathVariable String id, @PathVariable String nodeId,
+                                            @PathVariable String folder) {
+        RunPatch patch = diffs.diffOf(requireRun(id), nodeId, folder)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "This run made no such checkout."));
+        if (patch.patch() == null) {
+            // No file to give, and which kind of none it is: the note says gone or capped;
+            // no note means the checkout is there and genuinely unchanged.
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    patch.note() != null ? patch.note() : "Nothing changed in this checkout.");
+        }
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/x-patch;charset=UTF-8"))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + RunDiffService.fileNameOf(patch) + "\"")
+                .body(patch.patch());
     }
 
     /** Launch an ad-hoc (unsaved) flow. */

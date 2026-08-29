@@ -147,6 +147,14 @@ public class AgentRun {
     /** What each worker changed in each of its clones, as patches: worker node id → folder → patch. */
     public final Map<String, Map<String, String>> workerPatches = new ConcurrentHashMap<>();
     /**
+     * Every checkout this run made, with the last diff read from it — the review ledger, keyed
+     * by node and folder (see {@link com.concentus.model.RunPatch#key()}). Separate from
+     * {@link #workerPatches}, which is the merge step's INPUT and only ever holds workers: this
+     * one also has the coordinator's clones and the merge's own, is refreshed on every read
+     * while the directory exists, and is what the database keeps.
+     */
+    private final Map<String, com.concentus.model.RunPatch> patches = new LinkedHashMap<>();
+    /**
      * Each worker's facade profile, frozen when its workspace is prepared. Frozen like
      * {@link #permissionMode}: editing a profile mid-run must not widen what an already-running
      * worker may do — the next run picks the edit up.
@@ -593,6 +601,34 @@ public class AgentRun {
                 if (n.nodeId != null) nodeExecs.put(n.nodeId, n);
             }
         }
+    }
+
+    /** Records a checkout, or the latest read of one: same node and folder replaces. */
+    public void recordPatch(com.concentus.model.RunPatch patch) {
+        if (patch == null || patch.nodeId() == null || patch.folder() == null) return;
+        synchronized (patches) {
+            patches.put(patch.key(), patch);
+        }
+    }
+
+    /** The last read of this node's checkouts, in the order they were cloned. */
+    public com.concentus.model.RunPatch patchOf(String nodeId, String folder) {
+        synchronized (patches) {
+            return patches.get(nodeId + "/" + folder);
+        }
+    }
+
+    /** Every checkout of the run, coordinator first, then workers and the merge as they cloned. */
+    public List<com.concentus.model.RunPatch> patchList() {
+        synchronized (patches) {
+            return new ArrayList<>(patches.values());
+        }
+    }
+
+    /** Repopulate the review ledger from persisted state. */
+    public void restorePatches(List<com.concentus.model.RunPatch> stored) {
+        if (stored == null) return;
+        for (com.concentus.model.RunPatch p : stored) recordPatch(p);
     }
 
     public AgentRun(String id, String flowId, String flowName, String mode) {

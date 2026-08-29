@@ -1873,6 +1873,13 @@ public class FanoutExecutor {
                     ? "Cloned " + c.spec().url + " into " + spec.name + "'s workspace as ./" + c.folderName()
                     : "Could not clone " + c.spec().url + " for " + spec.name + ": " + c.error(),
                     spec.name, spec.nodeId));
+            // Registered for review from the moment it exists, with the commit it started at.
+            // For a worker that base is where it will stay; for the merge step, which commits
+            // and pushes, it is what makes the diff still visible after the commit.
+            if (c.ok()) {
+                run.recordPatch(com.concentus.model.RunPatch.registered(spec.nodeId, spec.name,
+                        c.folderName(), c.spec().url, c.directory(), gitWorkspace.headOf(c.directory())));
+            }
         }
     }
 
@@ -1886,6 +1893,10 @@ public class FanoutExecutor {
         for (com.concentus.git.GitWorkspace.Checkout c : run.workerCheckouts.getOrDefault(spec.nodeId, List.of())) {
             if (!c.ok()) continue;
             String patch = gitWorkspace.patchOf(c.directory());
+            // The review ledger learns the answer either way — "this worker changed nothing" is
+            // a fact worth showing; the merge only wants the patches that exist.
+            com.concentus.model.RunPatch registered = run.patchOf(spec.nodeId, c.folderName());
+            if (registered != null) run.recordPatch(registered.taken(patch, System.currentTimeMillis()));
             if (patch == null) continue;
             run.workerPatches.computeIfAbsent(spec.nodeId, k -> new java.util.concurrent.ConcurrentHashMap<>())
                     .put(c.folderName(), patch);

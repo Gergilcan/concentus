@@ -1,0 +1,14 @@
+-- What the agents did to the repositories, kept with the run.
+--
+-- A fan-out worker's changes left its workspace as a patch for the merge step, and lived only in
+-- memory: a restart lost them, and the checkout directories they came from are scratch space a
+-- cleanup takes away. The diff is the one thing a person needs to read before trusting the pull
+-- request the report links to, so it is stored with the run it belongs to — one JSON list, the
+-- same shape as node_execs_json, holding every checkout the run made (the coordinator's, each
+-- worker's, the merge's) with the last diff read from it, its file and line counts, and the path
+-- and base commit that let it be read again while the directory exists.
+--
+-- Capped at two megabytes of patch text per run, in application code: past that the counts stay
+-- and the text goes, with a note saying so. A row must not become the vendored dependency some
+-- agent decided to add.
+alter table runs add column if not exists patches_json text;

@@ -189,6 +189,33 @@ export interface NodeExecReport {
   graph?: GraphMetrics | null
 }
 
+/** Files and lines of a unified diff, counted by the backend from the patch text. */
+export interface PatchStats {
+  files: number
+  additions: number
+  deletions: number
+}
+
+/**
+ * What one agent did to one repository checkout — the diff a person reads before trusting the
+ * pull request the report links to. One per (node, folder): a worker with two repositories has
+ * two, and the merge step, which clones every repository again, has its own.
+ */
+export interface RunDiff {
+  nodeId: string
+  label: string
+  /** The checkout's directory name inside the node's workspace. */
+  folder: string
+  repoUrl?: string | null
+  /** The unified diff; null when nothing changed, or when nothing has been read yet. */
+  patch?: string | null
+  stats: PatchStats
+  /** Why the patch is not what it could be — directory gone, store capped it; null otherwise. */
+  note?: string | null
+  /** When the patch was last read, epoch millis; 0 before the first read. */
+  takenAt: number
+}
+
 // --- Replay: a run's recorded decisions walked against the flow as saved today ---------------
 
 /** What happened to one block then, and what would happen now. Closed vocabularies, painted

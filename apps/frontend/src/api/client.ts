@@ -37,6 +37,7 @@ import type {
   RuntimeInstallPlan,
   RuntimeStatus,
   RunComparison,
+  RunDiff,
   ReplayReport,
   RunEvent,
   RunSummary,
@@ -226,6 +227,30 @@ export const api = {
   // runs
   listRuns: () => req<RunSummary[]>('/runs'),
   getRunNodes: (id: string) => req<NodeExecReport>(`/runs/${id}/nodes`),
+  /** What the agents did to the repositories: one diff per checkout, read from disk now. */
+  getRunDiffs: (id: string) => req<RunDiff[]>(`/runs/${id}/diffs`),
+  /**
+   * One checkout's diff as a file. Straight through fetch rather than req(): the answer is the
+   * patch text, not JSON, and it is meant for saving, not for parsing.
+   */
+  fetchRunPatch: async (runId: string, nodeId: string, folder: string): Promise<Blob> => {
+    const res = await fetch(
+      `/api/runs/${runId}/diffs/${encodeURIComponent(nodeId)}/${encodeURIComponent(folder)}.patch`,
+      { credentials: 'same-origin' },
+    )
+    if (!res.ok) {
+      let message = `${res.status} ${res.statusText}`
+      try {
+        const body = (await res.json()) as { error?: string; message?: string }
+        if (body?.message) message = body.message
+        else if (body?.error) message = body.error
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new ApiError(message, res.status)
+    }
+    return res.blob()
+  },
   /** The flow snapshot this run executed (works for ad-hoc runs and edited/deleted flows). */
   getRunFlow: (id: string) => req<BackendFlow>(`/runs/${id}/flow`),
   startRun: (flow: BackendFlow) =>
