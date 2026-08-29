@@ -9,12 +9,26 @@ import styles from './resources.module.scss'
 const REQUEST_URL = 'https://www.concentus-ai.com/#license'
 
 /**
+ * Whole days from today to the expiry date, both taken at UTC midnight so the answer does not
+ * change with the hour; never negative — "0 days left" is the last day, and past that the
+ * backend has already switched to its grace countdown.
+ */
+function daysLeft(expires: string): number {
+  const end = Date.parse(`${expires}T00:00:00Z`)
+  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`)
+  return Math.max(0, Math.round((end - today) / 86_400_000))
+}
+
+/**
  * "Licensed to X · enterprise · 5 seats · expires 2099-01-01" — each part is there only when the
  * license actually carries it, so an individual (seatless, perpetual) license reads as a short
- * sentence instead of a row of blanks.
+ * sentence instead of a row of blanks. A trial leads with its countdown: the days are the fact
+ * that matters about a trial, the rest is the same team license underneath.
  */
 function statusLine(s: LicenseStatus): string {
+  const trialDays = s.trial && s.expires ? daysLeft(s.expires) : null
   return [
+    trialDays != null ? `Trial — ${trialDays} day${trialDays === 1 ? '' : 's'} left` : null,
     s.licensee ? `Licensed to ${s.licensee}` : 'Licensed',
     s.tier,
     s.seats != null ? `${s.seats} seat${s.seats === 1 ? '' : 's'}` : null,

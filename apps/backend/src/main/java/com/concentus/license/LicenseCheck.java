@@ -64,10 +64,12 @@ public final class LicenseCheck {
         // Both refusal messages carry "is an enterprise feature" on purpose: the desktop shell
         // recognizes that phrase in the log and shows the license wall instead of a stack trace.
         if (license != null) {
+            String what = LicenseService.isTrial(license) ? "trial" : license.tier() + " license";
+            String fix = LicenseService.isTrial(license) ? "Get a team or enterprise license at " : "Renew at ";
             throw new IllegalStateException(
-                    "The shared database is an enterprise feature, and the " + license.tier()
-                            + " license for \"" + license.licensee() + "\" expired on " + license.expires()
-                            + " (14-day grace included). Renew at " + LICENSE_URL + ".");
+                    "The shared database is an enterprise feature, and the " + what + " for \""
+                            + license.licensee() + "\" expired on " + license.expires()
+                            + " (14-day grace included). " + fix + LICENSE_URL + ".");
         }
         throw new IllegalStateException(
                 "The shared database is an enterprise feature. Install a license via the "

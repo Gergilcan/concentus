@@ -52,6 +52,10 @@ const licenses = {
     { tier: 'team', licensee: 'Test Team', email: 'team@example.com', seats: 3, issued: '2026-08-22', expires: '2099-01-01', id: 'fixture-team-wrong-key-ind' }, ind.privateKeyPem),
   'team-signed-by-enterprise-test.license': signLicense(
     { tier: 'team', licensee: 'Test Team', email: 'team@example.com', seats: 3, issued: '2026-08-22', expires: '2099-01-01', id: 'fixture-team-wrong-key-ent' }, ent.privateKeyPem),
+  // What the trial form issues: a team license with `trial: true` and fourteen days on it. The
+  // flag is what the Settings screen counts down from; to every gate it is a team license.
+  'team-trial-test.license': signLicense(
+    { tier: 'team', licensee: 'Trial Team', email: 'trial@example.com', seats: 3, issued: '2026-08-22', expires: '2026-09-05', trial: true, id: 'fixture-team-trial' }, team.privateKeyPem),
 }
 const keys = JSON.stringify({
   individual: { publicKeySpkiBase64: ind.publicKeySpkiBase64 },

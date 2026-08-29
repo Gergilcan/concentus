@@ -124,6 +124,49 @@ class LicenseServiceTest {
         assertTrue(over.status().problem().contains("team license"), over.status().problem());
     }
 
+    // The trial: a team license to every gate, a trial to the status the UI reads. `trial` is the
+    // only thing that differs — the same seats, the same grace, the same seat limit.
+
+    @Test
+    void trialLicense_isActiveLikeAnyTeamLicense_andTheStatusSaysTrial(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("license.key"), TestLicenses.token("team-trial-test.license"));
+        LicenseService s = new LicenseService(TestLicenses.verifier(), dir, "", at("2026-08-25"));
+        assertTrue(s.enterpriseActive());
+        assertEquals(3, s.seatLimit());
+        LicenseStatus status = s.status();
+        assertTrue(status.valid());
+        assertTrue(status.trial());
+        assertEquals(License.TIER_TEAM, status.tier());
+        assertEquals("2026-09-05", status.expires());
+        assertNull(status.graceDaysLeft());
+    }
+
+    @Test
+    void boughtTeamLicense_andEveryOtherTier_reportTrialFalse(@TempDir Path dir) throws Exception {
+        for (String fixture : new String[] {"team-test.license", "enterprise-test.license", "individual-test.license"}) {
+            Files.writeString(dir.resolve("license.key"), TestLicenses.token(fixture));
+            assertFalse(new LicenseService(TestLicenses.verifier(), dir, "", at("2026-08-25")).status().trial(), fixture);
+        }
+        assertFalse(new LicenseService(TestLicenses.verifier(), Files.createTempDirectory(dir, "empty"), "",
+                at("2026-08-25")).status().trial());
+    }
+
+    @Test
+    void trialLicense_afterExpiry_getsTheSameGrace_thenAProblemThatPointsAtBuying(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("license.key"), TestLicenses.token("team-trial-test.license"));
+        // ended 2026-09-05; 2026-09-10 is day 5 of 14 -> still active, 9 days of grace left
+        LicenseService inGrace = new LicenseService(TestLicenses.verifier(), dir, "", at("2026-09-10"));
+        assertTrue(inGrace.enterpriseActive());
+        assertEquals(9, inGrace.status().graceDaysLeft());
+        assertTrue(inGrace.status().trial());
+        // past 2026-09-19 -> off; a trial is not renewed, so the message says "trial" and points at the license cards
+        LicenseService over = new LicenseService(TestLicenses.verifier(), dir, "", at("2026-09-20"));
+        assertFalse(over.enterpriseActive());
+        assertEquals(1, over.seatLimit());
+        assertTrue(over.status().problem().contains("trial"), over.status().problem());
+        assertTrue(over.status().problem().contains("team or enterprise license"), over.status().problem());
+    }
+
     @Test
     void teamLicense_whenTheTierIsOff_isUnverifiable_andTheProblemNamesTheProperty(@TempDir Path dir)
             throws Exception {

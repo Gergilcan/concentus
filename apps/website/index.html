@@ -367,6 +367,11 @@
   .lic-price small { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
   /* The buy button is a .btn, whose display would otherwise beat the UA's hidden rule. */
   .lic-form [hidden] { display: none !important; }
+  /* The trial: one wide card under the three plans — the pitch on the left, the form on the right. */
+  .trial { margin-top: 20px; padding: 22px 24px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px 40px; align-items: start; }
+  .trial h3 { font-size: 16.5px; font-weight: 600; margin-top: 12px; }
+  .trial p { font-size: 14.5px; color: var(--muted); margin-top: 10px; line-height: 1.55; }
+  .trial .lic-form { margin-top: 0; }
   /* The honeypot: present in the DOM for a bot to fill, invisible and unreachable for a person —
      off-screen rather than display:none, which some scripts skip when picking fields to fill. */
   .lic-form .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
@@ -448,6 +453,7 @@
     .uses { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .trade { flex-direction: column; gap: 18px; }
     .plans { grid-template-columns: minmax(0, 1fr); }
+    .trial { grid-template-columns: minmax(0, 1fr); }
   }
   @media (max-width: 900px) {
     .sheet { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 32px 24px; }
@@ -1114,6 +1120,31 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
           </div>
         </div>
       </div>
+
+      <div class="trial panel" id="trial" data-reveal>
+        <div>
+          <span class="eyebrow" style="color:var(--text)">Try it first</span>
+          <h3>Fourteen days of the team features, no card</h3>
+          <p>A trial license for up to ten seats, in your inbox in a minute: the shared database, members, SSO — everything a team or enterprise license unlocks. When it ends the installation drops back to one seat; nothing is deleted, and a license picks up exactly where the trial left off. One trial per address.</p>
+        </div>
+        <form class="lic-form" id="trial-form">
+          <label for="trial-name">Name</label>
+          <input id="trial-name" name="name" type="text" required maxlength="200" autocomplete="name" />
+          <label for="trial-company">Company or team (the name on the license)</label>
+          <input id="trial-company" name="company" type="text" maxlength="200" autocomplete="organization" />
+          <label for="trial-email">Email</label>
+          <input id="trial-email" name="email" type="email" required autocomplete="email" />
+          <label for="trial-seats">Seats (1 to 10)</label>
+          <input id="trial-seats" name="seats" type="number" min="1" max="10" step="1" value="5" required inputmode="numeric" />
+          <!-- Honeypot, as on the free form — named "website" because "company" is a real field here. -->
+          <div class="hp" aria-hidden="true">
+            <label for="trial-website">Website</label>
+            <input id="trial-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+          </div>
+          <button class="btn go" type="submit" id="trial-submit">Start the trial</button>
+          <p class="lic-msg" id="trial-msg" role="status" aria-live="polite"></p>
+        </form>
+      </div>
     </div>
   </section>
 
@@ -1358,6 +1389,48 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
         msg.textContent = FAILED;
         buy.disabled = false;
       });
+    });
+  })();
+
+  // Trial form. Same shape as the free license form: one generic line whatever happened, because
+  // the function on the other end confirms nothing about any address. The one exception is a
+  // 503 — trials not open yet — which is about the site, not the address, and is shown as said.
+  (function () {
+    var form = document.getElementById('trial-form');
+    if (!form) return;
+    var submit = document.getElementById('trial-submit');
+    var msg = document.getElementById('trial-msg');
+    var GENERIC = 'If that address is valid, your trial license is on its way.';
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      submit.disabled = true;
+      msg.textContent = '';
+
+      var body = {
+        name: document.getElementById('trial-name').value,
+        company: document.getElementById('trial-company').value,
+        email: document.getElementById('trial-email').value,
+        seats: parseInt(document.getElementById('trial-seats').value, 10),
+        website: document.getElementById('trial-website').value, // honeypot — left blank by a person
+      };
+
+      function done() {
+        msg.textContent = GENERIC;
+        submit.disabled = false;
+      }
+
+      fetch('/api/trial', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(function (r) {
+        if (r.status !== 503) { done(); return; }
+        return r.json().then(function (b) {
+          msg.textContent = (b && b.error) || GENERIC;
+          submit.disabled = false;
+        }, done);
+      }, done);
     });
   })();
 </script>

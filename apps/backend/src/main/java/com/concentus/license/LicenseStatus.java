@@ -11,12 +11,15 @@ package com.concentus.license;
  * <p>No license installed (or an unverifiable one) is every field null/false except {@code problem},
  * which always names the fix rather than just the failure.
  *
- * @param seats          the license's raw seat count; enterprise only, null otherwise
+ * @param seats          the license's raw seat count; enterprise and team only, null otherwise
  * @param expires        ISO date string, or null on a perpetual (individual) license
  * @param graceDaysLeft  null unless the license has expired; the days left in the grace window
  *                       otherwise, clamped to zero once the window is over
  * @param problem        null when {@code valid}; otherwise what's wrong AND what to do about it
+ * @param trial          true when this is the 14-day trial the website issues — a team license
+ *                       in every way the gates care about, shown as a trial so the countdown is
+ *                       to the end of a trial, not to the end of something that was bought
  */
 public record LicenseStatus(String tier, String licensee, Integer seats, String expires,
-                            Integer graceDaysLeft, boolean valid, String problem) {
+                            Integer graceDaysLeft, boolean valid, String problem, boolean trial) {
 }

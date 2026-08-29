@@ -72,6 +72,17 @@ class LicenseVerifierTest {
     }
 
     @Test
+    void trialFixture_isATeamLicenseWithTheFlag_andABoughtOneHasNoFlagAtAll() throws Exception {
+        License trial = TestLicenses.verifier().verify(TestLicenses.token("team-trial-test.license"));
+        assertEquals(License.TIER_TEAM, trial.tier());
+        assertEquals(Boolean.TRUE, trial.trial());
+        assertEquals("2026-09-05", trial.expires().toString());
+        // Absent, not false: the bought token's payload has no such field, and a license minted
+        // before trials existed must parse exactly as it always did.
+        assertNull(TestLicenses.verifier().verify(TestLicenses.token("team-test.license")).trial());
+    }
+
+    @Test
     void teamPayloadSignedByTheIndividualOrEnterpriseKey_isRefused() throws Exception {
         for (String fixture : new String[] {"team-signed-by-individual-test.license",
                                             "team-signed-by-enterprise-test.license"}) {

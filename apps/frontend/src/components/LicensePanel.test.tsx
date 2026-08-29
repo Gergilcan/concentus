@@ -20,6 +20,7 @@ const NONE = {
   graceDaysLeft: null,
   valid: false,
   problem: 'No license installed. Paste a token below, or request one.',
+  trial: false,
 }
 
 const VALID = {
@@ -30,6 +31,12 @@ const VALID = {
   graceDaysLeft: null,
   valid: true,
   problem: null,
+  trial: false,
+}
+
+/** An ISO date `days` from now — computed here, not fixed, so the countdown assertion holds on any day the test runs. */
+function inDays(days: number): string {
+  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
 }
 
 /**
@@ -59,6 +66,24 @@ describe('LicensePanel', () => {
 
     expect(
       await screen.findByText('Licensed to Tecnovent · enterprise · 5 seats · expires 2099-01-01'),
+    ).toBeInTheDocument()
+  })
+
+  it('leads with the countdown on a trial, and says "day" on the last one', async () => {
+    getLicense.mockResolvedValue({ ...VALID, tier: 'team', seats: 3, expires: inDays(5), trial: true })
+    render(<LicensePanel />)
+
+    expect(
+      await screen.findByText(`Trial — 5 days left · Licensed to Tecnovent · team · 3 seats · expires ${inDays(5)}`),
+    ).toBeInTheDocument()
+  })
+
+  it('a bought team license is not a trial: no countdown, the ordinary line', async () => {
+    getLicense.mockResolvedValue({ ...VALID, tier: 'team', seats: 3, expires: inDays(20) })
+    render(<LicensePanel />)
+
+    expect(
+      await screen.findByText(`Licensed to Tecnovent · team · 3 seats · expires ${inDays(20)}`),
     ).toBeInTheDocument()
   })
 

@@ -93,14 +93,19 @@ public class LicenseService {
     public LicenseStatus status() {
         License license = loaded.license;
         if (license == null) {
-            return new LicenseStatus(null, null, null, null, null, false, loaded.problem);
+            return new LicenseStatus(null, null, null, null, null, false, loaded.problem, false);
         }
         String expires = license.expires() == null ? null : license.expires().toString();
         Integer graceDaysLeft = graceDaysLeft(license);
         boolean valid = License.TIER_INDIVIDUAL.equals(license.tier()) || enterpriseActive();
         String problem = valid ? null : expiredBeyondGraceProblem(license);
         return new LicenseStatus(license.tier(), license.licensee(), license.seats(), expires,
-                graceDaysLeft, valid, problem);
+                graceDaysLeft, valid, problem, isTrial(license));
+    }
+
+    /** The trial flag as a plain boolean: absent on every license minted before trials existed. */
+    static boolean isTrial(License license) {
+        return Boolean.TRUE.equals(license.trial());
     }
 
     /**
@@ -215,6 +220,12 @@ public class LicenseService {
     }
 
     private static String expiredBeyondGraceProblem(License license) {
+        if (isTrial(license)) {
+            // A trial is not renewed, it is followed by a purchase — the fix is a different card.
+            return "The trial for " + license.licensee() + " ended on " + license.expires() + " and its "
+                    + GRACE_DAYS + "-day grace period is over. A team or enterprise license at "
+                    + LICENSE_URL + " restores the shared database, members and SSO.";
+        }
         return "The " + license.tier() + " license for " + license.licensee() + " expired on "
                 + license.expires() + " and its " + GRACE_DAYS + "-day grace period is over. Renew at "
                 + LICENSE_URL + " to restore enterprise features.";

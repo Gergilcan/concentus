@@ -161,3 +161,18 @@ compromise still mints nothing sellable at enterprise scale.
 
 Section 6's "no payment gateway" is superseded for THIS tier only; enterprise stays a manual
 sale, and the enterprise CLI is unchanged.
+
+## 10. Enterprise trial — automatic, fourteen days (added 2026-08-29)
+
+A company evaluating the shared database should not have to email for a license first. The
+trial is a form on the site (name, company, email, seats up to 10) that mints a TEAM license with
+`expires = today + 14 days`, the seats asked for, and `trial: true` in the payload — signed with
+the team key, emailed through Resend, recorded in the ledger as `kind: trial`.
+
+| Question | Decision |
+| --- | --- |
+| What it is | A team license in every way the gates care about (shared database, members up to seats, SSO), so no new gate and no new tier: `trial` is a flag, not a fourth key. |
+| How long | 14 days, then the ordinary 14-day grace with the same banner, then one seat. Nothing is deleted; a bought license picks up where the trial left off. |
+| How many | One per address, carried by a partial unique index in the ledger (`email where kind = 'trial'`). The second request gets the same generic line and no email — the answer never says "you already had one". Without a ledger the rule cannot be remembered and the trial is issued anyway, logged. |
+| What the app shows | `LicenseStatus.trial`; the Settings panel leads with "Trial — N days left", counted from `expires`. The expired-beyond-grace messages say "trial" and point at buying, not renewing. |
+| Not configured | No `TEAM_SIGNING_KEY` (or Resend pair) → 503 "trials are not open yet", honest rather than generic: with no key there is nothing on its way. |

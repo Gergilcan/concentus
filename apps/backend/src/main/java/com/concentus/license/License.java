@@ -9,9 +9,12 @@ import java.time.LocalDate;
  *
  * @param seats   enterprise and team only; null on individual licenses
  * @param expires null on the free perpetual license; never null on a team license
+ * @param trial   true on a team license the website's trial form issued; absent (null) on every
+ *                other license, including a bought team one — the flag changes nothing the gates
+ *                decide, only what the Settings screen says
  */
 public record License(int v, String tier, String licensee, String email,
-                      Integer seats, LocalDate issued, LocalDate expires, String id) {
+                      Integer seats, LocalDate issued, LocalDate expires, String id, Boolean trial) {
     public static final String TIER_INDIVIDUAL = "individual";
     public static final String TIER_ENTERPRISE = "enterprise";
     /**

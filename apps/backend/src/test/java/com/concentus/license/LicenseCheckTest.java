@@ -85,6 +85,19 @@ class LicenseCheckTest {
     }
 
     @Test
+    void expiredTrial_refusesNamingTheTrial_andPointsAtBuyingNotRenewing(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve(LicenseService.FILE_NAME), TestLicenses.token("team-trial-test.license"));
+        // ended 2026-09-05; still covered on 2026-09-15 (grace), refused on 2026-09-20
+        assertTrue(LicenseCheck.enterpriseCoversExternalDatabase(dir, TestLicenses.verifier(), "", at("2026-09-15")));
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> LicenseCheck.enterpriseCoversExternalDatabase(dir, TestLicenses.verifier(), "",
+                        at("2026-09-20")));
+        assertTrue(e.getMessage().contains("the trial for"), e.getMessage());
+        assertTrue(e.getMessage().contains("Get a team or enterprise license"), e.getMessage());
+        assertTrue(e.getMessage().contains("is an enterprise feature"));
+    }
+
+    @Test
     void withinGrace_coversExternal(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve(LicenseService.FILE_NAME),
                 TestLicenses.token("enterprise-expired-test.license"));
