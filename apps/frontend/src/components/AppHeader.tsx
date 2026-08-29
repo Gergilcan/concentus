@@ -4,16 +4,13 @@ import { api } from '../api/client.ts'
 import { AccountMenu } from './AccountMenu.tsx'
 import { AuthBadge } from './AuthBadge.tsx'
 import { UpdateBadge } from './UpdateBadge.tsx'
+import { NAV, type View } from './AppNav.ts'
 import styles from './appheader.module.scss'
 
-export type View = 'flows' | 'studio' | 'resources' | 'usage'
-
-export const NAV: Array<{ id: View; label: string }> = [
-  { id: 'flows', label: 'Flows' },
-  { id: 'studio', label: 'Studio' },
-  { id: 'resources', label: 'Resources' },
-  { id: 'usage', label: 'Usage' },
-]
+// Still importable from here for App.tsx and the state hooks; the list itself lives in AppNav.ts
+// so this file exports only a component and keeps fast refresh.
+export type { View } from './AppNav.ts'
+export { NAV } from './AppNav.ts'
 
 interface Props {
   view: View

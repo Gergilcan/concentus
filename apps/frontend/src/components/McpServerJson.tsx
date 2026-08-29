@@ -36,7 +36,6 @@ export function McpServerJson({ def, onApplied }: { def: McpDef; onApplied: (sav
     setText(formatServer(current.current))
     setDirty(false)
     setNote(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [def.id])
 
   useEffect(() => {

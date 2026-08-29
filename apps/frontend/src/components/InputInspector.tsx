@@ -69,6 +69,17 @@ function newToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+/** Copies the text and shows a ✓ for a moment. A blocked clipboard is left alone: the field is selectable anyway. */
+async function copyWithTick(text: string, setCopied: (on: boolean) => void): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  } catch {
+    /* clipboard blocked — the field is selectable anyway */
+  }
+}
+
 export function InputInspector({ data, set }: Props) {
   const { t } = useTranslation()
   const flowId = useFlowStore((s) => s.flowId)
@@ -94,15 +105,8 @@ export function InputInspector({ data, set }: Props) {
     if (on) set({ published: true, publishToken: data.publishToken || newToken() })
     else set({ published: false })
   }
-  const copyToken = async () => {
-    if (!data.publishToken) return
-    try {
-      await navigator.clipboard.writeText(data.publishToken)
-      setCopiedToken(true)
-      setTimeout(() => setCopiedToken(false), 1500)
-    } catch {
-      /* clipboard blocked — the field is selectable anyway */
-    }
+  const copyToken = () => {
+    if (data.publishToken) void copyWithTick(data.publishToken, setCopiedToken)
   }
   const [credentials, setCredentials] = useState<Credential[]>([])
 
@@ -132,15 +136,8 @@ export function InputInspector({ data, set }: Props) {
   // No token in the URL: Linear authenticates by signing the body, not by echoing a secret back.
   const hookUrl = flowId ? webhookUrl(flowId) : null
 
-  const copy = async () => {
-    if (!hookUrl) return
-    try {
-      await navigator.clipboard.writeText(hookUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      /* clipboard blocked — the field is selectable anyway */
-    }
+  const copy = () => {
+    if (hookUrl) void copyWithTick(hookUrl, setCopied)
   }
 
   return (
@@ -208,7 +205,6 @@ export function InputInspector({ data, set }: Props) {
           {t('Shadow mode — plan only, act never ⓘ')}
         </label>
       )}
-
 
       {data.mode === 'cron' && (
         <CronBuilder value={data.cron ?? ''} onChange={(v) => set({ cron: v })} />
@@ -499,14 +495,9 @@ export function InputInspector({ data, set }: Props) {
         <p className={styles.hint}>
           {data.mode === 'manual' && t('The run starts idle — type the first instruction in the console.')}
           {data.mode === 'prompt' && t('Pressing Run auto-sends this prompt as the first turn.')}
-          {data.mode === 'cron' && (
-            <>{t('Runs automatically on this schedule with the prompt above (saved flows only).')}</>
-          )}
-          {data.mode === 'subflow' && (
-            <>
-              {t('Started by another flow — through a Run-another-flow node there, which hands over the text this run begins with. Nothing schedules it, and pressing Run still works for testing it by hand.')}
-            </>
-          )}
+          {data.mode === 'cron' && t('Runs automatically on this schedule with the prompt above (saved flows only).')}
+          {data.mode === 'subflow' &&
+            t('Started by another flow — through a Run-another-flow node there, which hands over the text this run begins with. Nothing schedules it, and pressing Run still works for testing it by hand.')}
         </p>
       )}
       {/* Any mode: publishing adds a door, it does not move the existing one. */}
@@ -685,10 +676,10 @@ function MailTriggerStatus({ flowId }: { flowId: string | null }) {
         .catch(() => alive && setStatus(null))
     void load()
     // Slower than the poll itself: this is a status line someone glances at, not a live feed.
-    const t = setInterval(() => void load(), 10_000)
+    const timer = setInterval(() => void load(), 10_000)
     return () => {
       alive = false
-      clearInterval(t)
+      clearInterval(timer)
     }
   }, [flowId])
 

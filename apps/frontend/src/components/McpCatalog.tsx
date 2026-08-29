@@ -173,15 +173,6 @@ const AUTH_LABEL: Record<CatalogEntry['auth'], string> = {
   stdio: 'runs locally',
 }
 
-/**
- * Entries whose one click leaves work behind — the ones worth handing to the setup dialog.
- *
- * Every LOCAL server does: it is launched by a command, so the machine needs the runtime that
- * command comes from (npx needs npm, uvx ships with uv), and adding one without that just moves
- * the failure to the first run. Token servers do too: they need a credential picked. OAuth and
- * open servers genuinely are one click, and routing those through a dialog would take away the
- * thing this catalogue is for.
- */
 /** A catalogue entry handed to the setup dialog: what it is, and what it still needs answered. */
 export interface CatalogSetup {
   name: string
@@ -195,6 +186,15 @@ export interface CatalogSetup {
   authHeader?: string
 }
 
+/**
+ * Entries whose one click leaves work behind — the ones worth handing to the setup dialog.
+ *
+ * Every LOCAL server does: it is launched by a command, so the machine needs the runtime that
+ * command comes from (npx needs npm, uvx ships with uv), and adding one without that just moves
+ * the failure to the first run. Token servers do too: they need a credential picked. OAuth and
+ * open servers genuinely are one click, and routing those through a dialog would take away the
+ * thing this catalogue is for.
+ */
 function needsSetup(entry: CatalogEntry): boolean {
   return entry.auth === 'stdio' || entry.auth === 'token'
 }

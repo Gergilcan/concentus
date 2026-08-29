@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { callbackUnreachable } from './McpOAuthConnect.tsx'
+import { callbackUnreachable } from './McpSignIn.ts'
 
 vi.mock('../api/client.ts', () => ({ api: {} }))
 

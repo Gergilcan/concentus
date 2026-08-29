@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
-import type { FacadeProfile, PluginInfo, SkillInfo } from '../api/types.ts'
-import type { AgentNodeData, LibraryAgent } from '../api/types.ts'
+import type { AgentNodeData, FacadeProfile, LibraryAgent, PluginInfo, SkillInfo } from '../api/types.ts'
 import { EFFORT_OPTIONS } from '../constants.ts'
 import { aboveCeiling } from '../utils/permissionCeiling.ts'
 import { Field, FineTuning, SelectField, TextArea } from './fields.tsx'
@@ -82,10 +81,11 @@ export function AgentInspector({ data, set }: Props) {
   const linked = !!data.libraryAgentId
   const linkedAgent = linked ? library.find((x) => x.id === data.libraryAgentId) : undefined
   const linkedVersion = linkedAgent?.version ?? 1
+  const linkedDefinition = linkedAgent ? definitionOf(linkedAgent) : undefined
   // What the library changed since the block took its copy — by value, not only by version
   // number, so the list is the actual difference and an agent re-saved untouched shows none.
-  const changes = linkedAgent
-    ? LINKED_FIELDS.filter((f) => String(data[f] ?? '') !== String(definitionOf(linkedAgent)[f] ?? ''))
+  const changes = linkedDefinition
+    ? LINKED_FIELDS.filter((f) => String(data[f] ?? '') !== String(linkedDefinition[f] ?? ''))
     : []
   const behind = !!linkedAgent && ((data.libraryVersion ?? 0) < linkedVersion || changes.length > 0)
 
@@ -155,7 +155,7 @@ export function AgentInspector({ data, set }: Props) {
                 <ul>
                   {changes.map((f) => (
                     <li key={f}>
-                      <b>{fieldLabel[f]}</b>: <s>{short(data[f])}</s> → {short(definitionOf(linkedAgent)[f])}
+                      <b>{fieldLabel[f]}</b>: <s>{short(data[f])}</s> → {short(linkedDefinition?.[f])}
                     </li>
                   ))}
                 </ul>

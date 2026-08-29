@@ -146,13 +146,3 @@ export function CardMenu({ items, label }: { items: CardMenuItem[]; label: strin
     </>
   )
 }
-
-/** Convenience for the caller: drop the items whose feature is not wired up on this card. */
-// The falsy union is wide on purpose: a caller guards an item with `flow.id && …`, and an
-// absent id is an empty string rather than false. Narrowing this to `false` makes the call site
-// write a ternary for every optional item, which is noise around the thing that matters.
-export function menuItems(
-  items: Array<CardMenuItem | false | null | undefined | '' | 0>,
-): CardMenuItem[] {
-  return items.filter((i): i is CardMenuItem => !!i)
-}

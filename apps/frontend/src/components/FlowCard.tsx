@@ -1,4 +1,4 @@
-import { CardMenu, menuItems } from './CardMenu.tsx'
+import { CardMenu, type CardMenuItem } from './CardMenu.tsx'
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { BackendFlow, GoldenStatus, RunSummary } from '../api/types.ts'
@@ -8,6 +8,14 @@ import { hueOf } from '../utils/hueOf.ts'
 import { KIND_LABEL, compact, countsOf, decided, kindOf, money, timeAgo, triggerOf } from './flowFormat.ts'
 import { templateJson } from './flowTemplate.ts'
 import styles from './flows.module.scss'
+
+/** Drops the menu items whose feature is not wired up on this card. */
+// The falsy union is wide on purpose: an item is guarded with `flow.id && …`, and an absent id
+// is an empty string rather than false. Narrowing this to `false` would make every optional item
+// a ternary, which is noise around the thing that matters.
+function menuItems(items: Array<CardMenuItem | false | null | undefined | '' | 0>): CardMenuItem[] {
+  return items.filter((i): i is CardMenuItem => !!i)
+}
 
 export function FlowCard({
   flow,
@@ -107,7 +115,6 @@ export function FlowCard({
 
   return (
     <article
-      key={flow.id}
       className={cx(styles.card, styles['t_' + trigger.tone], paused && styles.paused)}
       draggable={!!onDragStart}
       onDragStart={onDragStart}
