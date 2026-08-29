@@ -5,9 +5,13 @@ import com.concentus.api.OpenApiCatalog;
 import com.concentus.api.PlainEndpoint;
 import com.concentus.config.AgentSpec;
 import com.concentus.config.AgentSpec.ApiSourceSpec;
+import com.concentus.model.RunEvent;
 import com.concentus.service.AgentRun;
+import com.concentus.service.ContextAssembler;
+import com.concentus.service.KnowledgeRetriever;
 import com.concentus.service.RunService;
 import com.concentus.service.SubflowService;
+import com.concentus.service.ToolCallLoopGuard;
 import com.concentus.store.FlowMemoryStore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,7 +32,9 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * The MCP server each run's API nodes become.
@@ -60,15 +66,14 @@ public class RunToolsController {
     private final FlowMemoryStore memory;
     /** Runs another flow on request. Present even when the flow draws none — the tool is not. */
     private final SubflowService subflows;
-    private final com.concentus.service.KnowledgeRetriever knowledge;
-    private final com.concentus.service.ContextAssembler assembler;
-    private final com.concentus.service.ToolCallLoopGuard loops;
+    private final KnowledgeRetriever knowledge;
+    private final ContextAssembler assembler;
+    private final ToolCallLoopGuard loops;
 
     public RunToolsController(RunService runs, OpenApiCatalog catalog, ApiCaller caller,
                               ObjectMapper mapper, FlowMemoryStore memory, SubflowService subflows,
-                              com.concentus.service.KnowledgeRetriever knowledge,
-                              com.concentus.service.ContextAssembler assembler,
-                              com.concentus.service.ToolCallLoopGuard loops) {
+                              KnowledgeRetriever knowledge, ContextAssembler assembler,
+                              ToolCallLoopGuard loops) {
         this.runs = runs;
         this.catalog = catalog;
         this.caller = caller;
@@ -88,23 +93,10 @@ public class RunToolsController {
         if (run == null || !McpJsonRpc.tokenMatches(run.toolToken, token)) {
             return ResponseEntity.status(401).build();
         }
-
-        String method = request.path("method").asText("");
-        JsonNode id = request.get("id");
-        return switch (method) {
-            case "initialize" -> ok(id, initializeResult());
-            // Notifications carry no id and expect no result.
-            case "notifications/initialized", "notifications/cancelled" ->
-                    ResponseEntity.accepted().build();
-            case "tools/list" -> ok(id, toolsList(run));
-            case "tools/call" -> ok(id, toolsCall(run, request.path("params")));
-            case "ping" -> ok(id, mapper.createObjectNode());
-            default -> error(id, -32601, "Method not supported: " + method);
-        };
-    }
-
-    private ObjectNode initializeResult() {
-        return McpJsonRpc.initializeResult(mapper, "concentus-apis");
+        return McpJsonRpc.dispatch(mapper, request,
+                () -> McpJsonRpc.initializeResult(mapper, "concentus-apis"),
+                () -> toolsList(run),
+                params -> toolsCall(run, params));
     }
 
     /**
@@ -177,7 +169,7 @@ public class RunToolsController {
         if (run.compiled == null) return out;
         for (AgentSpec agent : run.compiled.allAgents()) {
             for (AgentSpec.KnowledgeSourceSpec spec : agent.knowledgeSources) {
-                out.putIfAbsent(spec.label().toLowerCase(java.util.Locale.ROOT), spec);
+                out.putIfAbsent(spec.label().toLowerCase(Locale.ROOT), spec);
             }
         }
         return out;
@@ -201,7 +193,7 @@ public class RunToolsController {
 
         String names = basesByLabel.values().stream()
                 .map(b -> "\"" + b.label() + "\"")
-                .collect(java.util.stream.Collectors.joining(", "));
+                .collect(Collectors.joining(", "));
         ObjectNode tool = tools.addObject();
         tool.put("name", "search_knowledge");
         tool.put("description", "Search the documents in a knowledge base and get back the "
@@ -224,7 +216,7 @@ public class RunToolsController {
     private ObjectNode searchKnowledge(AgentRun run, JsonNode arguments) {
         Map<String, AgentSpec.KnowledgeSourceSpec> bases = wiredKnowledge(run);
         String wanted = arguments.path("base").asText("").trim();
-        AgentSpec.KnowledgeSourceSpec spec = bases.get(wanted.toLowerCase(java.util.Locale.ROOT));
+        AgentSpec.KnowledgeSourceSpec spec = bases.get(wanted.toLowerCase(Locale.ROOT));
         if (spec == null) {
             return callResult(true, "No knowledge base named '" + wanted + "' is wired into this "
                     + "flow. Available: " + String.join(", ", bases.keySet()) + ".");
@@ -235,7 +227,7 @@ public class RunToolsController {
         try {
             var hits = knowledge.search(spec.baseId, query, null, spec.topK);
             var assembled = assembler.assemble(hits);
-            run.emit(com.concentus.model.RunEvent.of("tool_use",
+            run.emit(RunEvent.of("tool_use",
                     "Knowledge: searched '" + spec.label() + "' → " + assembled.passages().size()
                             + " passage(s)"));
             if (assembled.isEmpty()) {
@@ -256,7 +248,7 @@ public class RunToolsController {
         if (run.compiled == null) return out;
         for (AgentSpec agent : run.compiled.allAgents()) {
             for (AgentSpec.SubflowSpec spec : agent.subflows) {
-                out.putIfAbsent(spec.label.toLowerCase(java.util.Locale.ROOT), spec);
+                out.putIfAbsent(spec.label.toLowerCase(Locale.ROOT), spec);
             }
         }
         return out;
@@ -275,7 +267,7 @@ public class RunToolsController {
 
         String names = subflowsByLabel.values().stream()
                 .map(s -> "\"" + s.label + "\"")
-                .collect(java.util.stream.Collectors.joining(", "));
+                .collect(Collectors.joining(", "));
         ObjectNode tool = tools.addObject();
         tool.put("name", "run_flow");
         tool.put("description", "Run another flow and, unless it is a hand-off, wait for its "
@@ -294,14 +286,14 @@ public class RunToolsController {
     private ObjectNode runFlow(AgentRun run, JsonNode arguments) {
         Map<String, AgentSpec.SubflowSpec> byLabel = wiredSubflows(run);
         String requested = arguments.path("flow").asText("").trim();
-        AgentSpec.SubflowSpec spec = byLabel.get(requested.toLowerCase(java.util.Locale.ROOT));
+        AgentSpec.SubflowSpec spec = byLabel.get(requested.toLowerCase(Locale.ROOT));
         if (spec == null) {
             return callResult(true, "This flow cannot run '" + requested + "'. It may run: "
                     + String.join(", ", byLabel.values().stream().map(s -> s.label).toList()) + ".");
         }
 
         String prompt = arguments.path("prompt").asText("");
-        run.emit(com.concentus.model.RunEvent.of("tool_use",
+        run.emit(RunEvent.of("tool_use",
                 "Sub-flow '" + spec.label + "': starting" + (spec.waitForResult ? " and waiting" : "")));
         SubflowService.Result result = subflows.run(run, spec, prompt);
 
@@ -361,8 +353,7 @@ public class RunToolsController {
                     + "reached. Work without it and say so in your answer.");
         }
         List<FlowMemoryStore.Note> notes = memory.recent(run.flowId, MEMORY_READ_LIMIT);
-        run.emit(com.concentus.model.RunEvent.of("tool_use",
-                "Memory: read " + notes.size() + " note(s)"));
+        run.emit(RunEvent.of("tool_use", "Memory: read " + notes.size() + " note(s)"));
         if (notes.isEmpty()) {
             return callResult(false, "This flow's memory is empty — no previous run has left a "
                     + "note yet.");
@@ -397,8 +388,7 @@ public class RunToolsController {
             return callResult(true, "The note was NOT saved: " + e.getMessage());
         }
         int total = memory.count(run.flowId);
-        run.emit(com.concentus.model.RunEvent.of("tool_use",
-                "Memory: note saved (" + total + " total)"));
+        run.emit(RunEvent.of("tool_use", "Memory: note saved (" + total + " total)"));
         return callResult(false, "Saved. This flow now has " + total + " note(s).");
     }
 
@@ -415,10 +405,10 @@ public class RunToolsController {
             return callResult(true, "Unknown tool '" + name + "'. Call tools/list for the current set.");
         }
         String argsJson = params.path("arguments").toString();
-        String callerKey = com.concentus.service.ToolCallLoopGuard.key(run.id, tool.spec().nodeId);
+        String callerKey = ToolCallLoopGuard.key(run.id, tool.spec().nodeId);
         var stuck = loops.refuse(callerKey, name, argsJson);
         if (stuck.isPresent()) {
-            run.emit(com.concentus.model.RunEvent.of("system", "Called " + name + " repeatedly "
+            run.emit(RunEvent.of("system", "Called " + name + " repeatedly "
                     + "with the same arguments for the same answer — told to try something else."));
             return callResult(true, stuck.get());
         }
@@ -428,7 +418,7 @@ public class RunToolsController {
                     params.path("arguments"));
             String text = "HTTP " + result.status() + "\n" + result.body();
             loops.record(callerKey, name, argsJson, text);
-            run.emit(com.concentus.model.RunEvent.of("tool_use",
+            run.emit(RunEvent.of("tool_use",
                     "API " + tool.spec().label + ": " + tool.op().key() + " → "
                             + (result.status() == 0 ? "rejected before sending" : "HTTP " + result.status())));
             return callResult(!result.ok(), text);
@@ -441,13 +431,5 @@ public class RunToolsController {
 
     private ObjectNode callResult(boolean isError, String text) {
         return McpJsonRpc.callResult(mapper, isError, text);
-    }
-
-    private ResponseEntity<JsonNode> ok(JsonNode id, ObjectNode result) {
-        return McpJsonRpc.ok(mapper, id, result);
-    }
-
-    private ResponseEntity<JsonNode> error(JsonNode id, int code, String message) {
-        return McpJsonRpc.error(mapper, id, code, message);
     }
 }

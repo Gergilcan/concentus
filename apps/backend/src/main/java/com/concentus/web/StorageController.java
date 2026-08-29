@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -95,15 +96,7 @@ public class StorageController {
      */
     @GetMapping
     public Map<String, Object> get() {
-        StorageSettings settings = store.load();
-        return Map.of(
-                "mode", settings.mode(),
-                "url", settings.url(),
-                "username", settings.username(),
-                "hasPassword", settings.password() != null && !settings.password().isBlank(),
-                // Whether the running process is actually on it yet, which is how the UI knows to
-                // ask for a restart.
-                "activeMode", activeMode());
+        return view(store.load());
     }
 
     /** Saves the choice. Takes effect on the next start. */
@@ -114,13 +107,22 @@ public class StorageController {
             requireUsableUrl(body.url());
         }
         StorageSettings saved = store.save(incoming, body.password());
-        return Map.of(
-                "mode", saved.mode(),
-                "url", saved.url(),
-                "username", saved.username(),
-                "hasPassword", saved.password() != null && !saved.password().isBlank(),
-                "activeMode", activeMode(),
-                "restartRequired", !saved.mode().equalsIgnoreCase(activeMode()));
+        Map<String, Object> out = view(saved);
+        out.put("restartRequired", !saved.mode().equalsIgnoreCase(activeMode()));
+        return out;
+    }
+
+    /** The settings as the screen sees them: the password reduced to whether there is one. */
+    private Map<String, Object> view(StorageSettings settings) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("mode", settings.mode());
+        out.put("url", settings.url());
+        out.put("username", settings.username());
+        out.put("hasPassword", settings.password() != null && !settings.password().isBlank());
+        // Whether the running process is actually on it yet, which is how the UI knows to ask
+        // for a restart.
+        out.put("activeMode", activeMode());
+        return out;
     }
 
     /**

@@ -1,7 +1,6 @@
 package com.concentus.mcp;
 
 import com.concentus.model.CommandRequest;
-import com.concentus.model.FlowGraph;
 import com.concentus.model.NodeExec;
 import com.concentus.model.NodeExecReport;
 import com.concentus.model.RunDetail;
@@ -167,7 +166,7 @@ public class RunStudioTools implements StudioToolset {
         if (flowId == null && !inline.isObject()) {
             throw new IllegalArgumentException("Give either 'flowId' (a saved flow) or 'flow' (an ad-hoc graph).");
         }
-        RunSummary started = flowId != null ? flows.run(flowId) : runs.start(read(inline));
+        RunSummary started = flowId != null ? flows.run(flowId) : runs.start(Args.flow(mapper, inline));
 
         StringBuilder out = new StringBuilder("Started execution " + started.id()
                 + " of '" + started.flowName() + "' (" + started.mode() + ").\n");
@@ -377,14 +376,5 @@ public class RunStudioTools implements StudioToolset {
         RunSummary retried = runs.retry(Args.require(args, "runId"));
         return StudioTool.Result.ok("Replaying as a new execution " + retried.id()
                 + ". Poll get_run with that id.");
-    }
-
-    private FlowGraph read(JsonNode node) {
-        try {
-            return mapper.treeToValue(node, FlowGraph.class);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("That is not a valid flow graph: " + e.getMessage()
-                    + " Call flow_schema for the format.");
-        }
     }
 }

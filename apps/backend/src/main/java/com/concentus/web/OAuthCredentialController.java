@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -88,7 +87,7 @@ public class OAuthCredentialController {
     public Map<String, Object> status(@PathVariable String id) {
         orgContext.requireAdmin();
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("redirectUri", flow.redirectUri(requestBase()));
+        out.put("redirectUri", flow.redirectUri(OAuthCallbacks.requestBase()));
 
         OAuthCredentialStore.Grant grant = store.load(organizationId(), id).orElse(null);
         if (grant == null) {
@@ -112,7 +111,8 @@ public class OAuthCredentialController {
     @PostMapping("/{id}/oauth/start")
     public Map<String, Object> start(@PathVariable String id) {
         orgContext.requireAdmin();
-        OAuthCredentialFlow.StartResult result = flow.start(organizationId(), id, requestBase());
+        OAuthCredentialFlow.StartResult result = flow.start(organizationId(), id,
+                OAuthCallbacks.requestBase());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", result.ok());
         out.put("redirectUri", result.redirectUri());
@@ -134,7 +134,7 @@ public class OAuthCredentialController {
                                            @RequestParam(name = "error_description", required = false)
                                            String errorDescription) {
         OAuthCredentialFlow.CallbackOutcome outcome = flow.finish(code, state, error, errorDescription);
-        return page(outcome.title(), outcome.detail());
+        return OAuthCallbacks.page(outcome.title(), outcome.detail());
     }
 
     /** Keeps the tokens of {@code existing} when there is one; a new credential starts with none. */
@@ -155,27 +155,5 @@ public class OAuthCredentialController {
 
     private String organizationId() {
         return orgContext.currentOrganizationId();
-    }
-
-    /** The address this browser reached the backend through — one it can, by definition, reach again. */
-    private static String requestBase() {
-        return ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
-    }
-
-    /** Minimal self-contained page — this tab has no access to the SPA's assets. */
-    private static ResponseEntity<String> page(String title, String detail) {
-        String html = """
-                <!doctype html><meta charset="utf-8">
-                <title>%s</title>
-                <body style="font-family:system-ui;margin:3rem auto;max-width:32rem;color:#111">
-                <h1 style="font-size:1.25rem">%s</h1>
-                <p style="color:#555">%s</p>
-                </body>""".formatted(escape(title), escape(title), escape(detail));
-        return ResponseEntity.ok().contentType(MediaType.TEXT_HTML).body(html);
-    }
-
-    /** The detail can carry a provider's error text, which is not ours to trust as markup. */
-    private static String escape(String s) {
-        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 }

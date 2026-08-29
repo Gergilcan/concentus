@@ -378,7 +378,7 @@ public class FlowStudioTools implements StudioToolset {
     }
 
     private StudioTool.Result createFlow(JsonNode args) {
-        FlowGraph draft = read(Args.object(args, "flow"));
+        FlowGraph draft = Args.flow(mapper, Args.object(args, "flow"));
         // An id in a "create" is either a copy-paste leftover or a model reusing the example's —
         // both of which would silently overwrite an existing flow. Dropping it is the only reading
         // that cannot destroy something.
@@ -389,7 +389,7 @@ public class FlowStudioTools implements StudioToolset {
     private StudioTool.Result updateFlow(JsonNode args) {
         String flowId = Args.require(args, "flowId");
         flows.get(flowId);  // 404s here rather than creating a flow under an id that never existed
-        FlowGraph saved = flows.save(read(Args.object(args, "flow")).withId(flowId));
+        FlowGraph saved = flows.save(Args.flow(mapper, Args.object(args, "flow")).withId(flowId));
         return StudioTool.Result.ok("Updated. " + Answers.json(mapper, saved));
     }
 
@@ -468,7 +468,7 @@ public class FlowStudioTools implements StudioToolset {
         if (flowId == null && !inline.isObject()) {
             throw new IllegalArgumentException("Give either 'flowId' (a saved flow) or 'flow' (a draft graph).");
         }
-        FlowGraph flow = flowId != null ? flows.get(flowId) : read(inline);
+        FlowGraph flow = flowId != null ? flows.get(flowId) : Args.flow(mapper, inline);
 
         StringBuilder out = new StringBuilder();
         boolean fatal = false;
@@ -577,16 +577,6 @@ public class FlowStudioTools implements StudioToolset {
     }
 
     // ------------------------------------------------------------------ shared
-
-    /** A graph out of the arguments, with a parse failure phrased as something to fix. */
-    private FlowGraph read(JsonNode node) {
-        try {
-            return mapper.treeToValue(node, FlowGraph.class);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("That is not a valid flow graph: " + e.getMessage()
-                    + " Call flow_schema for the format.");
-        }
-    }
 
     private Map<String, Object> readData(JsonNode node) {
         try {

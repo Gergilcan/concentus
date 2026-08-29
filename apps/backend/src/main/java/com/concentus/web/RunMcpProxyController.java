@@ -6,6 +6,7 @@ import com.concentus.llm.McpOAuthStore;
 import com.concentus.model.RunEvent;
 import com.concentus.service.AgentRun;
 import com.concentus.service.RunService;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
@@ -237,17 +238,13 @@ public class RunMcpProxyController {
 
         // Answered as a JSON-RPC error too, echoing the caller's id, so whatever the CLI does
         // between the call and the stop reads the reason rather than a bare socket close.
-        ObjectNode envelope = mapper.createObjectNode();
-        envelope.put("jsonrpc", "2.0");
+        JsonNode id = null;
         try {
-            var id = mapper.readTree(body == null ? new byte[0] : body).get("id");
-            if (id != null) envelope.set("id", id);
+            id = mapper.readTree(body == null ? new byte[0] : body).get("id");
         } catch (Exception ignored) {
             // A body we cannot parse still deserves the error; it just gets no id.
         }
-        ObjectNode error = envelope.putObject("error");
-        error.put("code", -32001);
-        error.put("message", message);
+        ObjectNode envelope = McpJsonRpc.errorEnvelope(mapper, id, -32001, message);
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("Content-Type", "application/json");

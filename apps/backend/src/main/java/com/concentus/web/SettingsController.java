@@ -74,6 +74,7 @@ public class SettingsController {
             String configured = environment.getProperty(def.key());
             Source source = stored != null ? Source.STORED
                     : (configured != null && !configured.isBlank() ? Source.CONFIGURED : Source.DEFAULT);
+            boolean hasValue = source != Source.DEFAULT;
 
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("key", def.key());
@@ -95,11 +96,11 @@ public class SettingsController {
                 // whether the one stored is locked, so it can ask for it again instead of showing
                 // a filled field for a value nothing here can use.
                 entry.put("value", "");
-                entry.put("hasValue", stored != null || (configured != null && !configured.isBlank()));
+                entry.put("hasValue", hasValue);
                 entry.put("locked", store.isLocked(organizationId, def.key()));
             } else {
                 entry.put("value", stored != null ? stored : (configured == null ? "" : configured));
-                entry.put("hasValue", !(stored == null && (configured == null || configured.isBlank())));
+                entry.put("hasValue", hasValue);
             }
             out.add(entry);
         }

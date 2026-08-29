@@ -196,10 +196,11 @@ public class PublicRunController {
         // Published but not yet approved, where the organization requires approval: the same
         // 404 as unpublished, on purpose. The door is not open, and a different answer would tell
         // a caller that a door exists and is merely waiting.
-        if (policies != null && policies.publishBlocked(flowId, trigger.publishToken())) {
+        if (policies.publishBlocked(flowId, trigger.publishToken())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such flow");
         }
-        if (presented == null || presented.isBlank() || !constantTimeEquals(trigger.publishToken(), presented)) {
+        if (presented == null || presented.isBlank()
+                || !McpJsonRpc.tokenMatches(trigger.publishToken(), presented)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }
         return flow;
@@ -237,12 +238,6 @@ public class PublicRunController {
         if (trimmed.length() < 7 || !trimmed.regionMatches(true, 0, "Bearer ", 0, 7)) return null;
         String token = trimmed.substring(7).trim();
         return token.isEmpty() ? null : token;
-    }
-
-    /** Constant-time compare so a wrong token cannot be recovered by timing the response. */
-    private static boolean constantTimeEquals(String expected, String presented) {
-        return MessageDigest.isEqual(
-                expected.getBytes(StandardCharsets.UTF_8), presented.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
