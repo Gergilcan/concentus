@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clockTime } from '../utils/format.ts'
 import type { Credential, InputNodeData, MailDeviceCode, MailOAuthDefaults, MailStatus } from '../api/types.ts'
-import { api, webhookUrl } from '../api/client.ts'
+import { api, publicChatUrl, publicRunUrl, webhookUrl } from '../api/client.ts'
 import { useFlowStore } from '../state/store.ts'
 import { CronBuilder } from './CronBuilder.tsx'
 import { CheckboxField, Field, FineTuning, SelectField, TextArea } from './fields.tsx'
@@ -14,10 +14,87 @@ interface Props {
   set: (patch: Record<string, unknown>) => void
 }
 
+/**
+ * Where the common providers put their proof, and where they show the secret.
+ *
+ * Presets, not code paths: the backend verifies HMAC-or-static-token whatever the parameter is
+ * called, so choosing a provider only fills the parameter name in. It is derived from that name
+ * rather than stored on the node — the wire sees nothing but `authParam`, and a stored "provider"
+ * could quietly disagree with it after someone edits the parameter by hand.
+ */
+const WEBHOOK_PROVIDERS = [
+  {
+    id: 'github',
+    label: 'GitHub',
+    authParam: 'X-Hub-Signature-256',
+    hint: 'Repository → Settings → Webhooks → Add webhook. The "Secret" field there is what you paste below; GitHub signs every delivery with it.',
+  },
+  {
+    id: 'gitlab',
+    label: 'GitLab',
+    authParam: 'X-Gitlab-Token',
+    hint: 'Project → Settings → Webhooks. The "Secret token" field there is sent back verbatim on every delivery.',
+  },
+  {
+    id: 'linear',
+    label: 'Linear',
+    authParam: 'Linear-Signature',
+    hint: "Settings → API → Webhooks → New webhook. Linear shows a signing secret on the webhook's page once it is created.",
+  },
+] as const
+
+type WebhookProvider = (typeof WEBHOOK_PROVIDERS)[number]['id'] | 'custom'
+
+function providerFor(authParam: string | undefined): WebhookProvider {
+  const name = (authParam ?? '').trim().toLowerCase()
+  return WEBHOOK_PROVIDERS.find((p) => p.authParam.toLowerCase() === name)?.id ?? 'custom'
+}
+
+/**
+ * A fresh endpoint token. `randomUUID` needs a secure context, which localhost is; the fallback
+ * covers a WebView that lacks it, with the same 122 bits from the same generator.
+ */
+function newToken(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 export function InputInspector({ data, set }: Props) {
   const { t } = useTranslation()
   const flowId = useFlowStore((s) => s.flowId)
   const [copied, setCopied] = useState(false)
+  // "Custom" chosen while the parameter still spells a preset: remembered against that value, so
+  // the select does not snap back to the preset until the parameter is actually changed.
+  const [customFor, setCustomFor] = useState<string | null>(null)
+  const provider: WebhookProvider =
+    customFor !== null && customFor === data.authParam ? 'custom' : providerFor(data.authParam)
+  const providerHint = WEBHOOK_PROVIDERS.find((p) => p.id === provider)?.hint
+
+  // Publishing. The token is minted here, in the browser: the backend only ever compares it, so
+  // there is no round trip to make and nothing to leak in transit before the flow is saved.
+  const [copiedToken, setCopiedToken] = useState(false)
+  const runUrl = flowId ? publicRunUrl(flowId) : null
+  const chatUrl = flowId && data.publishToken ? publicChatUrl(flowId, data.publishToken) : null
+  const curl = runUrl
+    ? `curl -X POST "${runUrl}" -H "Authorization: Bearer ${data.publishToken ?? ''}" -H "Content-Type: application/json" -d '{"input":"Hello"}'`
+    : null
+  const togglePublish = (on: boolean) => {
+    // Turning it back on keeps the token a client may already hold; Regenerate is the way to
+    // revoke, and it says so.
+    if (on) set({ published: true, publishToken: data.publishToken || newToken() })
+    else set({ published: false })
+  }
+  const copyToken = async () => {
+    if (!data.publishToken) return
+    try {
+      await navigator.clipboard.writeText(data.publishToken)
+      setCopiedToken(true)
+      setTimeout(() => setCopiedToken(false), 1500)
+    } catch {
+      /* clipboard blocked — the field is selectable anyway */
+    }
+  }
   const [credentials, setCredentials] = useState<Credential[]>([])
 
   // Loaded regardless of mode: the hook must not be conditional, and the list is small.
@@ -53,17 +130,26 @@ export function InputInspector({ data, set }: Props) {
         <option value="cron">{t('Automatic — run on a cron schedule')}</option>
         <option value="webhook">{t('Webhook — start on an external event')}</option>
         <option value="mail">{t('Mail — start when a matching email arrives (IMAP)')}</option>
+        <option value="watch">{t('Folder watch — start when files appear or change in a folder')}</option>
         <option value="subflow">{t('Another flow — this flow runs when another one calls it')}</option>
       </SelectField>
 
       {data.mode !== 'manual' && (
         <TextArea
-          label={data.mode === 'webhook' ? t('Instruction (prepended to the event)') : t('Execution prompt')}
+          label={
+            data.mode === 'webhook'
+              ? t('Instruction (prepended to the event)')
+              : data.mode === 'watch'
+                ? t('Instruction (prepended to the list of changed files)')
+                : t('Execution prompt')
+          }
           rows={4}
           placeholder={
             data.mode === 'webhook'
               ? t('A Linear issue/comment event arrived. Triage it and take the right action.')
-              : t('Build the login page: backend endpoint + React form, wired to the DB.')
+              : data.mode === 'watch'
+                ? t('New PDFs arrived. Extract each invoice and record it in Holded.')
+                : t('Build the login page: backend endpoint + React form, wired to the DB.')
           }
           value={data.prompt}
           onChange={(v) => set({ prompt: v })}
@@ -100,8 +186,73 @@ export function InputInspector({ data, set }: Props) {
         <CronBuilder value={data.cron ?? ''} onChange={(v) => set({ cron: v })} />
       )}
 
+      {data.mode === 'watch' && (
+        <>
+          <Field
+            label={t('Folder to watch')}
+            value={data.watchPath ?? ''}
+            placeholder="C:\drop\incoming · /srv/drop/incoming"
+            onChange={(v) => set({ watchPath: v })}
+          />
+          <p className={styles.hint}>
+            {t('A folder on the machine running Concentus. It must sit under one of the context roots')}{' '}
+            (<code>LOCAL_CONTEXT_ROOTS</code>){' '}
+            {t('— the same allowlist that decides what agents may read. The doctor says so when it does not.')}
+          </p>
+          <Field
+            label={t('Files that count')}
+            value={data.watchGlob ?? ''}
+            placeholder="*.pdf"
+            onChange={(v) => set({ watchGlob: v })}
+          />
+          <p className={styles.hint}>
+            {t('A pattern such as')} <code>*.pdf</code> {t('or')} <code>invoices/*.csv</code>.{' '}
+            {t('Leave blank for every file.')}
+          </p>
+          <Field
+            label={t('Quiet time before a run (seconds)')}
+            type="number"
+            value={data.watchDebounceSeconds ?? 5}
+            onChange={(v) => set({ watchDebounceSeconds: Number(v) || 5 })}
+          />
+          <p className={styles.hint}>
+            {t('Changes are held until the folder has been quiet this long, so a batch of files dropped together becomes one run with the whole list — not one run per file, and not a run on a half-copied file.')}
+          </p>
+          <p className={styles.hint}>
+            {t('The agent receives the folder and the time as')} <i>{t('verified')}</i>{' '}
+            {t('metadata, and the changed paths fenced as untrusted — a file name is text whoever wrote the file chose.')}
+          </p>
+          {!flowId && (
+            <p className={styles.hint}>
+              <b>{t('Save the flow')}</b> {t('to start watching — a trigger only runs for a saved flow.')}
+            </p>
+          )}
+        </>
+      )}
+
       {data.mode === 'webhook' && (
         <>
+          <SelectField
+            label={t('Provider')}
+            value={provider}
+            onChange={(v) => {
+              const preset = WEBHOOK_PROVIDERS.find((p) => p.id === v)
+              if (preset) {
+                setCustomFor(null)
+                set({ authParam: preset.authParam })
+              } else {
+                setCustomFor(data.authParam)
+              }
+            }}
+          >
+            {WEBHOOK_PROVIDERS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+            <option value="custom">{t('Custom')}</option>
+          </SelectField>
+          {providerHint && <p className={styles.hint}>{t(providerHint)}</p>}
           <Field
             label={t('Validation parameter')}
             value={data.authParam}
@@ -316,7 +467,7 @@ export function InputInspector({ data, set }: Props) {
         </>
       )}
 
-      {data.mode !== 'webhook' && data.mode !== 'mail' && (
+      {data.mode !== 'webhook' && data.mode !== 'mail' && data.mode !== 'watch' && (
         <p className={styles.hint}>
           {data.mode === 'manual' && t('The run starts idle — type the first instruction in the console.')}
           {data.mode === 'prompt' && t('Pressing Run auto-sends this prompt as the first turn.')}
@@ -329,6 +480,66 @@ export function InputInspector({ data, set }: Props) {
             </>
           )}
         </p>
+      )}
+      {/* Any mode: publishing adds a door, it does not move the existing one. */}
+      <label
+        className={styles.checkField}
+        title={t('While on, a POST with this token starts a run of this flow and answers with its final output. The flow otherwise starts exactly as before.')}
+      >
+        <input
+          type="checkbox"
+          checked={!!data.published}
+          onChange={(e) => togglePublish(e.target.checked)}
+        />
+        {t('Publish as an endpoint ⓘ')}
+      </label>
+      {data.published && (
+        <>
+          <Field
+            label={t('Endpoint token')}
+            value={data.publishToken ?? ''}
+            readOnly
+            onFocus={(e) => e.currentTarget.select()}
+          />
+          <div className={styles.mcpBtns}>
+            <button className={styles.previewBtn} onClick={() => void copyToken()}>
+              {copiedToken ? t('Copied ✓') : t('Copy token')}
+            </button>
+            <button className={styles.previewBtn} onClick={() => set({ publishToken: newToken() })}>
+              {t('Regenerate')}
+            </button>
+          </div>
+          <p className={styles.hint}>
+            {t('Anyone holding this token can start runs of this flow. Regenerating it revokes the old one as soon as the flow is saved.')}
+          </p>
+          <Field
+            label={t('Endpoint URL')}
+            value={runUrl ?? t('Save the flow first to generate the URL.')}
+            readOnly
+            onFocus={runUrl ? (e) => e.currentTarget.select() : undefined}
+          />
+          {curl && (
+            <Field
+              label={t('curl example')}
+              value={curl}
+              readOnly
+              onFocus={(e) => e.currentTarget.select()}
+            />
+          )}
+          <p className={styles.hint}>
+            {t('The input becomes the first message; the call waits for the final output and answers')}{' '}
+            <code>{'{ runId, status, output }'}</code>. {t('Runs started this way show the trigger')} <code>api</code>.
+          </p>
+          {chatUrl && (
+            <p className={styles.hint}>
+              {t('A minimal chat page for trying it:')}{' '}
+              <a href={chatUrl} target="_blank" rel="noreferrer">
+                {t('open')}
+              </a>
+              . {t('A demo surface, not a product — the token travels in its address, so do not share the link.')}
+            </p>
+          )}
+        </>
       )}
       <p className={styles.hint}>{t("Connect this node's output to your coordinator agent.")}</p>
     </>

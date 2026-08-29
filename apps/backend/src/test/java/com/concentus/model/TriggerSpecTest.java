@@ -175,4 +175,72 @@ class TriggerSpecTest {
         assertThat(spec.mode()).isEqualTo("manual");
         assertThat(spec.autoStart()).isFalse();
     }
+
+    // ------------------------------------------------------------- watch mode
+
+    @Test
+    void watchModeReadsItsFolderGlobAndDebounce() {
+        FlowGraph flow = flowWith(inputNode(Map.of(
+                "mode", "watch", "watchPath", " C:\\drop\\incoming ", "watchGlob", "*.pdf",
+                "watchDebounceSeconds", 12)));
+
+        TriggerSpec spec = TriggerSpec.from(flow);
+
+        assertThat(spec.watch()).isTrue();
+        assertThat(spec.watchPath()).isEqualTo("C:\\drop\\incoming");
+        assertThat(spec.watchGlob()).isEqualTo("*.pdf");
+        assertThat(spec.watchDebounceSeconds()).isEqualTo(12);
+        // Watching is its own way of starting: nothing auto-fires, nothing is scheduled.
+        assertThat(spec.autoStart()).isFalse();
+        assertThat(spec.scheduled()).isFalse();
+        assertThat(spec.webhook()).isFalse();
+    }
+
+    @Test
+    void watchDebounceDefaultsAndRefusesToBeZero() {
+        assertThat(TriggerSpec.from(flowWith(inputNode(Map.of("mode", "watch")))).watchDebounceSeconds())
+                .isEqualTo(TriggerSpec.DEFAULT_WATCH_DEBOUNCE_SECONDS);
+        // Zero would fire on every tick a copy is still in progress — the case the debounce exists for.
+        assertThat(TriggerSpec.from(flowWith(inputNode(Map.of("mode", "watch", "watchDebounceSeconds", 0))))
+                .watchDebounceSeconds()).isEqualTo(TriggerSpec.DEFAULT_WATCH_DEBOUNCE_SECONDS);
+        // The canvas stores numbers as numbers, but an older export may carry a string.
+        assertThat(TriggerSpec.from(flowWith(inputNode(Map.of("mode", "watch", "watchDebounceSeconds", "30"))))
+                .watchDebounceSeconds()).isEqualTo(30);
+    }
+
+    @Test
+    void otherModesCarryNoWatchFields() {
+        TriggerSpec spec = TriggerSpec.from(flowWith(inputNode(Map.of("mode", "cron", "cron", "0 9 * * *"))));
+
+        assertThat(spec.watch()).isFalse();
+        assertThat(spec.watchPath()).isEmpty();
+        assertThat(spec.watchGlob()).isEmpty();
+    }
+
+    // ------------------------------------------------------------- published endpoint
+
+    @Test
+    void publishingIsOrthogonalToTheMode() {
+        FlowGraph flow = flowWith(inputNode(Map.of(
+                "mode", "cron", "cron", "0 9 * * *", "prompt", "go",
+                "published", true, "publishToken", " tok-123 ")));
+
+        TriggerSpec spec = TriggerSpec.from(flow);
+
+        assertThat(spec.published()).isTrue();
+        assertThat(spec.publishToken()).isEqualTo("tok-123");
+        assertThat(spec.publishedWithToken()).isTrue();
+        // The cron flow is still a cron flow.
+        assertThat(spec.scheduled()).isTrue();
+        assertThat(spec.autoStart()).isTrue();
+    }
+
+    @Test
+    void aToggleWithoutATokenAndATokenWithoutTheToggleAreBothUnpublished() {
+        assertThat(TriggerSpec.from(flowWith(inputNode(Map.of("mode", "manual", "published", true))))
+                .publishedWithToken()).isFalse();
+        assertThat(TriggerSpec.from(flowWith(inputNode(Map.of("mode", "manual", "publishToken", "tok"))))
+                .publishedWithToken()).isFalse();
+        assertThat(TriggerSpec.from(flowWith()).publishedWithToken()).isFalse();
+    }
 }

@@ -16,6 +16,7 @@ const LABEL: Record<InputNodeData['mode'], string> = {
   webhook: 'Webhook',
   mail: 'Mail (IMAP)',
   subflow: 'Another flow',
+  watch: 'Watch',
 }
 
 /** What this input will do when the flow runs — the line under the mode badge. */
@@ -60,6 +61,12 @@ export function InputNode({ data, selected }: NodeProps<InputRFNode>) {
           decides which mail this flow acts on. */}
       {data.mode === 'mail' && (
         <div className={styles.meta}>{data.mailFolder || t('no folder set')}</div>
+      )}
+      {/* Same reasoning for a watched folder: which folder, and which files in it, is the fact. */}
+      {data.mode === 'watch' && (
+        <div className={styles.meta} title={data.watchPath || undefined}>
+          {data.watchPath ? `${data.watchPath}${data.watchGlob ? ` · ${data.watchGlob}` : ''}` : t('no folder set')}
+        </div>
       )}
       {summary(data, t)}
     </NodeShell>

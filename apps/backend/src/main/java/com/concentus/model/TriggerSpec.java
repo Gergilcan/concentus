@@ -14,16 +14,41 @@ import java.util.Map;
  *   <li>{@code webhook} — an external POST (e.g. a Linear event) starts a run; the payload is the
  *       input, prefixed by {@link #prompt}. Authenticated with {@link #secret}, presented in the
  *       request parameter named {@link #authParam}.</li>
+ *   <li>{@code watch}   — files appearing or changing under {@link #watchPath} start a run, with
+ *       the changed paths as the input, prefixed by {@link #prompt}. Polled, and debounced by
+ *       {@link #watchDebounceSeconds} so a batch of files arriving together is one run.</li>
  * </ul>
+ *
+ * <p>Independently of the mode, a flow may be {@link #published}: then a POST bearing
+ * {@link #publishToken} starts a run through {@code /api/public/flows/{id}/run}. Not a mode,
+ * because it does not replace how the flow otherwise starts — a cron flow stays a cron flow, and
+ * also answers the endpoint.
  */
 public record TriggerSpec(String mode, String prompt, String cron, String secret, String authParam,
-                          String permissionMode, boolean shadow) {
+                          String permissionMode, boolean shadow,
+                          String watchPath, String watchGlob, long watchDebounceSeconds,
+                          boolean published, String publishToken) {
 
     /** The pre-shadow shape, kept for existing callers. */
     public TriggerSpec(String mode, String prompt, String cron, String secret, String authParam,
                        String permissionMode) {
         this(mode, prompt, cron, secret, authParam, permissionMode, false);
     }
+
+    /** The pre-watch shape: no folder, nothing published. */
+    public TriggerSpec(String mode, String prompt, String cron, String secret, String authParam,
+                       String permissionMode, boolean shadow) {
+        this(mode, prompt, cron, secret, authParam, permissionMode, shadow,
+                "", "", DEFAULT_WATCH_DEBOUNCE_SECONDS, false, "");
+    }
+
+    /**
+     * How long a watched folder must stay quiet before its changes become a run.
+     *
+     * <p>Five seconds is long enough for a copy of several files to finish, and short enough
+     * that a person dropping one file does not wonder whether anything noticed.
+     */
+    public static final long DEFAULT_WATCH_DEBOUNCE_SECONDS = 5;
 
     /** Used when a flow doesn't name one, so existing Linear webhooks keep working untouched. */
     public static final String DEFAULT_AUTH_PARAM = "Linear-Signature";
@@ -60,10 +85,25 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
                         str(d, "secret", ""),
                         str(d, "authParam", DEFAULT_AUTH_PARAM),
                         permissions,
-                        com.concentus.support.MapValues.bool(d, "shadow", false));
+                        com.concentus.support.MapValues.bool(d, "shadow", false),
+                        str(d, "watchPath", "").trim(),
+                        str(d, "watchGlob", "").trim(),
+                        debounceOf(com.concentus.support.MapValues.lng(
+                                d, "watchDebounceSeconds", DEFAULT_WATCH_DEBOUNCE_SECONDS)),
+                        com.concentus.support.MapValues.bool(d, "published", false),
+                        str(d, "publishToken", "").trim());
             }
         }
         return new TriggerSpec("manual", "", "", "", DEFAULT_AUTH_PARAM, permissions);
+    }
+
+    /**
+     * A usable debounce. Zero or less would fire on every tick while a copy is still in
+     * progress — the exact behaviour the debounce exists to avoid — so anything below one second
+     * reads as "the default" rather than as a request for that.
+     */
+    static long debounceOf(long configured) {
+        return configured < 1 ? DEFAULT_WATCH_DEBOUNCE_SECONDS : configured;
     }
 
     /**
@@ -124,5 +164,19 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
      */
     public boolean mail() {
         return "mail".equalsIgnoreCase(mode);
+    }
+
+    /** The flow is triggered by files appearing or changing in a host folder. */
+    public boolean watch() {
+        return "watch".equalsIgnoreCase(mode);
+    }
+
+    /**
+     * The flow answers its public endpoint. Both halves are required: a toggle with no token
+     * would be an endpoint anyone could call, and a token left behind after the toggle was turned
+     * off must not keep working.
+     */
+    public boolean publishedWithToken() {
+        return published && publishToken != null && !publishToken.isBlank();
     }
 }

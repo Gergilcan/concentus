@@ -107,13 +107,22 @@ concentus/
   - **Webhook** — an external POST (e.g. a Linear issue/comment) starts a run with the event
     payload as input. Authentication is provider-agnostic: you name the **validation parameter**
     the provider sends its proof in, and paste the **secret** the provider issued (we never mint
-    one). See [Webhook authentication](#webhook-authentication).
+    one). A **Provider** preset on the node — GitHub, GitLab, Linear — fills the parameter in and
+    says where that provider shows its secret; *Custom* is for everything else, and nothing
+    changes on the wire either way. See [Webhook authentication](#webhook-authentication).
   - **Another flow** — the flow only runs when another one calls it, through a *Run another flow*
     node there. The child runs with its own budget and its own permission mode; a flow already
     running further up the chain is refused, and chains stop at three deep.
   - **Mail (IMAP)** — a run starts for each message matching the node's conditions: folder, from,
     subject, body, unread, flagged, has-attachments. The message can then be moved, flagged or
     marked read. See [Mail-triggered flows](#mail-triggered-flows-imap).
+  - **Folder watch** — files appearing or changing in a host folder start a run, with the list of
+    changed paths as the input. The folder must sit under `LOCAL_CONTEXT_ROOTS`, the same
+    allowlist that guards what agents may read; an optional pattern (`*.pdf`) says which files
+    count, and a quiet time (5 s by default) turns a batch dropped together into one run rather
+    than one per file. Polled by listing rather than with the OS watcher, so it works on network
+    shares too; what was last seen is remembered across restarts. There is no Slack
+    slash-command trigger: one needs a public URL to answer on, which this backend does not have.
 - **Executions** are the runs a flow produces (manual, prompt, cron, or webhook), listed with their
   trigger in the bottom panel. Outcomes are colour-coded: green succeeded, red failed, blue running,
   and **grey stopped** — a run you stopped by hand is neither a success nor a failure, so it is
@@ -795,6 +804,11 @@ accepted if its value is **either**:
 
 Notes:
 
+- **Presets** — the node's *Provider* select fills the parameter in for the common cases and says
+  where that provider shows its secret: **GitHub** (`X-Hub-Signature-256`, signed), **GitLab**
+  (`X-Gitlab-Token`, echoed verbatim), **Linear** (`Linear-Signature`, signed — the default).
+  *Custom* is any other header or query parameter. A preset is a convenience for the form only;
+  the rule above is what the backend applies whatever the parameter is called.
 - **Linear** — Settings → API → Webhooks → New webhook. Paste `/api/webhooks/{flowId}` as the URL,
   then copy the **signing secret** Linear shows on the webhook's detail page into the Secret field
   and leave the parameter as `Linear-Signature`.
@@ -805,6 +819,37 @@ Notes:
   never left unauthenticated.
 - Comparisons are constant-time, and the HMAC covers the exact bytes received (the body is never
   re-encoded before verification).
+
+### Publish a flow as an endpoint
+
+A webhook is for a provider that calls you. The reverse case — *you* want to call a flow, from a
+script, a spreadsheet or another system, and get its answer back — is publishing. Tick **Publish
+as an endpoint** on the Input node: the browser mints a bearer token (there is a copy button and a
+regenerate button), and once the flow is saved:
+
+```sh
+curl -X POST "http://localhost:8080/api/public/flows/{flowId}/run" \
+  -H "Authorization: Bearer {publishToken}" \
+  -H "Content-Type: application/json" \
+  -d '{"input":"Where is order #42?"}'
+```
+
+- The input becomes the run's first message — the Input node's instruction, then the input fenced
+  as untrusted, with the metadata lines established by the server, exactly as a webhook payload
+  is handled. Runs started this way show the trigger **api** in the executions list.
+- By default the call **waits** for the run and answers `200 {"runId","status","output"}` with the
+  run's final output. `?timeoutSeconds=` (default 120, at most 600) bounds the wait; a run still
+  going answers `202 {"runId","status"}`, and `GET /api/public/flows/{flowId}/runs/{runId}` with
+  the same bearer returns the same shapes for polling. `?wait=false` answers `202` at once.
+- Publishing is orthogonal to the mode: a cron flow keeps its schedule and also answers here.
+- An unknown flow and a flow that is not published answer the **same** `404`, so the endpoint
+  cannot be used to learn which flow ids exist; a wrong token on a published flow is a `401` with
+  no detail, compared in constant time. Requests are rate-limited per token — wrong ones included.
+- `GET /api/public/flows/{flowId}/chat?token={publishToken}` serves a minimal chat page for trying
+  the flow from a browser. It is a demo surface, not a product: one static page, and the token in
+  its address — do not share the link.
+- The waiting call holds a server connection for as long as it waits. Fine for a script or a
+  spreadsheet; a caller that fires many requests at once should use `wait=false` and poll.
 
 ## Sign-in and organizations
 
@@ -1323,6 +1368,8 @@ onto a valid delivery.
 > as argv, so servers registered under any name stay removable.
 | POST | `/api/mcp/studio` | Concentus **as** an MCP server — design, validate, run and steer flows from an outside agent ([details](#concentus-as-an-mcp-server)) |
 | POST | `/api/webhooks/{flowId}` | inbound webhook that starts a run with the event payload ([auth](#webhook-authentication)) |
+| POST | `/api/public/flows/{flowId}/run` | a published flow as an endpoint: `{"input"}` in, the run's final output out ([details](#publish-a-flow-as-an-endpoint)) |
+| GET | `/api/public/flows/{flowId}/runs/{runId}` · `…/chat?token=` | poll a run started that way · the demo chat page |
 | GET | `/api/rag/status` · POST `/api/rag/preview` | RAG capabilities / preview a SQL source's rows |
 | GET | `/api/account/session` | who is signed in, which providers exist, and whether this installation still needs its first account |
 | POST | `/api/account/setup` | create that first account. The only endpoint reachable without a session, and it refuses once one exists |

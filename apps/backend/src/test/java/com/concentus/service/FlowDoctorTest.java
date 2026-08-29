@@ -53,8 +53,17 @@ class FlowDoctorTest {
 
     /** The doctor over a given compiler: the library tests need one that resolves a linked block. */
     private FlowDoctor doctorWith(FlowCompiler compiler) {
+        return doctorWith(compiler, new ContextFolderResolver(""));
+    }
+
+    /** The same doctor over a different folder allowlist — what the watch checks vary on. */
+    private FlowDoctor doctorWith(ContextFolderResolver contextRoots) {
+        return doctorWith(new FlowCompiler(), contextRoots);
+    }
+
+    private FlowDoctor doctorWith(FlowCompiler compiler, ContextFolderResolver contextRoots) {
         return new FlowDoctor(claude, compiler, credentials, mcpOAuth, plugins, runtimes, runStore,
-                variables, new OrgContext("default"), facades, agentLibrary);
+                variables, new OrgContext("default"), facades, agentLibrary, contextRoots);
     }
 
     @BeforeEach
@@ -289,6 +298,64 @@ class FlowDoctorTest {
 
         assertThat(trigger).hasSize(1);
         assertThat(trigger.get(0).level()).isEqualTo("warn");
+    }
+
+    // ---------------------------------------------------------------- folder watch
+
+    private static FlowNode watchInput(String path) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("mode", "watch");
+        data.put("watchPath", path);
+        return new FlowNode("in-1", "input", null, data);
+    }
+
+    @Test
+    void aWatchWithNoFolderNeverFires() {
+        List<DoctorFinding> trigger = ofArea(doctor.check(flow(List.of(watchInput(""), coordinator()))),
+                "trigger");
+
+        assertThat(trigger).hasSize(1);
+        assertThat(trigger.get(0).level()).isEqualTo("error");
+        assertThat(trigger.get(0).message()).contains("empty");
+    }
+
+    @Test
+    void aWatchedFolderOutsideTheContextRootsIsRefused(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp)
+            throws java.io.IOException {
+        java.nio.file.Path allowed = java.nio.file.Files.createDirectory(tmp.resolve("allowed"));
+        java.nio.file.Path elsewhere = java.nio.file.Files.createDirectory(tmp.resolve("elsewhere"));
+        FlowDoctor guarded = doctorWith(new ContextFolderResolver(allowed.toString()));
+
+        List<DoctorFinding> trigger = ofArea(
+                guarded.check(flow(List.of(watchInput(elsewhere.toString()), coordinator()))), "trigger");
+
+        assertThat(trigger).hasSize(1);
+        assertThat(trigger.get(0).level()).isEqualTo("error");
+        assertThat(trigger.get(0).message()).contains("outside the configured context roots");
+    }
+
+    @Test
+    void aWatchedFolderThatDoesNotExistYetIsAWarningNotAnError(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp) {
+        // The person is about to create it; the watcher starts on its own when they do.
+        FlowDoctor guarded = doctorWith(new ContextFolderResolver(tmp.toString()));
+        String notYet = tmp.resolve("incoming").toString();
+
+        List<DoctorFinding> trigger = ofArea(
+                guarded.check(flow(List.of(watchInput(notYet), coordinator()))), "trigger");
+
+        assertThat(trigger).hasSize(1);
+        assertThat(trigger.get(0).level()).isEqualTo("warn");
+        assertThat(trigger.get(0).message()).contains("does not exist yet");
+    }
+
+    @Test
+    void aWatchedFolderUnderTheRootsThatExistsIsFine(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp)
+            throws java.io.IOException {
+        java.nio.file.Path incoming = java.nio.file.Files.createDirectory(tmp.resolve("incoming"));
+        FlowDoctor guarded = doctorWith(new ContextFolderResolver(tmp.toString()));
+
+        assertThat(ofArea(guarded.check(flow(List.of(watchInput(incoming.toString()), coordinator()))),
+                "trigger")).isEmpty();
     }
 
     // ---------------------------------------------------------------- budget

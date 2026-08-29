@@ -47,7 +47,8 @@ class FlowControllerTest {
         return new FlowController(store, runService, scheduler, mailTriggers, versions, memory,
                 new OrgContext("default"),
                 mock(com.concentus.service.FlowGenerator.class), goldenStatus,
-                mock(com.concentus.service.FlowDoctor.class));
+                mock(com.concentus.service.FlowDoctor.class),
+                mock(com.concentus.service.FolderWatchService.class));
     }
 
     // A wrong name on a revision is worse than no name: it is the field people read to work out
