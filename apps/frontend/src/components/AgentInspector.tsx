@@ -177,8 +177,8 @@ export function AgentInspector({ data, set }: Props) {
               value={data.execution ?? ''}
               onChange={(v) => set({ execution: v })}
             >
-              <option value="">{t('Subagents — one shared session')}</option>
               <option value="fanout">{t('Independent workers — one process per sub-agent')}</option>
+              <option value="">{t('Subagents — one shared session (legacy)')}</option>
             </SelectField>
             {data.execution === 'fanout' && (
               <SelectField

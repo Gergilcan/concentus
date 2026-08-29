@@ -192,6 +192,9 @@ function defaultData(kind: NodeKind): AppNodeData {
       return {
         kind,
         name: kind === 'coordinator' ? 'Coordinator' : 'Agent',
+        // Independent workers is the execution with the verifier, the merge and the facades
+        // behind it, so a new flow starts there; flows saved before keep whatever they chose.
+        ...(kind === 'coordinator' ? { execution: 'fanout' as const } : {}),
         model: DEFAULT_MODEL,
         description: '',
         systemPrompt: '',
