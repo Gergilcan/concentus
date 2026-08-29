@@ -44,7 +44,7 @@ vi.mock('../src/orphans', () => ({ killOrphans: mocks.killOrphans }))
 vi.mock('../src/claude-cli', () => ({
   resolveClaudeCli: vi.fn(async () => ({ command: null, path: '', loggedIn: false })),
 }))
-vi.mock('../src/secret', () => ({ legacyMasterSecret: () => null }))
+vi.mock('../src/secret', () => ({ dataKey: () => ({ key: null, reason: 'unreadable', detail: 'not under test' }) }))
 vi.mock('../src/api-key', () => ({ loadApiKey: () => null }))
 vi.mock('../src/log', () => ({ log: mocks.log }))
 

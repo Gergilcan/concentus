@@ -292,14 +292,8 @@ async function signIn(base, args) {
       /* not JSON — reported below */
     }
     if (!res.ok || !session?.signedIn) {
-      let message = text
-      try {
-        message = JSON.parse(text).error ?? text
-      } catch {
-        /* not JSON — the body is the message */
-      }
       throw new Error(
-        `CONCENTUS_TOKEN was refused (${res.status}): ${message || 'not a working service account token'}`,
+        `CONCENTUS_TOKEN was refused (${res.status}): ${errorMessage(text) || 'not a working service account token'}`,
       )
     }
     return session
@@ -325,15 +319,7 @@ async function signIn(base, args) {
     body: JSON.stringify({ email: args.email, password: args.password }),
   })
   const text = await res.text()
-  if (!res.ok) {
-    let message = text
-    try {
-      message = JSON.parse(text).error ?? text
-    } catch {
-      /* not JSON — the body is the message */
-    }
-    throw new Error(`Could not sign in as ${args.email} (${res.status}): ${message}`)
-  }
+  if (!res.ok) throw new Error(`Could not sign in as ${args.email} (${res.status}): ${errorMessage(text)}`)
   remember(res)
   return JSON.parse(text)
 }
@@ -347,6 +333,15 @@ function csrfToken() {
 /** The bearer header when this process runs as a service account; nothing otherwise. */
 function authHeaders() {
   return bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}
+}
+
+/** The backend's own words for a refusal — its {"error": …} — or the body as it came, when it is not JSON. */
+function errorMessage(text) {
+  try {
+    return JSON.parse(text).error ?? text
+  } catch {
+    return text
+  }
 }
 
 async function api(base, path_, init) {
@@ -363,15 +358,7 @@ async function api(base, path_, init) {
   })
   remember(res)
   const text = await res.text()
-  if (!res.ok) {
-    let message = text
-    try {
-      message = JSON.parse(text).error ?? text
-    } catch {
-      /* not JSON — the body is the message */
-    }
-    throw new Error(`${init?.method ?? 'GET'} ${path_} failed (${res.status}): ${message}`)
-  }
+  if (!res.ok) throw new Error(`${init?.method ?? 'GET'} ${path_} failed (${res.status}): ${errorMessage(text)}`)
   return text ? JSON.parse(text) : null
 }
 

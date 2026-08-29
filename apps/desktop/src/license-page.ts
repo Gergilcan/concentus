@@ -8,15 +8,8 @@
  * it would teach people that the wall sometimes blinks. It does not.
  */
 
+import { escapeHtml } from './html'
 import { updateStrip } from './update-strip'
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
 
 export function licensePage(message: string): string {
   return `<!doctype html>

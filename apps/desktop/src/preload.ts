@@ -43,7 +43,6 @@ contextBridge.exposeInMainWorld('concentus', {
 
   // The database step. testStorage is what gates moving on: an external database that cannot be
   // reached must not be accepted, because the next launch would open against nothing.
-  getStorage: () => ipcRenderer.invoke('onboarding:storage-get'),
   testStorage: (draft: unknown) => ipcRenderer.invoke('onboarding:storage-test', draft),
   saveStorage: (draft: unknown) => ipcRenderer.invoke('onboarding:storage-save', draft),
 })

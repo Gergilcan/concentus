@@ -378,8 +378,7 @@ async function showMainWindow(port: number): Promise<void> {
     splash.advance(100, 'Ready')
     mainWindow?.show()
     // After the window is up, not before, so no frame passes with nothing on screen.
-    splash.close()
-    splash = noSplash
+    dropSplash()
   })
   // Close-to-tray. Read at close time, not window-creation time, so flipping the tray checkbox
   // applies to the window that is already open.
@@ -466,6 +465,12 @@ function openExternalLinksInBrowser(win: BrowserWindow, origin: string): void {
   })
 }
 
+/** The launch has a real window now (or a failure); the splash is done and stays gone. */
+function dropSplash(): void {
+  splash.close()
+  splash = noSplash
+}
+
 function showOnboardingWindow(): void {
   onboardingWindow = new BrowserWindow({
     width: 720,
@@ -512,16 +517,14 @@ function showOnboardingWindow(): void {
     } finally {
       // Only now: the wizard window opens instantly but paints its content after this async block,
       // and dropping the splash on creation would leave a blank window as the handover.
-      splash.close()
-      splash = noSplash
+      dropSplash()
     }
   })()
 }
 
 function showFailureWindow(message: string): void {
   // A progress bar over a failure would be a lie; the failure window is the whole screen now.
-  splash.close()
-  splash = noSplash
+  dropSplash()
   failureWindow = new BrowserWindow({
     width: 900,
     height: 760,
@@ -547,8 +550,7 @@ function showFailureWindow(message: string): void {
  * workspace: paste a license, go request one, or close the app. See license-page.ts.
  */
 function showLicenseWindow(message: string): void {
-  splash.close()
-  splash = noSplash
+  dropSplash()
   licenseWindow = new BrowserWindow({
     width: 640,
     height: 640,
@@ -698,11 +700,6 @@ function registerIpc(): void {
     return state
   })
 
-  ipcMain.handle('onboarding:storage-get', async () => {
-    const { port, token } = storageCall()
-    return backendApi.getStorage(port, token)
-  })
-
   ipcMain.handle('onboarding:storage-test', async (_event, draft: StorageDraft) => {
     const { port, token } = storageCall()
     return backendApi.testStorage(port, token, draft)
@@ -735,7 +732,7 @@ function registerIpc(): void {
 /**
  * Where the wizard's storage calls go, and what authenticates them.
  *
- * <p>The token is what makes these three calls possible at all: they happen before the first
+ * <p>The token is what makes these calls possible at all: they happen before the first
  * account exists, so there is no session to present. An adopted dev backend never received one —
  * the shell did not start it — and saying so is better than the backend's own answer, which is a
  * flat "You do not have permission to do that" with nothing to act on.
