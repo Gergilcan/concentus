@@ -1,0 +1,1548 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Documentación de Concentus</title>
+<meta name="description" content="Cómo funciona Concentus: el lienzo y sus bloques, bases de conocimiento y recuperación híbrida, disparadores, equipos y roles, ajustes, trazas y la API HTTP." />
+<meta name="theme-color" content="#0e1117" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Documentación de Concentus" />
+<meta property="og:description" content="El lienzo, las bases de conocimiento y la recuperación, los disparadores, los equipos, los ajustes y la API — todo lo que la app hace de verdad." />
+<link rel="alternate" hreflang="en" href="https://www.concentus-ai.com/docs" />
+<link rel="alternate" hreflang="es" href="https://www.concentus-ai.com/es/docs" />
+<link rel="alternate" hreflang="ca" href="https://www.concentus-ai.com/ca/docs" />
+<link rel="alternate" hreflang="x-default" href="https://www.concentus-ai.com/docs" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cpath d='M25 16 L20.5 23.8 L11.5 23.8 L7 16 L11.5 8.2 L20.5 8.2 Z' fill='none' stroke='%236ea8fe' stroke-width='2.6' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" />
+<style>
+  /*
+   * The application's own tokens, so the site and the app cannot drift apart. Every value below
+   * is copied from apps/frontend/src/styles/global.scss (the dark palette, which is its default);
+   * only --faint is derived, because the app has no tertiary text role and this page needs one.
+   */
+  :root {
+    color-scheme: dark;
+    --bg: #0e1117;
+    --panel: #161b22;
+    --panel-2: #1c2230;
+    --line: #2a3140;
+    --text: #e6edf3;
+    --muted: #98a2ad;
+    --faint: #6e7a89;
+
+    --accent: #6ea8fe;
+    --agent: #6ea8fe;
+    --coordinator: #b98cff;
+    --mcp: #63e6be;
+    --repo: #ffd43b;
+    --sql: #ff922b;
+    --api: #e64980;
+    --knowledge: #b98cff;
+    --merge: #ffa94d;
+    --verifier: #94d82d;
+    --gate: #f783ac;
+    --subflow: #4dabf7;
+
+    --danger: #ff6b6b;
+    --ok: #51cf66;
+    --warn: #ffd43b;
+    --accent-soft: rgba(110, 168, 254, 0.12);
+    --on-accent: #08111f;
+
+    /* The three type roles the app defines: display for brand and titles, system sans for
+       density, mono for data. Anything else would be a fourth voice nothing asked for. */
+    --display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+
+    --r: 8px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 86px; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15.5px;
+    line-height: 1.72;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+  /* The canvas ground, at the gap and size FlowCanvas actually renders it. */
+  .bg {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background-color: var(--bg);
+    background-image: radial-gradient(circle, var(--line) 1px, transparent 1px);
+    background-size: 18px 18px;
+    opacity: 0.5;
+  }
+
+  /* ------------------------------ top bar ------------------------------ */
+  /* The application's own header, reused: same metrics, same control shapes. */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(12px);
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-in {
+    display: flex; align-items: center; gap: 14px; height: 62px;
+    max-width: 1380px; margin: 0 auto; padding: 0 24px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 6px; color: var(--text);
+    font-family: var(--display); font-weight: 700; font-size: 15px; letter-spacing: 0.01em;
+  }
+  .brand:hover { text-decoration: none; }
+  .hex { color: var(--accent); font-size: 15.5px; }
+  .badge {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px;
+  }
+  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .nav-right a {
+    color: var(--muted); font-size: 12.5px; padding: 4px 10px;
+    border-radius: 6px; border: 1px solid transparent;
+  }
+  .nav-right a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+  .menu-btn {
+    display: none; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 11px; font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .menu-btn:hover { border-color: var(--accent); }
+
+  /* ------------------------------ layout ------------------------------ */
+  .shell {
+    display: grid;
+    grid-template-columns: 252px minmax(0, 1fr) 208px;
+    gap: 40px;
+    max-width: 1380px;
+    margin: 0 auto;
+    padding: 0 24px 120px;
+  }
+
+  /* ------------------------------ sidebar ------------------------------ */
+  .side {
+    position: sticky; top: 62px; align-self: start;
+    max-height: calc(100vh - 62px);
+    overflow-y: auto;
+    padding: 22px 0 40px;
+  }
+  .filter {
+    width: 100%; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 7px 10px; font: inherit; font-size: 12.5px; margin-bottom: 16px;
+  }
+  .filter::placeholder { color: var(--faint); }
+  .filter:hover { border-color: var(--accent); }
+  .side h4 {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--faint); margin: 22px 0 6px; padding: 0 10px; font-weight: 400;
+  }
+  .side h4:first-of-type { margin-top: 0; }
+  /* Same shape as the app's own nav buttons: 6px radius, a bordered panel when active. */
+  .side a {
+    display: block; color: var(--muted); font-size: 13px; padding: 5px 10px;
+    border-radius: 6px; border: 1px solid transparent;
+  }
+  .side a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+  .side a.on { color: var(--text); background: var(--panel-2); border-color: var(--line); }
+  .side a.hidden { display: none; }
+
+  /* ------------------------------ content ------------------------------ */
+  main { padding: 44px 0 0; min-width: 0; }
+  .lede { max-width: 70ch; padding-bottom: 32px; border-bottom: 1px solid var(--line); }
+  .lede h1 {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(30px, 4.2vw, 38px); line-height: 1.12; letter-spacing: -0.025em;
+    margin: 0 0 14px; text-wrap: balance;
+  }
+  .lede p { color: var(--muted); font-size: 17px; margin: 0 0 10px; }
+
+  /* A rule between sections rather than whitespace alone: this is a reference document, and the
+     eye needs a boundary to land on when it jumps rather than reads. */
+  section { padding-top: 40px; margin-top: 44px; border-top: 1px solid var(--line); max-width: 76ch; scroll-margin-top: 86px; }
+  section:first-of-type { border-top: 0; margin-top: 0; }
+  section > h2 {
+    font-family: var(--display); font-weight: 700;
+    font-size: 24px; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 8px;
+    text-wrap: balance; scroll-margin-top: 86px;
+  }
+  section > h2 + .sub { color: var(--muted); font-size: 15px; margin: 0 0 18px; }
+  h3 {
+    font-family: var(--display); font-weight: 600;
+    font-size: 16.5px; letter-spacing: -0.01em; margin: 30px 0 8px;
+  }
+  p { margin: 0 0 14px; }
+  ul, ol { margin: 0 0 14px; padding-left: 20px; }
+  li { margin: 6px 0; }
+  strong { color: var(--text); font-weight: 600; }
+  em { color: var(--muted); font-style: italic; }
+
+  code {
+    font-family: var(--mono); font-size: 0.85em;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 6px; color: var(--text);
+  }
+  pre {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--r); padding: 14px 16px; overflow-x: auto; margin: 0 0 16px;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: 13px; line-height: 1.65; }
+
+  /* The border lives on the wrapper so a scrolling table keeps a frame on both edges. */
+  .tablewrap {
+    overflow-x: auto; margin: 0 0 18px;
+    border: 1px solid var(--line); border-radius: var(--r);
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--faint); font-weight: 400; padding-top: 12px;
+  }
+  td { color: var(--muted); }
+  td strong { color: var(--text); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td code { white-space: nowrap; }
+
+  .note, .warn {
+    border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: var(--r);
+    padding: 15px 17px; margin: 0 0 18px; background: var(--accent-soft);
+  }
+  .note b, .warn b {
+    display: block; font-size: 14.5px; color: var(--text);
+    font-weight: 600; margin-bottom: 6px;
+  }
+  .note p, .warn p { color: var(--muted); font-size: 14.5px; }
+  .warn { border-left-color: var(--danger); background: rgba(255, 107, 107, 0.09); }
+  .note p:last-child, .warn p:last-child { margin-bottom: 0; }
+
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; background: var(--line); border-radius: 10px;
+    padding: 1px 6px; color: var(--muted); vertical-align: middle;
+  }
+
+  /* ------------------------------ on this page ------------------------------ */
+  .toc {
+    position: sticky; top: 62px; align-self: start;
+    max-height: calc(100vh - 62px); overflow-y: auto;
+    padding: 46px 0 40px;
+  }
+  .toc h4 {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--faint); margin: 0 0 10px; padding-left: 12px; font-weight: 400;
+  }
+  .toc a {
+    display: block; color: var(--faint); font-size: 12.5px;
+    padding: 5px 0 5px 12px; border-left: 1px solid var(--line);
+  }
+  .toc a:hover { color: var(--text); text-decoration: none; }
+  .toc a.on { color: var(--accent); border-left-color: var(--accent); }
+
+  footer {
+    border-top: 1px solid var(--line); margin-top: 72px; padding-top: 22px;
+    color: var(--faint); font-size: 14px; max-width: 76ch;
+  }
+
+  @media (max-width: 1180px) {
+    .shell { grid-template-columns: 236px minmax(0, 1fr); }
+    .toc { display: none; }
+  }
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .menu-btn { display: block; }
+    .nav-in { gap: 10px; }
+    .nav-right a { padding: 4px 8px; }
+    .side {
+      display: none; position: static; max-height: none; padding: 16px 0 6px;
+      border-bottom: 1px solid var(--line);
+    }
+    .side.open { display: block; }
+    main { padding-top: 28px; }
+    section { padding-top: 32px; margin-top: 36px; }
+  }
+  /* Narrow enough that Contents, the languages and GitHub are all the bar can carry; below that,
+     GitHub goes too — it is a link away on the landing page, and the languages are not. */
+  @media (max-width: 560px) {
+    .nav-right > a:not(:last-of-type) { display: none; }
+    .lang span { display: none; }
+  }
+  @media (max-width: 440px) {
+    .nav-right > a, .badge { display: none; }
+  }
+
+  /* ------------------------------ language switcher ------------------------------ */
+  /* Three links, the current one framed. Same spot as on the landing page: the header's
+     right-hand group, just before GitHub. */
+  .lang { display: flex; align-items: center; font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.04em; margin: 0 4px; }
+  .nav .lang a { color: var(--muted); padding: 3px 5px; border-radius: 4px; border: 1px solid transparent; font-size: inherit; }
+  .nav .lang a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+  .nav .lang a.on { color: var(--text); border-color: var(--line); }
+  .lang span { color: var(--line); }
+</style>
+</head>
+<body>
+<div class="bg"></div>
+
+<header class="nav">
+  <div class="nav-in">
+    <a class="brand" href="/es"><span class="hex">⬡</span> Concentus</a>
+    <span class="badge">Docs</span>
+    <div class="nav-right">
+      <button class="menu-btn" id="menu">Índice</button>
+      <a href="/es#features">Funciones</a>
+      <a href="/es#download">Descargar</a>
+      <nav class="lang" aria-label="Idioma"><a href="/docs" hreflang="en" lang="en">EN</a><span>·</span><a href="/es/docs" hreflang="es" lang="es" class="on" aria-current="page">ES</a><span>·</span><a href="/ca/docs" hreflang="ca" lang="ca">CA</a></nav>
+      <a href="https://github.com/Gergilcan/concentus">GitHub</a>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+
+  <!-- ============================ sidebar ============================ -->
+  <nav class="side" id="side">
+    <input class="filter" id="filter" type="search" placeholder="Filtrar…" aria-label="Filtrar el índice" />
+
+    <h4>Empezar</h4>
+    <a href="#what">Qué es</a>
+    <a href="#install">Instalación</a>
+    <a href="#first-run">Primer arranque</a>
+    <a href="#paying">Pagar las ejecuciones</a>
+
+    <h4>Construir</h4>
+    <a href="#canvas">El lienzo</a>
+    <a href="#blocks">Bloques</a>
+    <a href="#triggers">Disparadores</a>
+    <a href="#subflows">Subflows</a>
+    <a href="#workers">Workers independientes</a>
+
+    <h4>Datos</h4>
+    <a href="#knowledge">Bases de conocimiento</a>
+    <a href="#retrieval">Recuperación</a>
+    <a href="#measuring">Medir la recuperación</a>
+    <a href="#sql">Fuentes SQL</a>
+    <a href="#apis">APIs y MCP</a>
+
+    <h4>Ejecutar</h4>
+    <a href="#runs">Ejecuciones y la consola</a>
+    <a href="#approvals">Aprobaciones</a>
+    <a href="#versions">Versiones y ejecuciones doradas</a>
+
+    <h4>Operar</h4>
+    <a href="#teams">Equipos e inicio de sesión</a>
+    <a href="#storage">Almacenamiento</a>
+    <a href="#settings">Ajustes</a>
+    <a href="#updates">Actualizaciones</a>
+    <a href="#telemetry">Trazas y métricas</a>
+    <a href="#cli">CLI sin interfaz</a>
+    <a href="#licensing">Licencias</a>
+
+    <h4>Referencia</h4>
+    <a href="#api">API HTTP</a>
+    <a href="#environment">Entorno</a>
+  </nav>
+
+  <!-- ============================ content ============================ -->
+  <main>
+    <div class="lede">
+      <h1>Documentación de Concentus</h1>
+      <p>
+        Qué hace la aplicación, por qué lo hace así y dónde hay que hacer clic. Escrito contra la
+        app tal como se distribuye — donde algo es una limitación, lo dice, en vez de dejar que lo
+        descubras tú.
+      </p>
+    </div>
+
+    <section id="what">
+      <h2>Qué es</h2>
+      <p class="sub">Una app de escritorio para construir y ejecutar equipos de agentes de IA.</p>
+      <p>
+        Dibujas un flow en un lienzo: un disparador, uno o más agentes, y las herramientas y datos a
+        los que pueden llegar. Concentus lo ejecuta con la sesión de Claude que ya tienes en tu
+        máquina — sin servidor que desplegar, sin base de datos que aprovisionar, sin API key que
+        pegar.
+      </p>
+      <p>
+        El flow que dibujas es el flow que se ejecuta. No hay ningún archivo de configuración detrás
+        del dibujo que pueda contradecirlo, y esa es la propiedad que hace que un lienzo merezca la
+        pena.
+      </p>
+    </section>
+
+    <section id="install">
+      <h2>Instalación</h2>
+      <p class="sub">Windows y Linux. Un instalador, nada más.</p>
+      <p>
+        Descárgalo desde la <a href="/es#download">página de descargas</a> y ábrelo. La app lleva su
+        propio runtime de Java y su propio PostgreSQL, así que no hay nada que instalar aparte.
+      </p>
+      <p>
+        Para ejecutar el backend por su cuenta — un servidor, un contenedor, una máquina ante la que no se sienta nadie:
+      </p>
+      <h3>Gestores de paquetes</h3>
+      <p>
+        También se puede instalar con un gestor de paquetes — lo que esquiva el aviso de SmartScreen
+        que recibe una descarga sin firmar desde el navegador, porque el archivo nunca lleva la
+        marca de origen web del navegador:
+      </p>
+      <pre><code># Windows — scoop (the bucket lives in the main repository)
+scoop bucket add concentus https://github.com/Gergilcan/concentus
+scoop install concentus
+
+# Windows — winget
+winget install concentus
+
+# macOS — Homebrew
+brew tap gergilcan/concentus
+brew install --cask concentus
+
+# Anywhere with Node — fetches the right installer from Releases
+npx concentus</code></pre>
+      <p>
+        Actualizar: winget, brew y los instaladores normales conservan el actualizador integrado en
+        la app; una instalación con scoop se actualiza con <code>scoop update concentus</code>.
+      </p>
+      <p>
+        En Windows, que SmartScreen avise sobre el <code>.exe</code> descargado es <em>normal</em>:
+        el instalador aún no está firmado, y Windows lo dice de toda descarga sin firmar. <em>Más
+        información → Ejecutar de todas formas</em> sigue adelante; los gestores de paquetes de
+        arriba evitan el aviso por completo. La compilación para macOS no tiene ningún muro
+        equivalente — está firmada y notarizada, así que Gatekeeper la abre como cualquier app
+        cercana a la App Store.
+      </p>
+
+      <h3>El backend a pelo</h3>
+      <pre><code>java -jar concentus-backend.jar</code></pre>
+      <p>
+        Sin ningún entorno, eso arranca un PostgreSQL integrado, genera su propia clave de cifrado y
+        pide una primera cuenta en <code>http://localhost:8080</code>.
+      </p>
+      <div class="note">
+        <b>Ejecutar agentes necesita la CLI de Claude — o una clave</b>
+        <p>
+          Los flows se ejecutan a través de Claude Code en la máquina que corre el backend, o contra
+          la API de Anthropic con una clave. La pantalla de configuración pregunta cuál, e instala e
+          inicia sesión por ti si eliges la primera. Ver <a href="#paying">Pagar las
+          ejecuciones</a>.
+        </p>
+      </div>
+    </section>
+
+    <section id="first-run">
+      <h2>Primer arranque</h2>
+      <p class="sub">Crea la cuenta dueña de la instalación.</p>
+      <p>
+        El primer arranque muestra una pantalla de configuración. Crea una cuenta con un correo y
+        una contraseña, o inicia sesión con Google, Microsoft o Discord si has registrado alguno —
+        en cualquier caso, la primera identidad que cruza la puerta administra la instalación.
+      </p>
+      <p>
+        Todos los que vienen después llegan como <strong>Lector</strong>. Llegar con una cuenta de
+        empresa válida demuestra quién es alguien, no qué debería poder cambiar.
+      </p>
+      <p>
+        La interfaz habla <strong>inglés, español y catalán</strong>. Sigue el idioma de tu sistema
+        por defecto; la elección vive junto al tema en <em>Recursos → Ajustes</em>, se aplica al
+        instante y pertenece a este navegador, no a la instalación.
+      </p>
+      <div class="warn">
+        <b>Servidores accesibles antes de que alguien los reclame</b>
+        <p>
+          En un despliegue ante el que no se sienta nadie, define <code>CONCENTUS_ADMIN_EMAIL</code>
+          y <code>CONCENTUS_ADMIN_PASSWORD</code> antes del primer arranque. Si no, la ventana entre
+          que el puerto se abre y tú llegas a él es una ventana en la que otra persona podría
+          reclamar la instalación.
+        </p>
+      </div>
+    </section>
+
+    <section id="paying">
+      <h2>Pagar las ejecuciones</h2>
+      <p class="sub">Una suscripción que ya tienes, o una clave facturada por token.</p>
+      <p>
+        La pantalla de configuración lo pregunta una vez, antes de instalar nada — porque la
+        respuesta decide si hace falta instalar algo.
+      </p>
+
+      <h3>Tu suscripción de Claude</h3>
+      <p>
+        La opción por defecto, y la más barata: los flows se ejecutan a través de Claude Code en
+        esta máquina, con la suscripción que ya pagas. No hay clave que cuidar, ni segunda factura
+        por lo que quepa en la bolsa de uso no interactivo de Claude Code de tu plan — Anthropic
+        mide esa bolsa por separado de tus sesiones interactivas, la página de Uso mide lo que ha
+        consumido esta máquina, y un flow puede recurrir a una API key o a un modelo local cuando se
+        agota. Necesita la CLI instalada y con la sesión iniciada una vez, y Concentus hace ambas
+        cosas desde la pantalla de configuración: un botón ejecuta el instalador oficial de
+        Anthropic, y se abre un terminal <em>en el propio inicio de sesión</em> — no en un prompt
+        donde lo siguiente que hay que saber es que se escribe <code>/login</code>.
+      </p>
+      <p>
+        El binario instalado se añade también a tu PATH, así que <code>claude</code> es un comando
+        que tienes a partir de entonces, y no algo que solo Concentus sabe encontrar. En Windows eso
+        es el Path por usuario del registro, escrito directamente — nunca a través de
+        <code>setx</code>, que trunca un PATH largo a 1024 caracteres y se lleva la mitad de tus
+        herramientas por delante. En Linux y macOS es una línea en los archivos de arranque que
+        existan, escrita una vez y marcada para que una segunda instalación no añada una segunda
+        copia.
+      </p>
+
+      <h3>Una API key de Anthropic</h3>
+      <p>
+        Nada que instalar y sin inicio de sesión: lo adecuado para una máquina ante la que no se
+        sienta nadie. Pega la clave en la pantalla de configuración y se guarda en el llavero del
+        sistema operativo, solo en esa máquina. Donde no hay llavero — un servidor sin sesión de
+        escritorio — es un archivo legible únicamente por esa cuenta, y la pantalla lo dice en vez
+        de fingir lo contrario.
+      </p>
+      <div class="note">
+        <b>Cambiar de idea</b>
+        <p>
+          La pantalla de configuración vuelve a estar accesible desde <b>Configuración…</b> en el
+          icono de bandeja de Concentus. Una clave que ya esté en el entorno como
+          <code>ANTHROPIC_API_KEY</code> sigue funcionando; una guardada en la app tiene prioridad
+          sobre ella.
+        </p>
+      </div>
+    </section>
+
+    <section id="canvas">
+      <h2>El lienzo</h2>
+      <p class="sub">Donde se dibuja un flow, y qué significa el dibujo.</p>
+      <p>
+        Los bloques se añaden desde la paleta de la izquierda. Un bloque nuevo se coloca pegado a
+        aquel al que se engancha — la cadena va de izquierda a derecha, y las capacidades cuelgan
+        debajo — y cuando exactamente un bloque existente puede aceptar legalmente la conexión, el
+        cable se dibuja por ti.
+      </p>
+      <p>
+        Seleccionar un bloque rodea lo que lo alimenta y lo que él alimenta, un salto en cada
+        dirección. Un doble clic abre sus propiedades; un bloque enfocado con <code>Tab</code> se
+        abre con <code>Enter</code>.
+      </p>
+
+      <h3>Deshacer, ordenar, guías</h3>
+      <p>
+        Cada cambio en el lienzo se puede deshacer — <code>Ctrl</code>+<code>Z</code> /
+        <code>Ctrl</code>+<code>Y</code>, o los botones ↶ ↷ — incluido borrar un bloque, que antes
+        era irreversible salvo recargando sin guardar. Una ráfaga de escritura en un inspector
+        cuenta como un paso, y un arrastre como un paso, así que deshacer se mueve en las unidades
+        en las que piensas.
+      </p>
+      <p>
+        <strong>⌗ Ordenar</strong> dispone un flow que creció a mano: la cadena de izquierda a
+        derecha, las capacidades colgadas bajo sus agentes — la misma forma que dibuja el lienzo
+        cuando coloca los bloques por ti. Una disposición que odies está a un
+        <code>Ctrl</code>+<code>Z</code> de desaparecer. Al arrastrar, las guías de alineación
+        ajustan un bloque a los bordes y centros de sus vecinos.
+      </p>
+      <p>
+        Los cables se tiñen según la salida de la que parten: el camino <strong>si falla</strong> en
+        rojo y discontinuo, el camino <strong>si no</strong> en ámbar — para que a tres pasos de
+        distancia el camino del fallo y el del éxito dejen de parecer idénticos.
+      </p>
+
+      <h3>Qué significa un cable</h3>
+      <p>
+        La dirección tiene significado, así que el lienzo rechaza un cable que no lo tendría: un
+        agente no puede alimentar a su servidor MCP, y una base de conocimiento no puede alimentar a
+        una fuente SQL, porque ninguno tiene nada que hacer con lo que llega. Solo los
+        <strong>consumidores</strong> — agentes, merges, verificadores — pueden estar en el extremo
+        receptor de una capacidad.
+      </p>
+
+      <h3>Dos salidas por bloque</h3>
+      <p>
+        Cada bloque que se ejecuta tiene una segunda salida bajo la principal, y el cable recuerda
+        de cuál partió. En un agente, un subflow, una llamada a API, un merge o un verificador es
+        <strong>si falla</strong>: la rama cableada ahí solo se ejecuta cuando el bloque falló, y
+        recibe el propio fallo, con el nombre del bloque que lo produjo — <em>«Presupuestos falló:
+        el buzón rechazó la credencial»</em> es algo sobre lo que una rama de recuperación puede
+        actuar, y «la ejecución falló» no lo es.
+      </p>
+      <p>
+        Una ejecución cuyo fallo se gestionó así <strong>se completa</strong>. Alguien dibujó qué
+        debía pasar cuando sale mal y pasó; dejar la ejecución en rojo informaría de un fallo
+        desatendido por funcionar como se diseñó. Sin nada cableado a la salida de error, un fallo
+        se comporta exactamente como siempre.
+      </p>
+      <p>
+        En una <strong>condición</strong> la segunda salida es <strong>si no</strong>. La rama
+        principal se ejecuta cuando la prueba se cumple, la rama «si no» cuando no — una sola prueba
+        leída desde ambos lados. Antes, «si es urgente haz X, si no Y» requería dos condiciones con
+        pruebas opuestas, y las dos podían separarse hasta que alguna entrada cayera entre ellas.
+        Tras un «para cada», la rama «si no» recibe los elementos rechazados en vez de tirarlos al
+        suelo.
+      </p>
+
+      <h3>Teclado</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Teclas</th><th>Qué hace</th></tr></thead>
+          <tbody>
+            <tr><td><code>Ctrl</code> + <code>K</code></td><td>Paleta de comandos — llega a cualquier vista o acción</td></tr>
+            <tr><td><code>Ctrl</code> + <code>C</code> / <code>V</code></td><td>Copiar y pegar bloques. El texto seleccionado gana: el lienzo se aparta</td></tr>
+            <tr><td><code>Ctrl</code> + <code>D</code></td><td>Duplicar el bloque seleccionado</td></tr>
+            <tr><td><code>Ctrl</code> + <code>Z</code> / <code>Y</code></td><td>Deshacer / rehacer cualquier cambio del lienzo, borrados incluidos</td></tr>
+            <tr><td><code>Delete</code></td><td>Eliminar la selección (se puede deshacer)</td></tr>
+            <tr><td><code>Enter</code></td><td>Abrir las propiedades del bloque enfocado</td></tr>
+            <tr><td><code>Esc</code></td><td>Cerrar el diálogo de propiedades</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="blocks">
+      <h2>Bloques</h2>
+      <p class="sub">Cada tipo de caja, y cuándo recurrir a ella.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Bloque</th><th>Qué es</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>Entrada / disparador</strong></td>
+              <td>De dónde sale el texto de la ejecución: escrito por ti, una programación, un webhook o un correo entrante.</td>
+            </tr>
+            <tr>
+              <td><strong>Agente</strong></td>
+              <td>Un modelo con un system prompt, un nivel de esfuerzo y un techo de tokens. El primer agente de un lienzo se convierte en el coordinador.</td>
+            </tr>
+            <tr>
+              <td><strong>Verificador</strong></td>
+              <td>Lee un resultado y devuelve un veredicto. Su punto final es un veredicto, no una conversación.</td>
+            </tr>
+            <tr>
+              <td><strong>Merge</strong></td>
+              <td>Reconcilia lo que produjeron varias ramas en una sola respuesta. Llega a MCP igual que un agente.</td>
+            </tr>
+            <tr>
+              <td><strong>Servidor MCP</strong></td>
+              <td>Herramientas que un agente puede llamar. Los servidores HTTP pasan por un proxy; los servidores stdio los lanza el propio worker.</td>
+            </tr>
+            <tr>
+              <td><strong>Repositorio</strong></td>
+              <td>Una copia git en la que trabaja el agente — leer el código, cambiarlo, abrir un pull request.</td>
+            </tr>
+            <tr>
+              <td><strong>Fuente SQL</strong></td>
+              <td>Una consulta de solo lectura cuyas filas se inyectan como contexto antes de que arranque el agente.</td>
+            </tr>
+            <tr>
+              <td><strong>API / endpoint</strong></td>
+              <td>Cualquier endpoint HTTP como herramienta tipada — desde un documento OpenAPI, o desde una URL que escribes.</td>
+            </tr>
+            <tr>
+              <td><strong>Base de conocimiento</strong></td>
+              <td>Documentos de los que el agente puede recuperar pasajes. Ver <a href="#knowledge">Bases de conocimiento</a>.</td>
+            </tr>
+            <tr>
+              <td><strong>Condición</strong></td>
+              <td>Manda la ejecución por un camino u otro según lo que realmente volvió.</td>
+            </tr>
+            <tr>
+              <td><strong>Para cada</strong></td>
+              <td>Toma una lista y ejecuta la misma rama sobre cada elemento.</td>
+            </tr>
+            <tr>
+              <td><strong>Ejecutar otro flow</strong></td>
+              <td>Un flow dentro de un flow. Ver <a href="#subflows">Subflows</a>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="triggers">
+      <h2>Disparadores</h2>
+      <p class="sub">Cuatro maneras de arrancar una ejecución.</p>
+      <ul>
+        <li><strong>Manual</strong> — escribes el primer mensaje en la consola.</li>
+        <li><strong>Programación</strong> — una expresión cron, construida a partir de opciones sencillas en vez de escrita a mano. La tarjeta del lienzo lo dice con palabras: <em>cada 15 minutos los días laborables</em>.</li>
+        <li><strong>Webhook</strong> — una URL con un secreto. Hacer un POST a ella arranca el flow con el cuerpo de la petición.</li>
+        <li><strong>Correo</strong> — se sondea una carpeta IMAP y cada mensaje que coincide arranca una ejecución. IMAP y no SMTP, porque las carpetas, las marcas y el estado de leído son lo que hace posible «procesa esto una sola vez».</li>
+      </ul>
+      <div class="note">
+        <b>Un flow duplicado llega en pausa</b>
+        <p>
+          Y sin el secreto del webhook del original. Copiar una programación activa te daría dos
+          flows saltando cada mañana, que no es lo que «duplicar» significa para nadie.
+        </p>
+      </div>
+    </section>
+
+    <section id="subflows">
+      <h2>Subflows</h2>
+      <p class="sub">Un flow dentro de un flow, cableado de dos maneras.</p>
+      <p>
+        Cablea un flow <em>hacia</em> un agente y se ejecuta primero, con el texto con el que
+        arrancó esta ejecución, y su respuesta llega como contexto. Cabléalo <em>desde</em> un
+        agente y se ejecuta cuando ese agente termina — un relevo. El dibujo dice cuál de los dos,
+        así que no hay ningún desplegable que pueda contradecirlo.
+      </p>
+      <p>
+        El agente también recibe una herramienta <code>run_flow</code> para el mismo flow, para
+        poder volver a preguntar con sus propias palabras cuando la primera respuesta plantea una
+        duda. Las dos no son redundantes: una es lo que el flow siempre necesita, la otra es lo que
+        esta ejecución concreta resultó necesitar.
+      </p>
+      <p>
+        Un hijo se ejecuta con su propio presupuesto y su propio modo de permisos. Los ciclos se
+        cortan con una cadena de ancestros, y el anidamiento se detiene a tres niveles de
+        profundidad.
+      </p>
+    </section>
+
+    <section id="workers">
+      <h2>Workers independientes</h2>
+      <p class="sub">Un proceso por agente, con el acceso a herramientas impuesto de verdad.</p>
+      <p>
+        Por la vía de sesión compartida, una ejecución local es un solo proceso de la CLI para todo
+        el flow, así que las carpetas de contexto y las listas de delegación se escriben en las
+        instrucciones de cada agente en vez de imponerse: a un agente se le dice qué carpetas y qué
+        agentes son suyos, y aun así podría llegar a los demás.
+      </p>
+      <p>
+        Los workers independientes son la cosa de verdad. Cada agente recibe su propio proceso y su
+        propia ventana de contexto, y llega a MCP a través de una <strong>fachada</strong> que
+        decide qué herramientas puede llamar y si las escrituras se bloquean (solo lectura) o se
+        simulan (dry-run) — impuesto por el backend en cada llamada, no pidiéndoselo al modelo por
+        favor.
+      </p>
+      <p>
+        Un techo manda sobre todo lo demás: <code>execution.max-processes</code> (Ajustes, 10 por
+        defecto) limita el total de procesos <code>claude</code> en la máquina, sea cual sea la
+        ejecución o el reparto que los arrancó. Los límites por grupo se multiplican — ocho
+        ejecuciones de cuatro workers serían treinta y dos procesos, cada uno de cientos de MB — y
+        esto limita el producto. Un worker que no cabe espera un hueco, y su ejecución lo dice;
+        subir el ajuste libera el trabajo en cola sin reiniciar.
+      </p>
+      <h3>Qué pasa entre ellos</h3>
+      <p>
+        Dos herramientas, y nada más. <code>share_finding</code> cuenta a los demás workers algo que
+        de otro modo tendrían que descubrir por su cuenta — un hecho establecido, un callejón sin
+        salida que no vale la pena repetir, una fuente que resultó estar equivocada.
+        <code>read_findings</code> lee lo que han dicho. Vale la pena llamarla antes de empezar
+        cualquier cosa que suene a que puede estar ya hecha.
+      </p>
+      <p>
+        Deliberadamente estrecho: notas cortas, sin conversación, y sin manera de preguntar algo a
+        un hermano y esperar respuesta. Un worker que pudiera bloquearse esperando a otro worker
+        sería un worker que puede quedarse en interbloqueo con él. Las notas son borrador —
+        pertenecen a esta ejecución, no al flow — y el paso de merge las lee junto a los informes,
+        porque una nota suele ser la razón por la que un informe dice lo que dice.
+      </p>
+
+      <h3>Cuando un agente deja de avanzar</h3>
+      <p>
+        A un agente que llama a la misma herramienta con los mismos argumentos y obtiene la misma
+        respuesta tres veces seguidas se le rechaza una vez, y se le dice qué ha estado haciendo. La
+        regla es misma herramienta, mismos argumentos <em>y</em> mismo resultado: un sondeo de
+        estado cuya respuesta cambia no se toca nunca, que es la diferencia entre esperar y dar
+        vueltas. Los fallos también cuentan — hay tan poco que aprender del cuadragésimo error
+        idéntico como del cuadragésimo éxito idéntico.
+      </p>
+      <p>
+        Es un badén, no un muro. El contador se reinicia tras un rechazo, así que un agente que de
+        verdad está esperando algo se retrasa en vez de detenerse; rechazar para siempre convertiría
+        una manera de ahorrar dinero en una manera de romper una ejecución que estaba a punto de
+        salir bien.
+      </p>
+
+      <div class="warn">
+        <b>Los servidores stdio los lanza el worker</b>
+        <p>
+          Una fachada solo puede mediar HTTP. Un perfil que retira una herramienta de un servidor
+          stdio retira el servidor entero, porque no se puede imponer nada a un proceso que la
+          fachada nunca ve.
+        </p>
+      </div>
+    </section>
+
+    <section id="knowledge">
+      <h2>Bases de conocimiento</h2>
+      <p class="sub">Material de referencia demasiado grande para entregarlo entero.</p>
+      <p>
+        Una base de conocimiento es una colección con nombre de documentos de los que un agente
+        recupera pasajes. Es distinta de una carpeta de contexto, y la distinción es a cuál recurrir
+        en cada caso: una carpeta de contexto entrega al agente los propios archivos — lo adecuado
+        cuando los archivos <em>son</em> el trabajo, como un repositorio. Una base de conocimiento
+        es para manuales, políticas e informes pasados, donde solo deben inyectarse los pasajes
+        relevantes para la tarea.
+      </p>
+
+      <h3>Qué se puede meter</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Fuente</th><th>Notas</th></tr></thead>
+          <tbody>
+            <tr><td>PDF</td><td>Capa de texto. Un escaneo sin capa de texto pasa por OCR si está instalado.</td></tr>
+            <tr><td>Word <code>.docx</code></td><td>Párrafos y tablas. Las tablas salen delimitadas por barras verticales para que una cita conserve sus columnas.</td></tr>
+            <tr><td>Excel / CSV</td><td>Hojas como filas.</td></tr>
+            <tr><td>PowerPoint <code>.pptx</code></td><td>Diapositiva a diapositiva, numeradas, con las notas del orador — que suele ser donde vive la frase que explica una diapositiva de cuatro palabras.</td></tr>
+            <tr><td>Texto, Markdown, HTML</td><td>Tal como están escritos.</td></tr>
+            <tr><td>Imágenes</td><td>A través de OCR, cuando está instalado.</td></tr>
+            <tr><td>Páginas web</td><td>Por dirección. Ver más abajo.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Se pueden subir carpetas enteras de una vez, con exclusiones por carpeta — una carpeta real
+        siempre tiene un <code>.gitignore</code> o una imagen perdida en alguna parte.
+      </p>
+
+      <h3>Páginas</h3>
+      <p>
+        <strong>Añadir una página</strong> toma una URL. El documento se archiva bajo esa dirección,
+        así que añadirlo otra vez lo sustituye en vez de archivar una segunda copia — que es lo que
+        hace que <strong>Actualizar páginas</strong> signifique algo: un clic vuelve a descargar
+        cada página de la base cuando la wiki avanza. Los archivos subidos no se tocan en una
+        actualización; un archivo que alguien eligió no tiene dirección a la que volver.
+      </p>
+      <p>
+        Se descarga una dirección — los enlaces de la página no se siguen. Un rastreador que
+        deambula ingiere toda la intranet porque alguien pegó una página de navegación, y luego
+        responde preguntas con el menú de la cafetería.
+      </p>
+      <div class="warn">
+        <b>Descargar a petición es un privilegio</b>
+        <p>
+          Un servidor que descarga una dirección que tú escribes puede llegar mucho más lejos que
+          tú. Las direcciones de loopback, link-local y de metadatos de la nube se rechazan, las
+          redirecciones se vuelven a comprobar en cada salto, y un host que no resuelve falla
+          cerrado. Nombra hosts en <code>knowledge.allowed-web-hosts</code> para admitir los que de
+          otro modo estarían bloqueados.
+        </p>
+      </div>
+
+      <h3>Quién puede leer una base</h3>
+      <p>
+        Cualquier otro recurso de aquí es accesible para cualquiera que pueda editar flows, y para
+        la definición de un agente eso es correcto — es configuración. Una base de conocimiento no
+        es configuración; es <em>los propios documentos</em>. Así que una base puede nombrar el rol
+        más bajo que puede leerla, en la misma escalera que usa todo lo demás.
+      </p>
+      <p>
+        <strong>Ausente significa todo el mundo</strong>, que es lo que significaba cada base creada
+        antes de que esto existiera y debe seguir significando. Se impone en la API, y otra vez
+        cuando una ejecución inyecta una base — contra el rol de <em>quien arrancó la
+        ejecución</em>, no de quien dibujó el flow. Un flow sobrevive a la sesión de su autor, y
+        heredar su alcance haría que cada base restringida fuera legible por cualquiera que pudiera
+        pulsar Ejecutar en el flow adecuado.
+      </p>
+
+      <h3>Fragmentación</h3>
+      <p>
+        Los documentos se parten por límites de párrafo a unos 1.500 caracteres, con 200 caracteres
+        de solapamiento para que una frase cortada en un límite siga apareciendo entera en uno de
+        sus dos fragmentos. Un solo documento se detiene en 2.000 fragmentos, y lo dice cuando
+        ocurre.
+      </p>
+    </section>
+
+    <section id="retrieval">
+      <h2>Recuperación</h2>
+      <p class="sub">Cómo se encuentra un pasaje. <span class="pill">la parte importante</span></p>
+      <p>
+        Cada consulta ejecuta <strong>dos búsquedas</strong>, y se fusionan en vez de elegir entre
+        ellas.
+      </p>
+      <p>
+        Una búsqueda vectorial no sabe distinguir un token exacto. Una referencia de documento, un
+        código de error, un nombre de archivo se sitúan en el espacio de embeddings junto a todos
+        sus vecinos, así que pedir una política por su número devuelve otras doce políticas. Una
+        búsqueda por palabras clave la encuentra a la primera. El caso espejo es igual de común:
+        ninguna búsqueda por palabras clave casa <em>«qué pasa cuando alguien se va»</em> con un
+        documento titulado <em>Offboarding</em>, porque no comparten ninguna palabra. Ejecutar ambas
+        no es cubrirse las espaldas — es la única manera de responder a las dos preguntas.
+      </p>
+      <pre><code>keyword  (ts_rank_cd, top 50) ─┐
+                               ├─ Reciprocal Rank Fusion ─ cross-encoder ─ top k
+semantic (cosine,      top 50) ─┘</code></pre>
+      <p>
+        La fusión es por <strong>posición, no por puntuación</strong>. Una similitud de coseno y un
+        rango de texto de PostgreSQL no son cantidades comparables, y ponderarlas una contra otra
+        significaría inventarse un tipo de cambio y luego ajustarlo para siempre. Reciprocal Rank
+        Fusion solo pregunta cuán cerca de la cima de su propia lista puso cada rama un pasaje — y
+        un pasaje que solo encontró una rama sigue aflorando, que es toda la gracia.
+      </p>
+
+      <h3>El reranker</h3>
+      <p>
+        Después un cross-encoder reordena a los supervivientes. Lee la pregunta y un pasaje
+        <em>juntos</em> y puntúa el par, que es lo que le permite notar que un pasaje describe el
+        proceso correcto para el departamento equivocado — una distinción que dos embeddings
+        calculados por separado no pueden expresar. Demasiado lento para una base entera;
+        exactamente lo adecuado para los cincuenta candidatos que una búsqueda ya encontró.
+      </p>
+
+      <h3>Los dos modelos</h3>
+      <p>
+        Ambos son opcionales, ambos se ejecutan dentro de la app, y ambos se descargan bajo demanda
+        desde <em>Recursos → Conocimiento</em>. Sin Ollama, sin Docker, sin servidor.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Modelo</th><th>Tamaño</th><th>Sin él</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>multilingual-e5-small <span class="pill">embedding</span></td>
+              <td>~130 MB</td>
+              <td>La búsqueda por palabras clave sigue funcionando; nada se ordena por significado.</td>
+            </tr>
+            <tr>
+              <td>bge-reranker-base <span class="pill">reranker</span></td>
+              <td>~282 MB</td>
+              <td>El orden fusionado se mantiene, y el panel dice qué falta.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Un servidor de modelos que sirva <code>bge-m3</code> se detecta automáticamente si tienes uno.
+      </p>
+
+      <h3>Qué llega al agente</h3>
+      <p>
+        Los pasajes recuperados se ensamblan, no se pegan:
+      </p>
+      <ul>
+        <li><strong>Fusionados</strong> — los pasajes adyacentes se unen sin repetir el solapamiento entre fragmentos, que de otro modo se leería como énfasis.</li>
+        <li><strong>Ordenados por documento y posición</strong>, nunca por puntuación. Un documento se lee hacia delante; el orden por puntuación entrega al modelo el paso 4, luego el paso 1, luego el paso 7 y le pide que explique el proceso.</li>
+        <li><strong>Recortados</strong> a un presupuesto de caracteres por fuente (<code>knowledge.context-chars</code>, 12.000 por defecto), y se le dice al agente que algunos se quedaron fuera.</li>
+        <li><strong>Numerados</strong> con una clave de cita, y el prompt pide esos marcadores de vuelta. Una respuesta que nadie puede contrastar con sus fuentes es el fallo que todo este subsistema existe para evitar.</li>
+      </ul>
+
+      <h3>Volver a preguntar</h3>
+      <p>
+        El agente también recibe una herramienta <code>search_knowledge</code>. La precarga responde
+        a lo que el flow siempre necesita; la herramienta responde a la pregunta que solo existe por
+        lo que dijo la primera respuesta.
+      </p>
+    </section>
+
+    <section id="measuring">
+      <h2>Medir la recuperación</h2>
+      <p class="sub">Porque todo cambio en la ordenación suena a mejora.</p>
+      <p>
+        La prueba habitual de un cambio en la recuperación son tres consultas escritas después de
+        hacerlo. Bajo ese régimen una base empeora en silencio mientras todos coinciden en que se
+        nota más afinada.
+      </p>
+      <p>
+        Así que una base puede guardar un <strong>conjunto dorado</strong>: preguntas que alguien
+        hace de verdad, cada una con el documento que la responde. <em>Recursos → Conocimiento →
+        Medir esta base</em>. Ejecutarlo da tres números, porque un solo número esconde los dos
+        fallos que importan.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Número</th><th>Qué significa</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>Respondidas</strong></td>
+              <td>Proporción de preguntas en las que un documento esperado entró en el top 5. Con qué frecuencia alguien habría obtenido siquiera una respuesta.</td>
+            </tr>
+            <tr>
+              <td><strong>Documentos encontrados</strong></td>
+              <td>Proporción de todos los documentos esperados recuperados. Más baja que <em>Respondidas</em> siempre que una pregunta necesita dos documentos y volvió uno — media respuesta que el titular ocultaría.</td>
+            </tr>
+            <tr>
+              <td><strong>Calidad de la posición</strong></td>
+              <td>1,00 cuando las respuestas llegan primero, 0,50 cuando segundas, 0 cuando nunca. Un pasaje que llega quinto gasta el presupuesto de contexto de cuatro erróneos para llegar ahí.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Ejecuta las mismas preguntas <strong>con y sin el reranker</strong>, que es la única manera
+        honesta de responder «¿valen la pena 282 MB con mis documentos?» — un benchmark sobre el
+        corpus de otro no es evidencia sobre el tuyo. Un fallo muestra qué volvió en su lugar,
+        porque eso es la explicación y no el veredicto.
+      </p>
+      <div class="note">
+        <b>La recuperación, no la respuesta</b>
+        <p>
+          Lo que se mide es si volvió el documento correcto. Calificar texto generado necesita un
+          modelo que juzgue a un modelo — una segunda cosa que puede equivocarse, y una factura por
+          ejecución — y responde a una pregunta distinta: una respuesta errónea sobre el pasaje
+          correcto es un problema de prompt, mientras que una respuesta que suena bien sobre el
+          pasaje equivocado es este problema, y es el que se cuela sin que nadie lo note.
+        </p>
+      </div>
+    </section>
+
+    <section id="sql">
+      <h2>Fuentes SQL</h2>
+      <p class="sub">Filas como contexto, antes de que arranque el agente.</p>
+      <p>
+        Un bloque SQL ejecuta una consulta de solo lectura e inyecta sus filas en el contexto del
+        agente conectado. JDBC genérico; PostgreSQL viene incluido y se pueden añadir otros drivers
+        al backend. Prueba la consulta desde las propiedades del bloque antes de ejecutar el flow.
+      </p>
+      <p>
+        Solo se permite un único <code>SELECT</code>, como defensa en profundidad junto a los
+        permisos que imponga la propia base de datos. Las credenciales se referencian por id desde
+        <em>Recursos → Credenciales</em>, nunca se escriben en línea.
+      </p>
+      <div class="warn">
+        <b>Dónde puede conectarse</b>
+        <p>
+          Los hosts de loopback, link-local y de metadatos de la nube están bloqueados por defecto.
+          Añade hosts a <code>rag.allowed-jdbc-hosts</code> para permitirlos — salvo la dirección de
+          metadatos, que está bloqueada en cualquier caso.
+        </p>
+      </div>
+    </section>
+
+    <section id="apis">
+      <h2>APIs y MCP</h2>
+      <p class="sub">Dos maneras de darle a un agente algo que llamar.</p>
+      <h3>Servidores MCP</h3>
+      <p>
+        Cualquier servidor Model Context Protocol, por HTTP o lanzado como proceso local. Un
+        catálogo ofrece los habituales con su configuración — las variables que necesitan, el
+        runtime que necesitan instalado — en vez de una caja JSON en blanco. Los servidores OAuth
+        guardan sus tokens en una credencial cifrada y los renuevan en mitad de una ejecución cuando
+        una llamada vuelve con 401.
+      </p>
+      <p>
+        Cuando un servidor ofrece muchísimas herramientas, el agente recibe una herramienta de
+        búsqueda en vez de cien esquemas: pide lo que necesita y recibe las pocas definiciones que
+        coinciden.
+      </p>
+      <h3>Endpoints de API</h3>
+      <p>
+        Pega una URL y se convierte en una herramienta tipada — sin necesidad de documento OpenAPI.
+        Los marcadores de la ruta se convierten en los argumentos, y solo se ofrece un cuerpo donde
+        corresponde. Con un documento OpenAPI, se listan las operaciones y eliges cuáles puede
+        llamar el agente.
+      </p>
+    </section>
+
+    <section id="runs">
+      <h2>Ejecuciones y la consola</h2>
+      <p class="sub">Qué pasó, bloque a bloque.</p>
+      <p>
+        Cada ejecución registra sus eventos, su entrada y salida por bloque, sus recuentos de tokens
+        y un coste estimado. Un bloque puede <strong>volver a ejecutarse por su cuenta</strong>, con
+        exactamente la entrada que recibió — un paso que falló al final de una ejecución larga no te
+        cuesta los veinte minutos anteriores — y opcionalmente con otro modelo.
+      </p>
+      <p>
+        Dos ejecuciones se pueden comparar lado a lado. Las ejecuciones, los eventos y la salida por
+        bloque se persisten; los manejadores vivos de una sesión en marcha no, así que reiniciar el
+        backend deja el historial intacto y descarta cualquier cosa a medio vuelo.
+      </p>
+      <div class="note">
+        <b>Qué es la cifra en dólares</b>
+        <p>
+          Una estimación a las tarifas por token publicadas. Con una suscripción de Claude es uso
+          equivalente contra la bolsa no interactiva de tu plan, no un cargo; con la API se aproxima
+          al cargo real.
+        </p>
+      </div>
+    </section>
+
+    <section id="approvals">
+      <h2>Aprobaciones</h2>
+      <p class="sub">Cuándo una ejecución debe esperar a una persona.</p>
+      <p>
+        El modo de permisos se fija en el coordinador, porque un solo proceso de la CLI ejecuta todo
+        el flow: <strong>bypass</strong> (el único modo que funciona sin supervisión), <strong>solo
+        plan</strong> y <strong>pídeme aprobación</strong>. Una ejecución que espera una respuesta
+        lo dice, y se puede responder desde la consola — o desde Slack o Teams, en el hilo en el que
+        llegó la notificación.
+      </p>
+      <p>
+        Una ejecución que ya ha entregado su resultado queda cerrada a más mensajes.
+      </p>
+    </section>
+
+    <section id="versions">
+      <h2>Versiones y ejecuciones doradas</h2>
+      <p class="sub">Un historial al que solo se añade, y una referencia de la que desviarse.</p>
+      <p>
+        Cada guardado añade una revisión, atribuida a quien la hizo. El historial es accesible desde
+        <strong>Historial</strong> en el panel: previsualiza una revisión en el lienzo, o restáurala
+        — una restauración se añade como revisión nueva en vez de borrar lo que sustituyó, así que
+        aquello sobre lo que restauraste sigue a un clic.
+      </p>
+      <p>
+        Una ejecución se puede marcar como <strong>ejecución dorada</strong>: una referencia de lo
+        que este flow debería producir. Las ejecuciones posteriores se comparan con ella, y un flow
+        cuya salida se ha desviado lo dice en su tarjeta.
+      </p>
+
+      <h3>Replay contra el flow actual</h3>
+      <p>
+        Las ejecuciones doradas comparan <em>salidas</em>; depurar suele necesitar comparar
+        <em>decisiones</em> — con la misma entrada, ¿dónde diverge el camino? Desde cualquier
+        ejecución, <strong>⟲ Replay vs actual</strong> pasa las salidas por bloque grabadas de esa
+        ejecución por el flow tal como está guardado hoy, sin ejecutar nada, y pinta la respuesta en
+        el lienzo: un anillo ámbar en cada bloque cuyo destino cambia (se ejecutó y ahora se
+        saltaría, o al revés), un chip que dice en qué sentido y por qué, y los bloques que se
+        ejecutaron pero ya no existen nombrados en la cabecera.
+      </p>
+      <p>
+        Reproduce <strong>el enrutado, no los agentes</strong> — las puertas deciden a partir del
+        texto grabado, así que sus respuestas son exactas, pero donde una decisión necesitaría una
+        salida que nunca se grabó, el bloque dice <em>no se puede decidir</em> en vez de adivinar.
+      </p>
+    </section>
+
+    <section id="teams">
+      <h2>Equipos e inicio de sesión</h2>
+      <p class="sub">Quién puede cambiar qué.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Rol</th><th>Puede</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Lector</strong></td><td>Leer flows e historial.</td></tr>
+            <tr><td><strong>Operador</strong></td><td>Ejecutar flows y responder aprobaciones.</td></tr>
+            <tr><td><strong>Miembro</strong></td><td>Crear y editar flows y recursos.</td></tr>
+            <tr><td><strong>Administrador</strong></td><td>Todo, incluidos miembros, ajustes y almacenamiento.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Impuesto en cada petición tanto por método como por ruta — no solo por lo que la interfaz
+        decide dibujar.
+      </p>
+
+      <h3>Iniciar sesión con un directorio</h3>
+      <p>
+        Microsoft, Google y Discord se registran desde dentro de la app, en <em>Recursos → Miembros
+        → Proveedores de inicio de sesión</em>, y surten efecto de inmediato. La pantalla de inicio
+        de sesión muestra los tres estén o no configurados: uno sin registrar dice qué necesita en
+        vez de mandar a alguien a un proveedor que lo rechazará después de haber escrito su
+        contraseña.
+      </p>
+      <p>
+        Las personas se emparejan por el id inmutable del propio proveedor, <strong>nunca</strong>
+        por su dirección — las direcciones se reasignan cuando la gente se va, y emparejar por una
+        acabaría entregando los flows de quien se fue a quien heredara el buzón. Una dirección que
+        ya tiene cuenta se vincula a ella en vez de duplicarse.
+      </p>
+      <div class="note">
+        <b>La URI de redirección lo es todo</b>
+        <p>
+          Todos los registros fallan igual la primera vez. Cópiala de la pantalla de proveedores —
+          se calcula a partir de la petición que estás haciendo — y registra exactamente esa cadena.
+          En Microsoft, el campo donde ponerla es <code>web.redirectUris</code> en el manifiesto,
+          porque el portal rechaza <code>http://</code> con una dirección de loopback.
+        </p>
+      </div>
+
+      <h3>Varias cuentas a la vez</h3>
+      <p>
+        Un navegador puede tener varias cuentas con sesión iniciada y cambiar entre ellas, con el
+        rol de cada una mostrado al lado — que es además la manera práctica de comprobar que un
+        permiso se cumple de verdad. Dos cuentas <em>activas</em> a la vez necesitan dos ventanas,
+        porque una sesión es una cookie.
+      </p>
+    </section>
+
+    <section id="storage">
+      <h2>Almacenamiento</h2>
+      <p class="sub">Integrado por defecto; una base de datos de empresa cuando la quieras.</p>
+      <p>
+        Cada compilación guarda sus datos en un PostgreSQL integrado bajo el directorio de datos de
+        la app. Eso no es un modo demo — es el mismo esquema, las mismas migraciones y la misma ruta
+        de código que un despliegue en servidor.
+      </p>
+      <p>
+        <em>Recursos → Almacenamiento</em> apunta la instalación a tu propio PostgreSQL y copia lo
+        que ya hay, tabla por tabla, informando de lo que se movió. La copia es una copia: los datos
+        integrados se quedan donde estaban hasta que estés satisfecho.
+      </p>
+      <div class="warn">
+        <b>Haz copia de la clave junto con los datos</b>
+        <p>
+          Las credenciales se cifran con una clave que la instalación genera en el primer arranque y
+          guarda en <code>secret.key</code> junto a sus datos. Una copia de la base de datos sin ese
+          archivo restaura filas que nadie puede descifrar. Define <code>CONCENTUS_SECRET_KEY</code>
+          para guardarla en otro sitio — un vault, un secreto de contenedor.
+        </p>
+      </div>
+    </section>
+
+    <section id="updates">
+      <h2>Actualizaciones</h2>
+      <p class="sub">Una marca en la esquina, no un diálogo.</p>
+      <p>
+        La app de escritorio se actualiza sola: comprueba cada cuatro horas, descarga en segundo
+        plano e instala cuando sales. Nada de eso interrumpe nada, lo que también lo hacía invisible
+        — así que el estado ahora está arriba a la derecha de la ventana. Silencioso mientras no hay
+        nada que decir, un punto verde cuando hay una versión descargada y esperando. Al hacer clic
+        dice en qué estado están las cosas y ofrece la única acción que tiene ese estado: comprobar
+        ahora, o reiniciar e instalar.
+      </p>
+      <p>
+        Un diálogo de actualización que interrumpe el trabajo enseña a la gente a descartar diálogos
+        de actualización. Una marca que espera a que la vean no cuesta nada y mañana sigue ahí.
+      </p>
+      <h3>Instalar sin que te pregunten nada</h3>
+      <p>
+        Pulsar instalar ejecuta el instalador en silencio: sin asistente, sin página de licencia que
+        ya aceptaste, y sin preguntar dónde ponerlo — va donde ya está la instalación existente. La
+        app se vuelve a abrir cuando termina.
+      </p>
+      <p>
+        Antes de que arranque el instalador, Concentus termina su propio backend y espera a que de
+        verdad haya desaparecido, llevándose todo el árbol de procesos si pedirlo por las buenas no
+        funciona. Esa espera no es cortesía: el runtime de Java incluido vive dentro del directorio
+        de instalación, así que un instalador que arranca mientras el backend aún retiene esos
+        archivos se detiene e informa de que la aplicación sigue abierta — detrás de una ventana que
+        ya ha desaparecido.
+      </p>
+
+      <h3>Qué versiones se te ofrecen</h3>
+      <p>
+        Una compilación <strong>preliminar</strong> sigue tanto las versiones preliminares como las
+        finales, tomando la más nueva. Una compilación <strong>final</strong> solo sigue versiones
+        finales: quien instaló una versión estable no pidió que lo pasaran a una preliminar.
+      </p>
+      <div class="warn">
+        <b>Las versiones preliminares se etiquetan <code>-beta.N</code>, y eso no es cosmético</b>
+        <p>
+          electron-updater deriva el canal de actualización del identificador de preliminar de la
+          versión, y solo ofrece una versión final a compilaciones cuyo canal es nulo,
+          <code>alpha</code> o <code>beta</code> — esos tres nombres están escritos a fuego. Con
+          cualquier otro identificador, <code>rc</code> incluido, una compilación no puede llegar
+          nunca a una versión estable. También debe llevar punto: <code>0.1.3-beta.1</code> da a
+          cada versión del tren el mismo canal, mientras que <code>0.1.3-beta1</code> da a cada una
+          el suyo y a nadie se le ofrece nunca la siguiente. El flujo de publicación rechaza ambos
+          errores.
+        </p>
+      </div>
+      <div class="note">
+        <b>Dónde no aplica</b>
+        <p>
+          Una ejecución de desarrollo no tiene app empaquetada que actualizar, y una instalación
+          <code>.deb</code> la actualiza el gestor de paquetes del sistema. Ambas lo dicen y se
+          retiran en vez de fallar en bucle.
+        </p>
+      </div>
+    </section>
+
+    <section id="settings">
+      <h2>Ajustes</h2>
+      <p class="sub">Lo que antes eran variables de entorno.</p>
+      <p>
+        <em>Recursos → Ajustes</em>. Un valor se busca en tres sitios, por orden: lo que alguien
+        fijó en la aplicación, aquello con lo que se arrancó el despliegue, y después el valor por
+        defecto integrado. Ese orden es lo que mantiene funcionando a ambos públicos — un contenedor
+        arrancado por un pipeline sigue tomando su entorno, y la persona delante de la app puede
+        cambiar lo mismo desde un formulario.
+      </p>
+      <p>
+        La pantalla dice <strong>de dónde salió cada valor</strong>, porque «8» significa tres cosas
+        distintas y solo una de ellas te toca a ti borrarla, y <strong>si el cambio espera a un
+        reinicio</strong> — la mayoría sí, porque dimensionan un pool de hilos o una política cuando
+        arranca la aplicación. Los proveedores de inicio de sesión son la excepción deliberada:
+        quien acaba de pegar un client id quiere probarlo.
+      </p>
+      <p>
+        Vaciar un campo elimina la anulación en vez de guardar una vacía. Los secretos se sellan con
+        la misma clave que protege las credenciales guardadas y nunca se vuelven a leer desde la
+        API.
+      </p>
+      <p>
+        <strong>Apariencia</strong> está arriba de la misma pantalla — oscuro, claro o alto
+        contraste. No es uno de los ajustes de debajo: vive en este navegador, se aplica en el
+        instante en que se elige y no tiene Guardar. Antes era un botón en la cabecera, que rotaba
+        de clic en clic entre tres valores, lo que es mucho de la esquina más valiosa de la pantalla
+        para algo que una persona fija una sola vez.
+      </p>
+    </section>
+
+    <section id="telemetry">
+      <h2>Trazas y métricas</h2>
+      <p class="sub">OpenTelemetry, en las unidades de trabajo propias de esta aplicación.</p>
+      <p>
+        El framework ya instrumenta lo que un framework puede ver. Nada de eso responde a la
+        pregunta que de verdad tiene alguien aquí, que es sobre una <em>ejecución</em>. Así que hay
+        seis nombres de span y un solo vocabulario de atributos:
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Span</th><th>Cubre</th></tr></thead>
+          <tbody>
+            <tr><td><code>concentus.run</code></td><td>Una ejecución, desde su disparador hasta su último bloque</td></tr>
+            <tr><td><code>concentus.node</code></td><td>Un bloque: un agente, una puerta, un subflow, una llamada a API</td></tr>
+            <tr><td><code>concentus.worker</code></td><td>Un worker independiente en un reparto en paralelo</td></tr>
+            <tr><td><code>concentus.tool</code></td><td>Una llamada a herramienta MCP, rechazos incluidos</td></tr>
+            <tr><td><code>concentus.model</code></td><td>Una petición a un modelo</td></tr>
+            <tr><td><code>concentus.retrieval</code></td><td>Una búsqueda de conocimiento: ambas ramas, la fusión, cualquier reordenación</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <b>Sin prompts, sin salidas, sin argumentos de herramientas</b>
+        <p>
+          Los atributos llevan identificadores, recuentos y resultados. Una traza acaba en el
+          sistema de otro, normalmente con una retención más larga que cualquier cosa de aquí y
+          leída por gente a la que nunca se dio acceso a los flows. Lo que es útil para depurar y lo
+          que es seguro exportar son conjuntos distintos, y donde difieren gana el más pequeño.
+        </p>
+      </div>
+      <p>
+        No se exporta nada hasta que se nombra un colector, y está apagado por un interruptor y no
+        por una dirección en blanco — un endpoint vacío no es «ninguna parte» para un exportador
+        OTLP, es una URL inválida. Configúralo en Ajustes, o con <code>OTLP_ENABLED</code> y
+        <code>OTLP_ENDPOINT</code>.
+      </p>
+    </section>
+
+    <section id="cli">
+      <h2>CLI sin interfaz</h2>
+      <p class="sub">Ejecutar un flow desde un script.</p>
+      <pre><code>pnpm desktop:build                                     # once — builds the jar
+export CONCENTUS_EMAIL=you@company.com
+export CONCENTUS_PASSWORD=…
+node scripts/concentus-run.mjs my-flow.json --input "go"
+echo $?                                                # 0 completed · 1 failed · 2 needs a human</code></pre>
+      <p>
+        Inicia sesión como todo lo demás. Un script que pudiera manejar el backend sin credenciales
+        sería un agujero, no una comodidad. Prefiere las variables de entorno a <code>--email</code>
+        / <code>--password</code>: un argumento acaba en el log del trabajo y en la lista de
+        procesos.
+      </p>
+    </section>
+
+    <section id="licensing">
+      <h2>Licencias</h2>
+      <p class="sub">Qué es gratis, qué necesita un asiento y dónde va una licencia.</p>
+      <p>
+        Concentus funciona sin ninguna licencia instalada: la base de datos integrada, un asiento.
+        Eso no es una prueba — nada de ello caduca ni deja de funcionar, y es con lo que arranca
+        toda instalación.
+      </p>
+
+      <h3>Qué no necesita licencia</h3>
+      <p>
+        Todo lo que usa un individuo: el lienzo, cada bloque, cada disparador, las bases de
+        conocimiento, la vía del modelo local — todo, con el límite de un asiento de arriba. Una
+        <a href="/es#license">licencia individual</a> es gratis y no cambia nada funcional; solo pone
+        un nombre en la instalación. Pide una desde el sitio y llega por correo.
+      </p>
+
+      <h3>Qué necesita una licencia enterprise</h3>
+      <p>Tres cosas, todas más allá de ese asiento único por defecto:</p>
+      <ul>
+        <li><strong>Una base de datos compartida</strong> — apuntar la instalación a un PostgreSQL al que se conecta tu equipo, en vez de al integrado.</li>
+        <li><strong>Miembros más allá del primero</strong> — a partir del segundo asiento.</li>
+        <li><strong>SSO</strong> — iniciar sesión con Microsoft, Google o Discord en vez de con una contraseña local.</li>
+      </ul>
+      <p>
+        Con precio por asiento, facturado mensual o anualmente — anual es un 10% más barato. Aún no
+        hay cifras publicadas; escribe a
+        <a href="mailto:gila791@hotmail.com?subject=Concentus%20enterprise">gila791@hotmail.com</a>
+        o usa la tarjeta enterprise de la <a href="/es#license">sección de precios</a> del sitio.
+      </p>
+
+      <h3>Dónde va una licencia</h3>
+      <p>Dos fuentes, gana la primera coincidencia:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Fuente</th><th>Cuándo usarla</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>CONCENTUS_LICENSE</code></td>
+              <td>Una variable de entorno. Para un contenedor o un despliegue por script sin disco escribible digno de mención — y siempre gana sobre el archivo de abajo mientras esté definida.</td>
+            </tr>
+            <tr>
+              <td><code>license.key</code></td>
+              <td>Junto al directorio de datos de la app. Lo que <em>Recursos → Ajustes → Licencia</em> escribe para todos los demás — pega el token que te llegó por correo y la app escribe el archivo por ti.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Caducidad y periodo de gracia</h3>
+      <p>
+        Una licencia individual nunca caduca — es gratis, así que no hay nada que vencer. Una
+        licencia enterprise caducada sigue funcionando <strong>14 días más</strong> después de su
+        fecha: la renovación es una orden de compra, no un clic, y un flow que deja de ejecutarse en
+        el momento en que cambia la fecha — a media tarde, a quien esté de guardia — es un fallo
+        peor que un aviso durante dos semanas.
+      </p>
+      <div class="note">
+        <b>Pasado el periodo de gracia</b>
+        <p>
+          La instalación no se bloquea; baja al mismo estado de un asiento y base de datos integrada
+          con el que arranca una instalación nueva, hasta que se instala una licencia renovada.
+        </p>
+      </div>
+    </section>
+
+    <section id="api">
+      <h2>API HTTP</h2>
+      <p class="sub">Lo que llama la propia interfaz.</p>
+      <p>
+        Cada escritura devuelve un token CSRF que llega como cookie legible en el primer GET. Una
+        cookie por sí sola no demostraría intención, que es toda la gracia de la cabecera.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Método</th><th>Ruta</th><th>Qué hace</th></tr></thead>
+          <tbody>
+            <tr><td>GET</td><td><code>/api/account/session</code></td><td>Quién tiene sesión iniciada, qué proveedores existen, si esta instalación necesita su primera cuenta</td></tr>
+            <tr><td>POST</td><td><code>/api/account/setup</code></td><td>Crear esa primera cuenta. Se niega en cuanto existe una</td></tr>
+            <tr><td>POST</td><td><code>/api/account/login</code></td><td>Iniciar sesión · <code>/logout</code></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/account/members</code></td><td>Miembros de la organización <span class="pill">admin</span></td></tr>
+            <tr><td>GET/PUT</td><td><code>/api/account/providers</code></td><td>Registrar Microsoft / Google / Discord <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/flows</code></td><td>Listar y guardar flows · <code>/{id}/versions</code></td></tr>
+            <tr><td>POST</td><td><code>/api/runs</code></td><td>Arrancar una ejecución · <code>/{id}/events</code> la transmite</td></tr>
+            <tr><td>GET/POST</td><td><code>/api/knowledge</code></td><td>Bases de conocimiento · <code>/{id}/documents</code> · <code>/{id}/urls</code> · <code>/{id}/refresh</code></td></tr>
+            <tr><td>POST</td><td><code>/api/knowledge/{id}/search</code></td><td>Probar una consulta contra una base</td></tr>
+            <tr><td>GET/POST</td><td><code>/api/knowledge/{id}/evals</code></td><td>El conjunto dorado · <code>/evals/run</code> lo puntúa</td></tr>
+            <tr><td>GET</td><td><code>/api/knowledge/embedder</code></td><td>Los modelos opcionales · <code>/reranker</code> · <code>…/download</code></td></tr>
+            <tr><td>GET/PUT</td><td><code>/api/settings</code></td><td>Todo lo ajustable, con el origen de cada valor <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/storage</code></td><td>Dónde viven los datos · <code>/migrate</code> los copia <span class="pill">admin</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="environment">
+      <h2>Entorno</h2>
+      <p class="sub">No se requiere nada. Estas son las excepciones que vale la pena conocer.</p>
+      <p>
+        Cuatro cosas no pueden ser ajustes, porque son lo que hay que saber antes de que haya dónde
+        guardar un ajuste.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Cuándo la necesitas</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>PERSIST_DB_URL</code><br /><code>PERSIST_DB_USER</code><br /><code>PERSIST_DB_PASSWORD</code></td>
+              <td>Apuntar a un PostgreSQL externo desde el principio. Si no, se usa el integrado, y la pantalla de Almacenamiento puede moverte más tarde.</td>
+            </tr>
+            <tr>
+              <td><code>CONCENTUS_SECRET_KEY</code></td>
+              <td>Guardar la clave de cifrado en otro sitio que no sea <code>secret.key</code> junto a los datos.</td>
+            </tr>
+            <tr>
+              <td><code>CONCENTUS_ADMIN_EMAIL</code><br /><code>CONCENTUS_ADMIN_PASSWORD</code></td>
+              <td>Crear la primera cuenta en un despliegue ante el que no se sienta nadie.</td>
+            </tr>
+            <tr>
+              <td><code>APP_DATA_DIR</code> · <code>SERVER_PORT</code></td>
+              <td>Dónde viven los datos y a qué puerto escuchar.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Todo lo demás — longitudes de cola, tiempos de espera, precios de modelos, listas de
+        permitidos, el endpoint OTLP — es un ajuste, y el entorno se sigue leyendo como la capa
+        intermedia de las tres.
+      </p>
+    </section>
+
+    <footer>
+      <p>
+        Documentación de Concentus. Donde algo de aquí es una limitación y no una función, lo dice —
+        un documento que solo lista lo que funciona es un documento en el que dejas de confiar la
+        primera vez que algo no funciona.
+      </p>
+    </footer>
+  </main>
+
+  <!-- ============================ on this page ============================ -->
+  <aside class="toc" id="toc" aria-label="En esta página">
+    <h4>En esta página</h4>
+    <div id="toc-links"></div>
+  </aside>
+</div>
+
+<script>
+  // Sidebar: highlight the section in view.
+  const links = [...document.querySelectorAll('.side a')]
+  const sections = links
+    .map((a) => document.querySelector(a.getAttribute('href')))
+    .filter(Boolean)
+
+  const spy = new IntersectionObserver(
+    (entries) => {
+      // The topmost intersecting section wins, so scrolling up highlights what you scrolled to
+      // rather than what you scrolled past.
+      const visible = entries.filter((e) => e.isIntersecting)
+      if (!visible.length) return
+      const top = visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0]
+      links.forEach((a) => a.classList.toggle('on', a.getAttribute('href') === '#' + top.target.id))
+      buildToc(top.target)
+    },
+    { rootMargin: '-80px 0px -70% 0px', threshold: 0 },
+  )
+  sections.forEach((s) => spy.observe(s))
+
+  // "On this page" follows the section you are in: a single flat list of every h3 in the document
+  // would be four screens long and useless.
+  const tocLinks = document.getElementById('toc-links')
+  let tocFor = null
+  function buildToc(section) {
+    if (tocFor === section) return
+    tocFor = section
+    const heads = [...section.querySelectorAll('h3')]
+    tocLinks.innerHTML = ''
+    if (!heads.length) {
+      document.getElementById('toc').style.visibility = 'hidden'
+      return
+    }
+    document.getElementById('toc').style.visibility = 'visible'
+    heads.forEach((h, i) => {
+      if (!h.id) h.id = section.id + '-' + i
+      const a = document.createElement('a')
+      a.href = '#' + h.id
+      a.textContent = h.textContent
+      tocLinks.appendChild(a)
+    })
+  }
+
+  // Filter: hides the entries that do not match, and any group heading left with nothing under it.
+  const filter = document.getElementById('filter')
+  filter.addEventListener('input', () => {
+    const q = filter.value.trim().toLowerCase()
+    let group = null
+    let groupHasMatch = false
+    const flush = () => {
+      if (group) group.style.display = groupHasMatch ? '' : 'none'
+    }
+    for (const node of document.getElementById('side').children) {
+      if (node.tagName === 'H4') {
+        flush()
+        group = node
+        groupHasMatch = false
+      } else if (node.tagName === 'A') {
+        const hit = !q || node.textContent.toLowerCase().includes(q)
+        node.classList.toggle('hidden', !hit)
+        if (hit) groupHasMatch = true
+      }
+    }
+    flush()
+  })
+
+  // Contents on a narrow screen.
+  document.getElementById('menu').addEventListener('click', () => {
+    document.getElementById('side').classList.toggle('open')
+  })
+  document.querySelectorAll('.side a').forEach((a) =>
+    a.addEventListener('click', () => document.getElementById('side').classList.remove('open')),
+  )
+</script>
+</body>
+</html>

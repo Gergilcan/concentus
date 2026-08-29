@@ -1,0 +1,1541 @@
+<!doctype html>
+<html lang="ca">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Documentació de Concentus</title>
+<meta name="description" content="Com funciona Concentus: el llenç i els seus blocs, bases de coneixement i recuperació híbrida, activadors, equips i rols, configuració, traces i l'API HTTP." />
+<meta name="theme-color" content="#0e1117" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Documentació de Concentus" />
+<meta property="og:description" content="El llenç, les bases de coneixement i la recuperació, els activadors, els equips, la configuració i l'API — tot el que l'app fa de debò." />
+<link rel="alternate" hreflang="en" href="https://www.concentus-ai.com/docs" />
+<link rel="alternate" hreflang="es" href="https://www.concentus-ai.com/es/docs" />
+<link rel="alternate" hreflang="ca" href="https://www.concentus-ai.com/ca/docs" />
+<link rel="alternate" hreflang="x-default" href="https://www.concentus-ai.com/docs" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cpath d='M25 16 L20.5 23.8 L11.5 23.8 L7 16 L11.5 8.2 L20.5 8.2 Z' fill='none' stroke='%236ea8fe' stroke-width='2.6' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" />
+<style>
+  /*
+   * The application's own tokens, so the site and the app cannot drift apart. Every value below
+   * is copied from apps/frontend/src/styles/global.scss (the dark palette, which is its default);
+   * only --faint is derived, because the app has no tertiary text role and this page needs one.
+   */
+  :root {
+    color-scheme: dark;
+    --bg: #0e1117;
+    --panel: #161b22;
+    --panel-2: #1c2230;
+    --line: #2a3140;
+    --text: #e6edf3;
+    --muted: #98a2ad;
+    --faint: #6e7a89;
+
+    --accent: #6ea8fe;
+    --agent: #6ea8fe;
+    --coordinator: #b98cff;
+    --mcp: #63e6be;
+    --repo: #ffd43b;
+    --sql: #ff922b;
+    --api: #e64980;
+    --knowledge: #b98cff;
+    --merge: #ffa94d;
+    --verifier: #94d82d;
+    --gate: #f783ac;
+    --subflow: #4dabf7;
+
+    --danger: #ff6b6b;
+    --ok: #51cf66;
+    --warn: #ffd43b;
+    --accent-soft: rgba(110, 168, 254, 0.12);
+    --on-accent: #08111f;
+
+    /* The three type roles the app defines: display for brand and titles, system sans for
+       density, mono for data. Anything else would be a fourth voice nothing asked for. */
+    --display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+
+    --r: 8px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 86px; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15.5px;
+    line-height: 1.72;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+  /* The canvas ground, at the gap and size FlowCanvas actually renders it. */
+  .bg {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background-color: var(--bg);
+    background-image: radial-gradient(circle, var(--line) 1px, transparent 1px);
+    background-size: 18px 18px;
+    opacity: 0.5;
+  }
+
+  /* ------------------------------ top bar ------------------------------ */
+  /* The application's own header, reused: same metrics, same control shapes. */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(12px);
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-in {
+    display: flex; align-items: center; gap: 14px; height: 62px;
+    max-width: 1380px; margin: 0 auto; padding: 0 24px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 6px; color: var(--text);
+    font-family: var(--display); font-weight: 700; font-size: 15px; letter-spacing: 0.01em;
+  }
+  .brand:hover { text-decoration: none; }
+  .hex { color: var(--accent); font-size: 15.5px; }
+  .badge {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px;
+  }
+  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .nav-right a {
+    color: var(--muted); font-size: 12.5px; padding: 4px 10px;
+    border-radius: 6px; border: 1px solid transparent;
+  }
+  .nav-right a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+  .menu-btn {
+    display: none; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 11px; font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .menu-btn:hover { border-color: var(--accent); }
+
+  /* ------------------------------ layout ------------------------------ */
+  .shell {
+    display: grid;
+    grid-template-columns: 252px minmax(0, 1fr) 208px;
+    gap: 40px;
+    max-width: 1380px;
+    margin: 0 auto;
+    padding: 0 24px 120px;
+  }
+
+  /* ------------------------------ sidebar ------------------------------ */
+  .side {
+    position: sticky; top: 62px; align-self: start;
+    max-height: calc(100vh - 62px);
+    overflow-y: auto;
+    padding: 22px 0 40px;
+  }
+  .filter {
+    width: 100%; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 7px 10px; font: inherit; font-size: 12.5px; margin-bottom: 16px;
+  }
+  .filter::placeholder { color: var(--faint); }
+  .filter:hover { border-color: var(--accent); }
+  .side h4 {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--faint); margin: 22px 0 6px; padding: 0 10px; font-weight: 400;
+  }
+  .side h4:first-of-type { margin-top: 0; }
+  /* Same shape as the app's own nav buttons: 6px radius, a bordered panel when active. */
+  .side a {
+    display: block; color: var(--muted); font-size: 13px; padding: 5px 10px;
+    border-radius: 6px; border: 1px solid transparent;
+  }
+  .side a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+  .side a.on { color: var(--text); background: var(--panel-2); border-color: var(--line); }
+  .side a.hidden { display: none; }
+
+  /* ------------------------------ content ------------------------------ */
+  main { padding: 44px 0 0; min-width: 0; }
+  .lede { max-width: 70ch; padding-bottom: 32px; border-bottom: 1px solid var(--line); }
+  .lede h1 {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(30px, 4.2vw, 38px); line-height: 1.12; letter-spacing: -0.025em;
+    margin: 0 0 14px; text-wrap: balance;
+  }
+  .lede p { color: var(--muted); font-size: 17px; margin: 0 0 10px; }
+
+  /* A rule between sections rather than whitespace alone: this is a reference document, and the
+     eye needs a boundary to land on when it jumps rather than reads. */
+  section { padding-top: 40px; margin-top: 44px; border-top: 1px solid var(--line); max-width: 76ch; scroll-margin-top: 86px; }
+  section:first-of-type { border-top: 0; margin-top: 0; }
+  section > h2 {
+    font-family: var(--display); font-weight: 700;
+    font-size: 24px; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 8px;
+    text-wrap: balance; scroll-margin-top: 86px;
+  }
+  section > h2 + .sub { color: var(--muted); font-size: 15px; margin: 0 0 18px; }
+  h3 {
+    font-family: var(--display); font-weight: 600;
+    font-size: 16.5px; letter-spacing: -0.01em; margin: 30px 0 8px;
+  }
+  p { margin: 0 0 14px; }
+  ul, ol { margin: 0 0 14px; padding-left: 20px; }
+  li { margin: 6px 0; }
+  strong { color: var(--text); font-weight: 600; }
+  em { color: var(--muted); font-style: italic; }
+
+  code {
+    font-family: var(--mono); font-size: 0.85em;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 6px; color: var(--text);
+  }
+  pre {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--r); padding: 14px 16px; overflow-x: auto; margin: 0 0 16px;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: 13px; line-height: 1.65; }
+
+  /* The border lives on the wrapper so a scrolling table keeps a frame on both edges. */
+  .tablewrap {
+    overflow-x: auto; margin: 0 0 18px;
+    border: 1px solid var(--line); border-radius: var(--r);
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--faint); font-weight: 400; padding-top: 12px;
+  }
+  td { color: var(--muted); }
+  td strong { color: var(--text); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td code { white-space: nowrap; }
+
+  .note, .warn {
+    border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: var(--r);
+    padding: 15px 17px; margin: 0 0 18px; background: var(--accent-soft);
+  }
+  .note b, .warn b {
+    display: block; font-size: 14.5px; color: var(--text);
+    font-weight: 600; margin-bottom: 6px;
+  }
+  .note p, .warn p { color: var(--muted); font-size: 14.5px; }
+  .warn { border-left-color: var(--danger); background: rgba(255, 107, 107, 0.09); }
+  .note p:last-child, .warn p:last-child { margin-bottom: 0; }
+
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; background: var(--line); border-radius: 10px;
+    padding: 1px 6px; color: var(--muted); vertical-align: middle;
+  }
+
+  /* ------------------------------ on this page ------------------------------ */
+  .toc {
+    position: sticky; top: 62px; align-self: start;
+    max-height: calc(100vh - 62px); overflow-y: auto;
+    padding: 46px 0 40px;
+  }
+  .toc h4 {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--faint); margin: 0 0 10px; padding-left: 12px; font-weight: 400;
+  }
+  .toc a {
+    display: block; color: var(--faint); font-size: 12.5px;
+    padding: 5px 0 5px 12px; border-left: 1px solid var(--line);
+  }
+  .toc a:hover { color: var(--text); text-decoration: none; }
+  .toc a.on { color: var(--accent); border-left-color: var(--accent); }
+
+  footer {
+    border-top: 1px solid var(--line); margin-top: 72px; padding-top: 22px;
+    color: var(--faint); font-size: 14px; max-width: 76ch;
+  }
+
+  @media (max-width: 1180px) {
+    .shell { grid-template-columns: 236px minmax(0, 1fr); }
+    .toc { display: none; }
+  }
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .menu-btn { display: block; }
+    .nav-in { gap: 10px; }
+    .nav-right a { padding: 4px 8px; }
+    .side {
+      display: none; position: static; max-height: none; padding: 16px 0 6px;
+      border-bottom: 1px solid var(--line);
+    }
+    .side.open { display: block; }
+    main { padding-top: 28px; }
+    section { padding-top: 32px; margin-top: 36px; }
+  }
+  /* Narrow enough that Contents, the languages and GitHub are all the bar can carry; below that,
+     GitHub goes too — it is a link away on the landing page, and the languages are not. */
+  @media (max-width: 560px) {
+    .nav-right > a:not(:last-of-type) { display: none; }
+    .lang span { display: none; }
+  }
+  @media (max-width: 440px) {
+    .nav-right > a, .badge { display: none; }
+  }
+
+  /* ------------------------------ language switcher ------------------------------ */
+  /* Three links, the current one framed. Same spot as on the landing page: the header's
+     right-hand group, just before GitHub. */
+  .lang { display: flex; align-items: center; font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.04em; margin: 0 4px; }
+  .nav .lang a { color: var(--muted); padding: 3px 5px; border-radius: 4px; border: 1px solid transparent; font-size: inherit; }
+  .nav .lang a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+  .nav .lang a.on { color: var(--text); border-color: var(--line); }
+  .lang span { color: var(--line); }
+</style>
+</head>
+<body>
+<div class="bg"></div>
+
+<header class="nav">
+  <div class="nav-in">
+    <a class="brand" href="/ca"><span class="hex">⬡</span> Concentus</a>
+    <span class="badge">Docs</span>
+    <div class="nav-right">
+      <button class="menu-btn" id="menu">Índex</button>
+      <a href="/ca#features">Funcions</a>
+      <a href="/ca#download">Descarregar</a>
+      <nav class="lang" aria-label="Idioma"><a href="/docs" hreflang="en" lang="en">EN</a><span>·</span><a href="/es/docs" hreflang="es" lang="es">ES</a><span>·</span><a href="/ca/docs" hreflang="ca" lang="ca" class="on" aria-current="page">CA</a></nav>
+      <a href="https://github.com/Gergilcan/concentus">GitHub</a>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+
+  <!-- ============================ sidebar ============================ -->
+  <nav class="side" id="side">
+    <input class="filter" id="filter" type="search" placeholder="Filtra…" aria-label="Filtra l'índex" />
+
+    <h4>Començar</h4>
+    <a href="#what">Què és</a>
+    <a href="#install">Instal·lació</a>
+    <a href="#first-run">Primera arrencada</a>
+    <a href="#paying">Pagar les execucions</a>
+
+    <h4>Construir</h4>
+    <a href="#canvas">El llenç</a>
+    <a href="#blocks">Blocs</a>
+    <a href="#triggers">Activadors</a>
+    <a href="#subflows">Subflows</a>
+    <a href="#workers">Workers independents</a>
+
+    <h4>Dades</h4>
+    <a href="#knowledge">Bases de coneixement</a>
+    <a href="#retrieval">Recuperació</a>
+    <a href="#measuring">Mesurar la recuperació</a>
+    <a href="#sql">Fonts SQL</a>
+    <a href="#apis">APIs i MCP</a>
+
+    <h4>Executar</h4>
+    <a href="#runs">Execucions i la consola</a>
+    <a href="#approvals">Aprovacions</a>
+    <a href="#versions">Versions i execucions daurades</a>
+
+    <h4>Operar</h4>
+    <a href="#teams">Equips i inici de sessió</a>
+    <a href="#storage">Emmagatzematge</a>
+    <a href="#settings">Configuració</a>
+    <a href="#updates">Actualitzacions</a>
+    <a href="#telemetry">Traces i mètriques</a>
+    <a href="#cli">CLI sense interfície</a>
+    <a href="#licensing">Llicències</a>
+
+    <h4>Referència</h4>
+    <a href="#api">API HTTP</a>
+    <a href="#environment">Entorn</a>
+  </nav>
+
+  <!-- ============================ content ============================ -->
+  <main>
+    <div class="lede">
+      <h1>Documentació de Concentus</h1>
+      <p>
+        Què fa l'aplicació, per què ho fa així i on cal fer clic. Escrit contra l'app tal com es
+        distribueix — on una cosa és una limitació, ho diu, en comptes de deixar que ho descobreixis
+        tu.
+      </p>
+    </div>
+
+    <section id="what">
+      <h2>Què és</h2>
+      <p class="sub">Una app d'escriptori per construir i executar equips d'agents d'IA.</p>
+      <p>
+        Dibuixes un flow en un llenç: un activador, un o més agents, i les eines i dades a què poden
+        arribar. Concentus l'executa amb la sessió de Claude que ja tens a la teva màquina — sense
+        servidor per desplegar, sense base de dades per aprovisionar, sense API key per enganxar.
+      </p>
+      <p>
+        El flow que dibuixes és el flow que s'executa. No hi ha cap fitxer de configuració darrere
+        del dibuix que el pugui contradir, i aquesta és la propietat que fa que un llenç valgui la
+        pena.
+      </p>
+    </section>
+
+    <section id="install">
+      <h2>Instal·lació</h2>
+      <p class="sub">Windows i Linux. Un instal·lador, res més.</p>
+      <p>
+        Descarrega'l des de la <a href="/ca#download">pàgina de descàrregues</a> i obre'l. L'app porta
+        el seu propi runtime de Java i el seu propi PostgreSQL, així que no hi ha res a instal·lar a
+        banda.
+      </p>
+      <p>
+        Per executar el backend pel seu compte — un servidor, un contenidor, una màquina davant de la qual no hi seu ningú:
+      </p>
+      <h3>Gestors de paquets</h3>
+      <p>
+        També es pot instal·lar amb un gestor de paquets — cosa que esquiva l'avís de l'SmartScreen
+        que rep una baixada sense signar des del navegador, perquè el fitxer mai no porta la marca
+        d'origen web del navegador:
+      </p>
+      <pre><code># Windows — scoop (the bucket lives in the main repository)
+scoop bucket add concentus https://github.com/Gergilcan/concentus
+scoop install concentus
+
+# Windows — winget
+winget install concentus
+
+# macOS — Homebrew
+brew tap gergilcan/concentus
+brew install --cask concentus
+
+# Anywhere with Node — fetches the right installer from Releases
+npx concentus</code></pre>
+      <p>
+        Actualitzar: winget, brew i els instal·ladors normals conserven l'actualitzador integrat a
+        l'app; una instal·lació amb scoop s'actualitza amb <code>scoop update concentus</code>.
+      </p>
+      <p>
+        A Windows, que l'SmartScreen avisi sobre el <code>.exe</code> baixat és <em>normal</em>:
+        l'instal·lador encara no està signat, i Windows ho diu de tota baixada sense signar. <em>Més
+        informació → Executa de totes maneres</em> tira endavant; els gestors de paquets de dalt
+        eviten l'avís del tot. La compilació per a macOS no té cap mur equivalent — està signada i
+        notaritzada, així que el Gatekeeper l'obre com qualsevol app propera a l'App Store.
+      </p>
+
+      <h3>El backend a pèl</h3>
+      <pre><code>java -jar concentus-backend.jar</code></pre>
+      <p>
+        Sense cap entorn, això arrenca un PostgreSQL integrat, genera la seva pròpia clau de
+        xifratge i demana un primer compte a <code>http://localhost:8080</code>.
+      </p>
+      <div class="note">
+        <b>Executar agents necessita la CLI de Claude — o una clau</b>
+        <p>
+          Els flows s'executen a través de Claude Code a la màquina que fa anar el backend, o contra
+          l'API d'Anthropic amb una clau. La pantalla de configuració pregunta quina, i instal·la i
+          inicia sessió per tu si tries la primera. Vegeu <a href="#paying">Pagar les
+          execucions</a>.
+        </p>
+      </div>
+    </section>
+
+    <section id="first-run">
+      <h2>Primera arrencada</h2>
+      <p class="sub">Crea el compte propietari de la instal·lació.</p>
+      <p>
+        La primera arrencada mostra una pantalla de configuració. Crea un compte amb un correu i una
+        contrasenya, o inicia sessió amb Google, Microsoft o Discord si n'has registrat algun — en
+        qualsevol cas, la primera identitat que travessa la porta administra la instal·lació.
+      </p>
+      <p>
+        Tots els que vénen després arriben com a <strong>Lector</strong>. Arribar amb un compte
+        d'empresa vàlid demostra qui és algú, no què hauria de poder canviar.
+      </p>
+      <p>
+        La interfície parla <strong>anglès, castellà i català</strong>. Segueix l'idioma del teu
+        sistema per defecte; la tria viu al costat del tema a <em>Recursos → Configuració</em>,
+        s'aplica a l'instant i pertany a aquest navegador, no a la instal·lació.
+      </p>
+      <div class="warn">
+        <b>Servidors accessibles abans que algú els reclami</b>
+        <p>
+          En un desplegament davant del qual no hi seu ningú, defineix
+          <code>CONCENTUS_ADMIN_EMAIL</code> i <code>CONCENTUS_ADMIN_PASSWORD</code> abans de la
+          primera arrencada. Si no, la finestra entre que el port s'obre i tu hi arribes és una
+          finestra en què algú altre podria reclamar la instal·lació.
+        </p>
+      </div>
+    </section>
+
+    <section id="paying">
+      <h2>Pagar les execucions</h2>
+      <p class="sub">Una subscripció que ja tens, o una clau facturada per token.</p>
+      <p>
+        La pantalla de configuració ho pregunta un cop, abans d'instal·lar res — perquè la resposta
+        decideix si cal instal·lar res.
+      </p>
+
+      <h3>La teva subscripció de Claude</h3>
+      <p>
+        L'opció per defecte, i la més barata: els flows s'executen a través de Claude Code en
+        aquesta màquina, amb la subscripció que ja pagues. No hi ha clau per cuidar, ni segona
+        factura pel que càpiga a la bossa d'ús no interactiu de Claude Code del teu pla — Anthropic
+        mesura aquesta bossa per separat de les teves sessions interactives, la pàgina d'Ús mesura
+        el que ha consumit aquesta màquina, i un flow pot recórrer a una API key o a un model local
+        quan s'esgota. Necessita la CLI instal·lada i amb la sessió iniciada un cop, i Concentus fa
+        totes dues coses des de la pantalla de configuració: un botó executa l'instal·lador oficial
+        d'Anthropic, i s'obre un terminal <em>en el mateix inici de sessió</em> — no en un prompt on
+        el següent que cal saber és que s'escriu <code>/login</code>.
+      </p>
+      <p>
+        El binari instal·lat s'afegeix també al teu PATH, així que <code>claude</code> és una ordre
+        que tens a partir de llavors, i no una cosa que només Concentus sap trobar. A Windows això
+        és el Path per usuari del registre, escrit directament — mai a través de <code>setx</code>,
+        que trunca un PATH llarg a 1024 caràcters i s'endú la meitat de les teves eines pel davant.
+        A Linux i macOS és una línia als fitxers d'arrencada que existeixin, escrita un cop i
+        marcada perquè una segona instal·lació no n'afegeixi una segona còpia.
+      </p>
+
+      <h3>Una API key d'Anthropic</h3>
+      <p>
+        Res a instal·lar i sense inici de sessió: l'adequat per a una màquina davant de la qual no
+        hi seu ningú. Enganxa la clau a la pantalla de configuració i es guarda al clauer del
+        sistema operatiu, només en aquella màquina. On no hi ha clauer — un servidor sense sessió
+        d'escriptori — és un fitxer llegible únicament per aquell compte, i la pantalla ho diu en
+        comptes de fingir el contrari.
+      </p>
+      <div class="note">
+        <b>Canviar d'idea</b>
+        <p>
+          La pantalla de configuració torna a ser accessible des de <b>Configuració…</b> a la icona
+          de safata de Concentus. Una clau que ja sigui a l'entorn com a
+          <code>ANTHROPIC_API_KEY</code> continua funcionant; una de desada a l'app hi té prioritat.
+        </p>
+      </div>
+    </section>
+
+    <section id="canvas">
+      <h2>El llenç</h2>
+      <p class="sub">On es dibuixa un flow, i què vol dir el dibuix.</p>
+      <p>
+        Els blocs s'afegeixen des de la paleta de l'esquerra. Un bloc nou es col·loca enganxat a
+        aquell al qual s'acobla — la cadena va d'esquerra a dreta, i les capacitats pengen a sota —
+        i quan exactament un bloc existent pot acceptar legalment la connexió, el cable es dibuixa
+        per tu.
+      </p>
+      <p>
+        Seleccionar un bloc envolta el que l'alimenta i el que ell alimenta, un salt en cada
+        direcció. Un doble clic n'obre les propietats; un bloc enfocat amb <code>Tab</code> s'obre
+        amb <code>Enter</code>.
+      </p>
+
+      <h3>Desfer, endreçar, guies</h3>
+      <p>
+        Cada canvi al llenç es pot desfer — <code>Ctrl</code>+<code>Z</code> /
+        <code>Ctrl</code>+<code>Y</code>, o els botons ↶ ↷ — inclòs esborrar un bloc, que abans era
+        irreversible tret de recarregar sense desar. Una ràfega d'escriptura en un inspector compta
+        com un pas, i un arrossegament com un pas, així que desfer es mou en les unitats en què
+        penses.
+      </p>
+      <p>
+        <strong>⌗ Endreçar</strong> disposa un flow que va créixer a mà: la cadena d'esquerra a
+        dreta, les capacitats penjades sota els seus agents — la mateixa forma que dibuixa el llenç
+        quan col·loca els blocs per tu. Una disposició que odiïs és a un
+        <code>Ctrl</code>+<code>Z</code> de desaparèixer. En arrossegar, les guies d'alineació
+        ajusten un bloc a les vores i centres dels seus veïns.
+      </p>
+      <p>
+        Els cables es tenyeixen segons la sortida de la qual surten: el camí <strong>si
+        falla</strong> en vermell i discontinu, el camí <strong>si no</strong> en ambre — perquè a
+        tres passos de distància el camí de l'error i el de l'èxit deixin de semblar idèntics.
+      </p>
+
+      <h3>Què vol dir un cable</h3>
+      <p>
+        La direcció té significat, així que el llenç rebutja un cable que no en tindria: un agent no
+        pot alimentar el seu servidor MCP, i una base de coneixement no pot alimentar una font SQL,
+        perquè cap dels dos té res a fer amb el que arriba. Només els <strong>consumidors</strong> —
+        agents, merges, verificadors — poden ser a l'extrem receptor d'una capacitat.
+      </p>
+
+      <h3>Dues sortides per bloc</h3>
+      <p>
+        Cada bloc que s'executa té una segona sortida sota la principal, i el cable recorda de quina
+        va sortir. En un agent, un subflow, una crida a API, un merge o un verificador és <strong>si
+        falla</strong>: la branca cablejada allà només s'executa quan el bloc va fallar, i rep el
+        mateix error, amb el nom del bloc que el va produir — <em>«Presupuestos ha fallat: la bústia
+        ha rebutjat la credencial»</em> és una cosa sobre la qual una branca de recuperació pot
+        actuar, i «l'execució ha fallat» no ho és.
+      </p>
+      <p>
+        Una execució l'error de la qual es va gestionar així <strong>es completa</strong>. Algú va
+        dibuixar què havia de passar quan surt malament i va passar; deixar l'execució en vermell
+        informaria d'un error desatès per funcionar com es va dissenyar. Sense res cablejat a la
+        sortida d'error, un error es comporta exactament com sempre.
+      </p>
+      <p>
+        En una <strong>condició</strong> la segona sortida és <strong>si no</strong>. La branca
+        principal s'executa quan la prova es compleix, la branca «si no» quan no — una sola prova
+        llegida des de tots dos costats. Abans, «si és urgent fes X, si no Y» requeria dues
+        condicions amb proves oposades, i les dues podien separar-se fins que alguna entrada caigués
+        entre elles. Després d'un «per a cada», la branca «si no» rep els elements rebutjats en
+        comptes de llençar-los a terra.
+      </p>
+
+      <h3>Teclat</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Tecles</th><th>Què fa</th></tr></thead>
+          <tbody>
+            <tr><td><code>Ctrl</code> + <code>K</code></td><td>Paleta d'ordres — arriba a qualsevol vista o acció</td></tr>
+            <tr><td><code>Ctrl</code> + <code>C</code> / <code>V</code></td><td>Copiar i enganxar blocs. El text seleccionat guanya: el llenç s'aparta</td></tr>
+            <tr><td><code>Ctrl</code> + <code>D</code></td><td>Duplicar el bloc seleccionat</td></tr>
+            <tr><td><code>Ctrl</code> + <code>Z</code> / <code>Y</code></td><td>Desfer / refer qualsevol canvi del llenç, esborrats inclosos</td></tr>
+            <tr><td><code>Delete</code></td><td>Eliminar la selecció (es pot desfer)</td></tr>
+            <tr><td><code>Enter</code></td><td>Obrir les propietats del bloc enfocat</td></tr>
+            <tr><td><code>Esc</code></td><td>Tancar el diàleg de propietats</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="blocks">
+      <h2>Blocs</h2>
+      <p class="sub">Cada tipus de caixa, i quan recórrer-hi.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Bloc</th><th>Què és</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>Entrada / activador</strong></td>
+              <td>D'on surt el text de l'execució: escrit per tu, una programació, un webhook o un correu entrant.</td>
+            </tr>
+            <tr>
+              <td><strong>Agent</strong></td>
+              <td>Un model amb un system prompt, un nivell d'esforç i un sostre de tokens. El primer agent d'un llenç es converteix en el coordinador.</td>
+            </tr>
+            <tr>
+              <td><strong>Verificador</strong></td>
+              <td>Llegeix un resultat i retorna un veredicte. El seu punt final és un veredicte, no una conversa.</td>
+            </tr>
+            <tr>
+              <td><strong>Merge</strong></td>
+              <td>Reconcilia el que van produir diverses branques en una sola resposta. Arriba a MCP igual que un agent.</td>
+            </tr>
+            <tr>
+              <td><strong>Servidor MCP</strong></td>
+              <td>Eines que un agent pot cridar. Els servidors HTTP passen per un proxy; els servidors stdio els llança el mateix worker.</td>
+            </tr>
+            <tr>
+              <td><strong>Repositori</strong></td>
+              <td>Una còpia git en què treballa l'agent — llegir el codi, canviar-lo, obrir un pull request.</td>
+            </tr>
+            <tr>
+              <td><strong>Font SQL</strong></td>
+              <td>Una consulta de només lectura les files de la qual s'injecten com a context abans que l'agent arrenqui.</td>
+            </tr>
+            <tr>
+              <td><strong>API / endpoint</strong></td>
+              <td>Qualsevol endpoint HTTP com a eina tipada — des d'un document OpenAPI, o des d'una URL que escrius.</td>
+            </tr>
+            <tr>
+              <td><strong>Base de coneixement</strong></td>
+              <td>Documents dels quals l'agent pot recuperar passatges. Vegeu <a href="#knowledge">Bases de coneixement</a>.</td>
+            </tr>
+            <tr>
+              <td><strong>Condició</strong></td>
+              <td>Envia l'execució per un camí o un altre segons el que realment va tornar.</td>
+            </tr>
+            <tr>
+              <td><strong>Per a cada</strong></td>
+              <td>Pren una llista i executa la mateixa branca sobre cada element.</td>
+            </tr>
+            <tr>
+              <td><strong>Executar un altre flow</strong></td>
+              <td>Un flow dins d'un flow. Vegeu <a href="#subflows">Subflows</a>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="triggers">
+      <h2>Activadors</h2>
+      <p class="sub">Quatre maneres d'arrencar una execució.</p>
+      <ul>
+        <li><strong>Manual</strong> — escrius el primer missatge a la consola.</li>
+        <li><strong>Programació</strong> — una expressió cron, construïda a partir d'opcions senzilles en comptes d'escrita a mà. La targeta del llenç ho diu amb paraules: <em>cada 15 minuts els dies feiners</em>.</li>
+        <li><strong>Webhook</strong> — una URL amb un secret. Fer-hi un POST arrenca el flow amb el cos de la petició.</li>
+        <li><strong>Correu</strong> — se sondeja una carpeta IMAP i cada missatge que coincideix arrenca una execució. IMAP i no SMTP, perquè les carpetes, les marques i l'estat de llegit són el que fa possible «processa això un sol cop».</li>
+      </ul>
+      <div class="note">
+        <b>Un flow duplicat arriba en pausa</b>
+        <p>
+          I sense el secret del webhook de l'original. Copiar una programació activa et donaria dos
+          flows saltant cada matí, que no és el que «duplicar» vol dir per a ningú.
+        </p>
+      </div>
+    </section>
+
+    <section id="subflows">
+      <h2>Subflows</h2>
+      <p class="sub">Un flow dins d'un flow, cablejat de dues maneres.</p>
+      <p>
+        Cableja un flow <em>cap a</em> un agent i s'executa primer, amb el text amb què va arrencar
+        aquesta execució, i la seva resposta arriba com a context. Cableja'l <em>des d'</em>un agent
+        i s'executa quan aquell agent acaba — un relleu. El dibuix diu quin dels dos, així que no hi
+        ha cap desplegable que el pugui contradir.
+      </p>
+      <p>
+        L'agent també rep una eina <code>run_flow</code> per al mateix flow, per poder tornar a
+        preguntar amb les seves pròpies paraules quan la primera resposta planteja un dubte. Les
+        dues no són redundants: una és el que el flow sempre necessita, l'altra és el que aquesta
+        execució concreta va resultar necessitar.
+      </p>
+      <p>
+        Un fill s'executa amb el seu propi pressupost i el seu propi mode de permisos. Els cicles es
+        tallen amb una cadena d'ancestres, i la imbricació s'atura a tres nivells de profunditat.
+      </p>
+    </section>
+
+    <section id="workers">
+      <h2>Workers independents</h2>
+      <p class="sub">Un procés per agent, amb l'accés a eines imposat de debò.</p>
+      <p>
+        Per la via de sessió compartida, una execució local és un sol procés de la CLI per a tot el
+        flow, així que les carpetes de context i les llistes de delegació s'escriuen a les
+        instruccions de cada agent en comptes d'imposar-se: a un agent se li diu quines carpetes i
+        quins agents són seus, i tot i així podria arribar als altres.
+      </p>
+      <p>
+        Els workers independents són la cosa de debò. Cada agent rep el seu propi procés i la seva
+        pròpia finestra de context, i arriba a MCP a través d'una <strong>façana</strong> que
+        decideix quines eines pot cridar i si les escriptures es bloquegen (només lectura) o se
+        simulen (dry-run) — imposat pel backend a cada crida, no demanant-ho al model per favor.
+      </p>
+      <p>
+        Un sostre mana per sobre de tota la resta: <code>execution.max-processes</code>
+        (Configuració, 10 per defecte) limita el total de processos <code>claude</code> a la
+        màquina, sigui quina sigui l'execució o el repartiment que els va arrencar. Els límits per
+        grup es multipliquen — vuit execucions de quatre workers serien trenta-dos processos,
+        cadascun de centenars de MB — i això limita el producte. Un worker que no hi cap espera un
+        forat, i la seva execució ho diu; apujar el paràmetre allibera la feina en cua sense
+        reiniciar.
+      </p>
+      <h3>Què passa entre ells</h3>
+      <p>
+        Dues eines, i res més. <code>share_finding</code> explica als altres workers una cosa que
+        altrament haurien de descobrir pel seu compte — un fet establert, un carreró sense sortida
+        que no val la pena repetir, una font que va resultar estar equivocada.
+        <code>read_findings</code> llegeix el que han dit. Val la pena cridar-la abans de començar
+        qualsevol cosa que soni a que ja pot estar feta.
+      </p>
+      <p>
+        Deliberadament estret: notes curtes, sense conversa, i sense manera de preguntar res a un
+        germà i esperar resposta. Un worker que es pogués bloquejar esperant un altre worker seria
+        un worker que pot quedar-se en interbloqueig amb ell. Les notes són esborrany — pertanyen a
+        aquesta execució, no al flow — i el pas de merge les llegeix al costat dels informes, perquè
+        una nota sovint és la raó per la qual un informe diu el que diu.
+      </p>
+
+      <h3>Quan un agent deixa d'avançar</h3>
+      <p>
+        A un agent que crida la mateixa eina amb els mateixos arguments i obté la mateixa resposta
+        tres cops seguits se li rebutja un cop, i se li diu què ha estat fent. La regla és mateixa
+        eina, mateixos arguments <em>i</em> mateix resultat: un sondeig d'estat la resposta del qual
+        canvia no es toca mai, que és la diferència entre esperar i donar voltes. Els errors també
+        compten — hi ha tan poc a aprendre del quarantè error idèntic com del quarantè èxit idèntic.
+      </p>
+      <p>
+        És un ressalt, no un mur. El comptador es reinicia després d'un rebuig, així que un agent
+        que de debò està esperant alguna cosa es retarda en comptes d'aturar-se; rebutjar per sempre
+        convertiria una manera d'estalviar diners en una manera de trencar una execució que estava a
+        punt de sortir bé.
+      </p>
+
+      <div class="warn">
+        <b>Els servidors stdio els llança el worker</b>
+        <p>
+          Una façana només pot mediar HTTP. Un perfil que retira una eina d'un servidor stdio retira
+          el servidor sencer, perquè no es pot imposar res a un procés que la façana no veu mai.
+        </p>
+      </div>
+    </section>
+
+    <section id="knowledge">
+      <h2>Bases de coneixement</h2>
+      <p class="sub">Material de referència massa gran per lliurar-lo sencer.</p>
+      <p>
+        Una base de coneixement és una col·lecció amb nom de documents dels quals un agent recupera
+        passatges. És diferent d'una carpeta de context, i la diferència és a quina recórrer en cada
+        cas: una carpeta de context lliura a l'agent els mateixos fitxers — l'adequat quan els
+        fitxers <em>són</em> la feina, com un repositori. Una base de coneixement és per a manuals,
+        polítiques i informes passats, on només s'han d'injectar els passatges rellevants per a la
+        tasca.
+      </p>
+
+      <h3>Què s'hi pot posar</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Font</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>PDF</td><td>Capa de text. Un escaneig sense capa de text passa per OCR si està instal·lat.</td></tr>
+            <tr><td>Word <code>.docx</code></td><td>Paràgrafs i taules. Les taules surten delimitades per barres verticals perquè una cita conservi les columnes.</td></tr>
+            <tr><td>Excel / CSV</td><td>Fulls com a files.</td></tr>
+            <tr><td>PowerPoint <code>.pptx</code></td><td>Diapositiva a diapositiva, numerades, amb les notes de l'orador — que sovint és on viu la frase que explica una diapositiva de quatre paraules.</td></tr>
+            <tr><td>Text, Markdown, HTML</td><td>Tal com estan escrits.</td></tr>
+            <tr><td>Imatges</td><td>A través d'OCR, quan està instal·lat.</td></tr>
+            <tr><td>Pàgines web</td><td>Per adreça. Vegeu més avall.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Es poden pujar carpetes senceres d'un cop, amb exclusions per carpeta — una carpeta real
+        sempre té un <code>.gitignore</code> o una imatge perduda en algun lloc.
+      </p>
+
+      <h3>Pàgines</h3>
+      <p>
+        <strong>Afegeix una pàgina</strong> pren una URL. El document s'arxiva sota aquella adreça,
+        així que afegir-lo un altre cop el substitueix en comptes d'arxivar-ne una segona còpia —
+        que és el que fa que <strong>Actualitza les pàgines</strong> vulgui dir alguna cosa: un clic
+        torna a baixar cada pàgina de la base quan la wiki avança. Els fitxers pujats no es toquen
+        en una actualització; un fitxer que algú va triar no té adreça a la qual tornar.
+      </p>
+      <p>
+        Es baixa una adreça — els enllaços de la pàgina no se segueixen. Un rastrejador que vagareja
+        ingereix tota la intranet perquè algú va enganxar una pàgina de navegació, i després respon
+        preguntes amb el menú de la cafeteria.
+      </p>
+      <div class="warn">
+        <b>Baixar a petició és un privilegi</b>
+        <p>
+          Un servidor que baixa una adreça que tu escrius pot arribar molt més lluny que tu. Les
+          adreces de loopback, link-local i de metadades del núvol es rebutgen, les redireccions es
+          tornen a comprovar a cada salt, i un host que no resol falla tancat. Anomena hosts a
+          <code>knowledge.allowed-web-hosts</code> per admetre els que altrament estarien
+          bloquejats.
+        </p>
+      </div>
+
+      <h3>Qui pot llegir una base</h3>
+      <p>
+        Qualsevol altre recurs d'aquí és accessible per a qualsevol que pugui editar flows, i per a
+        la definició d'un agent això és correcte — és configuració. Una base de coneixement no és
+        configuració; és <em>els mateixos documents</em>. Així que una base pot anomenar el rol més
+        baix que la pot llegir, a la mateixa escala que fa servir tota la resta.
+      </p>
+      <p>
+        <strong>Absent vol dir tothom</strong>, que és el que volia dir cada base creada abans que
+        això existís i ha de continuar volent dir. S'imposa a l'API, i un altre cop quan una
+        execució injecta una base — contra el rol de <em>qui va arrencar l'execució</em>, no de qui
+        va dibuixar el flow. Un flow sobreviu a la sessió del seu autor, i heretar-ne l'abast faria
+        que cada base restringida fos llegible per qualsevol que pogués prémer Executar al flow
+        adequat.
+      </p>
+
+      <h3>Fragmentació</h3>
+      <p>
+        Els documents es parteixen per límits de paràgraf a uns 1.500 caràcters, amb 200 caràcters
+        de solapament perquè una frase tallada en un límit continuï apareixent sencera en un dels
+        seus dos fragments. Un sol document s'atura a 2.000 fragments, i ho diu quan passa.
+      </p>
+    </section>
+
+    <section id="retrieval">
+      <h2>Recuperació</h2>
+      <p class="sub">Com es troba un passatge. <span class="pill">la part important</span></p>
+      <p>
+        Cada consulta executa <strong>dues cerques</strong>, i es fusionen en comptes de triar entre
+        elles.
+      </p>
+      <p>
+        Una cerca vectorial no sap distingir un token exacte. Una referència de document, un codi
+        d'error, un nom de fitxer se situen a l'espai d'embeddings al costat de tots els seus veïns,
+        així que demanar una política pel seu número retorna dotze polítiques més. Una cerca per
+        paraules clau la troba a la primera. El cas mirall és igual de comú: cap cerca per paraules
+        clau no fa coincidir <em>«què passa quan algú se'n va»</em> amb un document titulat
+        <em>Offboarding</em>, perquè no comparteixen cap paraula. Executar totes dues no és
+        cobrir-se les espatlles — és l'única manera de respondre les dues preguntes.
+      </p>
+      <pre><code>keyword  (ts_rank_cd, top 50) ─┐
+                               ├─ Reciprocal Rank Fusion ─ cross-encoder ─ top k
+semantic (cosine,      top 50) ─┘</code></pre>
+      <p>
+        La fusió és per <strong>posició, no per puntuació</strong>. Una similitud de cosinus i un
+        rang de text de PostgreSQL no són quantitats comparables, i ponderar-les l'una contra
+        l'altra voldria dir inventar-se un tipus de canvi i després ajustar-lo per sempre.
+        Reciprocal Rank Fusion només pregunta com de prop del cim de la seva pròpia llista va posar
+        cada branca un passatge — i un passatge que només va trobar una branca continua aflorant,
+        que és tota la gràcia.
+      </p>
+
+      <h3>El reranker</h3>
+      <p>
+        Després un cross-encoder reordena els supervivents. Llegeix la pregunta i un passatge
+        <em>junts</em> i puntua el parell, que és el que li permet adonar-se que un passatge descriu
+        el procés correcte per al departament equivocat — una distinció que dos embeddings calculats
+        per separat no poden expressar. Massa lent per a una base sencera; exactament l'adequat per
+        als cinquanta candidats que una cerca ja va trobar.
+      </p>
+
+      <h3>Els dos models</h3>
+      <p>
+        Tots dos són opcionals, tots dos s'executen dins de l'app, i tots dos es baixen sota demanda
+        des de <em>Recursos → Coneixement</em>. Sense Ollama, sense Docker, sense servidor.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Model</th><th>Mida</th><th>Sense ell</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>multilingual-e5-small <span class="pill">embedding</span></td>
+              <td>~130 MB</td>
+              <td>La cerca per paraules clau continua funcionant; res no s'ordena per significat.</td>
+            </tr>
+            <tr>
+              <td>bge-reranker-base <span class="pill">reranker</span></td>
+              <td>~282 MB</td>
+              <td>L'ordre fusionat es manté, i el panell diu què falta.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Un servidor de models que serveixi <code>bge-m3</code> es detecta automàticament si en tens un.
+      </p>
+
+      <h3>Què arriba a l'agent</h3>
+      <p>
+        Els passatges recuperats s'acoblen, no s'enganxen:
+      </p>
+      <ul>
+        <li><strong>Fusionats</strong> — els passatges adjacents s'uneixen sense repetir el solapament entre fragments, que altrament es llegiria com a èmfasi.</li>
+        <li><strong>Ordenats per document i posició</strong>, mai per puntuació. Un document es llegeix cap endavant; l'ordre per puntuació lliura al model el pas 4, després el pas 1, després el pas 7 i li demana que expliqui el procés.</li>
+        <li><strong>Retallats</strong> a un pressupost de caràcters per font (<code>knowledge.context-chars</code>, 12.000 per defecte), i se li diu a l'agent que alguns han quedat fora.</li>
+        <li><strong>Numerats</strong> amb una clau de cita, i el prompt demana aquests marcadors de tornada. Una resposta que ningú no pot contrastar amb les seves fonts és l'error que tot aquest subsistema existeix per evitar.</li>
+      </ul>
+
+      <h3>Tornar a preguntar</h3>
+      <p>
+        L'agent també rep una eina <code>search_knowledge</code>. La precàrrega respon al que el
+        flow sempre necessita; l'eina respon a la pregunta que només existeix pel que va dir la
+        primera resposta.
+      </p>
+    </section>
+
+    <section id="measuring">
+      <h2>Mesurar la recuperació</h2>
+      <p class="sub">Perquè tot canvi en l'ordenació sona a millora.</p>
+      <p>
+        La prova habitual d'un canvi en la recuperació són tres consultes escrites després de
+        fer-lo. Sota aquest règim una base empitjora en silenci mentre tothom coincideix que es nota
+        més afinada.
+      </p>
+      <p>
+        Així que una base pot guardar un <strong>conjunt daurat</strong>: preguntes que algú fa de
+        debò, cadascuna amb el document que la respon. <em>Recursos → Coneixement → Mesura aquesta
+        base</em>. Executar-lo dona tres números, perquè un sol número amaga els dos errors que
+        importen.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Número</th><th>Què vol dir</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>Respostes</strong></td>
+              <td>Proporció de preguntes en què un document esperat va entrar al top 5. Amb quina freqüència algú hauria obtingut si més no una resposta.</td>
+            </tr>
+            <tr>
+              <td><strong>Documents trobats</strong></td>
+              <td>Proporció de tots els documents esperats recuperats. Més baixa que <em>Respostes</em> sempre que una pregunta necessita dos documents i en va tornar un — mitja resposta que el titular amagaria.</td>
+            </tr>
+            <tr>
+              <td><strong>Qualitat de la posició</strong></td>
+              <td>1,00 quan les respostes arriben primer, 0,50 quan segones, 0 quan mai. Un passatge que arriba cinquè gasta el pressupost de context de quatre d'erronis per arribar-hi.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Executa les mateixes preguntes <strong>amb i sense el reranker</strong>, que és l'única
+        manera honesta de respondre «valen la pena 282 MB amb els meus documents?» — un benchmark
+        sobre el corpus d'un altre no és evidència sobre el teu. Un error mostra què va tornar en el
+        seu lloc, perquè això és l'explicació i no el veredicte.
+      </p>
+      <div class="note">
+        <b>La recuperació, no la resposta</b>
+        <p>
+          El que es mesura és si va tornar el document correcte. Qualificar text generat necessita
+          un model que jutgi un model — una segona cosa que pot equivocar-se, i una factura per
+          execució — i respon a una pregunta diferent: una resposta errònia sobre el passatge
+          correcte és un problema de prompt, mentre que una resposta que sona bé sobre el passatge
+          equivocat és aquest problema, i és el que es cola sense que ningú se n'adoni.
+        </p>
+      </div>
+    </section>
+
+    <section id="sql">
+      <h2>Fonts SQL</h2>
+      <p class="sub">Files com a context, abans que l'agent arrenqui.</p>
+      <p>
+        Un bloc SQL executa una consulta de només lectura i n'injecta les files al context de
+        l'agent connectat. JDBC genèric; PostgreSQL ve inclòs i es poden afegir altres drivers al
+        backend. Prova la consulta des de les propietats del bloc abans d'executar el flow.
+      </p>
+      <p>
+        Només es permet un únic <code>SELECT</code>, com a defensa en profunditat al costat dels
+        permisos que imposi la mateixa base de dades. Les credencials es referencien per id des de
+        <em>Recursos → Credencials</em>, mai no s'escriuen en línia.
+      </p>
+      <div class="warn">
+        <b>On es pot connectar</b>
+        <p>
+          Els hosts de loopback, link-local i de metadades del núvol estan bloquejats per defecte.
+          Afegeix hosts a <code>rag.allowed-jdbc-hosts</code> per permetre'ls — tret de l'adreça de
+          metadades, que està bloquejada en qualsevol cas.
+        </p>
+      </div>
+    </section>
+
+    <section id="apis">
+      <h2>APIs i MCP</h2>
+      <p class="sub">Dues maneres de donar a un agent alguna cosa per cridar.</p>
+      <h3>Servidors MCP</h3>
+      <p>
+        Qualsevol servidor Model Context Protocol, per HTTP o llançat com a procés local. Un catàleg
+        ofereix els habituals amb la seva configuració — les variables que necessiten, el runtime
+        que necessiten instal·lat — en comptes d'una caixa JSON en blanc. Els servidors OAuth
+        guarden els tokens en una credencial xifrada i els renoven enmig d'una execució quan una
+        crida torna amb 401.
+      </p>
+      <p>
+        Quan un servidor ofereix moltíssimes eines, l'agent rep una eina de cerca en comptes de cent
+        esquemes: demana el que necessita i rep les poques definicions que coincideixen.
+      </p>
+      <h3>Endpoints d'API</h3>
+      <p>
+        Enganxa una URL i es converteix en una eina tipada — sense necessitat de document OpenAPI.
+        Els marcadors de la ruta es converteixen en els arguments, i només s'ofereix un cos on
+        correspon. Amb un document OpenAPI, es llisten les operacions i tries quines pot cridar
+        l'agent.
+      </p>
+    </section>
+
+    <section id="runs">
+      <h2>Execucions i la consola</h2>
+      <p class="sub">Què va passar, bloc a bloc.</p>
+      <p>
+        Cada execució registra els seus esdeveniments, l'entrada i sortida per bloc, els recomptes
+        de tokens i un cost estimat. Un bloc pot <strong>tornar a executar-se pel seu
+        compte</strong>, amb exactament l'entrada que va rebre — un pas que va fallar al final d'una
+        execució llarga no et costa els vint minuts anteriors — i opcionalment amb un altre model.
+      </p>
+      <p>
+        Dues execucions es poden comparar de costat. Les execucions, els esdeveniments i la sortida
+        per bloc es persisteixen; els manegadors vius d'una sessió en marxa no, així que reiniciar
+        el backend deixa l'historial intacte i descarta qualsevol cosa a mig vol.
+      </p>
+      <div class="note">
+        <b>Què és la xifra en dòlars</b>
+        <p>
+          Una estimació a les tarifes per token publicades. Amb una subscripció de Claude és ús
+          equivalent contra la bossa no interactiva del teu pla, no un càrrec; amb l'API s'aproxima
+          al càrrec real.
+        </p>
+      </div>
+    </section>
+
+    <section id="approvals">
+      <h2>Aprovacions</h2>
+      <p class="sub">Quan una execució ha d'esperar una persona.</p>
+      <p>
+        El mode de permisos es fixa al coordinador, perquè un sol procés de la CLI executa tot el
+        flow: <strong>bypass</strong> (l'únic mode que funciona sense supervisió), <strong>només
+        pla</strong> i <strong>demana'm aprovació</strong>. Una execució que espera una resposta ho
+        diu, i es pot respondre des de la consola — o des de Slack o Teams, al fil on va arribar la
+        notificació.
+      </p>
+      <p>
+        Una execució que ja ha lliurat el seu resultat queda tancada a més missatges.
+      </p>
+    </section>
+
+    <section id="versions">
+      <h2>Versions i execucions daurades</h2>
+      <p class="sub">Un historial al qual només s'afegeix, i una referència de la qual desviar-se.</p>
+      <p>
+        Cada desament afegeix una revisió, atribuïda a qui la va fer. L'historial és accessible des
+        d'<strong>Historial</strong> al tauler: previsualitza una revisió al llenç, o restaura-la —
+        una restauració s'afegeix com a revisió nova en comptes d'esborrar el que va substituir,
+        així que allò sobre què vas restaurar continua a un clic.
+      </p>
+      <p>
+        Una execució es pot marcar com a <strong>execució daurada</strong>: una referència del que
+        aquest flow hauria de produir. Les execucions posteriors s'hi comparen, i un flow la sortida
+        del qual s'ha desviat ho diu a la seva targeta.
+      </p>
+
+      <h3>Replay contra el flow actual</h3>
+      <p>
+        Les execucions daurades comparen <em>sortides</em>; depurar sol necessitar comparar
+        <em>decisions</em> — amb la mateixa entrada, on divergeix el camí? Des de qualsevol
+        execució, <strong>⟲ Replay vs actual</strong> passa les sortides per bloc gravades d'aquella
+        execució pel flow tal com està desat avui, sense executar res, i pinta la resposta al llenç:
+        un anell ambre a cada bloc el destí del qual canvia (es va executar i ara se saltaria, o a
+        l'inrevés), un xip que diu en quin sentit i per què, i els blocs que es van executar però ja
+        no existeixen anomenats a la capçalera.
+      </p>
+      <p>
+        Reprodueix <strong>l'encaminament, no els agents</strong> — les portes decideixen a partir
+        del text gravat, així que les seves respostes són exactes, però on una decisió necessitaria
+        una sortida que mai no es va gravar, el bloc diu <em>no es pot decidir</em> en comptes
+        d'endevinar.
+      </p>
+    </section>
+
+    <section id="teams">
+      <h2>Equips i inici de sessió</h2>
+      <p class="sub">Qui pot canviar què.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Rol</th><th>Pot</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Lector</strong></td><td>Llegir flows i historial.</td></tr>
+            <tr><td><strong>Operador</strong></td><td>Executar flows i respondre aprovacions.</td></tr>
+            <tr><td><strong>Membre</strong></td><td>Crear i editar flows i recursos.</td></tr>
+            <tr><td><strong>Administrador</strong></td><td>Tot, inclosos membres, configuració i emmagatzematge.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Imposat a cada petició tant per mètode com per ruta — no només pel que la interfície
+        decideix dibuixar.
+      </p>
+
+      <h3>Iniciar sessió amb un directori</h3>
+      <p>
+        Microsoft, Google i Discord es registren des de dins de l'app, a <em>Recursos → Membres →
+        Proveïdors d'inici de sessió</em>, i tenen efecte immediat. La pantalla d'inici de sessió
+        mostra els tres tant si estan configurats com si no: un de no registrat diu què necessita en
+        comptes d'enviar algú a un proveïdor que el rebutjarà després d'haver escrit la contrasenya.
+      </p>
+      <p>
+        Les persones s'aparellen per l'id immutable del mateix proveïdor, <strong>mai</strong> per
+        la seva adreça — les adreces es reassignen quan la gent se'n va, i aparellar per una
+        acabaria lliurant els flows de qui se'n va anar a qui heretés la bústia. Una adreça que ja
+        té compte s'hi vincula en comptes de duplicar-se.
+      </p>
+      <div class="note">
+        <b>L'URI de redirecció ho és tot</b>
+        <p>
+          Tots els registres fallen igual la primera vegada. Copia-la de la pantalla de proveïdors —
+          es calcula a partir de la petició que estàs fent — i registra exactament aquella cadena. A
+          Microsoft, el camp on posar-la és <code>web.redirectUris</code> al manifest, perquè el
+          portal rebutja <code>http://</code> amb una adreça de loopback.
+        </p>
+      </div>
+
+      <h3>Diversos comptes alhora</h3>
+      <p>
+        Un navegador pot tenir diversos comptes amb la sessió iniciada i canviar entre ells, amb el
+        rol de cadascun mostrat al costat — que és a més la manera pràctica de comprovar que un
+        permís es compleix de debò. Dos comptes <em>actius</em> alhora necessiten dues finestres,
+        perquè una sessió és una cookie.
+      </p>
+    </section>
+
+    <section id="storage">
+      <h2>Emmagatzematge</h2>
+      <p class="sub">Integrat per defecte; una base de dades d'empresa quan la vulguis.</p>
+      <p>
+        Cada compilació guarda les dades en un PostgreSQL integrat sota el directori de dades de
+        l'app. Això no és un mode demo — és el mateix esquema, les mateixes migracions i el mateix
+        camí de codi que un desplegament en servidor.
+      </p>
+      <p>
+        <em>Recursos → Emmagatzematge</em> apunta la instal·lació al teu propi PostgreSQL i copia el
+        que ja hi ha, taula per taula, informant del que s'ha mogut. La còpia és una còpia: les
+        dades integrades es queden on eren fins que n'estiguis satisfet.
+      </p>
+      <div class="warn">
+        <b>Fes còpia de la clau juntament amb les dades</b>
+        <p>
+          Les credencials es xifren amb una clau que la instal·lació genera a la primera arrencada i
+          guarda a <code>secret.key</code> al costat de les dades. Una còpia de la base de dades
+          sense aquest fitxer restaura files que ningú no pot desxifrar. Defineix
+          <code>CONCENTUS_SECRET_KEY</code> per guardar-la en un altre lloc — un vault, un secret de
+          contenidor.
+        </p>
+      </div>
+    </section>
+
+    <section id="updates">
+      <h2>Actualitzacions</h2>
+      <p class="sub">Una marca al racó, no un diàleg.</p>
+      <p>
+        L'app d'escriptori s'actualitza sola: comprova cada quatre hores, baixa en segon pla i
+        instal·la quan surts. Res d'això no interromp res, cosa que també ho feia invisible — així
+        que l'estat ara és a dalt a la dreta de la finestra. Silenciós mentre no hi ha res a dir, un
+        punt verd quan hi ha una versió baixada i esperant. En fer-hi clic diu en quin estat són les
+        coses i ofereix l'única acció que té aquell estat: comprovar ara, o reiniciar i instal·lar.
+      </p>
+      <p>
+        Un diàleg d'actualització que interromp la feina ensenya la gent a descartar diàlegs
+        d'actualització. Una marca que espera que la vegin no costa res i demà continua allà.
+      </p>
+      <h3>Instal·lar sense que et preguntin res</h3>
+      <p>
+        Prémer instal·lar executa l'instal·lador en silenci: sense assistent, sense pàgina de
+        llicència que ja vas acceptar, i sense preguntar on posar-lo — va on ja és la instal·lació
+        existent. L'app es torna a obrir quan acaba.
+      </p>
+      <p>
+        Abans que l'instal·lador arrenqui, Concentus acaba el seu propi backend i espera que de debò
+        hagi desaparegut, enduent-se tot l'arbre de processos si demanar-ho per les bones no
+        funciona. Aquesta espera no és cortesia: el runtime de Java inclòs viu dins del directori
+        d'instal·lació, així que un instal·lador que arrenca mentre el backend encara reté aquells
+        fitxers s'atura i informa que l'aplicació continua oberta — darrere d'una finestra que ja ha
+        desaparegut.
+      </p>
+
+      <h3>Quines versions se t'ofereixen</h3>
+      <p>
+        Una compilació <strong>preliminar</strong> segueix tant les versions preliminars com les
+        finals, prenent la més nova. Una compilació <strong>final</strong> només segueix versions
+        finals: qui va instal·lar una versió estable no va demanar que el passessin a una de
+        preliminar.
+      </p>
+      <div class="warn">
+        <b>Les versions preliminars s'etiqueten <code>-beta.N</code>, i això no és cosmètic</b>
+        <p>
+          electron-updater deriva el canal d'actualització de l'identificador de preliminar de la
+          versió, i només ofereix una versió final a compilacions el canal de les quals és nul,
+          <code>alpha</code> o <code>beta</code> — aquests tres noms estan escrits a foc. Amb
+          qualsevol altre identificador, <code>rc</code> inclòs, una compilació no pot arribar mai a
+          una versió estable. També ha de dur punt: <code>0.1.3-beta.1</code> dona a cada versió del
+          tren el mateix canal, mentre que <code>0.1.3-beta1</code> dona a cadascuna el seu i a
+          ningú no se li ofereix mai la següent. El flux de publicació rebutja tots dos errors.
+        </p>
+      </div>
+      <div class="note">
+        <b>On no s'aplica</b>
+        <p>
+          Una execució de desenvolupament no té app empaquetada per actualitzar, i una instal·lació
+          <code>.deb</code> l'actualitza el gestor de paquets del sistema. Totes dues ho diuen i es
+          retiren en comptes de fallar en bucle.
+        </p>
+      </div>
+    </section>
+
+    <section id="settings">
+      <h2>Configuració</h2>
+      <p class="sub">El que abans eren variables d'entorn.</p>
+      <p>
+        <em>Recursos → Configuració</em>. Un valor es busca en tres llocs, per ordre: el que algú va
+        fixar a l'aplicació, allò amb què es va arrencar el desplegament, i després el valor per
+        defecte integrat. Aquest ordre és el que manté funcionant tots dos públics — un contenidor
+        arrencat per un pipeline continua prenent el seu entorn, i la persona davant de l'app pot
+        canviar el mateix des d'un formulari.
+      </p>
+      <p>
+        La pantalla diu <strong>d'on va sortir cada valor</strong>, perquè «8» vol dir tres coses
+        diferents i només una d'elles et toca a tu esborrar-la, i <strong>si el canvi espera un
+        reinici</strong> — la majoria sí, perquè dimensionen un pool de fils o una política quan
+        arrenca l'aplicació. Els proveïdors d'inici de sessió són l'excepció deliberada: qui acaba
+        d'enganxar un client id vol provar-lo.
+      </p>
+      <p>
+        Buidar un camp elimina l'anul·lació en comptes de desar-ne una de buida. Els secrets se
+        segellen amb la mateixa clau que protegeix les credencials desades i mai no es tornen a
+        llegir des de l'API.
+      </p>
+      <p>
+        <strong>Aparença</strong> és a dalt de la mateixa pantalla — fosc, clar o contrast alt. No
+        és un dels paràmetres de sota: viu en aquest navegador, s'aplica a l'instant en què es tria
+        i no té Desa. Abans era un botó a la capçalera, que rotava de clic en clic entre tres
+        valors, cosa que és molt del racó més valuós de la pantalla per a una cosa que una persona
+        fixa un sol cop.
+      </p>
+    </section>
+
+    <section id="telemetry">
+      <h2>Traces i mètriques</h2>
+      <p class="sub">OpenTelemetry, en les unitats de feina pròpies d'aquesta aplicació.</p>
+      <p>
+        El framework ja instrumenta el que un framework pot veure. Res d'això no respon a la
+        pregunta que de debò té algú aquí, que és sobre una <em>execució</em>. Així que hi ha sis
+        noms d'span i un sol vocabulari d'atributs:
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Span</th><th>Cobreix</th></tr></thead>
+          <tbody>
+            <tr><td><code>concentus.run</code></td><td>Una execució, des del seu activador fins al seu últim bloc</td></tr>
+            <tr><td><code>concentus.node</code></td><td>Un bloc: un agent, una porta, un subflow, una crida a API</td></tr>
+            <tr><td><code>concentus.worker</code></td><td>Un worker independent en un repartiment en paral·lel</td></tr>
+            <tr><td><code>concentus.tool</code></td><td>Una crida a eina MCP, rebutjos inclosos</td></tr>
+            <tr><td><code>concentus.model</code></td><td>Una petició a un model</td></tr>
+            <tr><td><code>concentus.retrieval</code></td><td>Una cerca de coneixement: totes dues branques, la fusió, qualsevol reordenació</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <b>Sense prompts, sense sortides, sense arguments d'eines</b>
+        <p>
+          Els atributs porten identificadors, recomptes i resultats. Una traça acaba al sistema d'un
+          altre, normalment amb una retenció més llarga que qualsevol cosa d'aquí i llegida per gent
+          a qui mai no es va donar accés als flows. El que és útil per depurar i el que és segur
+          d'exportar són conjunts diferents, i on difereixen guanya el més petit.
+        </p>
+      </div>
+      <p>
+        No s'exporta res fins que s'anomena un col·lector, i està apagat per un interruptor i no per
+        una adreça en blanc — un endpoint buit no és «enlloc» per a un exportador OTLP, és una URL
+        invàlida. Configura-ho a Configuració, o amb <code>OTLP_ENABLED</code> i
+        <code>OTLP_ENDPOINT</code>.
+      </p>
+    </section>
+
+    <section id="cli">
+      <h2>CLI sense interfície</h2>
+      <p class="sub">Executar un flow des d'un script.</p>
+      <pre><code>pnpm desktop:build                                     # once — builds the jar
+export CONCENTUS_EMAIL=you@company.com
+export CONCENTUS_PASSWORD=…
+node scripts/concentus-run.mjs my-flow.json --input "go"
+echo $?                                                # 0 completed · 1 failed · 2 needs a human</code></pre>
+      <p>
+        Inicia sessió com tota la resta. Un script que pogués fer anar el backend sense credencials
+        seria un forat, no una comoditat. Prefereix les variables d'entorn a <code>--email</code> /
+        <code>--password</code>: un argument acaba al log de la feina i a la llista de processos.
+      </p>
+    </section>
+
+    <section id="licensing">
+      <h2>Llicències</h2>
+      <p class="sub">Què és gratis, què necessita un seient i on va una llicència.</p>
+      <p>
+        Concentus funciona sense cap llicència instal·lada: la base de dades integrada, un seient.
+        Això no és una prova — res d'això no caduca ni deixa de funcionar, i és amb què arrenca tota
+        instal·lació.
+      </p>
+
+      <h3>Què no necessita llicència</h3>
+      <p>
+        Tot el que fa servir un individu: el llenç, cada bloc, cada activador, les bases de
+        coneixement, la via del model local — tot, amb el límit d'un seient de dalt. Una
+        <a href="/ca#license">llicència individual</a> és gratis i no canvia res de funcional; només
+        posa un nom a la instal·lació. Demana'n una des del lloc web i arriba per correu.
+      </p>
+
+      <h3>Què necessita una llicència enterprise</h3>
+      <p>Tres coses, totes més enllà d'aquest seient únic per defecte:</p>
+      <ul>
+        <li><strong>Una base de dades compartida</strong> — apuntar la instal·lació a un PostgreSQL al qual es connecta el teu equip, en comptes de l'integrat.</li>
+        <li><strong>Membres més enllà del primer</strong> — a partir del segon seient.</li>
+        <li><strong>SSO</strong> — iniciar sessió amb Microsoft, Google o Discord en comptes d'una contrasenya local.</li>
+      </ul>
+      <p>
+        Amb preu per seient, facturat mensualment o anualment — anual és un 10% més barat. Encara no
+        hi ha xifres publicades; escriu a
+        <a href="mailto:gila791@hotmail.com?subject=Concentus%20enterprise">gila791@hotmail.com</a>
+        o fes servir la targeta enterprise de la <a href="/ca#license">secció de preus</a> del lloc
+        web.
+      </p>
+
+      <h3>On va una llicència</h3>
+      <p>Dues fonts, guanya la primera coincidència:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Font</th><th>Quan fer-la servir</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>CONCENTUS_LICENSE</code></td>
+              <td>Una variable d'entorn. Per a un contenidor o un desplegament per script sense disc escrivible digne d'esment — i sempre guanya sobre el fitxer de sota mentre estigui definida.</td>
+            </tr>
+            <tr>
+              <td><code>license.key</code></td>
+              <td>Al costat del directori de dades de l'app. El que <em>Recursos → Configuració → Llicència</em> escriu per a tota la resta — enganxa el token que et va arribar per correu i l'app escriu el fitxer per tu.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Caducitat i període de gràcia</h3>
+      <p>
+        Una llicència individual mai no caduca — és gratis, així que no hi ha res que venci. Una
+        llicència enterprise caducada continua funcionant <strong>14 dies més</strong> després de la
+        seva data: la renovació és una ordre de compra, no un clic, i un flow que deixa
+        d'executar-se en el moment en què canvia la data — a mitja tarda, a qui estigui de guàrdia —
+        és un error pitjor que un avís durant dues setmanes.
+      </p>
+      <div class="note">
+        <b>Passat el període de gràcia</b>
+        <p>
+          La instal·lació no es bloqueja; baixa al mateix estat d'un seient i base de dades
+          integrada amb què arrenca una instal·lació nova, fins que s'instal·la una llicència
+          renovada.
+        </p>
+      </div>
+    </section>
+
+    <section id="api">
+      <h2>API HTTP</h2>
+      <p class="sub">El que crida la mateixa interfície.</p>
+      <p>
+        Cada escriptura retorna un token CSRF que arriba com a cookie llegible al primer GET. Una
+        cookie per si sola no demostraria intenció, que és tota la gràcia de la capçalera.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Mètode</th><th>Ruta</th><th>Què fa</th></tr></thead>
+          <tbody>
+            <tr><td>GET</td><td><code>/api/account/session</code></td><td>Qui té la sessió iniciada, quins proveïdors existeixen, si aquesta instal·lació necessita el seu primer compte</td></tr>
+            <tr><td>POST</td><td><code>/api/account/setup</code></td><td>Crear aquest primer compte. S'hi nega en quant n'existeix un</td></tr>
+            <tr><td>POST</td><td><code>/api/account/login</code></td><td>Iniciar sessió · <code>/logout</code></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/account/members</code></td><td>Membres de l'organització <span class="pill">admin</span></td></tr>
+            <tr><td>GET/PUT</td><td><code>/api/account/providers</code></td><td>Registrar Microsoft / Google / Discord <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/flows</code></td><td>Llistar i desar flows · <code>/{id}/versions</code></td></tr>
+            <tr><td>POST</td><td><code>/api/runs</code></td><td>Arrencar una execució · <code>/{id}/events</code> la transmet</td></tr>
+            <tr><td>GET/POST</td><td><code>/api/knowledge</code></td><td>Bases de coneixement · <code>/{id}/documents</code> · <code>/{id}/urls</code> · <code>/{id}/refresh</code></td></tr>
+            <tr><td>POST</td><td><code>/api/knowledge/{id}/search</code></td><td>Provar una consulta contra una base</td></tr>
+            <tr><td>GET/POST</td><td><code>/api/knowledge/{id}/evals</code></td><td>El conjunt daurat · <code>/evals/run</code> el puntua</td></tr>
+            <tr><td>GET</td><td><code>/api/knowledge/embedder</code></td><td>Els models opcionals · <code>/reranker</code> · <code>…/download</code></td></tr>
+            <tr><td>GET/PUT</td><td><code>/api/settings</code></td><td>Tot l'ajustable, amb l'origen de cada valor <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/storage</code></td><td>On viuen les dades · <code>/migrate</code> les copia <span class="pill">admin</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="environment">
+      <h2>Entorn</h2>
+      <p class="sub">No es requereix res. Aquestes són les excepcions que val la pena conèixer.</p>
+      <p>
+        Quatre coses no poden ser paràmetres, perquè són el que cal saber abans que hi hagi on
+        guardar un paràmetre.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Quan la necessites</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>PERSIST_DB_URL</code><br /><code>PERSIST_DB_USER</code><br /><code>PERSIST_DB_PASSWORD</code></td>
+              <td>Apuntar a un PostgreSQL extern des del principi. Si no, es fa servir l'integrat, i la pantalla d'Emmagatzematge et pot moure més tard.</td>
+            </tr>
+            <tr>
+              <td><code>CONCENTUS_SECRET_KEY</code></td>
+              <td>Guardar la clau de xifratge en un lloc que no sigui <code>secret.key</code> al costat de les dades.</td>
+            </tr>
+            <tr>
+              <td><code>CONCENTUS_ADMIN_EMAIL</code><br /><code>CONCENTUS_ADMIN_PASSWORD</code></td>
+              <td>Crear el primer compte en un desplegament davant del qual no hi seu ningú.</td>
+            </tr>
+            <tr>
+              <td><code>APP_DATA_DIR</code> · <code>SERVER_PORT</code></td>
+              <td>On viuen les dades i a quin port escoltar.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Tota la resta — longituds de cua, temps d'espera, preus de models, llistes de permesos,
+        l'endpoint OTLP — és un paràmetre, i l'entorn es continua llegint com la capa intermèdia de
+        les tres.
+      </p>
+    </section>
+
+    <footer>
+      <p>
+        Documentació de Concentus. On alguna cosa d'aquí és una limitació i no una funció, ho diu —
+        un document que només llista el que funciona és un document en què deixes de confiar la
+        primera vegada que alguna cosa no funciona.
+      </p>
+    </footer>
+  </main>
+
+  <!-- ============================ on this page ============================ -->
+  <aside class="toc" id="toc" aria-label="En aquesta pàgina">
+    <h4>En aquesta pàgina</h4>
+    <div id="toc-links"></div>
+  </aside>
+</div>
+
+<script>
+  // Sidebar: highlight the section in view.
+  const links = [...document.querySelectorAll('.side a')]
+  const sections = links
+    .map((a) => document.querySelector(a.getAttribute('href')))
+    .filter(Boolean)
+
+  const spy = new IntersectionObserver(
+    (entries) => {
+      // The topmost intersecting section wins, so scrolling up highlights what you scrolled to
+      // rather than what you scrolled past.
+      const visible = entries.filter((e) => e.isIntersecting)
+      if (!visible.length) return
+      const top = visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0]
+      links.forEach((a) => a.classList.toggle('on', a.getAttribute('href') === '#' + top.target.id))
+      buildToc(top.target)
+    },
+    { rootMargin: '-80px 0px -70% 0px', threshold: 0 },
+  )
+  sections.forEach((s) => spy.observe(s))
+
+  // "On this page" follows the section you are in: a single flat list of every h3 in the document
+  // would be four screens long and useless.
+  const tocLinks = document.getElementById('toc-links')
+  let tocFor = null
+  function buildToc(section) {
+    if (tocFor === section) return
+    tocFor = section
+    const heads = [...section.querySelectorAll('h3')]
+    tocLinks.innerHTML = ''
+    if (!heads.length) {
+      document.getElementById('toc').style.visibility = 'hidden'
+      return
+    }
+    document.getElementById('toc').style.visibility = 'visible'
+    heads.forEach((h, i) => {
+      if (!h.id) h.id = section.id + '-' + i
+      const a = document.createElement('a')
+      a.href = '#' + h.id
+      a.textContent = h.textContent
+      tocLinks.appendChild(a)
+    })
+  }
+
+  // Filter: hides the entries that do not match, and any group heading left with nothing under it.
+  const filter = document.getElementById('filter')
+  filter.addEventListener('input', () => {
+    const q = filter.value.trim().toLowerCase()
+    let group = null
+    let groupHasMatch = false
+    const flush = () => {
+      if (group) group.style.display = groupHasMatch ? '' : 'none'
+    }
+    for (const node of document.getElementById('side').children) {
+      if (node.tagName === 'H4') {
+        flush()
+        group = node
+        groupHasMatch = false
+      } else if (node.tagName === 'A') {
+        const hit = !q || node.textContent.toLowerCase().includes(q)
+        node.classList.toggle('hidden', !hit)
+        if (hit) groupHasMatch = true
+      }
+    }
+    flush()
+  })
+
+  // Contents on a narrow screen.
+  document.getElementById('menu').addEventListener('click', () => {
+    document.getElementById('side').classList.toggle('open')
+  })
+  document.querySelectorAll('.side a').forEach((a) =>
+    a.addEventListener('click', () => document.getElementById('side').classList.remove('open')),
+  )
+</script>
+</body>
+</html>
