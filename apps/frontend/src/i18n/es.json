@@ -1,4 +1,6 @@
 {
+  "Retries after a failure (blank = default) ⓘ": "Reintentos tras un fallo (vacío = por defecto) ⓘ",
+  "Independent workers only. How many extra launches this block gets after its process fails (a crash, a bad exit — not a timeout, which is never retried, and not a verifier rejection, which is what the escalation model is for). Blank uses the deployment's default; 0 means one attempt and no more. The run log says which attempt each launch was.": "Solo workers independientes. Cuántos lanzamientos extra recibe este bloque cuando su proceso falla (un cierre inesperado, una salida errónea — no un timeout, que nunca se reintenta, ni un rechazo del verificador, para eso está el modelo de escalado). Vacío usa el valor por defecto de la instalación; 0 significa un único intento. El log de la ejecución dice qué intento fue cada lanzamiento.",
   "Coordinator": "Coordinador",
   "agent": "agente",
   "A flow has one coordinator, and this one already does.": "Un flow tiene un coordinador, y este ya lo tiene.",

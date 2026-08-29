@@ -106,6 +106,16 @@ export function AgentInspector({ data, set }: Props) {
           <>
             <Field
               label={
+                <span title={t("Independent workers only. How many extra launches this block gets after its process fails (a crash, a bad exit — not a timeout, which is never retried, and not a verifier rejection, which is what the escalation model is for). Blank uses the deployment's default; 0 means one attempt and no more. The run log says which attempt each launch was.")}>
+                  {t('Retries after a failure (blank = default) ⓘ')}
+                </span>
+              }
+              type="number"
+              value={data.retries ?? ''}
+              onChange={(v) => set({ retries: v === '' ? undefined : Math.max(0, Number(v)) })}
+            />
+            <Field
+              label={
                 <span title={t("Enforced per sub-agent by Claude Code, whatever the flow's permission mode allows. Tool names as the CLI knows them: Read, Edit, Write, Bash, WebFetch, WebSearch… Blank inherits all tools.")}>
                   {t('Allowed tools (blank = all) ⓘ')}
                 </span>

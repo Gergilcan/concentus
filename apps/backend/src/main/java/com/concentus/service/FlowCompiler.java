@@ -383,6 +383,9 @@ public class FlowCompiler {
         // Carried for every agent like `execution` above: only workers ever escalate, and the
         // compiler does not need to know which node is one.
         s.fallbackModelId = str(d, "fallbackModelId", "");
+        // Blank on the node means "the deployment's default", which is what every flow saved
+        // before the field existed says.
+        s.retries = (int) lng(d, "retries", -1);
 
         collectConnected(flow, node, resources.mcps(), s.mcpServers, mcp -> {
             Map<String, Object> md = mcp.dataOrEmpty();

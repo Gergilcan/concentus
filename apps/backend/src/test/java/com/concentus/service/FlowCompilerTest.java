@@ -32,6 +32,27 @@ class FlowCompilerTest {
     // ------------------------------------------------------------- valid flow
 
     @Test
+    void retriesOnTheNodeReachTheSpecAndBlankMeansTheDeploymentsDefault() {
+        FlowNode lead = agent("a1", "coordinator", "Lead");
+        FlowNode counted = new FlowNode("w1", "agent", "subagent",
+                Map.of("name", "Careful", "retries", 2));
+        FlowNode none = new FlowNode("w2", "agent", "subagent",
+                Map.of("name", "Once", "retries", 0));
+        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(lead, counted, none),
+                List.of(edge("a1", "w1"), edge("a1", "w2")), null, List.<String>of(), null, null);
+
+        CompiledFlow compiled = compiler.compile(flow);
+
+        // -1 is "not set": the executor falls back to its own configured count. 0 is a real
+        // answer — one attempt — and must not be mistaken for unset.
+        assertThat(compiled.coordinator().retries).isEqualTo(-1);
+        assertThat(compiled.subAgents()).extracting(s -> s.name, s -> s.retries)
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple("Careful", 2),
+                        org.assertj.core.groups.Tuple.tuple("Once", 0));
+    }
+
+    @Test
     void compilesAValidSingleAgentFlow() {
         FlowNode a = agent("a1", "coordinator", "Solo");
         FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(a), List.<FlowEdge>of(),

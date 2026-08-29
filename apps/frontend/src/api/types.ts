@@ -348,6 +348,12 @@ export type AgentNodeData = {
    */
   fallbackModelId?: string
   /**
+   * Extra launches after a process failure, independent-workers path only. Blank = the
+   * deployment's default; 0 = one attempt. Timeouts are never retried; a verifier rejection is
+   * not a failure this counts (see the escalation model).
+   */
+  retries?: number
+  /**
    * How much the run may do without asking. **Coordinator only.**
    *
    * Not a per-agent setting even though it lives on an agent: a local run launches one `claude`
@@ -517,6 +523,12 @@ export type ApiNodeData = {
  * commands, because verifying the combined result (tests, diffs) is exactly one process's job.
  */
 export type MergeNodeData = {
+  /**
+   * Extra launches after a process failure, independent-workers path only. Blank = the
+   * deployment's default; 0 = one attempt. Timeouts are never retried; a verifier rejection is
+   * not a failure this counts (see the escalation model).
+   */
+  retries?: number
   kind: 'merge'
   /** The author turned the block's `on error` output on. Absent: hidden until a wire leaves it. */
   errorOutput?: boolean
@@ -541,6 +553,12 @@ export type MergeNodeData = {
  * merge. Read-only; its only tool is submitting the verdict.
  */
 export type VerifierNodeData = {
+  /**
+   * Extra launches after a process failure, independent-workers path only. Blank = the
+   * deployment's default; 0 = one attempt. Timeouts are never retried; a verifier rejection is
+   * not a failure this counts (see the escalation model).
+   */
+  retries?: number
   kind: 'verifier'
   /** The author turned the block's `on error` output on. Absent: hidden until a wire leaves it. */
   errorOutput?: boolean

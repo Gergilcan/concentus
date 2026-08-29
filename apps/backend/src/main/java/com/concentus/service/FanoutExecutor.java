@@ -492,7 +492,8 @@ public class FanoutExecutor {
     /** The attempts loop shared by workers and the merge step. Does not settle NodeExec status. */
     private Outcome execute(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
                             String prompt, Path workdir, List<Path> dirs, String disallowedTools) {
-        int attempts = 1 + retries;
+        // The block's own number when it set one; the deployment's otherwise.
+        int attempts = 1 + (spec.retries >= 0 ? spec.retries : retries);
         String lastError = null;
         for (int attempt = 1; attempt <= attempts; attempt++) {
             if ("TERMINATED".equals(run.status)) {

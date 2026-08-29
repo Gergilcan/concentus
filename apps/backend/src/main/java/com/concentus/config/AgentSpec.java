@@ -80,6 +80,14 @@ public class AgentSpec {
      * signal to escalate on, and re-running it "in case" would spend more, not less.
      */
     public String fallbackModelId = "";
+    /**
+     * Extra launches this block gets after a process failure, on the independent-workers path
+     * (workers, the verifier, the merge). {@code -1}, the default, means the deployment's own
+     * {@code fanout.retries}; 0 means one attempt and no more. A timeout is never retried
+     * whatever this says — a retried timeout is a doubled timeout — and a verifier rejection is
+     * not a failure this counts: that is what the escalation model is for.
+     */
+    public int retries = -1;
     public List<SkillSpec> skills = new ArrayList<>();
     /**
      * Claude Code plugin ids ({@code name@marketplace}) this agent runs with — exactly these and

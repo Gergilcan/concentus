@@ -1,4 +1,6 @@
 {
+  "Retries after a failure (blank = default) ⓘ": "Reintents després d'una fallada (buit = per defecte) ⓘ",
+  "Independent workers only. How many extra launches this block gets after its process fails (a crash, a bad exit — not a timeout, which is never retried, and not a verifier rejection, which is what the escalation model is for). Blank uses the deployment's default; 0 means one attempt and no more. The run log says which attempt each launch was.": "Només workers independents. Quants llançaments extra rep aquest bloc quan el seu procés falla (un tancament inesperat, una sortida errònia — no un timeout, que mai es reintenta, ni un rebuig del verificador, per a això hi ha el model d'escalat). Buit fa servir el valor per defecte de la instal·lació; 0 vol dir un únic intent. El registre de l'execució diu quin intent va ser cada llançament.",
   "Coordinator": "Coordinador",
   "agent": "agent",
   "A flow has one coordinator, and this one already does.": "Un flow té un coordinador, i aquest ja el té.",
