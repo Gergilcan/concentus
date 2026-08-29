@@ -232,8 +232,13 @@ class RunServiceTest {
         RunSummary first = svc.start(flowWithPrompt("f1", "cron", "daily briefing"));
         verify(localExecutor, timeout(3000).times(2)).runTurn(any(), any(), any());
 
+        // Between the first run ending and the fallback starting there is a gap with nothing
+        // active, so wait for the continuation itself to settle rather than for quiet.
         long deadline = System.currentTimeMillis() + 3000;
-        while (System.currentTimeMillis() < deadline && svc.hasActiveRun("f1")) Thread.sleep(20);
+        while (System.currentTimeMillis() < deadline && !(svc.list().size() >= 2
+                && svc.list().stream().anyMatch(r -> !r.id().equals(first.id()) && "COMPLETED".equals(r.status())))) {
+            Thread.sleep(20);
+        }
         // The refused run is a failure — its own error branch fires — and the continuation is a
         // new run that says where it came from, every agent on the fallback model.
         assertThat(svc.get(first.id()).orElseThrow().status).isEqualTo("ERROR");
