@@ -64,22 +64,10 @@ public class PlanToolsController {
                 || run.compiled == null || !run.compiled.fanout()) {
             return ResponseEntity.status(401).build();
         }
-
-        String method = request.path("method").asText("");
-        JsonNode id = request.get("id");
-        return switch (method) {
-            case "initialize" -> ok(id, initializeResult());
-            case "notifications/initialized", "notifications/cancelled" ->
-                    ResponseEntity.accepted().build();
-            case "tools/list" -> ok(id, toolsList());
-            case "tools/call" -> ok(id, toolsCall(run, request.path("params")));
-            case "ping" -> ok(id, mapper.createObjectNode());
-            default -> error(id, -32601, "Method not supported: " + method);
-        };
-    }
-
-    private ObjectNode initializeResult() {
-        return McpJsonRpc.initializeResult(mapper, "concentus-plan");
+        return McpJsonRpc.dispatch(mapper, request,
+                () -> McpJsonRpc.initializeResult(mapper, "concentus-plan"),
+                this::toolsList,
+                params -> toolsCall(run, params));
     }
 
     private ObjectNode toolsList() {
@@ -208,13 +196,5 @@ public class PlanToolsController {
 
     private ObjectNode callResult(boolean isError, String text) {
         return McpJsonRpc.callResult(mapper, isError, text);
-    }
-
-    private ResponseEntity<JsonNode> ok(JsonNode id, ObjectNode result) {
-        return McpJsonRpc.ok(mapper, id, result);
-    }
-
-    private ResponseEntity<JsonNode> error(JsonNode id, int code, String message) {
-        return McpJsonRpc.error(mapper, id, code, message);
     }
 }

@@ -67,10 +67,7 @@ public class RunController {
      */
     @GetMapping("/{id}/flow")
     public FlowGraph flow(@PathVariable String id) {
-        AgentRun run = requireRun(id);
-        return runService.flowOf(run)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "This run has no stored flow snapshot."));
+        return snapshotOf(requireRun(id));
     }
 
     /**
@@ -83,17 +80,22 @@ public class RunController {
     @GetMapping("/{id}/replay")
     public com.concentus.service.RunReplay.ReplayReport replay(@PathVariable String id) {
         AgentRun run = requireRun(id);
-        com.concentus.model.FlowGraph then = runService.flowOf(run)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "This run has no stored flow snapshot."));
+        FlowGraph then = snapshotOf(run);
         if (run.flowId == null || run.flowId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "This run was launched ad hoc — there is no saved flow to replay it against.");
         }
-        com.concentus.model.FlowGraph now = flows.get(run.flowId)
+        FlowGraph now = flows.get(run.flowId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "The flow this run executed no longer exists."));
         return com.concentus.service.RunReplay.compare(run, then, now);
+    }
+
+    /** The graph this run executed, as snapshotted at launch. */
+    private FlowGraph snapshotOf(AgentRun run) {
+        return runService.flowOf(run)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "This run has no stored flow snapshot."));
     }
 
     /** Per-node execution state (Input/Output, status, per-box tokens) + run token totals. */

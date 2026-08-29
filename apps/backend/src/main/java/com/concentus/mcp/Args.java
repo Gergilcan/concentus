@@ -1,6 +1,8 @@
 package com.concentus.mcp;
 
+import com.concentus.model.FlowGraph;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Reads a tool call's {@code arguments}.
@@ -58,5 +60,15 @@ public final class Args {
             throw new IllegalArgumentException("'" + name + "' is required and must be a JSON object.");
         }
         return node;
+    }
+
+    /** A flow graph out of an object argument, with a parse failure phrased as something to fix. */
+    public static FlowGraph flow(ObjectMapper mapper, JsonNode node) {
+        try {
+            return mapper.treeToValue(node, FlowGraph.class);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("That is not a valid flow graph: " + e.getMessage()
+                    + " Call flow_schema for the format.");
+        }
     }
 }

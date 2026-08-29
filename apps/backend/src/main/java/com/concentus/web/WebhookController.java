@@ -12,14 +12,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
-
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -195,9 +193,10 @@ public class WebhookController {
      * One rule covering both provider styles, so no per-provider branching is needed:
      * the presented value authenticates if it is either an HMAC-SHA256 signature of the raw body
      * (Linear, GitHub, …) or the secret itself (providers that just echo a static token back).
+     * Both compares are constant-time, so a wrong value cannot be recovered by timing the answer.
      */
     private static boolean authorized(byte[] raw, String presented, String secret) {
-        return signatureMatches(raw, presented, secret) || constantTimeEquals(secret, presented);
+        return signatureMatches(raw, presented, secret) || McpJsonRpc.tokenMatches(secret, presented);
     }
 
     /**
@@ -219,12 +218,6 @@ public class WebhookController {
             log.warn("Could not compute webhook signature", e);
             return false;
         }
-    }
-
-    /** Constant-time compare so a wrong token can't be recovered by timing the response. */
-    private static boolean constantTimeEquals(String secret, String presented) {
-        return MessageDigest.isEqual(
-                secret.getBytes(StandardCharsets.UTF_8), presented.getBytes(StandardCharsets.UTF_8));
     }
 
     /**

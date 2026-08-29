@@ -152,18 +152,8 @@ public class McpStudioController {
             return ResponseEntity.status(401).build();
         }
         try {
-            String method = request.path("method").asText("");
-            JsonNode id = request.get("id");
-            return switch (method) {
-                case "initialize" -> ok(id, initializeResult());
-                // Notifications carry no id and expect no result.
-                case "notifications/initialized", "notifications/cancelled" ->
-                        ResponseEntity.accepted().build();
-                case "tools/list" -> ok(id, toolsList());
-                case "tools/call" -> ok(id, toolsCall(request.path("params")));
-                case "ping" -> ok(id, mapper.createObjectNode());
-                default -> error(id, -32601, "Method not supported: " + method);
-            };
+            return McpJsonRpc.dispatch(mapper, request, this::initializeResult, this::toolsList,
+                    this::toolsCall);
         } finally {
             // Whatever this request authenticated as must not outlive it. The filter chain clears
             // the holder too; doing it here as well costs nothing and does not depend on which
@@ -284,13 +274,5 @@ public class McpStudioController {
     private static String reason(ResponseStatusException e) {
         String reason = e.getReason();
         return reason == null || reason.isBlank() ? e.getMessage() : reason;
-    }
-
-    private ResponseEntity<JsonNode> ok(JsonNode id, ObjectNode result) {
-        return McpJsonRpc.ok(mapper, id, result);
-    }
-
-    private ResponseEntity<JsonNode> error(JsonNode id, int code, String message) {
-        return McpJsonRpc.error(mapper, id, code, message);
     }
 }

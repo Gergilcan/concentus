@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -140,47 +141,60 @@ public class AuditController {
                 .body(body);
     }
 
-    private void writeCsv(Writer w, String organizationId, AuditStore.Filter filter) throws java.io.IOException {
+    private void writeCsv(Writer w, String organizationId, AuditStore.Filter filter) throws IOException {
         w.write("id,at,actor,role,kind,subject_type,subject_id,subject_label,detail\n");
-        java.io.IOException[] failure = new java.io.IOException[1];
-        store.forEach(organizationId, filter, e -> {
-            if (failure[0] != null) return;
-            try {
+        forEachRow(organizationId, filter, e ->
                 w.write(e.id() + "," + Instant.ofEpochMilli(e.at()) + "," + csv(e.actorEmail()) + ","
                         + csv(e.actorRole()) + "," + csv(e.kind()) + "," + csv(e.subjectType()) + ","
-                        + csv(e.subjectId()) + "," + csv(e.subjectLabel()) + "," + csv(e.detail()) + "\n");
-            } catch (java.io.IOException ex) {
-                failure[0] = ex;
-            }
-        });
-        if (failure[0] != null) throw failure[0];
+                        + csv(e.subjectId()) + "," + csv(e.subjectLabel()) + "," + csv(e.detail()) + "\n"));
     }
 
-    private void writeJson(Writer w, String organizationId, AuditStore.Filter filter) throws java.io.IOException {
+    private void writeJson(Writer w, String organizationId, AuditStore.Filter filter) throws IOException {
         w.write("[");
         boolean[] first = {true};
-        java.io.IOException[] failure = new java.io.IOException[1];
+        forEachRow(organizationId, filter, e -> {
+            w.write(first[0] ? "\n" : ",\n");
+            first[0] = false;
+            w.write("{\"id\":" + e.id() + ",\"at\":\"" + Instant.ofEpochMilli(e.at()) + "\""
+                    + ",\"actor\":" + jsonString(e.actorEmail())
+                    + ",\"role\":" + jsonString(e.actorRole())
+                    + ",\"kind\":" + jsonString(e.kind())
+                    + ",\"subjectType\":" + jsonString(e.subjectType())
+                    + ",\"subjectId\":" + jsonString(e.subjectId())
+                    + ",\"subjectLabel\":" + jsonString(e.subjectLabel())
+                    // Stored as a JSON object already; it goes out as one, not as a string of one.
+                    + ",\"detail\":" + (e.detail() == null || e.detail().isBlank() ? "null" : e.detail())
+                    + "}");
+        });
+        w.write("\n]\n");
+    }
+
+    /** One row of the export; may fail the way any write to a socket may. */
+    @FunctionalInterface
+    private interface RowWriter {
+        void write(AuditEvent event) throws IOException;
+    }
+
+    /**
+     * Every matching row, oldest first, handed to a writer that may throw.
+     *
+     * <p>The store's callback cannot throw a checked exception, and a client that disconnects
+     * mid-export must stop the walk rather than have every remaining row written into a closed
+     * stream — so the first failure is kept, the rest of the walk skipped, and it is rethrown once
+     * the store returns.
+     */
+    private void forEachRow(String organizationId, AuditStore.Filter filter, RowWriter writer)
+            throws IOException {
+        IOException[] failure = new IOException[1];
         store.forEach(organizationId, filter, e -> {
             if (failure[0] != null) return;
             try {
-                w.write(first[0] ? "\n" : ",\n");
-                first[0] = false;
-                w.write("{\"id\":" + e.id() + ",\"at\":\"" + Instant.ofEpochMilli(e.at()) + "\""
-                        + ",\"actor\":" + jsonString(e.actorEmail())
-                        + ",\"role\":" + jsonString(e.actorRole())
-                        + ",\"kind\":" + jsonString(e.kind())
-                        + ",\"subjectType\":" + jsonString(e.subjectType())
-                        + ",\"subjectId\":" + jsonString(e.subjectId())
-                        + ",\"subjectLabel\":" + jsonString(e.subjectLabel())
-                        // Stored as a JSON object already; it goes out as one, not as a string of one.
-                        + ",\"detail\":" + (e.detail() == null || e.detail().isBlank() ? "null" : e.detail())
-                        + "}");
-            } catch (java.io.IOException ex) {
+                writer.write(e);
+            } catch (IOException ex) {
                 failure[0] = ex;
             }
         });
         if (failure[0] != null) throw failure[0];
-        w.write("\n]\n");
     }
 
     /** A CSV field: quoted whenever it holds something a reader would split on, doubled quotes inside. */

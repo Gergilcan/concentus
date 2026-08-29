@@ -9,8 +9,11 @@ import com.concentus.model.FacadeProfile;
 import com.concentus.model.RunEvent;
 import com.concentus.service.AgentRun;
 import com.concentus.service.FacadeToolGate;
+import com.concentus.service.FanoutExecutor;
 import com.concentus.service.McpAuthSources;
 import com.concentus.service.RunService;
+import com.concentus.service.ToolCallLoopGuard;
+import com.concentus.support.Texts;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -25,7 +28,10 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 /**
  * The MCP facade each independent worker talks to — the only route from a worker process to the
@@ -50,14 +56,12 @@ public class WorkerToolsController {
     private final RunService runs;
     private final ObjectMapper mapper;
     private final McpOAuthStore mcpOAuth;
-    private final com.concentus.service.ToolCallLoopGuard loops;
+    private final ToolCallLoopGuard loops;
     /** Answers a worker's question about a sibling, with a short look at the sibling's workspace. */
-    private final com.concentus.service.FanoutExecutor fanout;
+    private final FanoutExecutor fanout;
 
-    public WorkerToolsController(RunService runs, ObjectMapper mapper,
-                                 McpOAuthStore mcpOAuth,
-                                 com.concentus.service.ToolCallLoopGuard loops,
-                                 com.concentus.service.FanoutExecutor fanout) {
+    public WorkerToolsController(RunService runs, ObjectMapper mapper, McpOAuthStore mcpOAuth,
+                                 ToolCallLoopGuard loops, FanoutExecutor fanout) {
         this.runs = runs;
         this.fanout = fanout;
         this.mapper = mapper;
@@ -82,18 +86,10 @@ public class WorkerToolsController {
             // in-memory state. 401 rather than an empty tool list that reads as "nothing wired".
             return ResponseEntity.status(401).build();
         }
-
-        String method = request.path("method").asText("");
-        JsonNode id = request.get("id");
-        return switch (method) {
-            case "initialize" -> ok(id, initializeResult());
-            case "notifications/initialized", "notifications/cancelled" ->
-                    ResponseEntity.accepted().build();
-            case "tools/list" -> ok(id, toolsList(run, worker, profile));
-            case "tools/call" -> ok(id, toolsCall(run, worker, profile, request.path("params")));
-            case "ping" -> ok(id, mapper.createObjectNode());
-            default -> error(id, -32601, "Method not supported: " + method);
-        };
+        return McpJsonRpc.dispatch(mapper, request,
+                () -> McpJsonRpc.initializeResult(mapper, "concentus-facade"),
+                () -> toolsList(run, worker, profile),
+                params -> toolsCall(run, worker, profile, params));
     }
 
     private static AgentSpec workerSpec(AgentRun run, String nodeId) {
@@ -107,10 +103,6 @@ public class WorkerToolsController {
         if (merger != null && nodeId.equals(merger.nodeId)) return merger;
         // Plan-born workers exist on the run, not the canvas.
         return run.syntheticWorkers.get(nodeId);
-    }
-
-    private ObjectNode initializeResult() {
-        return McpJsonRpc.initializeResult(mapper, "concentus-facade");
     }
 
     // ------------------------------------------------------------------- tools
@@ -200,7 +192,7 @@ public class WorkerToolsController {
         shareSchema.putObject("properties").putObject("note")
                 .put("type", "string")
                 .put("description", "The finding, in at most "
-                        + com.concentus.service.AgentRun.MAX_SHARED_NOTE_CHARS + " characters.");
+                        + AgentRun.MAX_SHARED_NOTE_CHARS + " characters.");
         shareSchema.putArray("required").add("note");
 
         ObjectNode read = tools.addObject();
@@ -233,14 +225,14 @@ public class WorkerToolsController {
         String name = arguments.path("worker").asText("").trim();
         String question = arguments.path("question").asText("").trim();
         if (question.isEmpty()) return callResult(true, "Ask something: the question is empty.");
-        java.util.List<AgentSpec> siblings = siblingsOf(run, asker);
+        List<AgentSpec> siblings = siblingsOf(run, asker);
         AgentSpec target = siblings.stream()
                 .filter(s -> s.name != null && s.name.equalsIgnoreCase(name)).findFirst().orElse(null);
         if (target == null) {
             return callResult(true, siblings.isEmpty()
                     ? "You have no siblings on this task."
                     : "No worker named '" + name + "'. The others are: " + siblings.stream()
-                            .map(s -> s.name).collect(java.util.stream.Collectors.joining(", ")) + ".");
+                            .map(s -> s.name).collect(Collectors.joining(", ")) + ".");
         }
         int asked = run.questionsAsked.merge(asker.nodeId, 1, Integer::sum);
         if (asked > MAX_QUESTIONS) {
@@ -255,8 +247,8 @@ public class WorkerToolsController {
     }
 
     /** The other workers of this run — drawn and plan-born — never the asker itself. */
-    private static java.util.List<AgentSpec> siblingsOf(AgentRun run, AgentSpec asker) {
-        java.util.List<AgentSpec> out = new java.util.ArrayList<>();
+    private static List<AgentSpec> siblingsOf(AgentRun run, AgentSpec asker) {
+        List<AgentSpec> out = new ArrayList<>();
         if (run.compiled != null) {
             for (AgentSpec s : run.compiled.subAgents()) if (!s.nodeId.equals(asker.nodeId)) out.add(s);
         }
@@ -269,8 +261,7 @@ public class WorkerToolsController {
         String refused = run.shareNote(worker.name, note);
         if (refused != null) return callResult(true, refused);
         run.emit(RunEvent.of("tool_use", "Shared with the other workers: "
-                + com.concentus.support.Texts.brief(note.strip(), 160),
-                worker.name, worker.nodeId));
+                + Texts.brief(note.strip(), 160), worker.name, worker.nodeId));
         return callResult(false, "Shared. The other workers will see it when they next look.");
     }
 
@@ -327,7 +318,7 @@ public class WorkerToolsController {
         String argsJson = params.path("arguments").toString();
 
         // Before the call is made, not after: the point is not to spend it.
-        String caller = com.concentus.service.ToolCallLoopGuard.key(run.id, worker.nodeId);
+        String caller = ToolCallLoopGuard.key(run.id, worker.nodeId);
         var stuck = loops.refuse(caller, fullName, argsJson);
         if (stuck.isPresent()) {
             run.emit(RunEvent.of("system", "Facade: " + worker.name + " has called " + fullName
@@ -384,13 +375,5 @@ public class WorkerToolsController {
 
     private ObjectNode callResult(boolean isError, String text) {
         return McpJsonRpc.callResult(mapper, isError, text);
-    }
-
-    private ResponseEntity<JsonNode> ok(JsonNode id, ObjectNode result) {
-        return McpJsonRpc.ok(mapper, id, result);
-    }
-
-    private ResponseEntity<JsonNode> error(JsonNode id, int code, String message) {
-        return McpJsonRpc.error(mapper, id, code, message);
     }
 }

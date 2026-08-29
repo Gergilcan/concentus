@@ -1,6 +1,14 @@
 package com.concentus.web;
 
+import com.concentus.auth.ConcentusUserDetails;
+import com.concentus.auth.OrgContext;
+import com.concentus.integration.content.AttachmentExtractionService;
+import com.concentus.llm.BuiltInEmbedder;
+import com.concentus.llm.BuiltInReranker;
 import com.concentus.model.KnowledgeDef;
+import com.concentus.service.KnowledgeAccess;
+import com.concentus.service.KnowledgeEvalService;
+import com.concentus.service.KnowledgeRetriever;
 import com.concentus.service.KnowledgeService;
 import com.concentus.store.KnowledgeStore;
 import org.springframework.http.HttpStatus;
@@ -16,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -26,22 +35,19 @@ public class KnowledgeController {
 
     private final KnowledgeStore store;
     private final KnowledgeService service;
-    private final com.concentus.service.KnowledgeRetriever retriever;
-    private final com.concentus.llm.BuiltInEmbedder embedder;
-    private final com.concentus.llm.BuiltInReranker reranker;
-    private final com.concentus.service.KnowledgeEvalService evals;
-    private final com.concentus.auth.OrgContext orgContext;
-    private final com.concentus.service.KnowledgeAccess access;
-    private final com.concentus.integration.content.AttachmentExtractionService extraction;
+    private final KnowledgeRetriever retriever;
+    private final BuiltInEmbedder embedder;
+    private final BuiltInReranker reranker;
+    private final KnowledgeEvalService evals;
+    private final OrgContext orgContext;
+    private final KnowledgeAccess access;
+    private final AttachmentExtractionService extraction;
 
     public KnowledgeController(KnowledgeStore store, KnowledgeService service,
-                               com.concentus.service.KnowledgeRetriever retriever,
-                               com.concentus.llm.BuiltInEmbedder embedder,
-                               com.concentus.llm.BuiltInReranker reranker,
-                               com.concentus.service.KnowledgeEvalService evals,
-                               com.concentus.auth.OrgContext orgContext,
-                               com.concentus.service.KnowledgeAccess access,
-                               com.concentus.integration.content.AttachmentExtractionService extraction) {
+                               KnowledgeRetriever retriever, BuiltInEmbedder embedder,
+                               BuiltInReranker reranker, KnowledgeEvalService evals,
+                               OrgContext orgContext, KnowledgeAccess access,
+                               AttachmentExtractionService extraction) {
         this.store = store;
         this.service = service;
         this.retriever = retriever;
@@ -76,7 +82,7 @@ public class KnowledgeController {
                 "percent", embedder.progressPercent(),
                 "error", embedder.error(),
                 "sizeMb", 130,
-                "model", com.concentus.llm.BuiltInEmbedder.MODEL_NAME,
+                "model", BuiltInEmbedder.MODEL_NAME,
                 "semantic", overall.semantic(),
                 "detail", overall.detail());
     }
@@ -106,8 +112,8 @@ public class KnowledgeController {
                 "state", reranker.state().name(),
                 "percent", reranker.progressPercent(),
                 "error", reranker.error(),
-                "sizeMb", com.concentus.llm.BuiltInReranker.SIZE_MB,
-                "model", com.concentus.llm.BuiltInReranker.MODEL_NAME);
+                "sizeMb", BuiltInReranker.SIZE_MB,
+                "model", BuiltInReranker.MODEL_NAME);
     }
 
     @PostMapping("/reranker/download")
@@ -191,7 +197,7 @@ public class KnowledgeController {
     @PostMapping("/{id}/refresh")
     public Map<String, Object> refresh(@PathVariable String id) {
         requireBase(id);
-        List<Map<String, Object>> results = new java.util.ArrayList<>();
+        List<Map<String, Object>> results = new ArrayList<>();
         for (String url : service.refreshableUrls(id)) {
             try {
                 var result = service.ingestUrl(id, url, who());
@@ -206,9 +212,7 @@ public class KnowledgeController {
 
     /** Who is doing this, for the record a document keeps of how it got here. */
     private String who() {
-        return orgContext.currentUser()
-                .map(com.concentus.auth.ConcentusUserDetails::email)
-                .orElse(null);
+        return orgContext.currentUser().map(ConcentusUserDetails::email).orElse(null);
     }
 
     /**
@@ -230,8 +234,8 @@ public class KnowledgeController {
 
     /** Try a query before wiring the base into a flow — a bad ranking should cost a click here. */
     @PostMapping("/{id}/search")
-    public List<com.concentus.service.KnowledgeRetriever.Hit> search(@PathVariable String id,
-                                                                    @RequestBody Map<String, Object> body) {
+    public List<KnowledgeRetriever.Hit> search(@PathVariable String id,
+                                               @RequestBody Map<String, Object> body) {
         requireBase(id);
         String query = String.valueOf(body.getOrDefault("query", "")).trim();
         if (query.isEmpty()) throw new IllegalArgumentException("A query is required.");
@@ -249,14 +253,14 @@ public class KnowledgeController {
      * against questions written down before it was made.
      */
     @GetMapping("/{id}/evals")
-    public List<com.concentus.service.KnowledgeEvalService.EvalCase> evals(@PathVariable String id) {
+    public List<KnowledgeEvalService.EvalCase> evals(@PathVariable String id) {
         requireBase(id);
         return evals.list(id);
     }
 
     @PostMapping("/{id}/evals")
-    public com.concentus.service.KnowledgeEvalService.EvalCase addEval(@PathVariable String id,
-                                                                      @RequestBody Map<String, Object> body) {
+    public KnowledgeEvalService.EvalCase addEval(@PathVariable String id,
+                                                 @RequestBody Map<String, Object> body) {
         requireBase(id);
         String question = String.valueOf(body.getOrDefault("question", "")).trim();
         List<String> docs = body.get("expectedDocs") instanceof List<?> list
@@ -279,8 +283,8 @@ public class KnowledgeController {
      * else's corpus cannot.
      */
     @PostMapping("/{id}/evals/run")
-    public com.concentus.service.KnowledgeEvalService.EvalRun runEvals(@PathVariable String id,
-                                                                      @RequestBody(required = false) Map<String, Object> body) {
+    public KnowledgeEvalService.EvalRun runEvals(@PathVariable String id,
+                                                 @RequestBody(required = false) Map<String, Object> body) {
         requireBase(id);
         Map<String, Object> input = body == null ? Map.of() : body;
         int topK = input.get("topK") instanceof Number n ? n.intValue() : 5;

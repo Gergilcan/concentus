@@ -233,10 +233,9 @@ public class FlowController {
     /** Restores an earlier revision as the current flow (and snapshots it as a new version). */
     @PostMapping("/{id}/versions/{version}/restore")
     public FlowGraph restore(@PathVariable String id, @PathVariable int version) {
-        requireFlow(id);
+        FlowGraph before = requireFlow(id);
         FlowGraph old = versions.get(id, version)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such version"));
-        FlowGraph before = store.get(id).orElse(null);
         FlowGraph saved = store.save(old.withId(id));
         // Credited to whoever pressed Restore, not to whoever authored the revision being
         // restored: this row records a save that just happened, and the original stays in history
@@ -247,7 +246,7 @@ public class FlowController {
         return saved;
     }
 
-/**
+    /**
      * Who to credit for a save: the signed-in address.
      *
      * <p>Null when the request carried no principal — a revision saved by something other than a
