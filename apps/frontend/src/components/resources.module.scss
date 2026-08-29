@@ -200,6 +200,14 @@
   }
 }
 
+/* Inside a grid of fields the row supplies the spacing and the column the measure. */
+.addMemberFields .field,
+.auditFilters .field,
+.providerFields .field {
+  margin-bottom: 0;
+  max-width: none;
+}
+
 .crudActions {
   display: flex;
   align-items: center;
@@ -424,9 +432,6 @@
   border-bottom: 1px dashed t.$border;
   font-size: 12.5px;
 }
-.kbDocName {
-  font-weight: 600;
-}
 .kbDoc .delBtn {
   margin-left: auto;
 }
@@ -472,14 +477,6 @@
 
 .catalog {
   margin-bottom: 18px;
-}
-.catalogCat {
-  margin: 12px 0 6px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: t.$muted;
 }
 .catalogGrid {
   display: grid;
@@ -713,6 +710,7 @@
 /* Full paths are shown now, so the ceiling is wider — but still a ceiling, and the
    untruncated path stays in the hover title. */
 .kbDocName {
+  font-weight: 600;
   max-width: 420px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -914,8 +912,6 @@
   }
 }
 
-/* One account and what it may do. The role sits next to the address, because the pair is the
-   whole row: who, and how much. */
 /**
  * Members is a roster, not a master/detail.
  *
@@ -928,56 +924,6 @@
   padding: var(--sp-4) var(--sp-5);
   min-width: 0;
   max-width: 900px;
-}
-
-/**
- * The state of the front door, above the roster that describes who may come through it.
- *
- * At the top because it changes what everything below it means: with sign-in off, the roles are a
- * description of a policy nothing is enforcing, and reading them without knowing that is worse
- * than not reading them.
- */
-.signInOff,
-.signInOn {
-  border: 1px solid t.$border;
-  border-radius: t.$radius;
-  padding: var(--sp-4);
-  margin-bottom: var(--sp-4);
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: t.$muted;
-  // A measure, not the panel's full width: this is a paragraph to read once, and 110 characters a
-  // line is where the eye starts losing the return.
-  max-width: 78ch;
-
-  b {
-    color: t.$text;
-  }
-}
-
-.signInOff {
-  border-color: t.$warn;
-}
-
-.signInOn {
-  border-color: t.$ok;
-}
-
-.signInFields {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) auto;
-  align-items: end;
-  gap: var(--sp-4);
-  margin-top: var(--sp-4);
-
-  @media (max-width: 860px) {
-    grid-template-columns: 1fr;
-  }
-
-  .field {
-    margin-bottom: 0;
-    max-width: none;
-  }
 }
 
 /** Waiting on a restart: stated, not styled as an error, because nothing is wrong. */
@@ -1178,11 +1124,6 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: var(--sp-4);
-
-  .field {
-    margin-bottom: 0;
-    max-width: none;
-  }
 }
 
 .rosterHead {
@@ -1323,11 +1264,6 @@
   @media (max-width: 860px) {
     grid-template-columns: 1fr;
     gap: 0;
-  }
-
-  .field {
-    margin-bottom: 0;
-    max-width: none;
   }
 }
 
@@ -1625,11 +1561,6 @@
 
   @media (max-width: 960px) {
     grid-template-columns: 1fr 1fr;
-  }
-
-  .field {
-    margin-bottom: 0;
-    max-width: none;
   }
 }
 

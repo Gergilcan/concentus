@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { Member, Organization } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { timeAgo } from './flowFormat.ts'
 import { Spinner } from './Spinner.tsx'
+import { usePanelLoad } from './usePanelLoad.ts'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
 
@@ -31,7 +32,7 @@ function roleLabel(role: string | null | undefined): string {
  */
 export function OrganizationsPanel({ pushError }: { pushError: (m: string) => void }) {
   const { t } = useTranslation()
-  const [organizations, setOrganizations] = useState<Organization[] | null>(null)
+  const { value: organizations, reload: load } = usePanelLoad(() => api.listOrganizations(), pushError, [])
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [refusal, setRefusal] = useState<string | null>(null)
@@ -41,18 +42,6 @@ export function OrganizationsPanel({ pushError }: { pushError: (m: string) => vo
   const [members, setMembers] = useState<Record<string, Member[]>>({})
   const [invite, setInvite] = useState({ email: '', password: '', role: 'VIEWER' })
   const [busy, setBusy] = useState<string | null>(null)
-
-  const load = () => {
-    api
-      .listOrganizations()
-      .then(setOrganizations)
-      .catch((e) => {
-        setOrganizations([])
-        pushError(errMessage(e))
-      })
-  }
-
-  useEffect(load, [])
 
   const loadMembers = (id: string) => {
     api

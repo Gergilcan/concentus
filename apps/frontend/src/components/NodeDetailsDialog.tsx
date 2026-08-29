@@ -7,25 +7,10 @@ import flows from './flows.module.scss'
 import panels from './panels.module.scss'
 
 /**
- * The selected block's properties, in a dialog.
- *
- * <p>Opened by double-clicking a node, which is the gesture people already try on a diagram when
- * they mean "open this properly". It renders the same {@link Inspector} the side panel does —
- * not a second editor with its own copy of every field, which would be two places to fix a bug
- * and two places to forget a new node kind.
- *
- * <p>Titled with the block's own name rather than its type: the dialog head answers "which one",
- * the inspector's head right below it answers "what kind", and those are different questions.
- *
- * <p>Rendered only for a node that exists, which is what closes it when the Delete button inside
- * it removes the very thing it was showing.
- */
-/**
  * What to call the block on the dialog's head.
  *
  * <p>Agents carry `name` and every other kind carries `label` — a split that predates this and is
- * not worth unifying from here. Falling back to "Block" rather than the kind on purpose: the kind
- * is already the first thing the inspector says, one line below.
+ * not worth unifying from here.
  */
 const KIND_NAMES: Record<string, string> = {
   input: 'Input / trigger',
@@ -53,6 +38,20 @@ function blockName(data: AppNodeData, t: (key: string) => string): string {
   return t(KIND_NAMES[data.kind] ?? 'Block')
 }
 
+/**
+ * The selected block's properties, in a dialog.
+ *
+ * <p>Opened by double-clicking a node, which is the gesture people already try on a diagram when
+ * they mean "open this properly". It renders the same {@link Inspector} the side panel does —
+ * not a second editor with its own copy of every field, which would be two places to fix a bug
+ * and two places to forget a new node kind.
+ *
+ * <p>Titled with the block's own name rather than its type: the dialog head answers "which one",
+ * the inspector's head right below it answers "what kind", and those are different questions.
+ *
+ * <p>Rendered only for a node that exists, which is what closes it when the Delete button inside
+ * it removes the very thing it was showing.
+ */
 export function NodeDetailsDialog() {
   const { t } = useTranslation()
   const open = useFlowStore((s) => s.detailsOpen)

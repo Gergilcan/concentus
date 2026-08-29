@@ -14,13 +14,6 @@ export function groupRunsByFlow(runs: RunSummary[]): Map<string, RunSummary[]> {
   return m
 }
 
-/** Distinct flow tags, alphabetically sorted, for the tag filter bar. */
-export function collectTags(flows: BackendFlow[]): string[] {
-  const s = new Set<string>()
-  flows.forEach((f) => (f.tags ?? []).forEach((t) => s.add(t)))
-  return [...s].sort()
-}
-
 export interface DashboardStats {
   flows: number
   executions: number

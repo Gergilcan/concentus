@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BackendFlow, RunSummary } from '../api/types.ts'
 import {
-  collectTags,
   computeStats,
   groupRunsByFlow,
   normalizeImportedFlow,
@@ -43,21 +42,6 @@ describe('groupRunsByFlow', () => {
 
   it('returns an empty map for an empty run list', () => {
     expect(groupRunsByFlow([]).size).toBe(0)
-  })
-})
-
-describe('collectTags', () => {
-  it('returns a deduplicated, alphabetically sorted list of tags', () => {
-    const flows = [flow({ tags: ['ops', 'nightly'] }), flow({ tags: ['nightly', 'beta'] })]
-    expect(collectTags(flows)).toEqual(['beta', 'nightly', 'ops'])
-  })
-
-  it('treats a missing tags field as no tags', () => {
-    expect(collectTags([flow({ tags: undefined })])).toEqual([])
-  })
-
-  it('returns an empty list for no flows', () => {
-    expect(collectTags([])).toEqual([])
   })
 })
 
