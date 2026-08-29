@@ -101,7 +101,7 @@ class FolderWatchServiceTest {
         data.put("watchDebounceSeconds", debounceSeconds);
         FlowGraph flow = new FlowGraph("f1", "Flow", "local",
                 List.of(new FlowNode("in-1", "input", null, data)), List.of(), null, List.of(), null, null);
-        when(flows.get("f1")).thenReturn(Optional.of(flow));
+        when(flows.getAcrossOrganizations("f1")).thenReturn(Optional.of(flow));
     }
 
     private String startedPrompt() {

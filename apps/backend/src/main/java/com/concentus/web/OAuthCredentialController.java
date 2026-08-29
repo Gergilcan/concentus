@@ -154,7 +154,7 @@ public class OAuthCredentialController {
     }
 
     private String organizationId() {
-        return orgContext.defaultOrganizationId();
+        return orgContext.currentOrganizationId();
     }
 
     /** The address this browser reached the backend through — one it can, by definition, reach again. */

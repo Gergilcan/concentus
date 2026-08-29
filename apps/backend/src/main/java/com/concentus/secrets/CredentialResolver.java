@@ -61,7 +61,7 @@ public class CredentialResolver {
         String field = sep < 0 ? null : reference.substring(sep + 1);
 
         try {
-            String organizationId = orgContext.defaultOrganizationId();
+            String organizationId = orgContext.currentOrganizationId();
             if (oauthCredentials.isOAuth(organizationId, id)) {
                 // Field by field, never the stored document: it holds the client secret and the
                 // refresh token together, and a node that asked for a bearer must not receive them.
@@ -98,7 +98,7 @@ public class CredentialResolver {
         int sep = reference.indexOf(FIELD_SEPARATOR);
         String id = sep < 0 ? reference : reference.substring(0, sep);
         try {
-            return credentials.find(orgContext.defaultOrganizationId(), id)
+            return credentials.find(orgContext.currentOrganizationId(), id)
                     .map(CredentialStore.Credential::locked).orElse(false);
         } catch (RuntimeException e) {
             return false;

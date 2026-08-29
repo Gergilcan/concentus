@@ -35,6 +35,10 @@ public class RunWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         String runId = queryParam(session, "runId");
         AgentRun run = runId == null ? null : runService.get(runId).orElse(null);
+        // Another organization's run is unknown here too: the handshake carried the browser's
+        // session, so the principal is on the socket, and it answers the same question the REST
+        // endpoints answer with a 404.
+        if (run != null && !organizationOf(session).equals(run.organizationId)) run = null;
         if (run == null) {
             session.close(CloseStatus.NOT_ACCEPTABLE.withReason("Unknown runId"));
             return;
@@ -82,6 +86,19 @@ public class RunWebSocketHandler extends TextWebSocketHandler {
         } catch (Exception ignored) {
             // client went away; the close handler will detach the listener
         }
+    }
+
+    /**
+     * The organization of the browser this socket belongs to, from the principal the handshake
+     * carried; a value no run can match when there is none, so an unauthenticated socket sees
+     * nothing rather than everything.
+     */
+    private static String organizationOf(WebSocketSession session) {
+        if (session.getPrincipal() instanceof org.springframework.security.core.Authentication auth
+                && auth.getPrincipal() instanceof com.concentus.auth.ConcentusUserDetails user) {
+            return user.organizationId();
+        }
+        return "";
     }
 
     private static String queryParam(WebSocketSession session, String key) {

@@ -1,6 +1,5 @@
 package com.concentus.web;
 
-import com.concentus.auth.OrgContext;
 import com.concentus.config.AgentSpec;
 import com.concentus.config.AgentSpec.McpServerSpec;
 import com.concentus.llm.ChatTypes;
@@ -51,20 +50,18 @@ public class WorkerToolsController {
     private final RunService runs;
     private final ObjectMapper mapper;
     private final McpOAuthStore mcpOAuth;
-    private final OrgContext orgContext;
     private final com.concentus.service.ToolCallLoopGuard loops;
     /** Answers a worker's question about a sibling, with a short look at the sibling's workspace. */
     private final com.concentus.service.FanoutExecutor fanout;
 
     public WorkerToolsController(RunService runs, ObjectMapper mapper,
-                                 McpOAuthStore mcpOAuth, OrgContext orgContext,
+                                 McpOAuthStore mcpOAuth,
                                  com.concentus.service.ToolCallLoopGuard loops,
                                  com.concentus.service.FanoutExecutor fanout) {
         this.runs = runs;
         this.fanout = fanout;
         this.mapper = mapper;
         this.mcpOAuth = mcpOAuth;
-        this.orgContext = orgContext;
         this.loops = loops;
     }
 
@@ -134,7 +131,7 @@ public class WorkerToolsController {
         // access token does not last that long — fifteen minutes is a common lifetime, and the
         // worker that sends the mail at the end of a long run is exactly who paid for that.
         McpClient.TokenSource auth = McpAuthSources.forServer(server, mcpOAuth,
-                orgContext.defaultOrganizationId());
+                run.organizationId);
         return run.mcpClients.computeIfAbsent(server.name,
                 k -> new McpClient(server.name, server.url, auth, mapper));
     }

@@ -1,6 +1,5 @@
 package com.concentus.web;
 
-import com.concentus.auth.OrgContext;
 import com.concentus.config.AgentSpec;
 import com.concentus.llm.ChatTypes;
 import com.concentus.llm.McpClient;
@@ -60,6 +59,7 @@ class WorkerToolsControllerTest {
 
     private WorkerToolsController controller(FacadeProfile profile) {
         run = new AgentRun("run-1", "flow-1", "Flow", "local");
+        run.organizationId = "default";
         AgentSpec coord = new AgentSpec();
         coord.name = "Coordinator";
         AgentSpec worker = new AgentSpec();
@@ -79,9 +79,7 @@ class WorkerToolsControllerTest {
         when(runs.get(anyString())).thenReturn(Optional.of(run));
         McpOAuthStore oauth = mock(McpOAuthStore.class);
         when(oauth.accessToken(anyString(), anyString())).thenReturn(Optional.empty());
-        OrgContext org = mock(OrgContext.class);
-        when(org.defaultOrganizationId()).thenReturn("default");
-        return new WorkerToolsController(runs, MAPPER, oauth, org,
+        return new WorkerToolsController(runs, MAPPER, oauth,
                 new com.concentus.service.ToolCallLoopGuard(), fanout);
     }
 

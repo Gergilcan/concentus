@@ -63,7 +63,7 @@ public class McpToolsController {
         spec.url = mcpUrl;
         spec.credentialId = credentialId;
         McpClient.TokenSource auth = com.concentus.service.McpAuthSources.forServer(
-                spec, oauthStore, orgContext.defaultOrganizationId());
+                spec, oauthStore, orgContext.currentOrganizationId());
 
         try (McpClient client = new McpClient("picker", mcpUrl, auth, mapper)) {
             List<ToolInfo> tools = new ArrayList<>();

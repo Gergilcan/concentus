@@ -40,6 +40,20 @@ public class OrgContext {
         return defaultOrganizationId;
     }
 
+    /**
+     * The organization this thread is acting for: the signed-in person's current one, or the
+     * installation's default when there is no principal.
+     *
+     * <p>The one to scope a store call by. The default is the right answer for work with no
+     * principal — the scheduler, a mail poll, a run's own threads — because on every deployment
+     * but a multi-organization one it IS the organization, and a background job that refused to
+     * read anything for want of a session would be a scheduler that never fires. Endpoints that
+     * must not fall back use {@link #requireOrganizationId()} instead.
+     */
+    public String currentOrganizationId() {
+        return currentUser().map(ConcentusUserDetails::organizationId).orElse(defaultOrganizationId);
+    }
+
     /** The signed-in user, if this thread is serving an authenticated request. */
     public Optional<ConcentusUserDetails> currentUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();

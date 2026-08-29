@@ -497,7 +497,7 @@ public class LocalClaudeExecutor {
 
         var servers = mapper.createObjectNode();
         for (McpServerSpec m : byName.values()) {
-            servers.set(m.name, cliMcpServers.node(m, run.id, run.toolToken));
+            servers.set(m.name, cliMcpServers.node(m, run.organizationId, run.id, run.toolToken));
         }
 
         // API nodes become tools served by this very backend, per run. The CLI reaches them like

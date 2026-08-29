@@ -171,6 +171,9 @@ public class FlowController {
     /** Revision history for a flow (newest first). */
     @GetMapping("/{id}/versions")
     public List<FlowVersionInfo> versions(@PathVariable String id) {
+        // History and memory are keyed by flow id alone, so the flow itself is the check that
+        // this id is one of the caller's organization's — the same 404 as for a flow that is not.
+        requireFlow(id);
         return versions.list(id);
     }
 
@@ -181,6 +184,7 @@ public class FlowController {
      */
     @GetMapping("/{id}/versions/{version}")
     public FlowGraph version(@PathVariable String id, @PathVariable int version) {
+        requireFlow(id);
         return versions.get(id, version)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such version"))
                 .withId(id);
@@ -189,6 +193,7 @@ public class FlowController {
     /** Restores an earlier revision as the current flow (and snapshots it as a new version). */
     @PostMapping("/{id}/versions/{version}/restore")
     public FlowGraph restore(@PathVariable String id, @PathVariable int version) {
+        requireFlow(id);
         FlowGraph old = versions.get(id, version)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such version"));
         FlowGraph saved = store.save(old.withId(id));
@@ -222,6 +227,7 @@ public class FlowController {
     /** The notes this flow's agents have left for their future runs, newest first. */
     @GetMapping("/{id}/memory")
     public FlowMemoryView memory(@PathVariable String id) {
+        requireFlow(id);
         return new FlowMemoryView(memory.isAvailable(), memory.count(id),
                 memory.latest(id, MEMORY_VIEW_LIMIT));
     }
@@ -230,6 +236,7 @@ public class FlowController {
     @DeleteMapping("/{id}/memory")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void clearMemory(@PathVariable String id) {
+        requireFlow(id);
         memory.clear(id);
     }
 

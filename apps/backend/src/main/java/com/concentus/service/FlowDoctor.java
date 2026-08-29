@@ -471,7 +471,7 @@ public class FlowDoctor {
         try {
             return orgContext.requireOrganizationId();
         } catch (RuntimeException e) {
-            return orgContext.defaultOrganizationId();
+            return orgContext.currentOrganizationId();
         }
     }
 

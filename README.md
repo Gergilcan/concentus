@@ -949,21 +949,56 @@ One at a time, because a session is a cookie and two accounts cannot share one b
 The desktop shell can open a **second window with its own cookie jar**, which is the only honest
 way to have two roles on screen at once.
 
+### Several organizations on one deployment
+
+One server can hold several organizations, each a separate workspace: its own flows, agents, MCP
+servers, facades, knowledge bases, skills, variables, databases, credentials, runs and settings,
+none of it visible from the others. A person can be in several — with a different role in each,
+a **Membership** — and works in one at a time; the account menu switches, the header names the
+current one once there is more than one to be in, and the page reloads so nothing fetched under
+the previous organization survives.
+
+**Creating a second organization is an Enterprise feature** (`POST /api/organizations`, refused on
+every other tier with the sentence that names it). Renaming the one you have, and everything about
+who is in it, is every tier's. Under *Resources → Organizations* an administrator makes one, names
+it, and puts people into it: an address that already has an account joins as it is and takes no
+extra seat, a new one needs a temporary password. **Seats are counted for the whole deployment, as
+distinct accounts** — a person in two organizations is one seat.
+
+Authorization is by membership, never by the organization id in the path being your own: inviting
+somebody into organization B takes an administrator *of B*. Whoever creates an organization
+administers it, so there is somebody to invite the rest. Nothing an organization already has is
+gated — a second team does not lose its flows the day a renewal is late.
+
 ### Isolation
 
-**Every integration table is partitioned by `organization_id`**, and the id always comes from the
-authenticated principal, never from a request parameter — so no request can address another
-tenant's mail events, subscriptions or estimates. Sign-in providers are the deliberate exception:
-they are installation-wide, because the screen that offers them has nobody signed in to scope them
-by.
+**Every table is partitioned by `organization_id`**, and the id always comes from the authenticated
+principal, never from a request parameter — so no request can address another organization's
+flows, credentials, runs or settings. A list shows one organization's records; a record fetched by
+id from the wrong organization answers 404, the same as one that does not exist. Sign-in providers
+are the deliberate exception: they are installation-wide, because the screen that offers them has
+nobody signed in to scope them by.
+
+Work with no principal names its organization instead of falling back to the deployment's: a run
+is stamped with its flow's organization at launch and carries it through everything that happens
+inside it — a credential revealed for a mail, an OAuth grant presented to an MCP server, a sub-flow
+looked up by id. The schedulers, mail polls and folder watches read every organization's flows,
+because each fires for all of them; a webhook or a published-flow token finds its flow by id and
+its own secret.
+
+**What is not partitioned yet:** the credentials a node references by id — an MCP server's token
+and `credential:<id>` environment, an API node's token, a repository's token, a SQL source's
+password — are resolved through a static lookup in `AgentSpec` that has no run in hand, so it
+resolves against the organization of the *calling thread*: the person's from the flow doctor or
+the tool picker, and the deployment's default from inside a run, because a run's worker threads
+carry no principal. A second organization's flows run, but those node credentials are looked up in
+the default organization until runs bind their organization to their threads. Everything a run
+resolves *with the run in hand* — mail hand-offs, OAuth grants for MCP servers, sub-flows — is
+already the run's own.
 
 **Accounts fail closed.** Unlike run persistence, which degrades to memory when the database is
 unavailable, sign-in refuses rather than degrading — a server nobody can authenticate against is
 safer than one that authenticates nobody.
-
-Pre-existing resources (flows, agents, MCP definitions, databases) are behind sign-in but are still
-shared across the deployment rather than partitioned per organization; repartitioning them would be
-a data migration that breaks existing installs.
 
 > The same material laid out to be looked things up in rather than read through is on the site,
 > at **/docs** — the source is [apps/website/docs/index.html](apps/website/docs/index.html).

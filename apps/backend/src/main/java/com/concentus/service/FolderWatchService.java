@@ -125,7 +125,7 @@ public class FolderWatchService {
             log.info("Folder-watch triggers disabled (watch.triggers-enabled=false).");
             return;
         }
-        for (FlowGraph flow : flows.list()) {
+        for (FlowGraph flow : flows.listAcrossOrganizations()) {
             if (flow.id() == null) continue;
             TriggerSpec spec = TriggerSpec.from(flow);
             if (!spec.watch()) continue;
@@ -160,7 +160,7 @@ public class FolderWatchService {
 
     /** One look at one flow's folder. Package-private so tests can drive it deterministically. */
     void poll(String flowId) {
-        FlowGraph flow = flows.get(flowId).orElse(null);
+        FlowGraph flow = flows.getAcrossOrganizations(flowId).orElse(null);
         if (flow == null || !flow.enabledOrDefault()) return;
         TriggerSpec spec = TriggerSpec.from(flow);
         if (!spec.watch() || spec.watchPath().isBlank()) return;

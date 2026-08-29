@@ -109,7 +109,10 @@ public class RagContextInjector {
                 // Judged by whoever pressed Run, not by whoever drew the flow. A flow outlives its
                 // author's session, and inheriting the author's reach would make every restricted
                 // base readable by anybody who could run the right flow.
-                if (access != null && run != null && !access.mayRunRead(source.baseId, run.startedBy)) {
+                // And in the run's own organization: this thread has no principal to scope the
+                // base by, and the run knows whose it is.
+                if (access != null && run != null
+                        && !access.mayRunRead(run.organizationId, source.baseId, run.startedBy)) {
                     throw new SecurityException("You do not have access to the documents in '"
                             + source.label() + "'.");
                 }

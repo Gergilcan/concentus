@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.SkillDef;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -9,8 +10,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class SkillStore extends JsonStore<SkillDef> {
 
-    public SkillStore(JdbcTemplate jdbc, ObjectMapper mapper) {
-        super(jdbc, mapper, SkillDef.class, "skill", "skill_", null);
+    public SkillStore(JdbcTemplate jdbc, ObjectMapper mapper, OrgContext orgContext) {
+        super(jdbc, mapper, SkillDef.class, "skill", "skill_", null, orgContext);
     }
 
     @Override

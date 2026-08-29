@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.FlowGraph;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +30,7 @@ class JsonStoreTest {
         // @TempDir field injection happens after construction, so the store (which needs the
         // resolved temp dir) must be built here rather than as an inline field initializer.
         TestDatabase.reset(TestDatabase.jdbc());
-        store = new FlowStore(TestDatabase.jdbc(), dataDir.toString(), new ObjectMapper());
+        store = new FlowStore(TestDatabase.jdbc(), dataDir.toString(), new ObjectMapper(), new OrgContext("default"));
         store.init();
     }
 
@@ -69,7 +70,7 @@ class JsonStoreTest {
         // equivalent of the corrupt file this used to check for. One bad record must not be able
         // to hide every other flow the user has.
         TestDatabase.jdbc().update(
-                "insert into resources (kind, id, sort_key, json, updated_at) values (?,?,?,?,?)",
+                "insert into resources (kind, id, sort_key, json, updated_at, organization_id) values (?,?,?,?,?,'default')",
                 "flow", "flow_corrupt", "Corrupt", "{ not valid json ][", 0L);
 
         assertThatCode(store::list).doesNotThrowAnyException();
@@ -87,7 +88,7 @@ class JsonStoreTest {
         Files.writeString(flowsDir.resolve("flow_legacy.json"),
                 new ObjectMapper().writeValueAsString(flow("flow_legacy", "From Files")));
 
-        FlowStore fresh = new FlowStore(TestDatabase.jdbc(), dataDir.toString(), new ObjectMapper());
+        FlowStore fresh = new FlowStore(TestDatabase.jdbc(), dataDir.toString(), new ObjectMapper(), new OrgContext("default"));
         fresh.init();
 
         assertThat(fresh.get("flow_legacy")).isPresent();

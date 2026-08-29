@@ -1435,3 +1435,30 @@
   color: t.$text;
   background: t.$accent-soft;
 }
+
+/**
+ * Organizations: the same roster rows as Members, with a member roster of their own folded
+ * under the one being looked at. Nested rather than a second page because the question an admin
+ * has — "who is in the other one?" — is asked beside the list, not instead of it.
+ */
+.orgRow {
+  border-bottom: 1px solid t.$border;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  > .memberRow {
+    border-bottom: none;
+  }
+}
+
+.orgMembers {
+  padding: 0 14px 14px 40px;
+  border-top: 1px dashed t.$border;
+  background: t.$panel;
+
+  .memberList {
+    margin: var(--sp-3) 0 var(--sp-4);
+  }
+}

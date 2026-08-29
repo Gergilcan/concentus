@@ -610,6 +610,33 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ role }),
     }),
+
+  // organizations (several on one deployment — creating a second one is Enterprise)
+  /** The organizations this account is in, every role: a Viewer in two of them switches too. */
+  listOrganizations: () => req<import('./types.ts').Organization[]>('/organizations'),
+  /** Refused with the Enterprise sentence on any other tier; the panel shows it as it arrives. */
+  createOrganization: (name: string) =>
+    req<import('./types.ts').Organization>('/organizations', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  renameOrganization: (id: string, name: string) =>
+    req<import('./types.ts').Organization>(`/organizations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+    }),
+  /** Everyone in one organization the caller administers, with the role each holds there. */
+  listOrganizationMembers: (id: string) =>
+    req<import('./types.ts').Member[]>(`/organizations/${id}/members`),
+  /** An existing address joins as is; a new one needs a temporary password and takes a seat. */
+  inviteToOrganization: (id: string, email: string, password: string, role: string) =>
+    req<import('./types.ts').Member>(`/organizations/${id}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ email, password, role }),
+    }),
+  /** Starts working in another organization this account is in. The page reloads afterwards. */
+  switchOrganization: (id: string) =>
+    req<SignedInUser>(`/organizations/${id}/switch`, { method: 'POST' }),
   listModels: () => req<ModelCatalog>('/models'),
 
   // stored credentials (write-only: nothing here ever returns a secret)

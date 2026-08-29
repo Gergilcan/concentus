@@ -408,3 +408,33 @@
     cursor: default;
   }
 }
+
+/* Which organization this window is working in. Present only past one organization, so it is a
+   fact rather than decoration, and quiet: the switch is in the account menu beside it. */
+.orgChip {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: t.$muted;
+  border: 1px solid t.$border;
+  border-radius: 12px;
+  padding: 4px 9px;
+}
+
+/* The organizations behind the account rows, when there is more than one to be in. */
+.orgSection {
+  margin: 0 0 6px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid t.$border;
+}
+
+.orgLabel {
+  display: block;
+  padding: 4px 8px 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$muted;
+}

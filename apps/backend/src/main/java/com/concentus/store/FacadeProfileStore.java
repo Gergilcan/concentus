@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.FacadeProfile;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -9,8 +10,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class FacadeProfileStore extends JsonStore<FacadeProfile> {
 
-    public FacadeProfileStore(JdbcTemplate jdbc, ObjectMapper mapper) {
-        super(jdbc, mapper, FacadeProfile.class, "facade-profile", "fprof_", null);
+    public FacadeProfileStore(JdbcTemplate jdbc, ObjectMapper mapper, OrgContext orgContext) {
+        super(jdbc, mapper, FacadeProfile.class, "facade-profile", "fprof_", null, orgContext);
     }
 
     @Override

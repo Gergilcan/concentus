@@ -84,7 +84,7 @@ public class MailTriggerService {
             return;
         }
 
-        for (FlowGraph flow : flows.list()) {
+        for (FlowGraph flow : flows.listAcrossOrganizations()) {
             if (flow.id() == null || !TriggerSpec.from(flow).mail()) continue;
             if (!flow.enabledOrDefault()) {
                 log.info("Flow '{}' is paused — not polling its mailbox.", flow.name());
@@ -135,7 +135,7 @@ public class MailTriggerService {
 
     /** One poll of one flow's folder. Package-private so tests can drive it deterministically. */
     void poll(String flowId) {
-        FlowGraph flow = flows.get(flowId).orElse(null);
+        FlowGraph flow = flows.getAcrossOrganizations(flowId).orElse(null);
         if (flow == null || !flow.enabledOrDefault()) return;
         if (!processed.isAvailable()) {
             // Polling with no memory would start a run per tick for the same message.
@@ -145,10 +145,10 @@ public class MailTriggerService {
         }
 
         MailTriggerSpec spec = MailTriggerSpec.from(flow);
-        // A poll has no authenticated principal, so the organization comes from configuration.
-        // That matches how flows themselves are stored — shared across the deployment rather than
-        // partitioned per tenant — so resolving their credentials anywhere else would be wrong.
-        String organizationId = orgContext.defaultOrganizationId();
+        // A poll has no authenticated principal, so the organization is the flow's own — the one
+        // whose credentials the person who drew the mail trigger could pick from. The default is
+        // only for a flow row that predates organizations being stamped on it.
+        String organizationId = flows.organizationOf(flow.id()).orElse(orgContext.defaultOrganizationId());
         MailAuthProvider.MailAuth auth;
         try {
             auth = mailAuth.resolve(spec, organizationId);

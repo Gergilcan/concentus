@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.FolderWatchState;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -15,8 +16,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class FolderWatchStateStore extends JsonStore<FolderWatchState> {
 
-    public FolderWatchStateStore(JdbcTemplate jdbc, ObjectMapper mapper) {
-        super(jdbc, mapper, FolderWatchState.class, "watch", "watch_", null);
+    public FolderWatchStateStore(JdbcTemplate jdbc, ObjectMapper mapper, OrgContext orgContext) {
+        super(jdbc, mapper, FolderWatchState.class, "watch", "watch_", null, orgContext);
     }
 
     @Override

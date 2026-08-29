@@ -55,7 +55,7 @@ class OAuthCredentialControllerTest {
         McpOAuth oauth = new McpOAuth(MAPPER);
         store = new OAuthCredentialStore(credentials, oauth, MAPPER);
         OrgContext org = mock(OrgContext.class);
-        when(org.defaultOrganizationId()).thenReturn(ORG);
+        when(org.currentOrganizationId()).thenReturn(ORG);
         controller = new OAuthCredentialController(credentials, store,
                 new OAuthCredentialFlow(store, oauth, "http://127.0.0.1:8734"), org);
     }

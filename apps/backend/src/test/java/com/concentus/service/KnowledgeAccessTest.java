@@ -13,7 +13,9 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -75,7 +77,7 @@ class KnowledgeAccessTest {
 
     @Test
     void aRunIsJudgedByWhoeverStartedItNotByWhoDrewTheFlow() {
-        when(store.get("kb1")).thenReturn(Optional.of(base(Accounts.ROLE_MEMBER)));
+        when(store.getIn(any(), eq("kb1"))).thenReturn(Optional.of(base(Accounts.ROLE_MEMBER)));
         when(accounts.findByEmail("viewer@example.com")).thenReturn(Optional.of(
                 new Accounts.UserAccount("u2", "org", "viewer@example.com", "hash",
                         Accounts.ROLE_VIEWER, true, 0L)));
@@ -87,7 +89,7 @@ class KnowledgeAccessTest {
 
     @Test
     void anEmailWithNoAccountBehindItGetsTheLowestRung() {
-        when(store.get("kb1")).thenReturn(Optional.of(base(Accounts.ROLE_OPERATOR)));
+        when(store.getIn(any(), eq("kb1"))).thenReturn(Optional.of(base(Accounts.ROLE_OPERATOR)));
         when(accounts.findByEmail(anyString())).thenReturn(Optional.empty());
 
         // Somebody who has left. Their old runs do not inherit reach they no longer have.
@@ -96,7 +98,7 @@ class KnowledgeAccessTest {
 
     @Test
     void aRunNobodyStartedIsNotRestricted() {
-        when(store.get("kb1")).thenReturn(Optional.of(base(Accounts.ROLE_ADMIN)));
+        when(store.getIn(any(), eq("kb1"))).thenReturn(Optional.of(base(Accounts.ROLE_ADMIN)));
 
         // A schedule, a webhook delivery, a flow started by another flow: there is no person to
         // restrict, and the run acts as the installation itself.

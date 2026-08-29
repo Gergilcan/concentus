@@ -1,6 +1,5 @@
 package com.concentus.service;
 
-import com.concentus.auth.OrgContext;
 import com.concentus.config.AgentSpec;
 import com.concentus.config.AgentSpec.McpServerSpec;
 import com.concentus.llm.McpOAuthStore;
@@ -39,13 +38,11 @@ class CliMcpServersTest {
     }
 
     private CliMcpServers servers() {
-        OrgContext org = mock(OrgContext.class);
-        when(org.defaultOrganizationId()).thenReturn("local");
-        return new CliMcpServers(oauth, org, MAPPER, PORT);
+        return new CliMcpServers(oauth, MAPPER, PORT);
     }
 
     private JsonNode node(McpServerSpec spec) {
-        return servers().node(spec, "run-1", "tok-run");
+        return servers().node(spec, "default", "run-1", "tok-run");
     }
 
     @Test
@@ -130,7 +127,7 @@ class CliMcpServersTest {
         spec.name = "resend";
         spec.url = "https://mcp.resend.com/mcp";
 
-        JsonNode server = servers().node(spec, "run-1", null);
+        JsonNode server = servers().node(spec, "default", "run-1", null);
 
         assertThat(server.path("url").asText()).isEqualTo("https://mcp.resend.com/mcp");
         assertThat(server.path("headers").path("Authorization").asText()).isEqualTo("Bearer granted-1");

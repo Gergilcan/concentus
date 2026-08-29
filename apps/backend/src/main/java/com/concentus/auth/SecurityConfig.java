@@ -196,6 +196,10 @@ public class SecurityConfig {
                     // authorization is the device cookie, which was only ever attached to an
                     // account by signing into it, and it names accounts rather than granting them.
                     .requestMatchers("/api/account/accounts", "/api/account/accounts/**").permitAll()
+                    // Moving between the organizations you are already in is not a write to any
+                    // of them: a Viewer in two organizations may look at either. The endpoint
+                    // itself checks the membership.
+                    .requestMatchers(HttpMethod.POST, "/api/organizations/*/switch").authenticated()
                     // Reading is every signed-in role: flows, runs, transcripts, costs. Someone who
                     // wants to know what the automation did last night should not need the power to
                     // make it do anything tonight.

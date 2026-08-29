@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.DatabaseDef;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,8 +13,9 @@ import java.nio.file.Path;
 @Component
 public class DatabaseStore extends JsonStore<DatabaseDef> {
 
-    public DatabaseStore(JdbcTemplate jdbc, @Value("${app.data-dir}") String dataDir, ObjectMapper mapper) {
-        super(jdbc, mapper, DatabaseDef.class, "database", "db_", Path.of(dataDir, "databases"));
+    public DatabaseStore(JdbcTemplate jdbc, @Value("${app.data-dir}") String dataDir, ObjectMapper mapper,
+                         OrgContext orgContext) {
+        super(jdbc, mapper, DatabaseDef.class, "database", "db_", Path.of(dataDir, "databases"), orgContext);
     }
 
     @Override

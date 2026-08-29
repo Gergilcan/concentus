@@ -39,6 +39,7 @@ class SubflowServiceTest {
 
     private static AgentRun parentRun(String flowId, List<String> ancestors) {
         AgentRun run = new AgentRun("run-parent", flowId, "Parent", "local");
+        run.organizationId = "default";
         run.flowChain = ancestors;
         return run;
     }
@@ -55,7 +56,7 @@ class SubflowServiceTest {
     private void childExists(String id) {
         FlowGraph child = new FlowGraph(id, "Child", "local", List.of(), List.of(),
                 null, null, null, null, null, null, null, null, null, null, null);
-        when(flows.get(id)).thenReturn(Optional.of(child));
+        when(flows.getIn("default", id)).thenReturn(Optional.of(child));
     }
 
     private static RunSummary summary(String id, String status) {
@@ -120,7 +121,7 @@ class SubflowServiceTest {
 
     @Test
     void a_flow_that_was_deleted_says_so_instead_of_failing_obscurely() {
-        when(flows.get("flow_gone")).thenReturn(Optional.empty());
+        when(flows.getIn("default", "flow_gone")).thenReturn(Optional.empty());
 
         SubflowService.Result result = service().run(parentRun("flow_parent", List.of()),
                 spec("flow_gone", true), "go");

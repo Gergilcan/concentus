@@ -160,7 +160,7 @@ public class PublicRunController {
         }
         FlowGraph flow;
         try {
-            flow = flows.get(flowId).orElse(null);
+            flow = flows.getAcrossOrganizations(flowId).orElse(null);
         } catch (IllegalArgumentException e) {
             flow = null; // an id the store would not even look up is, for this endpoint, absent
         }

@@ -76,6 +76,7 @@ class FlowControllerTest {
     @Test
     void restoringSavesTheOldRevisionAndAppendsItToTheHistoryAsANewOne() {
         when(versions.get("f1", 1)).thenReturn(Optional.of(flow("f1", "Original")));
+        when(store.get("f1")).thenReturn(Optional.of(flow("f1", "Current")));
         when(store.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         FlowGraph restored = controller().restore("f1", 1);
@@ -90,6 +91,7 @@ class FlowControllerTest {
     @Test
     void previewingARevisionReturnsItWithoutSavingOrSnapshottingAnything() {
         when(versions.get("f1", 2)).thenReturn(Optional.of(flow("f1", "Two versions ago")));
+        when(store.get("f1")).thenReturn(Optional.of(flow("f1", "Current")));
 
         FlowGraph preview = controller().version("f1", 2);
 
@@ -102,6 +104,7 @@ class FlowControllerTest {
     @Test
     void previewingAVersionThatIsNotThereIs404RatherThanAnEmptyCanvas() {
         when(versions.get("f1", 9)).thenReturn(Optional.empty());
+        when(store.get("f1")).thenReturn(Optional.of(flow("f1", "Current")));
 
         assertThatThrownBy(() -> controller().version("f1", 9))
                 .hasMessageContaining("No such version");

@@ -1157,7 +1157,24 @@ export interface SessionInfo {
   userId?: string
   email?: string
   organizationId?: string
+  /** What the current organization is called. */
+  organizationName?: string
+  /** How many organizations this account is in; the header names the current one only past one. */
+  organizationCount?: number
   role?: string
+}
+
+/**
+ * One organization the signed-in account is in, with the role it holds THERE — which for the
+ * organizations it is not currently working in is not what the session says.
+ */
+export interface Organization {
+  id: string
+  name: string
+  role: string | null
+  /** The one this session is working in. */
+  current: boolean
+  createdAt: number
 }
 
 // --- Stored credentials -----------------------------------------------------
