@@ -183,8 +183,27 @@ public final class RunReplay {
                 return "unknown";
             }
 
+            FlowGates.Origin origin = FlowGates.originOf(flow, id);
+            if (origin.is(FlowEdge.REJECTED)) {
+                // The verifier's rejected output: fires on what the verifier decided about the
+                // workers, not on whether the verifier itself ran clean.
+                StringBuilder rejected = new StringBuilder();
+                for (NodeExec e : execs.values()) {
+                    if (!"rejected".equals(e.verdict)) continue;
+                    rejected.append(labelOf(byId.get(e.nodeId), execs)).append(" rejected: ")
+                            .append(e.verdictReason == null ? "(no reason recorded)" : e.verdictReason).append('\n');
+                }
+                if (rejected.isEmpty()) {
+                    reasons.put(id, "Hangs off the verifier's rejected output, and nothing was rejected in this run.");
+                    return "would-skip";
+                }
+                FlowGates.Decision d = FlowGates.decide(flow, id, rejected.toString());
+                reasons.put(id, d.reason());
+                return d.fires() ? "would-run" : "would-skip";
+            }
+
             boolean srcFailed = "failed".equals(src.status);
-            boolean errorEdge = FlowGates.reachedByErrorPath(flow, id);
+            boolean errorEdge = origin.is(FlowEdge.ERROR);
             if (errorEdge != srcFailed) {
                 reasons.put(id, errorEdge
                         ? "Hangs off the error output, and '" + srcLabel + "' did not fail in this run."

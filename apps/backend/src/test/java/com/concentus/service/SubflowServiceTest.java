@@ -246,4 +246,152 @@ class SubflowServiceTest {
 
         verify(runs, org.mockito.Mockito.times(1)).startSubflow(any(), anyString(), any());
     }
+
+    // ------------------------------------------------------------ per-block outputs
+
+    private static AgentSpec agent(String nodeId, String name) {
+        AgentSpec s = new AgentSpec();
+        s.nodeId = nodeId;
+        s.name = name;
+        return s;
+    }
+
+    /**
+     * coordinator a → workers w1, w2 → verifier v; and one hand-off hanging off {@code handle} of
+     * {@code source}.
+     */
+    private static FlowGraph fanoutGraph(String source, String handle) {
+        return new FlowGraph("flow_parent", "Parent", "managed",
+                List.of(
+                        new com.concentus.model.FlowNode("a", "agent", "coordinator", java.util.Map.of()),
+                        new com.concentus.model.FlowNode("w1", "agent", "subagent", java.util.Map.of()),
+                        new com.concentus.model.FlowNode("w2", "agent", "subagent", java.util.Map.of()),
+                        new com.concentus.model.FlowNode("v", "verifier", null, java.util.Map.of()),
+                        new com.concentus.model.FlowNode("sub-1", "flow", null,
+                                java.util.Map.of("flowId", "flow_child"))),
+                List.of(
+                        new com.concentus.model.FlowEdge("e1", "a", "w1"),
+                        new com.concentus.model.FlowEdge("e2", "a", "w2"),
+                        new com.concentus.model.FlowEdge("e3", source, "sub-1", handle)),
+                null, null, null, null, null, null, null, null, null, null, null);
+    }
+
+    private AgentRun fanoutRun(String status) {
+        childExists("flow_child");
+        when(runs.startSubflow(any(), anyString(), any())).thenReturn(summary("run-branch", "RUNNING"));
+        AgentRun parent = parentRun("flow_parent", List.of());
+        parent.status = status;
+        parent.compiled = new CompiledFlow(agent("a", "Planner"),
+                List.of(agent("w1", "Ads writer"), agent("w2", "Ads reviewer")),
+                null, agent("v", "Judge"), List.of(spec("flow_child", true)));
+        return parent;
+    }
+
+    @Test
+    void the_error_branch_of_a_block_fires_when_that_block_failed_even_though_the_run_completed() {
+        AgentRun parent = fanoutRun("COMPLETED");
+        parent.restoreEvents(List.of(com.concentus.model.RunEvent.of("agent_message", "Merged.")));
+        com.concentus.model.NodeExec w1 = parent.nodeExec("w1", "agent", "Ads writer");
+        w1.status = "failed";
+        w1.error = "timed out after 10 minutes";
+        parent.restoreEvents(List.of(new com.concentus.model.RunEvent("error", "killed", "Ads writer", "w1", 0L)));
+
+        service().handOffAfter(parent, fanoutGraph("w1", com.concentus.model.FlowEdge.ERROR));
+
+        // The other workers carried the run home; this one still crashed, and the branch drawn
+        // for exactly that is the only way anybody hears about it.
+        verify(runs).startSubflow(any(),
+                org.mockito.ArgumentMatchers.argThat(p -> p.startsWith("Ads writer failed: timed out after 10 minutes")
+                        && p.contains("## Log — Ads writer") && p.contains("killed")), any());
+        assertThat(parent.status).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void the_error_branch_of_a_block_does_not_fire_for_another_blocks_failure() {
+        AgentRun parent = fanoutRun("ERROR");
+        parent.error = "timed out";
+        com.concentus.model.NodeExec w2 = parent.nodeExec("w2", "agent", "Ads reviewer");
+        w2.status = "failed";
+        w2.error = "timed out";
+
+        service().handOffAfter(parent, fanoutGraph("w1", com.concentus.model.FlowEdge.ERROR));
+
+        // Wired to w1, and w1 is fine. The old rule fired this on any failure, which made an
+        // error wire mean "something, somewhere" — the drawing says whose.
+        verify(runs, never()).startSubflow(any(), anyString(), any());
+        assertThat(parent.status).isEqualTo("ERROR");
+        assertThat(parent.bufferedEvents()).anySatisfy(e ->
+                assertThat(e.text()).contains("'Ads reviewer' failed and nothing is wired to its error output"));
+    }
+
+    @Test
+    void a_failure_nobody_pinned_on_a_block_fires_the_coordinators_error_branch() {
+        AgentRun parent = fanoutRun("ERROR");
+        parent.error = "Every worker failed. The combined report lists each reason.";
+
+        service().handOffAfter(parent, fanoutGraph("a", com.concentus.model.FlowEdge.ERROR));
+
+        verify(runs).startSubflow(any(),
+                org.mockito.ArgumentMatchers.startsWith("Every worker failed."), any());
+        assertThat(parent.status).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void a_failure_nobody_pinned_on_a_block_does_not_fire_a_workers_error_branch() {
+        AgentRun parent = fanoutRun("ERROR");
+        parent.error = "Every worker failed. The combined report lists each reason.";
+
+        service().handOffAfter(parent, fanoutGraph("w1", com.concentus.model.FlowEdge.ERROR));
+
+        verify(runs, never()).startSubflow(any(), anyString(), any());
+    }
+
+    @Test
+    void the_verifiers_rejected_branch_fires_once_with_the_whole_report() {
+        AgentRun parent = fanoutRun("COMPLETED");
+        parent.restoreEvents(List.of(com.concentus.model.RunEvent.of("agent_message", "Merged.")));
+        com.concentus.model.NodeExec w1 = parent.nodeExec("w1", "agent", "Ads writer");
+        w1.status = "passed";
+        w1.verdict = "accepted";
+        w1.output = "Three headlines.";
+        com.concentus.model.NodeExec w2 = parent.nodeExec("w2", "agent", "Ads reviewer");
+        w2.status = "passed";
+        w2.verdict = "rejected";
+        w2.verdictReason = "Cites a CTR that appears in no file.";
+        w2.output = "CTR is 12%.";
+
+        service().handOffAfter(parent, fanoutGraph("v", com.concentus.model.FlowEdge.REJECTED));
+
+        verify(runs, org.mockito.Mockito.times(1)).startSubflow(any(),
+                org.mockito.ArgumentMatchers.argThat(p -> p.startsWith("# Verification report — Parent")
+                        && p.contains("## ✖ Ads reviewer — REJECTED")
+                        && p.contains("Cites a CTR that appears in no file.")
+                        && p.contains("## ✔ Ads writer — accepted")), any());
+    }
+
+    @Test
+    void the_verifiers_rejected_branch_stays_quiet_when_everything_was_accepted() {
+        AgentRun parent = fanoutRun("COMPLETED");
+        parent.restoreEvents(List.of(com.concentus.model.RunEvent.of("agent_message", "Merged.")));
+        parent.nodeExec("w1", "agent", "Ads writer").verdict = "accepted";
+        parent.nodeExec("w2", "agent", "Ads reviewer").verdict = "accepted";
+
+        service().handOffAfter(parent, fanoutGraph("v", com.concentus.model.FlowEdge.REJECTED));
+
+        verify(runs, never()).startSubflow(any(), anyString(), any());
+    }
+
+    @Test
+    void a_run_the_verifier_rejected_entirely_is_handled_by_its_rejected_branch() {
+        AgentRun parent = fanoutRun("ERROR");
+        parent.error = "The verifier rejected every worker's output — nothing survived to merge.";
+        parent.nodeExec("w1", "agent", "Ads writer").verdict = "rejected";
+        parent.nodeExec("w2", "agent", "Ads reviewer").verdict = "rejected";
+
+        service().handOffAfter(parent, fanoutGraph("v", com.concentus.model.FlowEdge.REJECTED));
+
+        verify(runs).startSubflow(any(), org.mockito.ArgumentMatchers.contains("Rejected 2 of 2 worker(s)."), any());
+        // Somebody drew what should happen when the verifier kills everything, and it happened.
+        assertThat(parent.status).isEqualTo("COMPLETED");
+    }
 }

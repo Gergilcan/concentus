@@ -311,6 +311,8 @@ export interface MailSignInResult {
 
 export type AgentNodeData = {
   kind: 'agent'
+  /** The author turned the block's `on error` output on. Absent: hidden until a wire leaves it. */
+  errorOutput?: boolean
   name: string
   role: 'coordinator' | 'subagent'
   model: string
@@ -444,6 +446,8 @@ export type SqlNodeData = {
  */
 export type FlowRunNodeData = {
   kind: 'flow'
+  /** The author turned the block's `on error` output on. Absent: hidden until a wire leaves it. */
+  errorOutput?: boolean
   label: string
   /** Id of the flow to run. The inspector picks it from the saved flows. */
   flowId: string
@@ -475,6 +479,8 @@ export type KnowledgeNodeData = {
 
 export type ApiNodeData = {
   kind: 'api'
+  /** The author turned the block's `on error` output on. Absent: hidden until a wire leaves it. */
+  errorOutput?: boolean
   label: string
   /** URL of the OpenAPI 3.x document; or paste it into specInline when it is not fetchable. */
   specUrl: string
@@ -506,6 +512,8 @@ export type ApiNodeData = {
  */
 export type MergeNodeData = {
   kind: 'merge'
+  /** The author turned the block's `on error` output on. Absent: hidden until a wire leaves it. */
+  errorOutput?: boolean
   name: string
   model: string
   /** Merge instructions: how to reconcile, what to verify, what the final report must contain. */
@@ -528,6 +536,10 @@ export type MergeNodeData = {
  */
 export type VerifierNodeData = {
   kind: 'verifier'
+  /** The author turned the block's `on error` output on. Absent: hidden until a wire leaves it. */
+  errorOutput?: boolean
+  /** The author turned the verifier's `on rejected` output on. Absent: hidden until a wire leaves it. */
+  rejectedOutput?: boolean
   name: string
   model: string
   /** Rejection criteria: what disqualifies an output in THIS flow, beyond the built-in rules. */

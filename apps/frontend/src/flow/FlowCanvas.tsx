@@ -63,6 +63,7 @@ function useCanvasColorMode(): 'dark' | 'light' {
 function edgeHandleClass(e: Edge): string | null {
   if (e.sourceHandle === 'error') return 'edge-error'
   if (e.sourceHandle === 'else') return 'edge-else'
+  if (e.sourceHandle === 'rejected') return 'edge-rejected'
   return null
 }
 

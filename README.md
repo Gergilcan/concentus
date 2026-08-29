@@ -158,15 +158,23 @@ concentus/
     prompt are injected into the connected agent, numbered and cited, recorded per node. The agent
     also gets a `search_knowledge` tool, so it can go back and ask a second question the preload
     could not have anticipated. See [Retrieval](#retrieval-how-a-passage-is-found).
-- **Every executing block has two outputs.** The main one carries what it produced. The second
-  is for the other way things can go: on an agent, a sub-flow, an API call, a merge or a verifier
-  it is **on error** — the branch wired there runs only when the block failed, and is handed the
-  failure itself, named by the block that produced it. A run whose failure was handled this way
-  completes: somebody drew what should happen when it goes wrong, and it happened. With nothing
-  wired there, a failure behaves exactly as before. On a **condition** the second output is
-  **else**: the main branch runs when the test holds, the else branch when it does not — one test
-  read from both sides, so the two branches cannot drift apart and no input can fall between them.
-  After a for-each, the else branch receives the rejected items rather than dropping them.
+- **Every executing block has a second output, off until you want it.** The main output carries
+  what the block produced. The second is for the other way things can go, and stays off the card
+  until you turn it on (hover the block, click the `+ on error` chip) or a wire already leaves it.
+  On an agent, a sub-flow, an API call, a merge or a verifier it is **on error** — the branch wired
+  there runs when *that block* failed (even if the rest of the flow carried the run to completion),
+  and is handed the failure named by the block plus the block's own console log. A failure nobody
+  pinned on a block — "every worker failed" — fires the coordinator's. A run whose failure was
+  handled this way completes: somebody drew what should happen when it goes wrong, and it
+  happened. With nothing wired there, a failure behaves exactly as before. The **verifier** has one
+  more: **on rejected**, which fires once when its final word on any worker was a rejection and
+  hands the branch a full verification report — every worker, rejected and accepted, with the
+  verdict, the reason, its output and its console log — so a rejection can be mailed, filed or
+  acted on instead of only read on a box afterwards (a condition after it filters by worker
+  name). On a **condition** the second output is **else**, always drawn: the main branch runs when
+  the test holds, the else branch when it does not — one test read from both sides, so the two
+  branches cannot drift apart and no input can fall between them. After a for-each, the else
+  branch receives the rejected items rather than dropping them.
 - **Workers talk to each other** — each independent worker gets `share_finding` and
   `read_findings`. They are separate processes with separate context windows, which is what makes
   them independent and also what makes five of them research the same thing five times. A worker
@@ -272,7 +280,9 @@ restart.
   `verdict_submit`, which must cover **every** output — accept, or reject with the reason — and
   the verdict has teeth: a rejected output never reaches the merge. The kill and its reason land
   on the worker's box, and a verifier that errors or never submits stops the run as UNVERIFIED
-  rather than passing outputs along as judged. At most one per flow.
+  rather than passing outputs along as judged. Its **on rejected** output hands a flow the full
+  verification report when anything was rejected — the way to be told *why*, with the log, instead
+  of finding out on a box. At most one per flow.
 - **The Merge node** runs after every worker: one more process that receives all their reports
   (failures included), reads their workspaces, and reconciles them into the run's answer. It is
   the only fan-out process with shell access — running the tests belongs to the one step whose

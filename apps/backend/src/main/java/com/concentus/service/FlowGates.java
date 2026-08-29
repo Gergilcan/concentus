@@ -117,17 +117,39 @@ public final class FlowGates {
      * make drawing the rule detach the branch from the agent it belongs to.
      */
     /**
-     * Whether the wire that reaches {@code nodeId} left its source's error output.
+     * Which output of which block a branch hangs off.
      *
-     * <p>Walks through gates the same way {@link #sourceThroughGates} does, because a condition
-     * drawn between an agent and its recovery branch does not change which output the branch hangs
-     * off — it only decides whether it fires.
+     * <p>{@code handle} is the block's output as the wire names it — null for the main one, or one
+     * of the {@link FlowEdge} names. {@code sourceId} is the block, looking through any gates drawn
+     * in between: a condition between an agent and its recovery branch decides whether the branch
+     * fires, not which output it belongs to nor whose. Both null when nothing feeds the branch.
+     *
+     * <p>Not bean-named ({@code isMain}) for the reason FlowEdge spells out: a record with a
+     * getter-shaped method grows a JSON property.
+     */
+    public record Origin(String sourceId, String handle) {
+
+        public boolean onMain() {
+            return handle == null;
+        }
+
+        public boolean is(String handle) {
+            return handle.equals(this.handle);
+        }
+    }
+
+    /**
+     * The block and the output the wire reaching {@code nodeId} left from.
+     *
+     * <p>Walks through gates the same way {@link #sourceThroughGates} does. A gate's own
+     * {@code else} edge is the gate's answer, not the block's output, so it is stepped over: the
+     * block's output is whatever the edge INTO the first gate says.
      *
      * <p>A flow drawn before outputs had names has null on every edge, which reads as the main
      * output. That is the right answer: those hand-offs run when the flow succeeds, exactly as
      * they always did.
      */
-    public static boolean reachedByErrorPath(FlowGraph flow, String nodeId) {
+    public static Origin originOf(FlowGraph flow, String nodeId) {
         Map<String, FlowNode> byId = new LinkedHashMap<>();
         for (FlowNode n : flow.nodesOrEmpty()) byId.put(n.id(), n);
 
@@ -137,15 +159,17 @@ public final class FlowGates {
             String next = null;
             for (FlowEdge e : flow.edgesOrEmpty()) {
                 if (!current.equals(e.target())) continue;
-                if (e.is(FlowEdge.ERROR)) return true;
                 FlowNode source = byId.get(e.source());
-                if (source == null || !isGate(source.type())) return false;
+                if (source == null || !isGate(source.type())) {
+                    String handle = e.onMainOutput() ? null : e.sourceHandle();
+                    return new Origin(source == null ? e.source() : source.id(), handle);
+                }
                 next = source.id();
                 break;
             }
             current = next;
         }
-        return false;
+        return new Origin(null, null);
     }
 
     public static String sourceThroughGates(FlowGraph flow, String nodeId) {

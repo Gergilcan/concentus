@@ -1172,6 +1172,9 @@ public class FanoutExecutor {
      */
     private static List<Outcome> applyVerdict(AgentRun run, WorkVerdict verdict,
                                               List<Outcome> outcomes) {
+        // Kept for the report the verifier's rejected output hands on: the last verdict's
+        // one-liner is the verifier's own account of what it decided.
+        run.lastVerdictSummary = verdict.summary();
         List<Outcome> out = new ArrayList<>(outcomes.size());
         for (Outcome o : outcomes) {
             WorkVerdict.Item item = o.ok() ? verdict.of(o.spec().nodeId) : null;

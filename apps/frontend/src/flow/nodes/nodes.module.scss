@@ -191,15 +191,21 @@
 
 /* ---- the second output: what happens when things do not go the main way ---- */
 
-.handleError,
-.handleElse {
+.handle_error,
+.handle_rejected,
+.handle_else {
   /* React Flow paints handles from its own stylesheet, so these override rather than define. */
   border-color: t.$panel-2 !important;
 }
-.handleError {
+.handle_error {
   background: t.$danger !important;
 }
-.handleElse {
+/* The verifier's own second output. Not the error red: a rejection is the verifier working,
+   not the verifier breaking. */
+.handle_rejected {
+  background: t.$warn !important;
+}
+.handle_else {
   background: t.$muted !important;
 }
 
@@ -213,10 +219,54 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   pointer-events: none;
+  line-height: 12px;
 }
-.altError {
+/* An optional output nobody has wired yet: its label is also the way to put it away. */
+.altToggle {
+  pointer-events: auto;
+  cursor: pointer;
+  &:hover {
+    text-decoration: line-through;
+  }
+}
+.alt_error {
   color: t.$danger;
 }
-.altElse {
+.alt_rejected {
+  color: t.$warn;
+}
+.alt_else {
   color: t.$muted;
+}
+
+/* The way to turn a hidden output on: chips in the corner where its label would sit. Invisible
+   until the card is hovered or selected, so a quiet canvas stays quiet. */
+.chips {
+  position: absolute;
+  right: 10px;
+  bottom: 2px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  .node:hover &,
+  .selected & {
+    opacity: 1;
+  }
+}
+.chip {
+  all: unset;
+  cursor: pointer;
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 12px;
+  padding: 0 4px;
+  border-radius: 6px;
+  border: 1px dashed currentColor;
+  opacity: 0.75;
+  &:hover {
+    opacity: 1;
+    background: t.$border;
+  }
 }

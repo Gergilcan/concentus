@@ -21,7 +21,7 @@ export function ConditionNode({ id, data, selected }: NodeProps<ConditionRFNode>
   return (
     <NodeShell
       id={id}
-      altHandle={{ id: 'else', label: t('else'), tone: 'else' }}
+      altHandles={[{ id: 'else', label: t('else'), tone: 'else' }]}
       variant="condition"
       selected={selected}
       icon="⑂"

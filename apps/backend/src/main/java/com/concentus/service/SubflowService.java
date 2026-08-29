@@ -149,30 +149,55 @@ public class SubflowService {
         if (run.handOffsFired) return;
 
         // A failed run used to start nothing at all, which is what made a failure something you
-        // found out about afterwards. Now the wires say which is which: a branch on the main
-        // output runs when the flow worked, one on the error output runs when it did not.
+        // found out about afterwards. Now the wires say which is which, and WHOSE: a branch on
+        // the main output runs when the flow worked; one on a block's error output runs when
+        // THAT block failed — a worker that crashed while the others carried the run to
+        // completion still fires its own branch; one on the verifier's rejected output runs when
+        // the verifier's final word on any worker was a rejection.
         boolean failed = !"COMPLETED".equals(run.status);
+        // A failure nobody pinned on a block — "every worker failed", a budget — belongs to the
+        // coordinator, the block that stands for the run.
+        boolean unattributed = failed && run.failedNodeLabel() == null;
         List<AgentSpec.SubflowSpec> toRun = new ArrayList<>();
+        java.util.Map<String, String> payloads = new java.util.LinkedHashMap<>();
+        boolean recoveryFired = false;
         for (AgentSpec.SubflowSpec drawn : run.compiled.afterFlows()) {
-            boolean onError = graph != null && FlowGates.reachedByErrorPath(graph, drawn.nodeId);
-            if (onError == failed) toRun.add(drawn);
+            FlowGates.Origin origin = graph == null
+                    ? new FlowGates.Origin(null, null)
+                    : FlowGates.originOf(graph, drawn.nodeId);
+            String payload = null;
+            if (origin.onMain()) {
+                // A run that completed saying nothing still hands off: the branch was drawn to
+                // run when this one finishes, and it did.
+                if (!failed) payload = run.finalOutput() == null ? "" : run.finalOutput();
+            } else if (origin.is(com.concentus.model.FlowEdge.ERROR)) {
+                boolean blockFailed = run.nodeFailed(origin.sourceId())
+                        || (unattributed && isCoordinator(run, graph, origin.sourceId()));
+                if (blockFailed) payload = BranchPayloads.errorOf(run, origin.sourceId());
+            } else if (origin.is(com.concentus.model.FlowEdge.REJECTED)) {
+                if (run.anyRejected()) payload = BranchPayloads.verificationReport(run);
+            }
+            if (payload == null) continue;
+            toRun.add(drawn);
+            payloads.put(drawn.nodeId, payload);
+            if (!origin.onMain()) recoveryFired = true;
         }
 
         if (toRun.isEmpty()) {
             if (failed) {
-                run.emit(com.concentus.model.RunEvent.of("system", "This run did not complete, and "
-                        + "nothing is wired to its error output, so none of its "
-                        + run.compiled.afterFlows().size() + " hand-off(s) were started."));
+                String where = run.failedNodeLabel();
+                run.emit(com.concentus.model.RunEvent.of("system", (where == null
+                        ? "This run did not complete, and nothing is wired to its coordinator's error output"
+                        : "'" + where + "' failed and nothing is wired to its error output")
+                        + ", so none of its " + run.compiled.afterFlows().size()
+                        + " hand-off(s) were started."));
             }
             return;
         }
 
         run.handOffsFired = true;
-        // What the recovery branch is handed. The error and the block that produced it is the one
-        // thing that certainly exists when something has failed — a partial output usually does
-        // not, and the run's original text says nothing about what went wrong.
-        String output = failed ? failureText(run) : run.finalOutput();
         for (AgentSpec.SubflowSpec drawn : toRun) {
+            String output = payloads.get(drawn.nodeId);
             FlowGates.Decision decision = graph == null
                     ? new FlowGates.Decision(List.of(output == null ? "" : output), null)
                     : FlowGates.decide(graph, drawn.nodeId, output);
@@ -203,20 +228,32 @@ public class SubflowService {
 
         // Handled, and therefore not a failure any more. Somebody drew what should happen when
         // this goes wrong and it happened; leaving the run red would report an unattended failure
-        // and put a flow in the drifted column for working as designed.
-        if (failed) {
+        // and put a flow in the drifted column for working as designed. A rejected branch counts:
+        // a run that failed because the verifier rejected everything, with a branch drawn for
+        // exactly that, did what it was drawn to do.
+        if (failed && recoveryFired) {
             run.status = "COMPLETED";
             run.emit(com.concentus.model.RunEvent.of("system",
-                    "The error was handled by the branch wired to this flow's error output, so this "
-                            + "run is reported as completed. The failure itself is above."));
+                    "The failure was handled by the branch wired to the failing block's second "
+                            + "output, so this run is reported as completed. The failure itself is above."));
         }
     }
 
-    /** The failure, named by the block that produced it, for the branch that has to act on it. */
-    private static String failureText(AgentRun run) {
-        String error = run.error == null || run.error.isBlank() ? "The run failed." : run.error;
-        String where = run.failedNodeLabel();
-        return where == null ? error : where + " failed: " + error;
+    /**
+     * Whether a block is the run's coordinator — by the compiled spec, or by the role drawn on the
+     * canvas, because a run built by a test or an older path may have compiled without ids.
+     */
+    private static boolean isCoordinator(AgentRun run, com.concentus.model.FlowGraph graph, String nodeId) {
+        if (nodeId == null) return false;
+        if (run.compiled != null && run.compiled.coordinator() != null
+                && nodeId.equals(run.compiled.coordinator().nodeId)) {
+            return true;
+        }
+        if (graph == null) return false;
+        for (com.concentus.model.FlowNode n : graph.nodesOrEmpty()) {
+            if (nodeId.equals(n.id())) return "coordinator".equalsIgnoreCase(n.role());
+        }
+        return false;
     }
 
     /**

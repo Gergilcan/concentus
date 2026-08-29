@@ -206,6 +206,49 @@ public class AgentRun {
         return null;
     }
 
+    /** Whether one block's box records a failure. */
+    public boolean nodeFailed(String nodeId) {
+        NodeExec exec = nodeExecOrNull(nodeId);
+        return exec != null && "failed".equals(exec.status);
+    }
+
+    /** Whether the verifier rejected at least one worker's output — its final word, after any escalation. */
+    public boolean anyRejected() {
+        synchronized (nodeExecs) {
+            for (NodeExec exec : nodeExecs.values()) {
+                if ("rejected".equals(exec.verdict)) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * One block's own console: the buffered events it wrote, one per line, {@code HH:mm:ss
+     * [type]  text}. The same filter the box's Logs tab applies (event agentId = node id).
+     *
+     * <p>Only as complete as the buffer: the run keeps its last {@value #MAX_BUFFER} events, so a
+     * very long run's earliest lines are gone before anything reads this. Empty when the block
+     * wrote nothing.
+     */
+    public String logOf(String nodeId) {
+        if (nodeId == null) return "";
+        java.time.format.DateTimeFormatter clock = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss");
+        StringBuilder sb = new StringBuilder();
+        for (RunEvent e : buffer) {
+            if (!nodeId.equals(e.agentId())) continue;
+            if (sb.length() > 0) sb.append('\n');
+            String at = clock.format(java.time.Instant.ofEpochMilli(e.ts()).atZone(java.time.ZoneId.systemDefault()));
+            sb.append(at).append("  [").append(e.type()).append("]  ").append(e.text() == null ? "" : e.text());
+        }
+        return sb.toString();
+    }
+
+    /**
+     * The verifier's one-line summary of its latest verdict, for the report handed to the branch
+     * on its rejected output. Set by the fan-out when a verdict is applied; null when none ran.
+     */
+    public volatile String lastVerdictSummary;
+
     public final java.util.List<SharedNote> sharedNotes =
             java.util.Collections.synchronizedList(new java.util.ArrayList<>());
 

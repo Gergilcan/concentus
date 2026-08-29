@@ -23,6 +23,12 @@ public record FlowEdge(String id, String source, String target, String sourceHan
     public static final String ERROR = "error";
     /** A condition's two outputs. The main one is "it held"; this is the branch for when it did not. */
     public static final String ELSE = "else";
+    /**
+     * The verifier's own second output: what it rejected. Distinct from {@link #ERROR} on purpose —
+     * the verifier process dying and the verifier refusing a worker's output are two facts, and
+     * the boxes already keep them apart (a rejected worker DID finish its work).
+     */
+    public static final String REJECTED = "rejected";
 
     /**
      * Whether this wire leaves from the block's main output — what it produced, on success.

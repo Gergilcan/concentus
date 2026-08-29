@@ -8,7 +8,7 @@ export function MergeNode({ id, data, selected }: NodeProps<MergeRFNode>) {
   const { t } = useTranslation()
   return (
     <NodeShell
-      altHandle={{ id: 'error', label: t('on error'), tone: 'error' }}
+      altHandles={[{ id: 'error', label: t('on error'), tone: 'error', optional: { flag: 'errorOutput', enabled: !!data.errorOutput } }]}
       id={id}
       variant="merge"
       selected={selected}

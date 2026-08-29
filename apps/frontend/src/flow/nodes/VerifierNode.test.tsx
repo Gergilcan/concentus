@@ -54,6 +54,24 @@ describe('VerifierNode', () => {
     expect(screen.getByText('claude-sonnet-5')).toBeInTheDocument()
   })
 
+  it('has two optional second outputs — on rejected lowest, on error above — both off until asked for', () => {
+    const { container } = renderVerifierNode()
+    expect(container.querySelector('[data-handleid="rejected"]')).toBeNull()
+    expect(container.querySelector('[data-handleid="error"]')).toBeNull()
+    expect(screen.getByRole('button', { name: '+ on rejected' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ on error' })).toBeInTheDocument()
+
+    const { container: on } = renderVerifierNode({
+      data: verifierData({ rejectedOutput: true, errorOutput: true }),
+    })
+    const rejected = on.querySelector('[data-handleid="rejected"]') as HTMLElement
+    const error = on.querySelector('[data-handleid="error"]') as HTMLElement
+    expect(rejected).not.toBeNull()
+    expect(error).not.toBeNull()
+    expect(rejected.style.top).toBe('calc(100% - 14px)')
+    expect(error.style.top).toBe('calc(100% - 30px)')
+  })
+
   it('falls back to "Verifier" when name is empty and applies its variant class', () => {
     const { container } = renderVerifierNode({ data: verifierData({ name: '' }) })
     expect(screen.getByText('Verifier')).toBeInTheDocument()

@@ -8,7 +8,12 @@ export function VerifierNode({ id, data, selected }: NodeProps<VerifierRFNode>) 
   const { t } = useTranslation()
   return (
     <NodeShell
-      altHandle={{ id: 'error', label: t('on error'), tone: 'error' }}
+      // Lowest is what it rejected — the verifier's real second output. Above it, the verifier
+      // process itself dying, which is a different fact and keeps its own dot.
+      altHandles={[
+        { id: 'rejected', label: t('on rejected'), tone: 'rejected', optional: { flag: 'rejectedOutput', enabled: !!data.rejectedOutput } },
+        { id: 'error', label: t('on error'), tone: 'error', optional: { flag: 'errorOutput', enabled: !!data.errorOutput } },
+      ]}
       id={id}
       variant="verifier"
       selected={selected}

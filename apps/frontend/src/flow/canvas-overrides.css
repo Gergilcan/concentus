@@ -86,6 +86,11 @@
   stroke-dasharray: 7 4;
 }
 
+.react-flow__edge.edge-rejected .react-flow__edge-path {
+  stroke: var(--warn);
+  stroke-dasharray: 7 4;
+}
+
 /* Kin highlighting still wins while a block is selected: the question being asked then is
    "what is wired to this", and the answer needs its own colours. */
 .react-flow__edge.kin-in .react-flow__edge-path,
