@@ -76,11 +76,32 @@ public class CredentialResolver {
             }
             return credentials.reveal(organizationId, id).orElse(null);
         } catch (RuntimeException e) {
-            // Typically a master key that changed since the credential was saved. Null rather than
-            // a throw, so a node with an unreadable credential behaves like one with none — the
-            // caller already reports "no credential configured" in terms a user can act on.
+            // A database that went away mid-run, typically. Null rather than a throw, so a node
+            // with an unreadable credential behaves like one with none — the caller already
+            // reports "no credential configured" in terms a user can act on. A locked credential
+            // does not come through here: the store answers empty for it and logs it by name.
             log.warn("Could not resolve credential {}: {}", credentialId, e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Whether a reference names a credential that exists but is sealed under a key this
+     * installation does not have.
+     *
+     * <p>For the flow doctor, which has to tell "create one" from "type it again": a locked
+     * credential still has its id and its name, and the node pointing at it is not wrong.
+     */
+    public boolean isLocked(String credentialId) {
+        if (credentialId == null || credentialId.isBlank()) return false;
+        String reference = credentialId.trim();
+        int sep = reference.indexOf(FIELD_SEPARATOR);
+        String id = sep < 0 ? reference : reference.substring(0, sep);
+        try {
+            return credentials.find(orgContext.defaultOrganizationId(), id)
+                    .map(CredentialStore.Credential::locked).orElse(false);
+        } catch (RuntimeException e) {
+            return false;
         }
     }
 }

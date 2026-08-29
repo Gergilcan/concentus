@@ -10,7 +10,7 @@ import { backendJar, backendLogFile, dataDir, isPackaged, javaBinary } from './p
 import { loadApiKey } from './api-key'
 import { resolveClaudeCli } from './claude-cli'
 import { killOrphans } from './orphans'
-import { legacyMasterSecret } from './secret'
+import { dataKey } from './secret'
 import { loadSettings, saveSettings } from './settings'
 import { log } from './log'
 
@@ -273,7 +273,7 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
   // 32 bytes from the CSPRNG, new on every start: the backend only ever compares it to what the
   // shell sends, so there is nothing to keep and nothing to invalidate when the process ends.
   const shellToken = crypto.randomBytes(32).toString('base64url')
-  const legacyKey = legacyMasterSecret()
+  const key = dataKey()
   const storedApiKey = loadApiKey()
 
   const env: NodeJS.ProcessEnv = {
@@ -282,11 +282,10 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
     // node — none of which a desktop launcher's environment necessarily contains.
     PATH: claude.path,
     APP_DATA_DIR: data,
-    // Only while something in the database is still encrypted. Nothing is ever encrypted with
-    // it again — it is handed over so the backend can convert those values to plain text and be
-    // done with them. Absent once this installation never had a key, or its file has been
-    // removed, and the backend is perfectly happy without one.
-    ...(legacyKey ? { CONCENTUS_SECRET_KEY: legacyKey } : {}),
+    // What seals stored credentials at rest (see secret.ts). Absent only when the stored key
+    // could not be read or a fresh one could not be stored this launch — the backend then runs
+    // in the clear, shows rows it cannot open as locked, and nothing refuses to start.
+    ...(key.key ? { CONCENTUS_SECRET_KEY: key.key } : {}),
     // Lets the first-run wizard read, test and save the database setting before there is an
     // account to sign into. Narrow by design — see ShellTokenFilter in the backend.
     CONCENTUS_SHELL_TOKEN: shellToken,

@@ -12,17 +12,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Rewrites the values this installation can still decrypt, once, in the clear.
+ * Brings every stored secret up to what this installation's key can do, once, at startup.
  *
- * <p>Runs at every start and does nothing on all but the first: it selects only rows that still
- * carry the {@code v1:} marker, so a converted database is one empty query per launch.
+ * <p>With a key: rows still in the clear are sealed, and rows under the earlier {@code v1:}
+ * marker that open with this key are rewritten under the current one. That is what makes "the
+ * upgrade brought a key" mean something for credentials entered before it — without this pass, a
+ * backup taken the day after the upgrade would still hold every password that no run had touched.
+ * A converted database is one empty query per launch.
+ *
+ * <p>Without a key there is nothing to write, and the pass only reports.
  *
  * <p><b>Nothing is deleted and nothing is guessed.</b> A row this installation cannot open is left
  * exactly as it was — it is somebody else's key, and the value may still be recoverable from the
  * machine that wrote it. What those rows get instead is a log line naming them, because the
- * failure they cause otherwise is the one that cost a morning: an integration reporting itself
- * "not configured" while its row sits plainly in the table, with nothing to say which of them are
- * affected.
+ * failure they used to cause is the one that cost a morning: an integration reporting itself
+ * "not configured" while its row sits plainly in the table. They are also visible where it
+ * matters now — locked in the credentials list, named by the flow doctor — so this line is the
+ * operator's copy, not the only copy.
  */
 @Component
 public class SecretsMigration {
@@ -30,15 +36,15 @@ public class SecretsMigration {
     private static final Logger log = LoggerFactory.getLogger(SecretsMigration.class);
 
     private final JdbcTemplate jdbc;
-    private final LegacySecrets legacy;
+    private final SecretCipher cipher;
 
-    public SecretsMigration(JdbcTemplate jdbc, LegacySecrets legacy) {
+    public SecretsMigration(JdbcTemplate jdbc, SecretCipher cipher) {
         this.jdbc = jdbc;
-        this.legacy = legacy;
+        this.cipher = cipher;
     }
 
-    /** What one table's conversion did, for the summary line. */
-    private record Result(int converted, List<String> stranded) {
+    /** What one table's pass did, for the summary line. */
+    private record Result(int sealed, List<String> locked) {
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -58,65 +64,74 @@ public class SecretsMigration {
 
     private Result convertCredentials() {
         List<String[]> rows = jdbc.query(
-                "select id, label, secret from credentials where secret like 'v1:%'",
+                "select id, label, secret from credentials",
                 (rs, n) -> new String[] { rs.getString("id"), rs.getString("label"),
                         rs.getString("secret") });
-        int converted = 0;
-        List<String> stranded = new ArrayList<>();
+        int sealed = 0;
+        List<String> locked = new ArrayList<>();
         for (String[] row : rows) {
-            String plaintext = legacy.open(row[2]).orElse(null);
-            if (plaintext == null) {
-                stranded.add(row[1]);
-                continue;
-            }
-            jdbc.update("update credentials set secret = ? where id = ?", plaintext, row[0]);
-            converted++;
+            String next = rewrite(row[2], locked, row[1]);
+            if (next == null) continue;
+            // Compare-and-set on the stored text: a credential saved between the select and this
+            // update was written sealed already and must not be replaced with a stale value.
+            sealed += jdbc.update("update credentials set secret = ? where id = ? and secret = ?",
+                    next, row[0], row[2]);
         }
-        return new Result(converted, stranded);
+        return new Result(sealed, locked);
     }
 
     private Result convertSettings() {
         List<String[]> rows = jdbc.query(
-                "select organization_id, key, value from settings where secret = true and value like 'v1:%'",
+                "select organization_id, key, value from settings where secret = true",
                 (rs, n) -> new String[] { rs.getString("organization_id"), rs.getString("key"),
                         rs.getString("value") });
-        int converted = 0;
-        List<String> stranded = new ArrayList<>();
+        int sealed = 0;
+        List<String> locked = new ArrayList<>();
         for (String[] row : rows) {
-            String plaintext = legacy.open(row[2]).orElse(null);
-            if (plaintext == null) {
-                stranded.add(row[1]);
-                continue;
-            }
-            jdbc.update("update settings set value = ? where organization_id = ? and key = ?",
-                    plaintext, row[0], row[1]);
-            converted++;
+            String next = rewrite(row[2], locked, row[1]);
+            if (next == null) continue;
+            sealed += jdbc.update("update settings set value = ? where organization_id = ? "
+                    + "and key = ? and value = ?", next, row[0], row[1], row[2]);
         }
-        return new Result(converted, stranded);
+        return new Result(sealed, locked);
+    }
+
+    /**
+     * What a stored value should become, or null to leave it alone.
+     *
+     * <p>Left alone: anything already under the current marker, anything locked (named), and
+     * everything when there is no key. Rewritten: a clear value, and a legacy-marker value this key
+     * opens — both go under the current marker so the table ends up saying one thing.
+     */
+    private String rewrite(String stored, List<String> locked, String name) {
+        if (stored == null || stored.isBlank()) return null;
+        SecretCipher.Reading reading = cipher.open(stored);
+        if (reading.locked()) {
+            locked.add(name);
+            return null;
+        }
+        if (!cipher.hasKey()) return null;
+        if (stored.startsWith(SecretCipher.PREFIX)) return null;
+        return cipher.wrap(reading.plaintext());
     }
 
     private void report(Result credentials, Result settings) {
-        int converted = credentials.converted() + settings.converted();
-        List<String> stranded = new ArrayList<>(credentials.stranded());
-        stranded.addAll(settings.stranded());
+        int sealed = credentials.sealed() + settings.sealed();
+        List<String> locked = new ArrayList<>(credentials.locked());
+        locked.addAll(settings.locked());
 
-        if (converted > 0) {
-            log.info("Converted {} stored secret(s) to plain text ({} credential(s), {} setting(s)).",
-                    converted, credentials.converted(), settings.converted());
+        if (sealed > 0) {
+            log.info("Encrypted {} stored secret(s) that were in the clear or under the old "
+                    + "marker ({} credential(s), {} setting(s)).",
+                    sealed, credentials.sealed(), settings.sealed());
         }
-        if (stranded.isEmpty()) {
-            if (converted > 0) {
-                log.info("Nothing encrypted is left in this database. The old key is no longer "
-                        + "used by anything running here.");
-            }
-            return;
-        }
+        if (locked.isEmpty()) return;
         // Named, not counted: "3 credentials could not be read" sends somebody hunting through a
         // list, and the whole point is that they should know which ones to re-enter.
-        log.warn("{} stored secret(s) are still encrypted with a key this installation does not "
-                + "have, and read as not configured: {}. Re-enter each one to store it in the "
-                + "clear, or start once with CONCENTUS_SECRET_KEY set to the key that sealed them "
-                + "and they will convert themselves.",
-                stranded.size(), String.join(", ", stranded));
+        log.warn("{} stored secret(s) are locked — encrypted with a key this installation does not "
+                + "have: {}. They show as locked in the app; enter each one again to store it under "
+                + "this installation's key, or start with CONCENTUS_SECRET_KEY set to the key that "
+                + "sealed them.",
+                locked.size(), String.join(", ", locked));
     }
 }

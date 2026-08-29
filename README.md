@@ -1232,15 +1232,49 @@ deletes.
 
 ## Stored credentials
 
-Mailbox passwords, MCP bearer tokens, Git provider tokens and database passwords are all entered in
-the app under **Resources → Credentials**, not in the environment. They are encrypted with AES-256-GCM (fresh random IV per value, authenticated, so
-a tampered row fails to decrypt rather than yielding different plaintext) under the master key in
-`CONCENTUS_SECRET_KEY`.
+Mailbox passwords, MCP bearer tokens, Git provider tokens and OAuth grants are all entered in the
+app under **Resources → Credentials**, not in the environment. The secret settings (a Telegram bot
+token, a collector's authorization header) are handled the same way.
+
+**What is encrypted, and with what.** When the installation has a key, every value is sealed with
+AES-256-GCM before it is written — a fresh random IV per value, authenticated, so a tampered row
+fails to open rather than yielding different plaintext — and stored as `enc:v1:…`. The key is
+`CONCENTUS_SECRET_KEY`. Without one, values are stored as typed, and the credentials screen says
+so; a server that never set the variable behaves exactly as it did before encryption returned.
+
+**Where the key lives.** The desktop shell generates it on first launch and keeps it in your OS
+keyring — DPAPI on Windows, Keychain on macOS, libsecret on Linux — as `secret.key` in the data
+directory, so the ciphertext in the database is readable only by you, on this machine. On a Linux
+box with no keyring service the key is that same file with the key itself behind a `plain:`
+marker, readable by your account only; the setup screen and the log say so, because a server
+without a keyring daemon is a normal configuration rather than a broken one, and the file then
+belongs in the same backup as the data. A `CONCENTUS_SECRET_KEY` in the shell's environment is
+used instead of the stored one — which is how two desktop installs on a shared database hold the
+same key. A server sets the variable like any other secret (`openssl rand -base64 32`).
+Installations that share a database must share the key, or each locks what the other saved.
+
+**What happens if the key is lost.** A reinstall that lost its keyring, a data directory copied
+to another machine, a second install on a shared database — the app starts. Every credential
+sealed under the missing key shows as **locked** in the credentials list, the flow doctor names
+the nodes that use it, and the log names it too. The credential keeps its id and its name, so
+every node pointing at it is still pointing at the right thing: open it, enter the value again,
+and it is sealed under this installation's key. Nothing is thrown, nothing is deleted, and nothing
+has to be rewired. This is deliberate — encryption was in Concentus once and was removed because a
+lost key surfaced as an integration "not configured" and a flow that ran, did nothing, and reported
+success. The key is back; the wall is not.
+
+**Backups.** *Export everything* carries credentials as names and ids only, by default; the
+import re-creates them as placeholders under the same ids, and lists what to re-enter. An
+administrator can tick *Include credential values* to export every value this installation can
+open, in the clear, for recovery after a lost key or a move — the note, the file name
+(`concentus-export-with-secrets-…`) and the file's own header all say which kind it is. Locked
+credentials travel as names in either case, and an imported value replaces a locked row or a
+placeholder but never a value this machine can already open.
 
 **The field is write-only.** No endpoint returns a stored secret — not to a user, not to an
-administrator. A credential comes back as a label, a kind and a masked hint. Editing shows an empty
-value box, and leaving it empty keeps the stored secret, so "rename and save" cannot overwrite a
-password with a mask.
+administrator. A credential comes back as a label, a kind, a masked hint and whether it is locked.
+Editing shows an empty value box, and leaving it empty keeps the stored secret, so "rename and
+save" cannot overwrite a password with a mask.
 
 **Every node type uses this** — mail, MCP, repository and SQL. **Nodes hold an id, never a value.** Every flow save snapshots the flow JSON into version history
 and duplicating a flow copies its nodes, so a secret on a node — even encrypted — would fan out
@@ -1250,17 +1284,9 @@ into every revision and every copy. Deleting a credential therefore really remov
 database-only compromise, or a read-only SQL injection. It does **not** protect against someone who
 compromises the application or the host, because the key has to be reachable by the process to be
 usable. The secret does not disappear — it collapses to one key, which is then the thing to guard.
-
-**In the app there is nothing to do.** The shell generates the key on first launch and stores it in
-your OS keyring — DPAPI on Windows, libsecret on Linux — so the ciphertext in the database is
-readable only by you, on this machine. Where no keyring is available the key falls back to a
-permission-protected file and the log says so, because a Linux box without a keyring daemon is a
-real configuration rather than a broken one.
-
-Running the backend by hand, `CONCENTUS_SECRET_KEY` is **required** and it refuses to start without
-one. Every credential it holds depends on that key, so starting anyway would leave a half-working
-install — credential fields that silently cannot save, mail triggers quietly not polling. Changing
-the key makes existing credentials unreadable; they have to be re-entered.
+The one value that is deliberately not sealed is the external database password in
+`storage.json`: it is what opens the database that holds everything else, and a locked password
+there would be an installation that cannot reach its own data or the screen that fixes it.
 
 ### Git providers, and why OAuth is the wrong route here
 

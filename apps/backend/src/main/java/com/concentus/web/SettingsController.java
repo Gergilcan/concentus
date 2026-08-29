@@ -78,9 +78,12 @@ public class SettingsController {
             entry.put("source", source.name());
             if (def.type() == SettingDef.Type.SECRET) {
                 // Never read back. What the screen needs is whether there is one, so it can show a
-                // filled field without the value ever being reachable through this API.
+                // filled field without the value ever being reachable through this API — and
+                // whether the one stored is locked, so it can ask for it again instead of showing
+                // a filled field for a value nothing here can use.
                 entry.put("value", "");
                 entry.put("hasValue", stored != null || (configured != null && !configured.isBlank()));
+                entry.put("locked", store.isLocked(organizationId, def.key()));
             } else {
                 entry.put("value", stored != null ? stored : (configured == null ? "" : configured));
                 entry.put("hasValue", !(stored == null && (configured == null || configured.isBlank())));

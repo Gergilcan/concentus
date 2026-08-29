@@ -30,16 +30,28 @@ export interface StorageState {
   activeMode: 'embedded' | 'external'
 }
 
+/**
+ * Where the key that seals stored credentials lives, so the database step can say what a backup
+ * of the data has to include. Only the two states worth a sentence are shown: a key kept as a
+ * file (back it up with the data) and no key this launch (credentials stored as typed).
+ */
+export interface DataKeyNote {
+  source: 'environment' | 'keyring' | 'file' | 'none'
+  file: string
+  detail: string
+}
+
 export function onboardingPage(
   claude: OnboardingState,
   storage: StorageState,
   /** Whether an API key is already stored, so the page opens on the answer already given. */
   hasKey: boolean,
+  dataKey: DataKeyNote,
 ): string {
   // Entities are literal text inside <script>, so HTML-escaping would corrupt this rather than
   // protect it. `<` is what could close the element early, and these values include a JDBC URL and
   // a filesystem path the user controls.
-  const initial = JSON.stringify({ claude, storage, hasKey }).replace(/</g, '\\u003c')
+  const initial = JSON.stringify({ claude, storage, hasKey, dataKey }).replace(/</g, '\\u003c')
 
   return `<!doctype html>
 <html lang="en">
@@ -167,6 +179,10 @@ export function onboardingPage(
          a Continue button that did nothing at all: the reason was on the page, in a hidden div. -->
     <p class="msg" id="saveMsg"></p>
     <p class="foot" id="step1Foot"></p>
+    <!-- Where the credential key is, when that is something the person should know: a key kept
+         as a file belongs in the same backup as the data, and "no key this launch" is a state
+         somebody should hear about here rather than discover as a locked credential. -->
+    <p class="foot" id="keyFoot"></p>
   </section>
 
   <!-- ---------------------------------------------------------------- step 2 -->
@@ -254,6 +270,7 @@ export function onboardingPage(
   var claude = s.claude;
   var storage = s.storage;
   var hasKey = !!s.hasKey;
+  var dataKey = s.dataKey || { source: 'keyring', file: '', detail: '' };
   // An external connection must prove itself before Continue unlocks. Reset by any edit, so
   // changing the host after a successful test does not carry the old verdict forward.
   var tested = false;
@@ -293,6 +310,20 @@ export function onboardingPage(
       // that already has a password saved.
       password: $('password').value === '' && storage.hasPassword ? null : $('password').value,
     };
+  }
+
+  function renderKeyNote() {
+    if (dataKey.source === 'file') {
+      $('keyFoot').innerHTML = 'Stored credentials are encrypted, but this machine has no OS keyring, '
+        + 'so the key is a file only your account can read: <code>' + esc(dataKey.file) + '</code>. '
+        + 'Treat it as the credentials themselves, and back it up with the data.';
+    } else if (dataKey.source === 'none') {
+      $('keyFoot').innerHTML = 'The credential key could not be used this launch (' + esc(dataKey.detail)
+        + ') Credentials already encrypted show as locked until it can be read again; new ones are '
+        + 'stored as typed.';
+    } else {
+      $('keyFoot').textContent = '';
+    }
   }
 
   function renderStep1() {
@@ -540,6 +571,9 @@ export function onboardingPage(
     $('lbl2').innerHTML = n === 2 ? '<b>2. Claude</b>' : '2. Claude';
     if (n === 1) renderStep1(); else renderStep2();
   }
+
+  // Fixed for the life of the page: the key was decided when the backend started.
+  renderKeyNote();
 
   // Prefill from what is already configured.
   // Opening on the answer already given: somebody who saved a key and came back is not being

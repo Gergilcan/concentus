@@ -52,11 +52,11 @@ of messages already processed.
 
 Create the folders you want in the mailbox — e.g. `Presupuestos` and `Presupuestos/Procesados`.
 
-Add the mailbox password under **Resources → Credentials**. It is encrypted with AES-256-GCM before
-being written, under a master key the installation generates for itself on the first start and keeps
-in `secret.key` beside its data. Nothing to set up — but that file is what makes the stored
-passwords readable, so it belongs in whatever backs up the database. To hold the key somewhere else
-(a vault, a container secret), set `CONCENTUS_SECRET_KEY` and it is used instead of the file.
+Add the mailbox password under **Resources → Credentials**. On the desktop it is encrypted with
+AES-256-GCM before being written, under a key the app generates on its first launch and keeps in
+your OS keyring. Nothing to set up. If that key is ever lost, the credential shows as **locked**
+and you type the password again — the node keeps pointing at it. On a server, set
+`CONCENTUS_SECRET_KEY` to get the same encryption; without it the password is stored as typed.
 
 Then on the Input node set the host, port, username and folder, and pick the credential from the
 dropdown.
@@ -157,9 +157,10 @@ silently skipped. If the flow is paused, it is not polled.
 **"references a credential that no longer exists".** The credential was deleted, or the flow was
 imported from elsewhere. Pick one again on the Input node.
 
-**"could not decrypt the credential".** The master key is not the one it was saved under — usually
-a `secret.key` that was not copied along with the data, or a `CONCENTUS_SECRET_KEY` that changed.
-Restore the old key, or re-enter the credential under Resources → Credentials.
+**"uses a credential that is locked".** The key is not the one it was saved under — a reinstall
+that lost its keyring, a data directory copied to another machine, or a `CONCENTUS_SECRET_KEY` that
+changed. Open the credential under Resources → Credentials and enter the password again; the node
+keeps pointing at it. Or restore the old key, and everything opens as before.
 
 **Authentication fails against Microsoft 365.** Basic auth for IMAP is retired there; see above.
 

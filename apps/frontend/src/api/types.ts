@@ -1123,6 +1123,8 @@ export interface SettingEntry {
   /** Empty for a secret, always: what it holds is never read back out of the API. */
   value: string
   hasValue: boolean
+  /** Secrets only: stored, but sealed under a key this installation does not have. Enter it again. */
+  locked?: boolean
 }
 
 /**
@@ -1173,6 +1175,12 @@ export interface Credential {
   createdAt: number
   updatedAt: number
   lastUsedAt: number | null
+  /**
+   * Sealed under a key this installation does not have — a reinstall that lost its keyring, a
+   * second machine on a shared database. Still a credential: it keeps its id and every node
+   * pointing at it; entering the value again is the whole repair.
+   */
+  locked: boolean
 }
 
 /**
@@ -1216,8 +1224,13 @@ export interface OAuthSignInStart {
 }
 
 export interface CredentialStatus {
-  /** False when CONCENTUS_SECRET_KEY is unset, so nothing can be stored. */
+  /** False when the credentials table could not be reached. */
   available: boolean
+  /**
+   * True when this installation has a key and seals values before writing them; false when it
+   * stores them as typed. The screen says which, because "encrypted" is only true of one.
+   */
+  encrypted: boolean
   hint: string
 }
 

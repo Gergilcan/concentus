@@ -57,12 +57,18 @@ const PRESETS: { name: string; config: Partial<OAuthCredentialConfig> }[] = [
 ]
 
 /**
- * Credentials entered in the app, encrypted before storage.
+ * Credentials entered in the app, sealed before storage when the installation has a key.
  *
  * The value field is **write-only**: nothing here ever displays a stored secret, because the API
  * has none to give — a credential comes back as a label, a kind and a masked hint. Editing shows
  * an empty value box, and leaving it empty keeps the stored secret untouched. That last part is
  * what stops "rename it and save" from overwriting the password with a mask.
+ *
+ * A **locked** credential is one sealed under a key this installation does not have. It is listed
+ * under its name with a badge, and editing it asks for the value again — which is the whole
+ * repair: the id stays, so every node pointing at it keeps working. This screen never calls that
+ * "not configured", because that is how the same row used to present and it sent people to
+ * create duplicates.
  */
 export function CredentialsPanel({ pushError }: { pushError: (m: string) => void }) {
   const { t } = useTranslation()
@@ -204,16 +210,13 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
     return (
       <div className={styles.muted}>
         <p>
-          <b>{t('Credential storage is disabled.')}</b> {status.hint}
-        </p>
-        <p>
-          {t(
-            'Credentials are encrypted with AES-256-GCM before being written. Without a master key there is nowhere safe to put them, so nothing is stored rather than being kept in plain text.',
-          )}
+          <b>{t('Credential storage is unavailable.')}</b> {status.hint}
         </p>
       </div>
     )
   }
+
+  const editingLocked = editing?.locked === true
 
   return (
     <div className={styles.crud}>
@@ -239,6 +242,11 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
                   ? ` · ${t('used {{date}}', { date: new Date(c.lastUsedAt).toLocaleDateString() })}`
                   : ` · ${t('never used')}`}
               </div>
+              {c.locked && (
+                <div className={styles.muted} style={{ color: 'var(--warn, #fbbf24)' }}>
+                  {t('Locked — enter the value again')}
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -355,30 +363,57 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
               </>
             ) : (
               <label className={styles.field}>
-                <span>{editing ? t('New value (leave blank to keep the current one)') : t('Value')}</span>
+                <span>
+                  {editingLocked
+                    ? t('New value (locked — enter it again)')
+                    : editing
+                      ? t('New value (leave blank to keep the current one)')
+                      : t('Value')}
+                </span>
                 <input
                   type="password"
                   autoComplete="new-password"
                   value={value}
-                  placeholder={editing ? '••••••••' : ''}
+                  placeholder={editing && !editingLocked ? '••••••••' : ''}
                   onChange={(e) => setValue(e.target.value)}
                 />
               </label>
             )}
 
-            <p className={styles.hint}>
-              {t(
-                'Encrypted before it is written, and never sent back — not to this screen, not to any API, not to an administrator. To change it, type a new one.',
-              )}
-            </p>
-            <p className={styles.hint}>
-              {t(
-                'This protects a leaked database backup or a database-only compromise. It does not protect against someone who compromises the server itself, since the key has to be readable here to be usable.',
-              )}
-            </p>
+            {editingLocked && (
+              <p className={styles.hint} style={{ color: 'var(--warn, #fbbf24)' }}>
+                {t(
+                  "This value is locked: it was encrypted with a key this installation does not have. Enter it again and it is stored under this installation's key; every node that points at it keeps working.",
+                )}
+              </p>
+            )}
+            {status?.encrypted ? (
+              <>
+                <p className={styles.hint}>
+                  {t(
+                    'Encrypted with AES-256-GCM before it is written, under a key kept outside the database, and never sent back — not to this screen, not to any API, not to an administrator. To change it, type a new one.',
+                  )}
+                </p>
+                <p className={styles.hint}>
+                  {t(
+                    'This protects a leaked database backup or a database-only compromise. It does not protect against someone who compromises the server itself, since the key has to be readable here to be usable.',
+                  )}
+                </p>
+              </>
+            ) : (
+              <p className={styles.hint}>
+                {t(
+                  'Stored as typed — this installation has no CONCENTUS_SECRET_KEY, so anyone who can read the database can read it. Never sent back to this screen or any API. To change it, type a new one.',
+                )}
+              </p>
+            )}
 
             <div className={styles.crudActions}>
-              <button type="submit" className={styles.saveBtn} disabled={busy || !label || (creating && !isOAuth && !value)}>
+              <button
+                type="submit"
+                className={styles.saveBtn}
+                disabled={busy || !label || (!isOAuth && !value && (creating || editingLocked))}
+              >
                 {busy ? t('Saving…') : t('Save')}
               </button>
               <button type="button" className={styles.newBtn} onClick={cancel}>
