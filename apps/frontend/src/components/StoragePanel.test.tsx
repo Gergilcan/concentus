@@ -99,7 +99,7 @@ describe('StoragePanel — moving data to another database', () => {
 
     expect(await screen.findByText('runs')).toBeInTheDocument()
     // Loose on the thousands separator: it is the browser's, and the test runner has no locale data.
-    expect(screen.getByText(/4[,.  ]?200/)).toBeInTheDocument()
+    expect(screen.getByText(/4[,.\u00a0 ]?200/)).toBeInTheDocument()
     // Empty tables are noise in an estimate: they answer neither "how long" nor "what travels".
     expect(screen.queryByText('knowledge_chunks')).not.toBeInTheDocument()
   })

@@ -59,7 +59,7 @@ export function parseServerJson(text: string, base: McpDef): ParsedServer {
   try {
     doc = JSON.parse(text)
   } catch (e) {
-    throw new Error(`Not valid JSON: ${e instanceof Error ? e.message : String(e)}`)
+    throw new Error(`Not valid JSON: ${e instanceof Error ? e.message : String(e)}`, { cause: e })
   }
   if (!isObject(doc)) {
     throw new Error('Expected an object — what mcp.json keeps under the server’s name.')

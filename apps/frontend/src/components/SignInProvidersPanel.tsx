@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
-import type { SignInProviderConfig, SignInProvidersList } from '../api/types.ts'
+import type { SignInProviderConfig } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { WRITE_IN_URL } from './LicensePanel.tsx'
 import { Spinner } from './Spinner.tsx'
+import { usePanelLoad } from './usePanelLoad.ts'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
 
@@ -30,21 +31,15 @@ import panels from './panels.module.scss'
  */
 export function SignInProvidersPanel({ pushError }: { pushError: (m: string) => void }) {
   const { t } = useTranslation()
-  const [list, setList] = useState<SignInProvidersList | null>(null)
+  const { value: list, setValue: setList } = usePanelLoad(() => api.listSignInProviders(), pushError, {
+    providers: [],
+    redirectUri: '',
+    live: [],
+    allowedDomains: '',
+    domainJitRefusal: null,
+  })
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
-
-  const load = () => {
-    api
-      .listSignInProviders()
-      .then(setList)
-      .catch((e) => {
-        setList({ providers: [], redirectUri: '', live: [], allowedDomains: '', domainJitRefusal: null })
-        pushError(errMessage(e))
-      })
-  }
-
-  useEffect(load, [])
 
   if (!list) return <Spinner />
 

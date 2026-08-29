@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
-import type { DatabaseDef, FacadeProfile, LibraryAgent, McpDef } from '../api/types.ts'
+import type { DatabaseDef, FacadeProfile, LibraryAgent, McpDef, Variable } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, EFFORT_OPTIONS } from '../constants.ts'
 import { AddMcpServerModal } from './AddMcpServerModal.tsx'
 import { AuditPanel } from './AuditPanel.tsx'
@@ -28,16 +28,14 @@ import styles from './resources.module.scss'
 type Tab = 'settings' | 'members' | 'serviceAccounts' | 'audit' | 'policies' | 'organizations' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
 
 /**
- * The tab strip, in display order. `desktopOnly` keeps Updates out of a browser tab, which has no
- * app to update — the shell bridge is absent there.
- */
-/**
- * The tab strip, in display order, in two groups.
+ * The tab strip, in display order, in two groups: the things a flow uses, then how the
+ * installation is run. They sat in one undifferentiated row, which asks somebody looking for a
+ * knowledge base to read past "Members" and "Storage" to find it. The divider is the whole
+ * treatment — a second row or a nested menu would cost more attention than the distinction is
+ * worth.
  *
- * The first nine are things a flow uses; the last four are how the installation is run. They sat
- * in one undifferentiated row of twelve, which asks somebody looking for a knowledge base to read
- * past "Members" and "Storage" to find it. The divider is the whole treatment — a second row or a
- * nested menu would cost more attention than the distinction is worth.
+ * `desktopOnly` keeps Updates out of a browser tab, which has no app to update — the shell bridge
+ * is absent there.
  */
 const TABS: Array<{
   id: Tab
@@ -119,6 +117,28 @@ const TABS: Array<{
 
 /** A server launched here rather than reached over HTTP — the fields it has no use for hide. */
 const isLocalServer = (draft: Record<string, unknown>) => String(draft.command ?? '').trim() !== ''
+
+/** A list of substrings edited as one per line; blank lines are dropped on the way back. */
+function LinesTextarea({
+  value,
+  onChange,
+  rows,
+  placeholder,
+}: {
+  value: unknown
+  onChange: (lines: string[]) => void
+  rows: number
+  placeholder: string
+}) {
+  return (
+    <textarea
+      rows={rows}
+      placeholder={placeholder}
+      value={Array.isArray(value) ? (value as string[]).join('\n') : ''}
+      onChange={(e) => onChange(e.target.value.split('\n').map((s) => s.trim()).filter(Boolean))}
+    />
+  )
+}
 
 export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
   const { t } = useTranslation()
@@ -255,7 +275,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
         )}
 
         {tab === 'variables' && (
-          <CrudPanel<import('../api/types.ts').Variable>
+          <CrudPanel<Variable>
             title={t('Variables')}
             fields={[
               {
@@ -294,14 +314,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
                     >
                       {t('Allowed tools (one substring per line, empty = all)')} ⓘ
                     </span>
-                    <textarea
-                      rows={4}
-                      placeholder={'contact\ninvoice'}
-                      value={Array.isArray(value) ? (value as string[]).join('\n') : ''}
-                      onChange={(e) =>
-                        onChange(e.target.value.split('\n').map((s) => s.trim()).filter(Boolean))
-                      }
-                    />
+                    <LinesTextarea rows={4} placeholder={'contact\ninvoice'} value={value} onChange={onChange} />
                   </label>
                 ),
               },
@@ -338,14 +351,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
                     >
                       {t('Also treat as reads, whatever the name suggests')} ⓘ
                     </span>
-                    <textarea
-                      rows={3}
-                      placeholder={'run_gaql_query\nrun_report'}
-                      value={Array.isArray(value) ? (value as string[]).join('\n') : ''}
-                      onChange={(e) =>
-                        onChange(e.target.value.split('\n').map((s) => s.trim()).filter(Boolean))
-                      }
-                    />
+                    <LinesTextarea rows={3} placeholder={'run_gaql_query\nrun_report'} value={value} onChange={onChange} />
                   </label>
                 ),
               },

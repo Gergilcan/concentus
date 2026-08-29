@@ -61,22 +61,6 @@
   padding: 4px 9px;
 }
 
-/* The theme cycler: one icon-sized control, same metrics as Sign out so the row stays even. */
-.themeBtn {
-  background: transparent;
-  border: 1px solid t.$border;
-  color: t.$text;
-  min-height: var(--control-h);
-  padding: 0 9px;
-  border-radius: 6px;
-  font-size: 13px;
-  line-height: 1;
-
-  &:hover {
-    border-color: t.$accent;
-  }
-}
-
 /**
  * Who is signed in, as the header's last item.
  *

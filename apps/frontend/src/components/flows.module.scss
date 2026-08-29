@@ -36,13 +36,6 @@
   letter-spacing: -0.01em;
 }
 
-.subtitle {
-  margin: 6px 0 0;
-  color: t.$muted;
-  font-size: 12.5px;
-  max-width: 60ch;
-}
-
 .headActions {
   display: flex;
   gap: 8px;
@@ -106,36 +99,6 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-}
-
-/* ---------------- tag filter bar ---------------- */
-
-.tagBar {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin: -8px 0 20px;
-}
-
-.tagChip {
-  background: transparent;
-  border: 1px solid t.$border;
-  color: t.$muted;
-  border-radius: 999px;
-  padding: 4px 11px;
-  font-size: 11px;
-  cursor: pointer;
-
-  &:hover {
-    color: t.$text;
-    border-color: t.$accent;
-  }
-}
-
-.tagActive {
-  background: color-mix(in srgb, t.$accent 18%, transparent);
-  border-color: t.$accent;
-  color: t.$text;
 }
 
 /* ---------------- kpis ---------------- */
@@ -658,14 +621,6 @@
   }
 }
 
-.sideTitle {
-  margin: 0 0 10px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: t.$muted;
-}
-
 /** The open panel keeps a gap between its title and its rows; the folded one has no rows. */
 .sideCol .sideToggle {
   margin-bottom: 10px;
@@ -1070,52 +1025,6 @@
   color: t.$muted;
   font-size: 11px;
   padding: 2px 9px;
-}
-
-.versionList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.versionRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 9px;
-  border: 1px solid t.$border;
-  border-radius: 8px;
-  font-size: 12px;
-}
-
-.versionNum {
-  font-family: monospace;
-  color: t.$accent;
-  flex: 0 0 auto;
-}
-
-.versionName {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.versionTime {
-  color: t.$muted;
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.versionCurrent {
-  font-size: 10px;
-  color: t.$ok;
-  border: 1px solid color-mix(in srgb, t.$ok 55%, transparent);
-  border-radius: 5px;
-  padding: 1px 6px;
 }
 
 /* A dialog that is a task, not a confirmation: a long list needs room to be read and searched. */

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
-import type { CreatedServiceAccount, ServiceAccount, ServiceAccountListing } from '../api/types.ts'
+import type { CreatedServiceAccount, ServiceAccount } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { timeAgo } from './flowFormat.ts'
 import { Spinner } from './Spinner.tsx'
+import { usePanelLoad } from './usePanelLoad.ts'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
 
@@ -52,7 +53,11 @@ function meansOf(role: string): string | undefined {
  */
 export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => void }) {
   const { t } = useTranslation()
-  const [listing, setListing] = useState<ServiceAccountListing | null>(null)
+  const {
+    value: listing,
+    setValue: setListing,
+    reload: load,
+  } = usePanelLoad(() => api.listServiceAccounts(), pushError, { accounts: [], active: 0, limit: null, refusal: null })
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [role, setRole] = useState('OPERATOR')
@@ -62,17 +67,11 @@ export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => 
   const [copied, setCopied] = useState(false)
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
 
-  const load = () => {
-    api
-      .listServiceAccounts()
-      .then(setListing)
-      .catch((e) => {
-        setListing({ accounts: [], active: 0, limit: null, refusal: null })
-        pushError(errMessage(e))
-      })
+  /** What a role lets a token do, in the user's language — the picker's hint and each row's tooltip. */
+  const meansLabel = (role: string) => {
+    const means = meansOf(role)
+    return means ? t(means) : undefined
   }
-
-  useEffect(load, [])
 
   const create = async () => {
     if (!name.trim()) return
@@ -218,12 +217,7 @@ export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => 
             </label>
           </div>
           <div className={styles.addMemberFoot}>
-            <span className={panels.hint}>
-              {(() => {
-                const means = meansOf(role)
-                return means ? t(means) : undefined
-              })()}
-            </span>
+            <span className={panels.hint}>{meansLabel(role)}</span>
             <button
               className={styles.saveBtn}
               disabled={busy === 'new' || !name.trim()}
@@ -279,13 +273,7 @@ export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => 
                     : t('created {{when}}', { when: timeAgo(a.createdAt) })}
                 </span>
                 <span className={styles.memberRole}>
-                  <span
-                    className={styles.roleChip}
-                    title={(() => {
-                      const means = meansOf(a.role)
-                      return means ? t(means) : undefined
-                    })()}
-                  >
+                  <span className={styles.roleChip} title={meansLabel(a.role)}>
                     {t(labelOf(a.role))}
                   </span>
                   {!revoked && (

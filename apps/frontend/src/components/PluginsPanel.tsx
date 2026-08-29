@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
-import type { AvailablePlugin, PluginsView } from '../api/types.ts'
+import type { AvailablePlugin } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { compact } from './flowFormat.ts'
 import { Spinner } from './Spinner.tsx'
+import { usePanelLoad } from './usePanelLoad.ts'
 import styles from './resources.module.scss'
 
 /**
@@ -16,21 +17,12 @@ import styles from './resources.module.scss'
  */
 export function PluginsPanel({ pushError }: { pushError: (m: string) => void }) {
   const { t } = useTranslation()
-  const [view, setView] = useState<PluginsView | null>(null)
+  const { value: view, reload: load } = usePanelLoad(() => api.listPlugins(), pushError)
   const [catalog, setCatalog] = useState<AvailablePlugin[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [marketSource, setMarketSource] = useState('')
-
-  const load = useCallback(() => {
-    api
-      .listPlugins()
-      .then(setView)
-      .catch((e) => pushError(errMessage(e)))
-  }, [pushError])
-
-  useEffect(load, [load])
 
   // The catalog is one heavier read (every marketplace's full list); fetched once and filtered
   // client-side, so typing in the search box never waits on the CLI.

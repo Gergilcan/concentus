@@ -634,30 +634,6 @@
   }
 }
 
-/* Per-agent plugin checkboxes: a short fixed list, so no search or pagination needed. */
-.pluginPick {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 12px;
-  font-size: 12px;
-
-  > span:first-child {
-    color: t.$muted;
-    font-size: 11px;
-  }
-}
-.pluginRow {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  cursor: pointer;
-
-  input {
-    width: 14px;
-  }
-}
-
 /* The skill picker's search box, above its paginated checkboxes. */
 .pickerSearch {
   width: 100%;

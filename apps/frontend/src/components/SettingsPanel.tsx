@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { SettingEntry } from '../api/types.ts'
@@ -7,6 +7,7 @@ import { LANGS, type LangId, setLang, storedLang } from '../i18n/index.ts'
 import { setTheme, THEMES, useTheme } from '../utils/theme.ts'
 import { LicensePanel, WRITE_IN_URL } from './LicensePanel.tsx'
 import { Spinner } from './Spinner.tsx'
+import { usePanelLoad } from './usePanelLoad.ts'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
 
@@ -111,7 +112,11 @@ const SOURCE_LABEL: Record<string, string> = {
  */
 export function SettingsPanel({ pushError }: { pushError: (m: string) => void }) {
   const { t } = useTranslation()
-  const [entries, setEntries] = useState<SettingEntry[] | null>(null)
+  const { value: entries, setValue: setEntries } = usePanelLoad(
+    () => api.listSettings().then((r) => r.settings),
+    pushError,
+    [],
+  )
   const [edits, setEdits] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   /**
@@ -122,16 +127,6 @@ export function SettingsPanel({ pushError }: { pushError: (m: string) => void })
    * effect immediately.
    */
   const [saved, setSaved] = useState<{ restartRequired: boolean } | null>(null)
-
-  useEffect(() => {
-    api
-      .listSettings()
-      .then((r) => setEntries(r.settings))
-      .catch((e) => {
-        setEntries([])
-        pushError(errMessage(e))
-      })
-  }, [pushError])
 
   const groups = useMemo(() => {
     const byGroup = new Map<string, SettingEntry[]>()
