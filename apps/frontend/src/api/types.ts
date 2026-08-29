@@ -282,6 +282,19 @@ export type InputNodeData = {
   watchGlob?: string
   /** Seconds the folder must stay quiet before a batch of changes becomes one run. */
   watchDebounceSeconds?: number
+
+  // --- published endpoint (any mode) ---------------------------------------
+  /**
+   * Whether a POST to /api/public/flows/{id}/run may start this flow. Orthogonal to the mode:
+   * publishing adds a door, it does not move the existing one.
+   */
+  published?: boolean
+  /**
+   * The bearer token that door expects. Minted here, in the browser, when publishing is turned
+   * on — the backend only ever compares it — and regenerated on request; the old one stops
+   * working the moment the flow is saved.
+   */
+  publishToken?: string
   /**
    * How much the claude CLI may do without asking, for runs of this flow.
    *

@@ -216,4 +216,31 @@ class TriggerSpecTest {
         assertThat(spec.watchPath()).isEmpty();
         assertThat(spec.watchGlob()).isEmpty();
     }
+
+    // ------------------------------------------------------------- published endpoint
+
+    @Test
+    void publishingIsOrthogonalToTheMode() {
+        FlowGraph flow = flowWith(inputNode(Map.of(
+                "mode", "cron", "cron", "0 9 * * *", "prompt", "go",
+                "published", true, "publishToken", " tok-123 ")));
+
+        TriggerSpec spec = TriggerSpec.from(flow);
+
+        assertThat(spec.published()).isTrue();
+        assertThat(spec.publishToken()).isEqualTo("tok-123");
+        assertThat(spec.publishedWithToken()).isTrue();
+        // The cron flow is still a cron flow.
+        assertThat(spec.scheduled()).isTrue();
+        assertThat(spec.autoStart()).isTrue();
+    }
+
+    @Test
+    void aToggleWithoutATokenAndATokenWithoutTheToggleAreBothUnpublished() {
+        assertThat(TriggerSpec.from(flowWith(inputNode(Map.of("mode", "manual", "published", true))))
+                .publishedWithToken()).isFalse();
+        assertThat(TriggerSpec.from(flowWith(inputNode(Map.of("mode", "manual", "publishToken", "tok"))))
+                .publishedWithToken()).isFalse();
+        assertThat(TriggerSpec.from(flowWith()).publishedWithToken()).isFalse();
+    }
 }

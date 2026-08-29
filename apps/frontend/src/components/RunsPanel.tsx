@@ -19,6 +19,7 @@ const TRIGGER_LABEL: Record<string, string> = {
   webhook: '⚡ hook',
   mail: '✉ mail',
   watch: '📁 watch',
+  api: '🔌 api',
   golden: '⭐ golden',
 }
 

@@ -18,10 +18,16 @@ import java.util.Map;
  *       the changed paths as the input, prefixed by {@link #prompt}. Polled, and debounced by
  *       {@link #watchDebounceSeconds} so a batch of files arriving together is one run.</li>
  * </ul>
+ *
+ * <p>Independently of the mode, a flow may be {@link #published}: then a POST bearing
+ * {@link #publishToken} starts a run through {@code /api/public/flows/{id}/run}. Not a mode,
+ * because it does not replace how the flow otherwise starts — a cron flow stays a cron flow, and
+ * also answers the endpoint.
  */
 public record TriggerSpec(String mode, String prompt, String cron, String secret, String authParam,
                           String permissionMode, boolean shadow,
-                          String watchPath, String watchGlob, long watchDebounceSeconds) {
+                          String watchPath, String watchGlob, long watchDebounceSeconds,
+                          boolean published, String publishToken) {
 
     /** The pre-shadow shape, kept for existing callers. */
     public TriggerSpec(String mode, String prompt, String cron, String secret, String authParam,
@@ -29,11 +35,11 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
         this(mode, prompt, cron, secret, authParam, permissionMode, false);
     }
 
-    /** The pre-watch shape: no folder. */
+    /** The pre-watch shape: no folder, nothing published. */
     public TriggerSpec(String mode, String prompt, String cron, String secret, String authParam,
                        String permissionMode, boolean shadow) {
         this(mode, prompt, cron, secret, authParam, permissionMode, shadow,
-                "", "", DEFAULT_WATCH_DEBOUNCE_SECONDS);
+                "", "", DEFAULT_WATCH_DEBOUNCE_SECONDS, false, "");
     }
 
     /**
@@ -83,7 +89,9 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
                         str(d, "watchPath", "").trim(),
                         str(d, "watchGlob", "").trim(),
                         debounceOf(com.concentus.support.MapValues.lng(
-                                d, "watchDebounceSeconds", DEFAULT_WATCH_DEBOUNCE_SECONDS)));
+                                d, "watchDebounceSeconds", DEFAULT_WATCH_DEBOUNCE_SECONDS)),
+                        com.concentus.support.MapValues.bool(d, "published", false),
+                        str(d, "publishToken", "").trim());
             }
         }
         return new TriggerSpec("manual", "", "", "", DEFAULT_AUTH_PARAM, permissions);
@@ -161,5 +169,14 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
     /** The flow is triggered by files appearing or changing in a host folder. */
     public boolean watch() {
         return "watch".equalsIgnoreCase(mode);
+    }
+
+    /**
+     * The flow answers its public endpoint. Both halves are required: a toggle with no token
+     * would be an endpoint anyone could call, and a token left behind after the toggle was turned
+     * off must not keep working.
+     */
+    public boolean publishedWithToken() {
+        return published && publishToken != null && !publishToken.isBlank();
     }
 }

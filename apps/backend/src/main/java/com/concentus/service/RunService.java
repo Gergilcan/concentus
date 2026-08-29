@@ -446,6 +446,24 @@ public class RunService {
         return summary;
     }
 
+    /**
+     * A run started by something other than the flow's own trigger — the published endpoint —
+     * and labelled as such.
+     *
+     * <p>The executions list shows a run's trigger, and "cron" on a run that a curl command
+     * started would be a lie the person reads first. The label replaces the mode but keeps the
+     * shadow suffix: who started it and whether it will act are two different facts, and the
+     * shadow one is the one that matters more.
+     */
+    public RunSummary startTriggered(FlowGraph flow, String prompt, String triggerLabel) {
+        RunSummary summary = start(flow, prompt);
+        AgentRun run = runs.get(summary.id());
+        if (run == null) return summary;
+        run.trigger = run.shadow ? triggerLabel + " (shadow)" : triggerLabel;
+        runStore.persist(run);
+        return run.toSummary();
+    }
+
     public RunSummary start(FlowGraph flow, String initialPromptOverride) {
         return start(flow, initialPromptOverride, null);
     }

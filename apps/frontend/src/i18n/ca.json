@@ -1608,5 +1608,19 @@
   "metadata, and the changed paths fenced as untrusted — a file name is text whoever wrote the file chose.": "metadades, i les rutes canviades acotades com a no fiables — un nom de fitxer és text que va triar qui va escriure el fitxer.",
   "to start watching — a trigger only runs for a saved flow.": "per començar a vigilar — un disparador només funciona en un flux desat.",
   "Watch": "Vigilància",
-  "📁 watch": "📁 carpeta"
+  "📁 watch": "📁 carpeta",
+  "While on, a POST with this token starts a run of this flow and answers with its final output. The flow otherwise starts exactly as before.": "Mentre és actiu, un POST amb aquest token llança una execució d'aquest flux i respon amb la seva sortida final. Per la resta, el flux arrenca exactament igual que abans.",
+  "Publish as an endpoint ⓘ": "Publica com a endpoint ⓘ",
+  "Endpoint token": "Token de l'endpoint",
+  "Copy token": "Copia el token",
+  "Regenerate": "Regenera",
+  "Anyone holding this token can start runs of this flow. Regenerating it revokes the old one as soon as the flow is saved.": "Qualsevol amb aquest token pot llançar execucions d'aquest flux. Regenerar-lo revoca l'anterior tan bon punt es desa el flux.",
+  "Endpoint URL": "URL de l'endpoint",
+  "curl example": "Exemple amb curl",
+  "The input becomes the first message; the call waits for the final output and answers": "L'entrada es converteix en el primer missatge; la crida espera la sortida final i respon",
+  "Runs started this way show the trigger": "Les execucions llançades així mostren el disparador",
+  "A minimal chat page for trying it:": "Una pàgina de xat mínima per provar-ho:",
+  "open": "obre",
+  "A demo surface, not a product — the token travels in its address, so do not share the link.": "Una superfície de demostració, no un producte — el token viatja a la seva adreça, així que no comparteixis l'enllaç.",
+  "🔌 api": "🔌 api"
 }

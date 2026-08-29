@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { InputNodeData } from '../api/types.ts'
+import { useFlowStore } from '../state/store.ts'
 import { InputInspector } from './InputInspector.tsx'
 
 vi.mock('../api/client.ts', () => ({
@@ -10,6 +11,9 @@ vi.mock('../api/client.ts', () => ({
     mailSignInDefaults: () => Promise.resolve({ configured: false, tenantId: '', clientId: '' }),
   },
   webhookUrl: (flowId: string) => `http://localhost/api/webhooks/${flowId}`,
+  publicRunUrl: (flowId: string) => `http://localhost/api/public/flows/${flowId}/run`,
+  publicChatUrl: (flowId: string, token: string) =>
+    `http://localhost/api/public/flows/${flowId}/chat?token=${token}`,
 }))
 
 const base: InputNodeData = {
@@ -77,5 +81,50 @@ describe('InputInspector — webhook provider presets', () => {
     fireEvent.change(screen.getByDisplayValue('Custom'), { target: { value: 'custom' } })
     // Nothing on the wire changes for Custom: the parameter is whatever the person typed.
     expect(set).not.toHaveBeenCalledWith(expect.objectContaining({ authParam: expect.anything() }))
+  })
+})
+
+describe('InputInspector — publish as an endpoint', () => {
+  it('turning the toggle on mints a token in the browser', () => {
+    const set = vi.fn()
+    render(<InputInspector data={base} set={set} />)
+
+    fireEvent.click(screen.getByLabelText(/Publish as an endpoint/))
+
+    expect(set).toHaveBeenCalledTimes(1)
+    const patch = set.mock.calls[0][0] as { published: boolean; publishToken: string }
+    expect(patch.published).toBe(true)
+    // A UUID (or, without randomUUID, 32 hex chars): long enough that guessing is not a plan.
+    expect(patch.publishToken).toMatch(/^[0-9a-f-]{32,36}$/)
+  })
+
+  it('shows the token, a curl line carrying it, and the chat link once the flow is saved', () => {
+    useFlowStore.setState({ flowId: 'flow_abc' })
+    const set = vi.fn()
+    render(<InputInspector data={{ ...base, published: true, publishToken: 'tok-123' }} set={set} />)
+
+    expect(screen.getByDisplayValue('tok-123')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('http://localhost/api/public/flows/flow_abc/run')).toBeInTheDocument()
+    const curl = screen.getByDisplayValue(/^curl -X POST/) as HTMLInputElement
+    expect(curl.value).toContain('Authorization: Bearer tok-123')
+    expect(curl.value).toContain('http://localhost/api/public/flows/flow_abc/run')
+    expect(screen.getByRole('link', { name: 'open' })).toHaveAttribute(
+      'href',
+      'http://localhost/api/public/flows/flow_abc/chat?token=tok-123',
+    )
+
+    fireEvent.click(screen.getByText('Regenerate'))
+    const patch = set.mock.calls[0][0] as { publishToken: string }
+    expect(patch.publishToken).toMatch(/^[0-9a-f-]{32,36}$/)
+    expect(patch.publishToken).not.toBe('tok-123')
+    useFlowStore.setState({ flowId: null })
+  })
+
+  it('turning it off keeps the token for when it comes back, and says nothing more', () => {
+    const set = vi.fn()
+    render(<InputInspector data={{ ...base, published: true, publishToken: 'tok-123' }} set={set} />)
+
+    fireEvent.click(screen.getByLabelText(/Publish as an endpoint/))
+    expect(set).toHaveBeenCalledWith({ published: false })
   })
 })

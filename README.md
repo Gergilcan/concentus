@@ -792,6 +792,37 @@ Notes:
 - Comparisons are constant-time, and the HMAC covers the exact bytes received (the body is never
   re-encoded before verification).
 
+### Publish a flow as an endpoint
+
+A webhook is for a provider that calls you. The reverse case — *you* want to call a flow, from a
+script, a spreadsheet or another system, and get its answer back — is publishing. Tick **Publish
+as an endpoint** on the Input node: the browser mints a bearer token (there is a copy button and a
+regenerate button), and once the flow is saved:
+
+```sh
+curl -X POST "http://localhost:8080/api/public/flows/{flowId}/run" \
+  -H "Authorization: Bearer {publishToken}" \
+  -H "Content-Type: application/json" \
+  -d '{"input":"Where is order #42?"}'
+```
+
+- The input becomes the run's first message — the Input node's instruction, then the input fenced
+  as untrusted, with the metadata lines established by the server, exactly as a webhook payload
+  is handled. Runs started this way show the trigger **api** in the executions list.
+- By default the call **waits** for the run and answers `200 {"runId","status","output"}` with the
+  run's final output. `?timeoutSeconds=` (default 120, at most 600) bounds the wait; a run still
+  going answers `202 {"runId","status"}`, and `GET /api/public/flows/{flowId}/runs/{runId}` with
+  the same bearer returns the same shapes for polling. `?wait=false` answers `202` at once.
+- Publishing is orthogonal to the mode: a cron flow keeps its schedule and also answers here.
+- An unknown flow and a flow that is not published answer the **same** `404`, so the endpoint
+  cannot be used to learn which flow ids exist; a wrong token on a published flow is a `401` with
+  no detail, compared in constant time. Requests are rate-limited per token — wrong ones included.
+- `GET /api/public/flows/{flowId}/chat?token={publishToken}` serves a minimal chat page for trying
+  the flow from a browser. It is a demo surface, not a product: one static page, and the token in
+  its address — do not share the link.
+- The waiting call holds a server connection for as long as it waits. Fine for a script or a
+  spreadsheet; a caller that fires many requests at once should use `wait=false` and poll.
+
 ## Sign-in and organizations
 
 **There is no mode without accounts.** There used to be one, for the desktop install — one person,
@@ -1309,6 +1340,8 @@ onto a valid delivery.
 > as argv, so servers registered under any name stay removable.
 | POST | `/api/mcp/studio` | Concentus **as** an MCP server — design, validate, run and steer flows from an outside agent ([details](#concentus-as-an-mcp-server)) |
 | POST | `/api/webhooks/{flowId}` | inbound webhook that starts a run with the event payload ([auth](#webhook-authentication)) |
+| POST | `/api/public/flows/{flowId}/run` | a published flow as an endpoint: `{"input"}` in, the run's final output out ([details](#publish-a-flow-as-an-endpoint)) |
+| GET | `/api/public/flows/{flowId}/runs/{runId}` · `…/chat?token=` | poll a run started that way · the demo chat page |
 | GET | `/api/rag/status` · POST `/api/rag/preview` | RAG capabilities / preview a SQL source's rows |
 | GET | `/api/account/session` | who is signed in, which providers exist, and whether this installation still needs its first account |
 | POST | `/api/account/setup` | create that first account. The only endpoint reachable without a session, and it refuses once one exists |

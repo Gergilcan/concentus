@@ -1608,5 +1608,19 @@
   "metadata, and the changed paths fenced as untrusted — a file name is text whoever wrote the file chose.": "metadatos, y las rutas cambiadas acotadas como no fiables — un nombre de archivo es texto que eligió quien escribió el archivo.",
   "to start watching — a trigger only runs for a saved flow.": "para empezar a vigilar — un disparador solo funciona en un flujo guardado.",
   "Watch": "Vigilancia",
-  "📁 watch": "📁 carpeta"
+  "📁 watch": "📁 carpeta",
+  "While on, a POST with this token starts a run of this flow and answers with its final output. The flow otherwise starts exactly as before.": "Mientras está activo, un POST con este token lanza una ejecución de este flujo y responde con su salida final. Por lo demás, el flujo arranca exactamente igual que antes.",
+  "Publish as an endpoint ⓘ": "Publicar como endpoint ⓘ",
+  "Endpoint token": "Token del endpoint",
+  "Copy token": "Copiar token",
+  "Regenerate": "Regenerar",
+  "Anyone holding this token can start runs of this flow. Regenerating it revokes the old one as soon as the flow is saved.": "Cualquiera con este token puede lanzar ejecuciones de este flujo. Regenerarlo revoca el anterior en cuanto se guarda el flujo.",
+  "Endpoint URL": "URL del endpoint",
+  "curl example": "Ejemplo con curl",
+  "The input becomes the first message; the call waits for the final output and answers": "La entrada se convierte en el primer mensaje; la llamada espera la salida final y responde",
+  "Runs started this way show the trigger": "Las ejecuciones lanzadas así muestran el disparador",
+  "A minimal chat page for trying it:": "Una página de chat mínima para probarlo:",
+  "open": "abrir",
+  "A demo surface, not a product — the token travels in its address, so do not share the link.": "Una superficie de demostración, no un producto — el token viaja en su dirección, así que no compartas el enlace.",
+  "🔌 api": "🔌 api"
 }

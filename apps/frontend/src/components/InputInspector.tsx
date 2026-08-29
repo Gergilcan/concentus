@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clockTime } from '../utils/format.ts'
 import type { Credential, InputNodeData, MailDeviceCode, MailOAuthDefaults, MailStatus } from '../api/types.ts'
-import { api, webhookUrl } from '../api/client.ts'
+import { api, publicChatUrl, publicRunUrl, webhookUrl } from '../api/client.ts'
 import { useFlowStore } from '../state/store.ts'
 import { CronBuilder } from './CronBuilder.tsx'
 import { CheckboxField, Field, FineTuning, SelectField, TextArea } from './fields.tsx'
@@ -50,6 +50,16 @@ function providerFor(authParam: string | undefined): WebhookProvider {
   return WEBHOOK_PROVIDERS.find((p) => p.authParam.toLowerCase() === name)?.id ?? 'custom'
 }
 
+/**
+ * A fresh endpoint token. `randomUUID` needs a secure context, which localhost is; the fallback
+ * covers a WebView that lacks it, with the same 122 bits from the same generator.
+ */
+function newToken(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 export function InputInspector({ data, set }: Props) {
   const { t } = useTranslation()
   const flowId = useFlowStore((s) => s.flowId)
@@ -60,6 +70,31 @@ export function InputInspector({ data, set }: Props) {
   const provider: WebhookProvider =
     customFor !== null && customFor === data.authParam ? 'custom' : providerFor(data.authParam)
   const providerHint = WEBHOOK_PROVIDERS.find((p) => p.id === provider)?.hint
+
+  // Publishing. The token is minted here, in the browser: the backend only ever compares it, so
+  // there is no round trip to make and nothing to leak in transit before the flow is saved.
+  const [copiedToken, setCopiedToken] = useState(false)
+  const runUrl = flowId ? publicRunUrl(flowId) : null
+  const chatUrl = flowId && data.publishToken ? publicChatUrl(flowId, data.publishToken) : null
+  const curl = runUrl
+    ? `curl -X POST "${runUrl}" -H "Authorization: Bearer ${data.publishToken ?? ''}" -H "Content-Type: application/json" -d '{"input":"Hello"}'`
+    : null
+  const togglePublish = (on: boolean) => {
+    // Turning it back on keeps the token a client may already hold; Regenerate is the way to
+    // revoke, and it says so.
+    if (on) set({ published: true, publishToken: data.publishToken || newToken() })
+    else set({ published: false })
+  }
+  const copyToken = async () => {
+    if (!data.publishToken) return
+    try {
+      await navigator.clipboard.writeText(data.publishToken)
+      setCopiedToken(true)
+      setTimeout(() => setCopiedToken(false), 1500)
+    } catch {
+      /* clipboard blocked — the field is selectable anyway */
+    }
+  }
   const [credentials, setCredentials] = useState<Credential[]>([])
 
   // Loaded regardless of mode: the hook must not be conditional, and the list is small.
@@ -445,6 +480,66 @@ export function InputInspector({ data, set }: Props) {
             </>
           )}
         </p>
+      )}
+      {/* Any mode: publishing adds a door, it does not move the existing one. */}
+      <label
+        className={styles.checkField}
+        title={t('While on, a POST with this token starts a run of this flow and answers with its final output. The flow otherwise starts exactly as before.')}
+      >
+        <input
+          type="checkbox"
+          checked={!!data.published}
+          onChange={(e) => togglePublish(e.target.checked)}
+        />
+        {t('Publish as an endpoint ⓘ')}
+      </label>
+      {data.published && (
+        <>
+          <Field
+            label={t('Endpoint token')}
+            value={data.publishToken ?? ''}
+            readOnly
+            onFocus={(e) => e.currentTarget.select()}
+          />
+          <div className={styles.mcpBtns}>
+            <button className={styles.previewBtn} onClick={() => void copyToken()}>
+              {copiedToken ? t('Copied ✓') : t('Copy token')}
+            </button>
+            <button className={styles.previewBtn} onClick={() => set({ publishToken: newToken() })}>
+              {t('Regenerate')}
+            </button>
+          </div>
+          <p className={styles.hint}>
+            {t('Anyone holding this token can start runs of this flow. Regenerating it revokes the old one as soon as the flow is saved.')}
+          </p>
+          <Field
+            label={t('Endpoint URL')}
+            value={runUrl ?? t('Save the flow first to generate the URL.')}
+            readOnly
+            onFocus={runUrl ? (e) => e.currentTarget.select() : undefined}
+          />
+          {curl && (
+            <Field
+              label={t('curl example')}
+              value={curl}
+              readOnly
+              onFocus={(e) => e.currentTarget.select()}
+            />
+          )}
+          <p className={styles.hint}>
+            {t('The input becomes the first message; the call waits for the final output and answers')}{' '}
+            <code>{'{ runId, status, output }'}</code>. {t('Runs started this way show the trigger')} <code>api</code>.
+          </p>
+          {chatUrl && (
+            <p className={styles.hint}>
+              {t('A minimal chat page for trying it:')}{' '}
+              <a href={chatUrl} target="_blank" rel="noreferrer">
+                {t('open')}
+              </a>
+              . {t('A demo surface, not a product — the token travels in its address, so do not share the link.')}
+            </p>
+          )}
+        </>
       )}
       <p className={styles.hint}>{t("Connect this node's output to your coordinator agent.")}</p>
     </>

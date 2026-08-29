@@ -165,6 +165,16 @@ export function webhookUrl(flowId: string): string {
   return `${location.origin}/api/webhooks/${flowId}`
 }
 
+/** The URL a caller POSTs to when a flow is published as an endpoint — same reasoning as above. */
+export function publicRunUrl(flowId: string): string {
+  return `${location.origin}/api/public/flows/${flowId}/run`
+}
+
+/** The demo chat page for a published flow. The token rides in the URL, which is why it is a demo. */
+export function publicChatUrl(flowId: string, token: string): string {
+  return `${location.origin}/api/public/flows/${flowId}/chat?token=${encodeURIComponent(token)}`
+}
+
 export const api = {
   // flows
   listFlows: () => req<BackendFlow[]>('/flows'),

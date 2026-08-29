@@ -142,8 +142,11 @@ public class SecurityConfig {
                     // The studio endpoint is the same story pointed the other way: an outside MCP
                     // client (Claude Code) driving this app, with a configured token instead of a
                     // session. It refuses every request unless one is set — see McpStudioController.
+                    // A published flow's endpoint likewise: a bearer token the flow's author
+                    // minted, on every request, and a flow that is not published answers 404 —
+                    // see PublicRunController.
                     .ignoringRequestMatchers("/api/webhooks/**", "/api/internal/**",
-                            "/api/account/oidc/**",
+                            "/api/public/**", "/api/account/oidc/**",
                             "/api/runs/*/tools", "/api/runs/*/workers/*/tools", "/api/runs/*/plan",
                             "/api/runs/*/verdict", "/api/mcp/studio")
                     // And the desktop shell's first-run wizard, which asks which database to use
@@ -152,7 +155,7 @@ public class SecurityConfig {
                     // the token this launch generated — see ShellTokenFilter.
                     .ignoringRequestMatchers(shell::authenticates))
             .authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/api/webhooks/**", "/api/internal/**").permitAll()
+                    .requestMatchers("/api/webhooks/**", "/api/internal/**", "/api/public/**").permitAll()
                     .requestMatchers("/api/runs/*/tools", "/api/runs/*/workers/*/tools",
                             "/api/runs/*/plan", "/api/runs/*/verdict").permitAll()
                     .requestMatchers("/api/mcp/studio").permitAll()
