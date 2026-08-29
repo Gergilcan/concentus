@@ -115,10 +115,16 @@ public class RagContextInjector {
                 }
                 var hits = knowledge.search(source.baseId, query, queryVector, source.topK);
                 var assembled = assembler.assemble(hits);
+                String block = assembler.asPromptText(source.label(), assembled);
                 ctx.append("\n\n# Retrieved context — ").append(source.label()).append('\n')
-                        .append(assembler.asPromptText(source.label(), assembled));
-                emit.accept("Knowledge: '" + source.label() + "' → " + hits.size()
-                        + " passage(s) injected into agent '" + spec.name + "'.");
+                        .append(block);
+                // The size in both units, because "3 passages" says nothing about what they
+                // cost the window — and the budget they were trimmed against, so a person can
+                // tell "that is all that matched" from "that is all that fit".
+                emit.accept("Knowledge: '" + source.label() + "' → " + assembled.passages().size()
+                        + " passage(s) injected into agent '" + spec.name + "' ("
+                        + ContextAssembler.describeSize(block, assembled.budget()) + ")"
+                        + (assembled.truncated() ? "; more matched than fit." : "."));
                 if (ne != null) {
                     // The assembled spans, not the raw hits: what the box reports and what the
                     // agent was handed have to be the same thing, or the box is decoration.

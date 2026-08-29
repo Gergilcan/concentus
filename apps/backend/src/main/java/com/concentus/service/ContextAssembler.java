@@ -1,6 +1,7 @@
 package com.concentus.service;
 
 import com.concentus.config.Settings;
+import com.concentus.support.TokenEstimator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -26,16 +27,25 @@ import java.util.Map;
  * to explain the process. Relevance decided which passages are here; it has no business deciding
  * what order they are read in.
  *
- * <p><b>The budget is in characters.</b> There is no tokeniser here for whatever model the agent
- * runs on — it may be Claude through a CLI, a local model, or something added next month — and a
- * token count computed with the wrong tokeniser is a number that looks authoritative and is wrong.
- * Characters are honest, and the ceiling is stated in the units it is enforced in.
+ * <p><b>The budget is in tokens when somebody set one, and in characters otherwise.</b> Tokens
+ * are the unit a context window is measured in and the unit people reason about, so
+ * {@code knowledge.context-tokens} is what the setting screen offers. There is still no tokeniser
+ * here for whatever model the agent runs on — Claude through a CLI, a local model, something
+ * added next month — so the count is {@link TokenEstimator}'s: a deterministic estimate, honest
+ * about being within roughly a fifth of the truth, and the same for the same text every time. The
+ * character budget stays as the fallback so an installation that never touched the setting
+ * behaves exactly as it did.
  *
  * <p>Each span is numbered so the answer can cite it. That numbering is the whole reason a person
  * can check an answer instead of believing it.
  */
 @Component
 public class ContextAssembler {
+
+    /** Below this, a budget cannot hold one real passage; a mistyped value is clamped up to it. */
+    private static final int MIN_CHARS = 1000;
+    /** The same floor in tokens — a thousand characters of prose. */
+    private static final int MIN_TOKENS = 250;
 
     private final Settings settings;
     /**
@@ -47,31 +57,51 @@ public class ContextAssembler {
      * has read its instructions.
      */
     private final int fallbackChars;
+    /** Tokens per source when nothing overrides it; zero means "budget in characters". */
+    private final int fallbackTokens;
 
     // Explicit, because a second constructor exists for tests and Spring will not choose between
     // two candidates on its own — it looks for a no-arg one and fails.
     @org.springframework.beans.factory.annotation.Autowired
     public ContextAssembler(Settings settings,
-                            @Value("${knowledge.context-chars:12000}") int fallbackChars) {
+                            @Value("${knowledge.context-chars:12000}") int fallbackChars,
+                            @Value("${knowledge.context-tokens:0}") int fallbackTokens) {
         this.settings = settings;
-        this.fallbackChars = Math.max(1000, fallbackChars);
+        this.fallbackChars = Math.max(MIN_CHARS, fallbackChars);
+        this.fallbackTokens = fallbackTokens <= 0 ? 0 : Math.max(MIN_TOKENS, fallbackTokens);
     }
 
-    /** A fixed budget, for tests and for callers constructing this directly. */
+    /** A fixed character budget, for tests and for callers constructing this directly. */
     public ContextAssembler(int fixedChars) {
-        this.settings = null;
-        this.fallbackChars = Math.max(1000, fixedChars);
+        this(Settings.none(), fixedChars, 0);
+    }
+
+    /** What the budget is measured in — reported so a log line can say the unit it enforced. */
+    public enum Unit { TOKENS, CHARS }
+
+    /** The ceiling for one source, in the unit that applies right now. */
+    public record Budget(Unit unit, int amount) {
     }
 
     /**
      * Read per assembly rather than captured at startup, so changing it in Settings takes effect on
      * the next run instead of the next restart. One small query against a value that was already
      * about to do a vector scan.
+     *
+     * <p>Tokens win when set above zero, whichever place set them; characters are what remains
+     * when nobody has. Not the larger or the smaller of the two: a person who typed a token budget
+     * meant it, and a character ceiling they never looked at should not overrule it.
      */
-    private int budget() {
-        return settings == null
-                ? fallbackChars
-                : Math.max(1000, settings.number("knowledge.context-chars", fallbackChars));
+    public Budget budget() {
+        int tokens = settings.number("knowledge.context-tokens", fallbackTokens);
+        if (tokens > 0) return new Budget(Unit.TOKENS, Math.max(MIN_TOKENS, tokens));
+        return new Budget(Unit.CHARS,
+                Math.max(MIN_CHARS, settings.number("knowledge.context-chars", fallbackChars)));
+    }
+
+    /** What one passage costs against the budget, in the budget's unit. */
+    private static int cost(Budget budget, String content) {
+        return budget.unit() == Unit.TOKENS ? TokenEstimator.estimate(content) : content.length();
     }
 
     /** One contiguous span of a document, ready to be cited. */
@@ -84,7 +114,11 @@ public class ContextAssembler {
         }
     }
 
-    public record Assembled(List<Passage> passages, boolean truncated) {
+    /**
+     * @param budget what the passages were trimmed against, so a report can say "3 of 12,000
+     *               chars" or "of 3,000 tokens" without re-deriving which applied
+     */
+    public record Assembled(List<Passage> passages, boolean truncated, Budget budget) {
         public boolean isEmpty() {
             return passages.isEmpty();
         }
@@ -98,15 +132,15 @@ public class ContextAssembler {
      * the tail would drop the end of a document rather than the least relevant thing.
      */
     public Assembled assemble(List<KnowledgeRetriever.Hit> hits) {
-        if (hits.isEmpty()) return new Assembled(List.of(), false);
+        Budget budget = budget();
+        if (hits.isEmpty()) return new Assembled(List.of(), false, budget);
 
         List<KnowledgeRetriever.Hit> kept = new ArrayList<>();
         int used = 0;
         boolean truncated = false;
-        int budget = budget();
         for (KnowledgeRetriever.Hit hit : hits) {
-            int cost = hit.content().length();
-            if (!kept.isEmpty() && used + cost > budget) {
+            int cost = cost(budget, hit.content());
+            if (!kept.isEmpty() && used + cost > budget.amount()) {
                 truncated = true;
                 continue;
             }
@@ -118,7 +152,7 @@ public class ContextAssembler {
         ordered.sort(Comparator.comparing(KnowledgeRetriever.Hit::docName)
                 .thenComparingInt(KnowledgeRetriever.Hit::seq));
 
-        return new Assembled(merge(ordered), truncated);
+        return new Assembled(merge(ordered), truncated, budget);
     }
 
     /**
@@ -183,5 +217,19 @@ public class ContextAssembler {
             text.append("(More passages matched than fit; these are the most relevant.)\n");
         }
         return text.toString();
+    }
+
+    /**
+     * How much a block of injected text weighs, for the run log: characters as counted, tokens
+     * as estimated, and which of the two the budget was enforced in. "3 passages" says nothing
+     * about cost; this is what lets a person see that three knowledge sources ate the window.
+     */
+    public static String describeSize(String promptText, Budget budget) {
+        int chars = promptText.length();
+        int tokens = TokenEstimator.estimate(promptText);
+        // Locale.ROOT, because the run log is read by whoever opens it and the JVM's default on a
+        // Spanish desktop writes "4.000" — which reads as four with decimals.
+        return String.format(java.util.Locale.ROOT, "%,d chars, ~%,d tokens estimated; budget %,d %s",
+                chars, tokens, budget.amount(), budget.unit() == Unit.TOKENS ? "tokens" : "chars");
     }
 }
