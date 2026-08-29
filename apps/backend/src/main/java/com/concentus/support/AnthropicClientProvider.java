@@ -98,6 +98,11 @@ public class AnthropicClientProvider {
         return new AuthStatus(mode, source, ok, detail, hint);
     }
 
+    /** Whether a hosted-API credential exists at all, whatever the auth mode prefers. */
+    public boolean apiKeyAvailable() {
+        return hasKey() || hasToken();
+    }
+
     private static boolean hasKey() {
         return notBlank(System.getenv("ANTHROPIC_API_KEY"));
     }

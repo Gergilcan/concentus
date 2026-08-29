@@ -323,6 +323,85 @@ public class RunService {
         run.onBudgetExceeded = () -> stop(run.id);
     }
 
+    /** The fallback to apply at start, or null: the coordinator names one and the meter says spent. */
+    private String fallbackTheMeterAsksFor(CompiledFlow compiled) {
+        String policy = compiled.coordinator() == null ? "" : compiled.coordinator().allowanceFallback;
+        if (policy == null || policy.isBlank() || usage == null) return null;
+        ClaudeUsageService.Allowance a = usage.allowance();
+        return a != null && a.exhausted() ? policy : null;
+    }
+
+    /**
+     * Points the compiled flow at its fallback. Returns null when it could be applied, or a line
+     * for the log saying why it could not — a fallback nobody can run is said, not silently
+     * skipped.
+     */
+    private String applyFallback(CompiledFlow compiled, String fallback) {
+        if ("api-key".equals(fallback)) {
+            return clientProvider.apiKeyAvailable() ? null
+                    : "The coordinator names the API key as the fallback, but this machine has no "
+                            + "ANTHROPIC_API_KEY — running on the subscription anyway.";
+        }
+        if ("local-model".equals(fallback)) {
+            String model = compiled.coordinator().allowanceFallbackModel;
+            if (model == null || model.isBlank()) {
+                return "The coordinator names a local model as the fallback but does not say which — "
+                        + "running on the subscription anyway.";
+            }
+            // Every agent of the flow, not only the coordinator: a fan-out on the fallback is a
+            // fan-out on the fallback.
+            List<AgentSpec> all = new ArrayList<>();
+            all.add(compiled.coordinator());
+            all.addAll(compiled.subAgents());
+            if (compiled.merger() != null) all.add(compiled.merger());
+            if (compiled.verifier() != null) all.add(compiled.verifier());
+            for (AgentSpec spec : all) {
+                if (spec.model == null) spec.model = new AgentSpec.ModelSpec();
+                spec.model.id = model;
+            }
+            return null;
+        }
+        return "Unknown fallback '" + fallback + "' — running on the subscription anyway.";
+    }
+
+    /**
+     * A run the subscription refused mid-way continues on the fallback the coordinator named, as
+     * a new run that says where it came from. Once: a fallback run that is refused again has
+     * nowhere further to go, and says so.
+     */
+    private void continueOnFallback(AgentRun run) {
+        String policy = run.compiled == null || run.compiled.coordinator() == null
+                ? "" : run.compiled.coordinator().allowanceFallback;
+        if (policy == null || policy.isBlank()) {
+            run.emit(RunEvent.of("system", "No fallback is set on the coordinator (\"When the weekly "
+                    + "allowance is spent\"), so this run ends here. An API key or a local model there "
+                    + "would have continued it."));
+            return;
+        }
+        if (run.fallbackOf != null) {
+            run.emit(RunEvent.of("system", "This run was already the fallback of " + run.fallbackOf
+                    + " and was refused again; there is nowhere further to go."));
+            return;
+        }
+        if (run.flowJson == null) return;
+        try {
+            FlowGraph flow = mapper.readValue(run.flowJson, FlowGraph.class);
+            RunSummary started = start(flow, run.initialPrompt, policy);
+            AgentRun next = runs.get(started.id());
+            if (next != null) {
+                next.fallbackOf = run.id;
+                next.trigger = "fallback";
+                next.flowVersion = run.flowVersion;
+                next.emit(RunEvent.of("system", "Continues run " + run.id + ", which the subscription refused."));
+                runStore.persist(next);
+            }
+            run.emit(RunEvent.of("system", "Continued as run " + started.id() + " on the "
+                    + ("api-key".equals(policy) ? "API key" : "local model") + ", as the coordinator says."));
+        } catch (Exception e) {
+            run.emit(RunEvent.of("system", "The fallback could not be started: " + e.getMessage()));
+        }
+    }
+
     /**
      * A subscription run that starts with the weekly allowance nearly or fully spent is told so
      * in its first line. Told, not refused: the meter is a floor built from this app's own
@@ -368,6 +447,14 @@ public class RunService {
     }
 
     public RunSummary start(FlowGraph flow, String initialPromptOverride) {
+        return start(flow, initialPromptOverride, null);
+    }
+
+    /**
+     * As above, on a fallback: {@code forcedFallback} is "api-key" or "local-model" when a run
+     * that hit the allowance is being continued elsewhere, null to let the meter decide.
+     */
+    public RunSummary start(FlowGraph flow, String initialPromptOverride, String forcedFallback) {
         // Variables resolve at start time, not at save time: the flow's prompts keep their
         // {{NAME}} placeholders on disk, and each run stamps in whatever the organization and the
         // flow say TODAY — which is also what makes the values editable without touching prompts.
@@ -376,7 +463,9 @@ public class RunService {
         // Compile synchronously so validation errors surface to the caller immediately.
         CompiledFlow compiled = compiler.compile(flow, variableValues, unresolvedVariables);
         TriggerSpec trigger = TriggerSpec.from(flow);
-        String backend = chooseBackend(compiled);
+        String fallback = forcedFallback != null ? forcedFallback : fallbackTheMeterAsksFor(compiled);
+        String fallbackNote = fallback == null ? null : applyFallback(compiled, fallback);
+        String backend = "api-key".equals(fallback) && fallbackNote == null ? "cloud" : chooseBackend(compiled);
         enforceBudget(flow, backend);
 
         String runId = Ids.generate("run_", 12);
@@ -385,6 +474,15 @@ public class RunService {
         run.compiled = compiled;
         run.flowJson = toJson(flow);
         armBudget(run, flow);
+        if (fallback != null && fallbackNote == null) {
+            run.fallbackKind = fallback;
+            run.emit(RunEvent.of("system", "Weekly allowance for runs: spent — running on "
+                    + ("api-key".equals(fallback) ? "the API key, billed per token"
+                            : "the local model " + compiled.coordinator().allowanceFallbackModel)
+                    + ", as the coordinator says."));
+        } else if (fallbackNote != null) {
+            run.emit(RunEvent.of("system", fallbackNote));
+        }
         warnAboutAllowance(run);
         // Stamped once, at launch, next to the snapshot it names — reading it later would report
         // whatever version the flow has been edited to since, which is the opposite of what an
@@ -641,6 +739,17 @@ public class RunService {
             if (run.budgetTripped && !"ERROR".equals(run.status)) {
                 run.status = "ERROR";
                 run.emit(RunEvent.of("status", "error"));
+            }
+            // Refused for the allowance: a failure here, and a continuation elsewhere if the
+            // coordinator named one. Before the hand-offs, so the error branch of THIS run still
+            // fires — the continuation is a new run with its own branches.
+            if (run.quotaHit) {
+                if (!"ERROR".equals(run.status)) {
+                    run.status = "ERROR";
+                    if (run.error == null || run.error.isBlank()) run.error = "The subscription refused this run for its weekly allowance.";
+                    run.emit(RunEvent.of("status", "error"));
+                }
+                continueOnFallback(run);
             }
             // Hand-offs BEFORE the failure is persisted or announced, and the order is the
             // feature: a failure whose error output is wired gets handled there and the run

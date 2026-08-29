@@ -413,6 +413,14 @@ export type AgentNodeData = {
    * Delegation is denied in every case.
    */
   coordinatorAccess?: '' | 'read-only' | 'may-act'
+  /**
+   * What a run does when the subscription's weekly allowance for non-interactive use is spent
+   * (the meter says so at start, or the CLI refuses mid-run). **Coordinator only.** Blank: the
+   * run is told and tries anyway. `api-key`: the hosted API with the machine's key, billed per
+   * token. `local-model`: every agent of the flow runs on `allowanceFallbackModel`.
+   */
+  allowanceFallback?: '' | 'api-key' | 'local-model'
+  allowanceFallbackModel?: string
 }
 
 export type McpNodeData = {

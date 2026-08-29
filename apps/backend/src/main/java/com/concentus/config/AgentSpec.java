@@ -88,6 +88,16 @@ public class AgentSpec {
      * not a failure this counts: that is what the escalation model is for.
      */
     public int retries = -1;
+    /**
+     * What a run does when the subscription's weekly allowance for non-interactive use is
+     * spent — the meter says so at start, or the CLI refuses mid-run for that reason.
+     * <b>Coordinator only.</b> {@code ""}: nothing; the run is told and tries anyway.
+     * {@code "api-key"}: run on the hosted API with the machine's key, billed per token.
+     * {@code "local-model"}: run every agent of the flow on {@link #allowanceFallbackModel}.
+     */
+    public String allowanceFallback = "";
+    /** The model every agent runs on under the {@code local-model} fallback. */
+    public String allowanceFallbackModel = "";
     public List<SkillSpec> skills = new ArrayList<>();
     /**
      * Claude Code plugin ids ({@code name@marketplace}) this agent runs with — exactly these and

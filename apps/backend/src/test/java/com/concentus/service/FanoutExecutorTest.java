@@ -237,6 +237,26 @@ class FanoutExecutorTest {
     }
 
     @Test
+    void aRefusalForTheAllowanceIsNotRetriedAndMarksTheRun() {
+        AgentRun run = run(spec("n1", "Worker A", "worker-a", ""));
+        AtomicInteger attempts = new AtomicInteger();
+        FanoutExecutor.ProcessStarter starter = (args, workdir) -> {
+            attempts.incrementAndGet();
+            return new FakeProcess("{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\"}}\n"
+                    + "{\"type\":\"result\",\"is_error\":true,\"result\":\"usage limit reached\"}", 1);
+        };
+
+        // Two retries configured, none spent: a refusal for the allowance is refused again on the
+        // next launch, so the only useful thing is to stop and say so.
+        executor(starter, 900, 2).runTurn(run, run.compiled, "go");
+
+        assertThat(run.quotaHit).isTrue();
+        assertThat(attempts).hasValue(1);
+        assertThat(run.status).isEqualTo("ERROR");
+        assertThat(run.bufferedEvents()).anySatisfy(e -> assertThat(e.text()).contains("refused this run for its allowance"));
+    }
+
+    @Test
     void aHungWorkerIsKilledAtTheTimeoutAndNotRetried() {
         AgentRun run = run(spec("n1", "Worker A", "worker-a", ""));
         HungProcess hung = new HungProcess();

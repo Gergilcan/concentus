@@ -415,6 +415,9 @@ public class FlowCompiler {
         // Blank on the node means "the deployment's default", which is what every flow saved
         // before the field existed says.
         s.retries = (int) lng(d, "retries", -1);
+        // Coordinator-only like the execution mode, carried for every agent for the same reason.
+        s.allowanceFallback = str(d, "allowanceFallback", "");
+        s.allowanceFallbackModel = str(d, "allowanceFallbackModel", "");
 
         collectConnected(flow, node, resources.mcps(), s.mcpServers, mcp -> {
             Map<String, Object> md = mcp.dataOrEmpty();

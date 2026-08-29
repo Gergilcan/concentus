@@ -1,4 +1,10 @@
 {
+  "When the weekly allowance is spent ⓘ": "Quan la bossa setmanal s'esgota ⓘ",
+  "Anthropic meters non-interactive Claude Code use — the way Concentus runs the CLI — in its own weekly allowance. When the Usage page says it is spent, or the CLI refuses a run for it mid-way, this is what the run does. The API key is billed per token; a local model runs every agent of the flow on that model (Resources → Models). Blank: the run is told and tries anyway.": "Anthropic mesura l'ús no interactiu de Claude Code — la manera com Concentus executa el CLI — en la seva pròpia bossa setmanal. Quan la pàgina d'Ús diu que està esgotada, o el CLI rebutja una execució per això a mig camí, això és el que fa l'execució. L'API key es factura per token; un model local executa tots els agents del flow en aquest model (Recursos → Models). Buit: s'avisa i s'intenta igualment.",
+  "Say so, and keep trying on the subscription": "Avisar, i continuar intentant-ho amb la subscripció",
+  "Run on the API key (billed per token)": "Executar amb l'API key (facturat per token)",
+  "Run every agent on a local model": "Executar tots els agents en un model local",
+  "Fallback model": "Model de reserva",
   "Weekly allowance for runs": "Bossa setmanal per a execucions",
   "Runs on this machine's subscription in the last 7 days, against the allowance set in Settings → Usage. Non-interactive use that never went through Concentus counts on Anthropic's side but not here, so this is a floor. Rolling 7 days, which is conservative against a plan that resets on a fixed day.": "Execucions amb la subscripció d'aquesta màquina els últims 7 dies, davant la bossa fixada a Configuració → Ús. L'ús no interactiu que no ha passat per Concentus compta a Anthropic però no aquí, així que això és un mínim. 7 dies rodants, que és conservador davant un pla que es reinicia un dia fix.",
   "{{used}} of {{allowance}} — spent. Runs on the subscription wait for the window to reset, or fall back if the flow says so.": "{{used}} de {{allowance}} — esgotada. Les execucions amb la subscripció esperen que la finestra es reiniciï, o canvien de via si el flow ho diu.",

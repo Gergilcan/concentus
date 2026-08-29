@@ -205,6 +205,27 @@ export function AgentInspector({ data, set }: Props) {
                 <option value="may-act">{t('May act — can edit files and run commands')}</option>
               </SelectField>
             )}
+            <SelectField
+              label={
+                <span title={t("Anthropic meters non-interactive Claude Code use — the way Concentus runs the CLI — in its own weekly allowance. When the Usage page says it is spent, or the CLI refuses a run for it mid-way, this is what the run does. The API key is billed per token; a local model runs every agent of the flow on that model (Resources → Models). Blank: the run is told and tries anyway.")}>
+                  {t('When the weekly allowance is spent ⓘ')}
+                </span>
+              }
+              value={data.allowanceFallback ?? ''}
+              onChange={(v) => set({ allowanceFallback: v })}
+            >
+              <option value="">{t('Say so, and keep trying on the subscription')}</option>
+              <option value="api-key">{t('Run on the API key (billed per token)')}</option>
+              <option value="local-model">{t('Run every agent on a local model')}</option>
+            </SelectField>
+            {data.allowanceFallback === 'local-model' && (
+              <ModelField
+                label={t('Fallback model')}
+                value={data.allowanceFallbackModel ?? ''}
+                onChange={(v) => set({ allowanceFallbackModel: v })}
+                allowNone
+              />
+            )}
           </>
         )}
         <TextArea

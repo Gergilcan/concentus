@@ -1,4 +1,10 @@
 {
+  "When the weekly allowance is spent ⓘ": "Cuando la bolsa semanal se agota ⓘ",
+  "Anthropic meters non-interactive Claude Code use — the way Concentus runs the CLI — in its own weekly allowance. When the Usage page says it is spent, or the CLI refuses a run for it mid-way, this is what the run does. The API key is billed per token; a local model runs every agent of the flow on that model (Resources → Models). Blank: the run is told and tries anyway.": "Anthropic mide el uso no interactivo de Claude Code — la forma en que Concentus ejecuta el CLI — en su propia bolsa semanal. Cuando la página de Uso dice que está agotada, o el CLI rechaza una ejecución por ello a mitad, esto es lo que hace la ejecución. La API key se factura por token; un modelo local ejecuta todos los agentes del flow en ese modelo (Recursos → Modelos). Vacío: se avisa y se intenta igualmente.",
+  "Say so, and keep trying on the subscription": "Avisar, y seguir intentándolo con la suscripción",
+  "Run on the API key (billed per token)": "Ejecutar con la API key (facturado por token)",
+  "Run every agent on a local model": "Ejecutar todos los agentes en un modelo local",
+  "Fallback model": "Modelo de respaldo",
   "Weekly allowance for runs": "Bolsa semanal para ejecuciones",
   "Runs on this machine's subscription in the last 7 days, against the allowance set in Settings → Usage. Non-interactive use that never went through Concentus counts on Anthropic's side but not here, so this is a floor. Rolling 7 days, which is conservative against a plan that resets on a fixed day.": "Ejecuciones con la suscripción de esta máquina en los últimos 7 días, frente a la bolsa fijada en Ajustes → Uso. El uso no interactivo que no pasó por Concentus cuenta en Anthropic pero no aquí, así que esto es un mínimo. 7 días rodantes, que es conservador frente a un plan que se reinicia un día fijo.",
   "{{used}} of {{allowance}} — spent. Runs on the subscription wait for the window to reset, or fall back if the flow says so.": "{{used}} de {{allowance}} — agotada. Las ejecuciones con la suscripción esperan a que la ventana se reinicie, o cambian de vía si el flow lo dice.",

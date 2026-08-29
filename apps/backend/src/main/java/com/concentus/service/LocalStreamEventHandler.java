@@ -72,6 +72,8 @@ final class LocalStreamEventHandler {
                 if (!status.isEmpty() && !"allowed".equals(status)) {
                     run.emit(RunEvent.of("system", "Rate limit: " + status));
                 }
+                // A warning is still allowed; anything else is the allowance refusing the run.
+                if (!status.isEmpty() && !status.startsWith("allowed")) run.noteQuota("rate limit " + status);
             }
             default -> {
                 // stream_event / etc. — ignored for the console

@@ -207,6 +207,43 @@ class RunServiceTest {
     }
 
     @Test
+    void aRunTheSubscriptionRefusedContinuesOnTheFallbackTheCoordinatorNamed() throws Exception {
+        CompiledFlow compiled = compiledFlow();
+        compiled.coordinator().allowanceFallback = "local-model";
+        compiled.coordinator().allowanceFallbackModel = "ollama:llama3";
+        when(compiler.compile(any(), any(), any())).thenReturn(compiled);
+        when(clientProvider.backend()).thenReturn("local");
+        java.util.concurrent.atomic.AtomicInteger turns = new java.util.concurrent.atomic.AtomicInteger();
+        doAnswer(inv -> {
+            AgentRun run = inv.getArgument(0);
+            if (turns.getAndIncrement() == 0) {
+                // The CLI refused the first run for the allowance; the second, on the fallback, works.
+                run.noteQuota("rate limit rejected");
+            } else {
+                run.emit(RunEvent.of("agent_message", "Done on the fallback.", "Coordinator", "n1"));
+            }
+            run.status = "IDLE";
+            return null;
+        }).when(localExecutor).runTurn(any(), any(), any());
+        RunService svc = newService(4, 8, 10);
+
+        RunSummary first = svc.start(flowWithPrompt("f1", "cron", "daily briefing"));
+        verify(localExecutor, timeout(3000).times(2)).runTurn(any(), any(), any());
+
+        long deadline = System.currentTimeMillis() + 3000;
+        while (System.currentTimeMillis() < deadline && svc.hasActiveRun("f1")) Thread.sleep(20);
+        // The refused run is a failure — its own error branch fires — and the continuation is a
+        // new run that says where it came from, every agent on the fallback model.
+        assertThat(svc.get(first.id()).orElseThrow().status).isEqualTo("ERROR");
+        RunSummary second = svc.list().stream().filter(r -> !r.id().equals(first.id())).findFirst().orElseThrow();
+        AgentRun next = svc.get(second.id()).orElseThrow();
+        assertThat(next.fallbackOf).isEqualTo(first.id());
+        assertThat(next.trigger).isEqualTo("fallback");
+        assertThat(next.compiled.coordinator().model.id).isEqualTo("ollama:llama3");
+        assertThat(next.status).isEqualTo("COMPLETED");
+    }
+
+    @Test
     void aFinishedTurnCompletesTheRunAndDoesNotBlockTheNextFire() throws Exception {
         when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");

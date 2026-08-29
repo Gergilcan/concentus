@@ -295,6 +295,9 @@ public class FanoutExecutor {
 
     /** The read-only planner's denylist: everything that changes anything, plus delegation. */
     private static final String PLANNER_READ_ONLY = "Task,Bash,Write,Edit,NotebookEdit";
+    /** What the CLI says when the subscription will not carry the work. Broad on purpose. */
+    static final java.util.regex.Pattern QUOTA_WORDS = java.util.regex.Pattern.compile(
+            "usage limit|rate limit|quota|extra usage|out of credits|credit balance", java.util.regex.Pattern.CASE_INSENSITIVE);
     /**
      * The acting planner's denylist. Only delegation: a coordinator allowed to act may edit and
      * run commands while planning, but a planner that could open its own fan-out would still
@@ -737,6 +740,9 @@ public class FanoutExecutor {
                 return new Outcome(spec, true, result.finalText(), null);
             }
             lastError = result.error();
+            // A refusal for the allowance is refused again on the next launch: stop here and let
+            // the run service start the fallback, if the coordinator named one.
+            if (run.quotaHit) break;
             if (result.timedOut() || "TERMINATED".equals(run.status)) {
                 // A timeout retried is a doubled timeout: the next attempt would spend the same
                 // budget on the same task. Fail it and let the report say so.
@@ -1254,6 +1260,13 @@ public class FanoutExecutor {
             return Parsed.NONE;
         }
         switch (node.path("type").asText("")) {
+            case "rate_limit_event" -> {
+                // A warning is still allowed; anything else is the allowance refusing the worker,
+                // and a refusal for the allowance is a refusal for every sibling too.
+                String status = node.path("rate_limit_info").path("status").asText("");
+                if (!status.isEmpty() && !status.startsWith("allowed")) run.noteQuota("rate limit " + status);
+                return Parsed.NONE;
+            }
             case "assistant" -> {
                 JsonNode usage = node.path("message").path("usage");
                 if (exec != null && usage.isObject()) {
@@ -1295,6 +1308,7 @@ public class FanoutExecutor {
                 }
                 boolean bad = node.path("is_error").asBoolean(false);
                 String text = node.path("result").asText("");
+                if (bad && QUOTA_WORDS.matcher(text).find()) run.noteQuota(text.strip());
                 return new Parsed(text.isBlank() ? null : text, bad, text.isBlank() ? null : text);
             }
             default -> {

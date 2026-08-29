@@ -641,7 +641,10 @@ non-interactive Claude Code use (which is how Concentus runs the CLI) in its own
 from your interactive sessions, and past it runs stop until the window resets. The exact shape of
 that allowance has changed more than once; the Usage page in the app measures what this machine has
 consumed so you can see it coming, and a flow can fall back to an API key or a self-hosted model
-when the allowance is spent.
+when the allowance is spent — set it on the Coordinator (**When the weekly allowance is spent**):
+the run then starts on the fallback when the meter says spent, and a run the CLI refuses mid-way
+for the allowance ends as a failure and continues as a new run on the fallback, which says where
+it came from.
 
 ## Persistence (PostgreSQL)
 

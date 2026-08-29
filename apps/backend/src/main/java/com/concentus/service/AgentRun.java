@@ -463,6 +463,25 @@ public class AgentRun {
     public volatile boolean budgetTripped;
     /** Set once, on a subscription run whose equivalent usage passed the ceiling — said, not stopped. */
     public volatile boolean budgetNoted;
+    /**
+     * Set when the CLI refused this run for the subscription's allowance — a rate-limit frame
+     * that was not "allowed", or a result whose error says so. Retrying is pointless then, and
+     * the run service reads it to start the fallback the coordinator named.
+     */
+    public volatile boolean quotaHit;
+    /** The run this one continues on a fallback, when it does; guards against a fallback of a fallback. */
+    public volatile String fallbackOf;
+    /** Which fallback this run is on: "api-key" | "local-model" | null when none. */
+    public volatile String fallbackKind;
+
+    /** Records a refusal for the allowance, once, in the log and on the run. */
+    public void noteQuota(String detail) {
+        if (quotaHit) return;
+        quotaHit = true;
+        emit(RunEvent.of("error", "The subscription refused this run for its allowance: " + detail
+                + ". Retrying would be refused the same way."));
+    }
+
     /** What to do the moment the ceiling is reached: installed by the run service, it stops the run. */
     public volatile Runnable onBudgetExceeded;
 
