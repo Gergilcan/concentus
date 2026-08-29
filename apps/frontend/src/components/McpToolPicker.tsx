@@ -92,14 +92,10 @@ export function McpToolPicker({ url, credentialId, selected, onChange }: Props) 
             {t('tools the agent gets one search tool instead of every schema.')} ⓘ
           </span>{' '}
           {toolSearch.vectorReady && toolSearch.modelPresent ? (
-            <span
-              title={t(
-                'Semantic ranking via {{model}}, served by the same model server as your chat model.',
-                { model: toolSearch.embeddingModel },
-              )}
-            >
-              {t('✓ semantic')}
-            </span>
+            // The backend's own sentence, because it knows which embedder ranks — the built-in
+            // model or the model server — and a fixed "served by your model server" was wrong
+            // for the desktop case, where there is no server at all.
+            <span title={toolSearch.detail}>{t('✓ semantic')}</span>
           ) : (
             <>⚠ {toolSearch.detail}</>
           )}
