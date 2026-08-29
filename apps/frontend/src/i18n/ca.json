@@ -1600,5 +1600,20 @@
   "No field differs — the library agent was saved again without changes.": "Cap camp difereix — l'agent de la biblioteca s'ha desat de nou sense canvis.",
   "Take the current version": "Pren la versió actual",
   "These fields come from the library agent. Unlink the block to edit them here, or edit the agent under Resources → Agents.": "Aquests camps venen de l'agent de la biblioteca. Desvincula el bloc per editar-los aquí, o edita l'agent a Recursos → Agents.",
-  "linked to library agent {{name}}, v{{n}}": "vinculat a l'agent de biblioteca {{name}}, v{{n}}"
+  "linked to library agent {{name}}, v{{n}}": "vinculat a l'agent de biblioteca {{name}}, v{{n}}",
+  "Changes": "Canvis",
+  "Download .patch": "Descarrega el .patch",
+  "Refresh": "Actualitza",
+  "Read the checkouts again, as they stand on disk now.": "Torna a llegir els checkouts tal com són ara al disc.",
+  "{{n}} file changed": "{{n}} fitxer canviat",
+  "{{n}} files changed": "{{n}} fitxers canviats",
+  "No changes in ./{{folder}}.": "Sense canvis a ./{{folder}}.",
+  "No repository changes yet. When an agent edits a repository, its diff appears here.": "Encara no hi ha canvis als repositoris. Quan un agent editi un repositori, el seu diff apareix aquí.",
+  "Nothing changed in the repositories this run touched.": "No ha canviat res als repositoris que ha tocat aquesta execució.",
+  "Binary file": "Fitxer binari",
+  "… {{n}} more lines — download the patch to see them all": "… {{n}} línies més — descarrega el patch per veure-les totes",
+  "new file": "fitxer nou",
+  "deleted": "eliminat",
+  "What the agents did to the repositories, as patches — read it before trusting the pull request the report links to": "El que els agents van fer als repositoris, com a patches — llegeix-ho abans de refiar-te del pull request que enllaça l'informe",
+  "Could not download the patch: {{error}}": "No s'ha pogut descarregar el patch: {{error}}"
 }

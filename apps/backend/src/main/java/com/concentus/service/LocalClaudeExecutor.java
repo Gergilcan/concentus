@@ -356,6 +356,14 @@ public class LocalClaudeExecutor {
             run.emit(RunEvent.of("system", c.ok()
                     ? "Cloned " + c.spec().url + " into ./" + c.folderName()
                     : "Could not clone " + c.spec().url + ": " + c.error()));
+            // Registered for review under the coordinator: one session works every clone, and
+            // the commit it starts from is what the diff is measured against later — the
+            // coordinator has a shell and may well commit before anyone looks.
+            if (c.ok()) {
+                run.recordPatch(com.concentus.model.RunPatch.registered(
+                        flow.coordinator().nodeId, flow.coordinator().name, c.folderName(),
+                        c.spec().url, c.directory(), gitWorkspace.headOf(c.directory())));
+            }
         }
 
         // Inject SQL/RAG context into each agent's prompt (once); record per-node for the UI.

@@ -191,12 +191,66 @@ public class GitWorkspace {
         }
     }
 
+    /** The commit a checkout is at right now, or null when git could not say. */
+    public String headOf(Path checkout) {
+        try {
+            String head = git(checkout, "rev-parse", "HEAD");
+            return head == null || head.isBlank() ? null : head.trim();
+        } catch (IOException e) {
+            log.warn("head of {}: {}", checkout, e.getMessage());
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+    }
+
+    /**
+     * Everything that differs between {@code base} and the working tree as one patch — commits
+     * made since, edits not committed, files only created — or null when nothing does.
+     *
+     * <p>This is the review's view of a checkout, and unlike {@link #patchOf} it never touches
+     * the checkout's own index. The agent whose checkout this is may be halfway through staging
+     * exactly what it means to commit, and a person looking at the diff must not rewrite that
+     * behind its back. So the staging happens in a throwaway index file: {@code add -A} into it
+     * is a full snapshot of the working tree (ignored files excepted), and a cached diff of that
+     * against {@code base} is the whole change, new files included, however much of it the agent
+     * has committed. {@code HEAD} when no base is known, which is the right answer for a worker:
+     * it has no shell, so it has made no commits.
+     *
+     * @throws IOException when git could not answer — a missing base commit, a corrupt clone —
+     *                     because "nothing changed" and "could not tell" must not share a value
+     */
+    public String patchSince(Path checkout, String base) throws IOException {
+        Path index = Files.createTempFile("concentus-review-", ".index");
+        try {
+            // git creates the index file itself; an existing empty one is "smaller than expected".
+            Files.delete(index);
+            Map<String, String> env = Map.of("GIT_INDEX_FILE", index.toString());
+            git(checkout, env, "add", "-A");
+            String patch = git(checkout, env, "diff", "--cached", "--binary",
+                    base == null || base.isBlank() ? "HEAD" : base);
+            return patch == null || patch.isBlank() ? null : patch;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted while reading " + checkout);
+        } finally {
+            Files.deleteIfExists(index);
+        }
+    }
+
     private String git(Path dir, String... args) throws IOException, InterruptedException {
+        return git(dir, Map.of(), args);
+    }
+
+    private String git(Path dir, Map<String, String> env, String... args)
+            throws IOException, InterruptedException {
         List<String> cmd = new ArrayList<>();
         cmd.add("git");
         cmd.addAll(List.of(args));
         ProcessBuilder pb = new ProcessBuilder(cmd).directory(dir.toFile()).redirectErrorStream(true);
         pb.environment().put("GIT_TERMINAL_PROMPT", "0");
+        pb.environment().putAll(env);
         Process p = pb.start();
         // UTF-8 explicitly: a patch carries file content, and the platform charset is Cp1252 here.
         String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);

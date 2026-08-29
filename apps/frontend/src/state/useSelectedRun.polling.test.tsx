@@ -10,7 +10,11 @@ vi.mock('../api/client.ts', async () => {
     // The real ApiError, because what is under test is the hook telling "gone" from "went wrong",
     // and a stand-in class would make `instanceof` pass for the wrong reason.
     ApiError: actual.ApiError,
-    api: { getRunNodes: (id: string) => getRunNodes(id) },
+    api: {
+      getRunNodes: (id: string) => getRunNodes(id),
+      // The hook also reads the run's diffs, on a slower cadence; not what these tests are about.
+      getRunDiffs: () => Promise.resolve([]),
+    },
   }
 })
 

@@ -17,6 +17,7 @@ import type {
   NodeExec,
   NodeExecReport,
   NodeKind,
+  RunDiff,
   RunEvent,
 } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL } from '../constants.ts'
@@ -415,8 +416,15 @@ interface FlowState {
   runTotals: { input: number; output: number; costUsd: number }
   /** Fan-out health for the inspected run; null for runs that never fanned out. */
   runGraph: GraphMetrics | null
+  /**
+   * What the inspected run's agents did to the repositories, one entry per checkout. Empty for
+   * a run that cloned nothing. Read less often than the node state — see useSelectedRun — so
+   * it is held apart from the report rather than folded into it.
+   */
+  runDiffs: RunDiff[]
   setActiveRun: (id: string | null) => void
   setRunExec: (report: NodeExecReport | null) => void
+  setRunDiffs: (diffs: RunDiff[]) => void
   /**
    * Live console events for the active run. Held here rather than inside Console so a node's
    * inspector can show that one agent's lines without opening a second socket.
@@ -511,8 +519,23 @@ let lastRunExecSignature: string | null = null
  * switching run, clearing). Fresh objects every call on purpose: canvas badges and the console's
  * token bar select these by reference (see setRunExec).
  */
-function emptyOverlay(): Pick<FlowState, 'runExecByNode' | 'runTotals' | 'runGraph'> {
-  return { runExecByNode: {}, runTotals: { input: 0, output: 0, costUsd: 0 }, runGraph: null }
+function emptyOverlay(): Pick<FlowState, 'runExecByNode' | 'runTotals' | 'runGraph' | 'runDiffs'> {
+  return {
+    runExecByNode: {},
+    runTotals: { input: 0, output: 0, costUsd: 0 },
+    runGraph: null,
+    runDiffs: [],
+  }
+}
+
+/** Whether two reads of a run's diffs say the same thing — the array is fresh on every fetch. */
+function sameDiffs(a: RunDiff[], b: RunDiff[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((x, i) => {
+    const y = b[i]
+    return x.nodeId === y.nodeId && x.folder === y.folder && x.takenAt === y.takenAt
+      && (x.patch ?? null) === (y.patch ?? null) && (x.note ?? null) === (y.note ?? null)
+  })
 }
 
 export const useFlowStore = create<FlowState>((set, get) => ({
@@ -577,6 +600,9 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       runGraph: report.graph ?? null,
     })
   },
+  // Skipped when nothing changed, for the same reason setRunExec bails out: the inspector and
+  // the console both select this array, and a finished run answers byte-identically every time.
+  setRunDiffs: (diffs) => set((s) => (sameDiffs(s.runDiffs, diffs) ? {} : { runDiffs: diffs })),
 
   past: [],
   future: [],

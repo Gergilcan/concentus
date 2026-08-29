@@ -151,6 +151,10 @@ concentus/
     delegated), **Output** (what it handed back), status and token count, so a sub-agent's work is
     never folded into the coordinator's. Work that can't be traced to a specific agent is left
     unattributed rather than blamed on the coordinator.
+  - **Changes** — when a flow touches a repository, the console gets a **Changes** view with the
+    diff of every checkout the run made, and each agent's inspector a **Changes** tab with its own:
+    file count, +/− lines, one collapsible section per file, and a `.patch` to download. Read from
+    the working tree while it exists and stored with the run, so the review survives a restart.
 - **Agent library** — reusable agents, MCP servers, database connections and knowledge bases are
   managed under **Resources** and stored in the app's database (legacy YAMLs from
   `apps/backend/data/agents/` are migrated in on first launch). An agent block can **link to a
@@ -312,6 +316,10 @@ restart.
 - **The run console reports the graph, not just the transcript**: a fan-out run shows how many
   workers ran and failed, how much retrying propped the run up, the verifier's kill rate, and
   the wall-clock versus sequential time — the parallelism the fan-out actually bought.
+- **Review the changes** before trusting the pull request: every checkout the run made — the
+  coordinator's, each worker's, the merge's own — is shown as a diff in the console's **Changes**
+  view and on the block that made it, with files, +/− lines and a `.patch` to download. The merge
+  step is still what pushes; this is what you read before believing the link in its report.
 
 **Repositories in workers.** A repository node wired to a worker is cloned into that worker's own
 workspace — one clone per worker, so two workers can never write one working tree at the same

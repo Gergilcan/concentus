@@ -6,6 +6,8 @@ import { errMessage } from '../utils/errMessage.ts'
 import { useFlowStore } from './store.ts'
 
 const STORAGE_KEY = 'concentus.selectedRun'
+/** Node-state polls between two reads of a live run's diffs — about fifteen seconds. */
+const DIFF_EVERY_TICKS = Math.max(1, Math.round(15_000 / RUN_POLL_INTERVAL_MS))
 
 /**
  * Whether a selected run still belongs on screen now that a flow is open.
@@ -53,6 +55,7 @@ export function useSelectedRun(pushError: (m: string) => void, runs: RunSummary[
 
   const setActiveRun = useFlowStore((s) => s.setActiveRun)
   const setRunExec = useFlowStore((s) => s.setRunExec)
+  const setRunDiffs = useFlowStore((s) => s.setRunDiffs)
   useEffect(() => {
     setActiveRun(selectedRun)
     if (!selectedRun) {
@@ -61,6 +64,17 @@ export function useSelectedRun(pushError: (m: string) => void, runs: RunSummary[
     }
     let alive = true
     let inFlight = false
+    let ticks = 0
+    // Reading the diffs means git walking every checkout the run made, so it is not done on
+    // every tick: once when the run is selected or changes status (this effect re-runs on both),
+    // and every DIFF_EVERY_TICKS while the run is live. Quiet on failure: the nodes poll already
+    // reports a dead run, and a diff that could not be read is not worth a toast every few seconds.
+    const loadDiffs = () => {
+      api
+        .getRunDiffs(selectedRun)
+        .then((d) => alive && setRunDiffs(d))
+        .catch(() => {})
+    }
     const tick = () => {
       // Three guards the sibling poller in useFlowsAndRuns already had, and this one did not:
       // a hidden tab polled forever, a slow response stacked requests behind each other, and a
@@ -86,6 +100,9 @@ export function useSelectedRun(pushError: (m: string) => void, runs: RunSummary[
         .finally(() => {
           inFlight = false
         })
+      // After the nodes request is on its way: the node state is what every badge on the canvas
+      // waits for, and the diff read must never stand in front of it.
+      if (ticks++ % DIFF_EVERY_TICKS === 0) loadDiffs()
     }
     tick()
     // A finished run is read once and then left alone: its node state cannot change again, so
@@ -104,7 +121,7 @@ export function useSelectedRun(pushError: (m: string) => void, runs: RunSummary[
     // depending on it restarted this effect — an immediate extra tick plus a reset interval —
     // every few seconds. The status string only changes when the run actually transitions,
     // which is exactly when the terminal check above needs re-evaluating.
-  }, [selectedRun, setActiveRun, setRunExec, pushError, selectedStatus])
+  }, [selectedRun, setActiveRun, setRunExec, setRunDiffs, pushError, selectedStatus])
 
   return [selectedRun, setSelectedRun] as const
 }

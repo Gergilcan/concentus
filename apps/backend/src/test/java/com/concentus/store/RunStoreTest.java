@@ -2,7 +2,9 @@ package com.concentus.store;
 
 import com.concentus.model.NodeExec;
 import com.concentus.model.RunEvent;
+import com.concentus.model.RunPatch;
 import com.concentus.service.AgentRun;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -79,6 +81,8 @@ class RunStoreTest {
         assertThat(store.isAvailable()).isTrue();
 
         AgentRun r = run("r1");
+        r.recordPatch(RunPatch.registered("w1", "Worker", "repo", "https://x/repo.git", null, null)
+                .taken("diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n", 7));
         store.persist(r);
 
         ArgumentCaptor<Object[]> captor = ArgumentCaptor.forClass(Object[].class);
@@ -90,6 +94,33 @@ class RunStoreTest {
         assertThat(args[11]).isEqualTo(10L);         // total_input_tokens
         assertThat(args[12]).isEqualTo(20L);         // total_output_tokens
         assertThat(args[18]).isEqualTo("hello");     // initial_prompt
+        // patches_json: the review ledger goes with the run, patch text included.
+        assertThat((String) args[24]).contains("\"nodeId\":\"w1\"").contains("+b");
+    }
+
+    @Test
+    void persistCapsThePatchTextItStoresAndSaysSo() throws Exception {
+        RunStore store = new RunStore(jdbc, mapper);
+        store.init();
+
+        AgentRun r = run("r1");
+        String line = "+" + "x".repeat(1000) + "\n";
+        String huge = "diff --git a/big b/big\n--- a/big\n+++ b/big\n@@ -0,0 +1 @@\n"
+                + line.repeat(RunPatch.MAX_STORED_BYTES / 1000 + 10);
+        r.recordPatch(RunPatch.registered("w1", "Worker", "repo", null, null, null).taken(huge, 7));
+        store.persist(r);
+
+        ArgumentCaptor<Object[]> captor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbc, timeout(2000)).update(anyString(), captor.capture());
+        List<RunPatch> stored = mapper.readValue((String) captor.getValue()[24],
+                new TypeReference<List<RunPatch>>() {});
+        assertThat(stored).hasSize(1);
+        assertThat(stored.get(0).patch()).isNull();
+        assertThat(stored.get(0).note()).isEqualTo(RunPatch.CAPPED_NOTE);
+        // The numbers survive the cap: a reviewer still learns how big the change was.
+        assertThat(stored.get(0).stats().additions()).isGreaterThan(2000);
+        // The run itself keeps the full text — the cap is on the row, not on the review.
+        assertThat(r.patchOf("w1", "repo").patch()).isEqualTo(huge);
     }
 
     @Test
@@ -144,12 +175,17 @@ class RunStoreTest {
         String validExecs = mapper.writeValueAsString(List.of(ne));
         ResultSet goodRs = mockResultSet("run_a", "flow1", "Flow", "managed", "local", "IDLE", "manual",
                 "sess1", null, false, null, 1L, 2L, null, validEvents, validExecs, 100L, null, null);
+        RunPatch patch = RunPatch.registered("w1", "Worker", "repo", "https://x/repo.git",
+                null, "abc").taken("diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n", 7);
+        when(goodRs.getString("patches_json")).thenReturn(mapper.writeValueAsString(List.of(patch)));
 
         RunStore.RunRow goodRow = rowMapper.mapRow(goodRs, 0);
         assertThat(goodRow.events()).hasSize(1);
         assertThat(goodRow.events().get(0).text()).isEqualTo("hi");
         assertThat(goodRow.nodeExecs()).hasSize(1);
         assertThat(goodRow.nodeExecs().get(0).nodeId).isEqualTo("n1");
+        // The review ledger comes back whole — a restart must not cost the diff.
+        assertThat(goodRow.patches()).containsExactly(patch);
 
         // A row with corrupt JSON in both columns must still map, with empty lists instead of
         // throwing (parseList fails closed to List.of()).
