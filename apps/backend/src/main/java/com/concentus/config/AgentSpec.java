@@ -1,5 +1,6 @@
 package com.concentus.config;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.ArrayList;
@@ -200,16 +201,6 @@ public class AgentSpec {
     }
 
     /**
-     * Resolves a stored credential outside a spec, for the designer.
-     *
-     * <p>The tool picker has to authenticate exactly as a run does, or it shows a list the run
-     * cannot reproduce — which is worse than showing nothing.
-     */
-    public static String resolveCredentialForLookup(String credentialId) {
-        return resolveCredential(credentialId, credentialLookup);
-    }
-
-    /**
      * Shared by {@link McpServerSpec#resolveToken()}, {@link RepoSpec#resolveToken()} and {@link
      * SqlSourceSpec#resolvePassword()}: decrypts the credential a node references.
      *
@@ -388,7 +379,7 @@ public class AgentSpec {
          */
         public Map<String, String> env = new LinkedHashMap<>();
 
-        @com.fasterxml.jackson.annotation.JsonIgnore
+        @JsonIgnore
         public boolean isStdio() {
             return command != null && !command.isBlank();
         }

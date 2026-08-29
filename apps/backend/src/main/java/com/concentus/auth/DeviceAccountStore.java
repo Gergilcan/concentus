@@ -2,6 +2,7 @@ package com.concentus.auth;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -36,8 +37,7 @@ public class DeviceAccountStore {
     private final long keepMillis;
 
     public DeviceAccountStore(JdbcTemplate jdbc,
-                              @org.springframework.beans.factory.annotation.Value(
-                                      "${app.auth.remember-me-days:30}") int rememberMeDays) {
+                              @Value("${app.auth.remember-me-days:30}") int rememberMeDays) {
         this.jdbc = jdbc;
         // The same window as staying signed in. A switcher offering an account whose session died
         // weeks ago would be offering a sign-in screen with extra steps.
@@ -112,15 +112,6 @@ public class DeviceAccountStore {
         try {
             jdbc.update("delete from device_accounts where device_id = ? and user_id = ?",
                     deviceId, userId);
-        } catch (DataAccessException e) {
-            log.warn("Could not forget the account: {}", e.getMessage());
-        }
-    }
-
-    /** Forgets every account attached to a person, wherever they are attached. */
-    public void detachEverywhere(String userId) {
-        try {
-            jdbc.update("delete from device_accounts where user_id = ?", userId);
         } catch (DataAccessException e) {
             log.warn("Could not forget the account: {}", e.getMessage());
         }

@@ -1,5 +1,6 @@
 package com.concentus.auth;
 
+import com.concentus.config.Settings;
 import com.concentus.license.Feature;
 import com.concentus.license.LicenseService;
 import org.slf4j.Logger;
@@ -96,18 +97,17 @@ public class OidcRegistry {
         }
     }
 
-    private static final String LICENSE_URL = "https://www.concentus-ai.com/#license";
-
-    private final com.concentus.config.Settings settings;
+    private final Settings settings;
     private final LicenseService licenseService;
 
-    public OidcRegistry(com.concentus.config.Settings settings, LicenseService licenseService) {
+    public OidcRegistry(Settings settings, LicenseService licenseService) {
         this.settings = settings;
         this.licenseService = licenseService;
     }
 
     /**
-     * Refuses to add a NEW sign-in provider without an enterprise license. Called by
+     * Refuses to add a NEW sign-in provider without a paid license — Team or Enterprise, which
+     * is what {@link LicenseService#enterpriseActive()} answers. Called by
      * {@code SignInProviderController} right before it writes anything — reading through {@link
      * #all()} or {@link #byId} is unaffected either way, so a provider registered before a license
      * lapsed (or was never bought) keeps signing people in.
@@ -115,7 +115,7 @@ public class OidcRegistry {
     public void requireEnterpriseToRegister() {
         if (!licenseService.enterpriseActive()) {
             throw new IllegalStateException("SSO providers are an enterprise feature. Get an "
-                    + "enterprise license at " + LICENSE_URL + " to register one.");
+                    + "enterprise license at " + LicenseService.LICENSE_URL + " to register one.");
         }
     }
 

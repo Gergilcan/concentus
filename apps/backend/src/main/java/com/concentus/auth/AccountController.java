@@ -1,19 +1,21 @@
 package com.concentus.auth;
 
+import com.concentus.audit.AuditKinds;
+import com.concentus.audit.AuditService;
 import com.concentus.license.LicenseService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
-import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,8 +25,10 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -45,48 +49,37 @@ import java.util.Optional;
 @RequestMapping("/api/account")
 public class AccountController {
 
-    private static final org.slf4j.Logger LOG =
-            org.slf4j.LoggerFactory.getLogger(AccountController.class);
+    private static final Logger log = LoggerFactory.getLogger(AccountController.class);
 
     private final AuthenticationManager authManager;
     private final AccountStore accounts;
     private final PasswordEncoder encoder;
     private final OrgContext orgContext;
     private final OidcSignIn oidc;
-    /** Issues the cookie that survives a restart of this backend. */
-    private final org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe;
+    private final BrowserSignIn browser;
     /** The accounts this browser has already signed into, so switching between them costs a click. */
     private final DeviceAccountStore devices;
     /** How many members this organization's license allows — {@link #createMember} enforces it. */
     private final LicenseService licenseService;
     /** Who was let in and who was promoted — the two membership facts an audit asks about. */
-    private final com.concentus.audit.AuditService audit;
-    private final int rememberMeDays;
+    private final AuditService audit;
     /** What the organization is called, for the row the first account is created under. */
     private final String organizationName;
-    private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
 
     public AccountController(AuthenticationManager authManager, AccountStore accounts,
                              PasswordEncoder encoder, OrgContext orgContext,
-                             OidcSignIn oidc,
-                             org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe,
-                             DeviceAccountStore devices,
-                             LicenseService licenseService,
-                             com.concentus.audit.AuditService audit,
-                             @org.springframework.beans.factory.annotation.Value(
-                                     "${app.auth.remember-me-days:30}") int rememberMeDays,
-                             @org.springframework.beans.factory.annotation.Value(
-                                     "${app.organization-name:Concentus}") String organizationName) {
+                             OidcSignIn oidc, BrowserSignIn browser, DeviceAccountStore devices,
+                             LicenseService licenseService, AuditService audit,
+                             @Value("${app.organization-name:Concentus}") String organizationName) {
         this.authManager = authManager;
         this.accounts = accounts;
         this.encoder = encoder;
         this.orgContext = orgContext;
         this.oidc = oidc;
-        this.rememberMe = rememberMe;
+        this.browser = browser;
         this.devices = devices;
         this.licenseService = licenseService;
         this.audit = audit;
-        this.rememberMeDays = rememberMeDays;
         this.organizationName = organizationName;
     }
 
@@ -108,7 +101,7 @@ public class AccountController {
      */
     @GetMapping("/session")
     public Map<String, Object> session() {
-        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        Map<String, Object> out = new LinkedHashMap<>();
         out.put("storeAvailable", accounts.isAvailable());
         // Only meaningful while it is true, and it stops being true the moment the first account
         // exists — which is also the moment /setup starts refusing.
@@ -127,8 +120,8 @@ public class AccountController {
                 accounts.findOrganization(u.organizationId())
                         .ifPresent(org -> out.put("organizationName", org.name()));
                 out.put("organizationCount", accounts.membershipsOf(u.userId()).size());
-            } catch (org.springframework.dao.DataAccessException e) {
-                LOG.debug("Could not read the organizations of {}: {}", u.email(), e.getMessage());
+            } catch (DataAccessException e) {
+                log.debug("Could not read the organizations of {}: {}", u.email(), e.getMessage());
             }
         });
         // Every way in this application knows about, and whether each is ready.
@@ -163,27 +156,10 @@ public class AccountController {
             // so the endpoint can't be used to discover which addresses are registered.
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password.");
         }
-        // A brand-new session id after authenticating, so a session fixed before sign-in can't be
-        // reused afterwards.
-        HttpSession existing = request.getSession(false);
-        if (existing != null) existing.invalidate();
-        request.getSession(true);
-
-        SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(authentication);
-        SecurityContextHolder.setContext(context);
-        contextRepository.saveContext(context, request, response);
-        // Signing in once means signing in once: the cookie outlives this process, so an update or
-        // a reboot is an invisible reconnection rather than a login screen.
-        rememberMe.loginSuccess(request, response, authentication);
-
+        browser.establish(authentication, request, response);
         ConcentusUserDetails user = (ConcentusUserDetails) authentication.getPrincipal();
-        // Now that this browser has proved it may be this person, it may come back to them without
-        // proving it again — which is the whole of what the switcher is allowed to do.
-        devices.attach(DeviceCookie.ensure(request, response, rememberMeDays),
-                accounts.findById(user.userId()).orElse(null));
-        return Map.of("userId", user.userId(), "email", user.email(),
-                "organizationId", user.organizationId(), "role", user.role());
+        browser.attach(accounts.findById(user.userId()).orElse(null), request, response);
+        return BrowserSignIn.identity(user);
     }
 
     /** One account this browser can switch to without signing in again. */
@@ -204,7 +180,7 @@ public class AccountController {
                 // Read through the account, so a role changed since the last sign-in is the role
                 // shown — and an account deleted since then disappears rather than being offered.
                 .map(a -> accounts.findById(a.userId()).orElse(null))
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .map(a -> new SwitchableAccount(a.id(), a.email(), a.role(), a.id().equals(currentId)))
                 .toList();
     }
@@ -232,23 +208,12 @@ public class AccountController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "That account no longer exists."));
 
+        // The same fresh session every sign-in gets: whatever the previous account's session held
+        // must not be carried into this one.
         ConcentusUserDetails principal = ConcentusUserDetails.of(account);
-        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
-                principal, null, principal.getAuthorities());
-        // A brand-new session id, the same rule both sign-in paths follow: whatever the previous
-        // account's session held must not be carried into this one.
-        HttpSession existing = request.getSession(false);
-        if (existing != null) existing.invalidate();
-        request.getSession(true);
-        SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(authentication);
-        SecurityContextHolder.setContext(context);
-        contextRepository.saveContext(context, request, response);
-        rememberMe.loginSuccess(request, response, authentication);
+        browser.establish(BrowserSignIn.authenticationFor(principal), request, response);
         devices.touch(device, userId);
-
-        return Map.of("userId", account.id(), "email", account.email(),
-                "organizationId", account.organizationId(), "role", account.role());
+        return BrowserSignIn.identity(principal);
     }
 
     /**
@@ -257,7 +222,7 @@ public class AccountController {
      * <p>The way out of "this machine can become four people". Signing into it again brings it
      * back, so nothing is lost by using it.
      */
-    @org.springframework.web.bind.annotation.DeleteMapping("/accounts/{userId}")
+    @DeleteMapping("/accounts/{userId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void forgetAccount(@PathVariable String userId, HttpServletRequest request) {
         String device = DeviceCookie.of(request);
@@ -305,35 +270,9 @@ public class AccountController {
         accounts.createOrganization(organizationId, organizationName);
         Accounts.UserAccount created = accounts.createUser(organizationId, body.email().trim(),
                 encoder.encode(body.password()), Accounts.ROLE_ADMIN);
-        LOG.info("First account created: {} administers this installation.", created.email());
+        log.info("First account created: {} administers this installation.", created.email());
 
-        return signInAs(created, request, response);
-    }
-
-    /**
-     * Puts an account into this browser's session, and records that it may come back to it.
-     *
-     * <p>Shared by the three ways in — a password, a provider, and the first-run setup — because
-     * the parts that must not differ between them are exactly the ones easy to forget: a fresh
-     * session id so a session fixed beforehand cannot be reused, the cookie that survives a
-     * restart, and the device attachment the account switcher rests on.
-     */
-    private Map<String, Object> signInAs(Accounts.UserAccount account, HttpServletRequest request,
-                                         HttpServletResponse response) {
-        ConcentusUserDetails principal = ConcentusUserDetails.of(account);
-        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
-                principal, null, principal.getAuthorities());
-        HttpSession existing = request.getSession(false);
-        if (existing != null) existing.invalidate();
-        request.getSession(true);
-        SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(authentication);
-        SecurityContextHolder.setContext(context);
-        contextRepository.saveContext(context, request, response);
-        rememberMe.loginSuccess(request, response, authentication);
-        devices.attach(DeviceCookie.ensure(request, response, rememberMeDays), account);
-        return Map.of("userId", account.id(), "email", account.email(),
-                "organizationId", account.organizationId(), "role", account.role());
+        return browser.signIn(created, request, response);
     }
 
     /** Members of the caller's own organization. Never returns password hashes. */
@@ -361,20 +300,11 @@ public class AccountController {
             throw new IllegalArgumentException("An email address is required.");
         }
         Accounts.requireStrongPassword(body.password());
-        // An unrecognised name is refused rather than quietly downgraded: an admin who typed
-        // "editor" meaning MEMBER should be told, not handed an account that cannot do the job and
-        // a puzzle to solve next week.
-        String role = body.role() == null || body.role().isBlank()
-                ? Accounts.ROLE_MEMBER
-                : Accounts.normalizeRole(body.role());
-        if (role == null) {
-            throw new IllegalArgumentException("Unknown role '" + body.role() + "'. Use one of: "
-                    + String.join(", ", Accounts.ROLES) + ".");
-        }
+        String role = Accounts.roleOrMember(body.role());
         Accounts.UserAccount created = accounts.createUser(organizationId, body.email(),
                 encoder.encode(body.password()), role);
-        audit.record(com.concentus.audit.AuditKinds.MEMBER_INVITED, "member", created.id(),
-                created.email(), java.util.Map.of("role", role));
+        audit.record(AuditKinds.MEMBER_INVITED, "member", created.id(), created.email(),
+                Map.of("role", role));
         return created.redacted();
     }
 
@@ -409,19 +339,16 @@ public class AccountController {
                     "This is the organization's only admin. Promote someone else first.");
         }
         accounts.updateRole(userId, organizationId, role);
-        audit.record(com.concentus.audit.AuditKinds.MEMBER_ROLE_CHANGED, "member", userId,
-                accounts.findById(userId).map(u -> u.email()).orElse(userId),
-                java.util.Map.of("from", target.role(), "to", role));
-        return accounts.listUsers(organizationId).stream()
-                .filter(u -> u.id().equals(userId))
-                .findFirst().orElseThrow().redacted();
+        audit.record(AuditKinds.MEMBER_ROLE_CHANGED, "member", userId,
+                accounts.findById(userId).map(Accounts.UserAccount::email).orElse(userId),
+                Map.of("from", target.role(), "to", role));
+        return accounts.findMember(userId, organizationId).orElseThrow().redacted();
     }
 
     @PostMapping("/password")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void changePassword(@RequestBody PasswordChangeRequest body) {
-        ConcentusUserDetails me = orgContext.currentUser()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not signed in."));
+        ConcentusUserDetails me = orgContext.requireUser();
         if (body == null || body.currentPassword() == null
                 || !encoder.matches(body.currentPassword(), me.passwordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current password is incorrect.");

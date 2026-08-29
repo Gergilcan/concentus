@@ -1,11 +1,10 @@
 package com.concentus.telemetry;
 
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import io.micrometer.tracing.otel.bridge.OtelTracer;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.Callable;
@@ -35,8 +34,6 @@ import java.util.concurrent.Callable;
  */
 @Component
 public class Telemetry {
-
-    private static final Logger log = LoggerFactory.getLogger(Telemetry.class);
 
     /** One run of a flow, from the trigger to its last block. */
     public static final String SPAN_RUN = "concentus.run";
@@ -116,14 +113,6 @@ public class Telemetry {
         meters.counter(name, tags).increment(amount);
     }
 
-    public Timer.Sample startTimer() {
-        return Timer.start(meters);
-    }
-
-    public void stopTimer(Timer.Sample sample, String name, String... tags) {
-        sample.stop(meters.timer(name, tags));
-    }
-
     /**
      * An open span, and the thread-local scope that makes it the parent of whatever starts next.
      *
@@ -161,11 +150,6 @@ public class Telemetry {
             return this;
         }
 
-        /** The trace this work belongs to, for a log line or an error somebody has to correlate. */
-        public String traceId() {
-            return span.context().traceId();
-        }
-
         @Override
         public void close() {
             if (closed) return;
@@ -185,17 +169,6 @@ public class Telemetry {
      * has anything to say about telemetry.
      */
     public static Telemetry none() {
-        return new Telemetry(io.micrometer.tracing.otel.bridge.OtelTracer.NOOP,
-                new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
-    }
-
-    /** Whether anything is actually being exported, for the one log line that says so at startup. */
-    public void announce(String endpoint) {
-        if (endpoint == null || endpoint.isBlank()) {
-            log.info("Telemetry is not being exported (no collector configured). "
-                    + "Set one under Resources → Settings to send traces and metrics.");
-        } else {
-            log.info("Exporting traces and metrics to {}", endpoint);
-        }
+        return new Telemetry(OtelTracer.NOOP, new SimpleMeterRegistry());
     }
 }

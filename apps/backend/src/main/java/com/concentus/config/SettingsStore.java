@@ -1,6 +1,7 @@
 package com.concentus.config;
 
 import com.concentus.secrets.SecretCipher;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -46,7 +47,7 @@ public class SettingsStore {
         this.cipher = cipher;
     }
 
-    @jakarta.annotation.PostConstruct
+    @PostConstruct
     void load() {
         try {
             Map<String, Map<String, String>> next = new LinkedHashMap<>();

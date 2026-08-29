@@ -4,12 +4,14 @@ import com.concentus.support.Ids;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Credentials entered in the app, sealed at rest when this installation has a key, and referenced
@@ -121,20 +123,20 @@ public class CredentialStore {
         }
         long now = System.currentTimeMillis();
         String id = Ids.generate("cred_", 10);
+        String name = label.trim();
+        String hint = hintFor(plaintext);
         try {
             jdbc.update("""
                     insert into credentials (id, organization_id, label, kind, secret, hint,
                       created_at, updated_at)
                     values (?,?,?,?,?,?,?,?)
                     """,
-                    id, organizationId, label.trim(), kind, cipher.wrap(plaintext),
-                    hintFor(plaintext), now, now);
-        } catch (org.springframework.dao.DuplicateKeyException e) {
-            throw new IllegalStateException("A credential named '" + label.trim() + "' already exists.");
+                    id, organizationId, name, kind, cipher.wrap(plaintext), hint, now, now);
+        } catch (DuplicateKeyException e) {
+            throw new IllegalStateException("A credential named '" + name + "' already exists.");
         }
-        log.info("Stored a new credential '{}' ({}).", label.trim(), kind);
-        return new Credential(id, organizationId, label.trim(), kind, hintFor(plaintext), now, now,
-                null, false);
+        log.info("Stored a new credential '{}' ({}).", name, kind);
+        return new Credential(id, organizationId, name, kind, hint, now, now, null, false);
     }
 
     /**
@@ -167,16 +169,20 @@ public class CredentialStore {
                     on conflict (id) do nothing
                     """,
                     id, organizationId, label.trim(), kind,
-                    cipher.wrap(PLACEHOLDER_PREFIX + java.util.UUID.randomUUID()),
+                    cipher.wrap(PLACEHOLDER_PREFIX + UUID.randomUUID()),
                     PLACEHOLDER_HINT, now, now);
             if (inserted > 0) log.info("Imported credential '{}' as a placeholder — value must be re-entered.", label.trim());
             return inserted > 0;
-        } catch (org.springframework.dao.DuplicateKeyException e) {
-            // Same label, different id: this machine already has its own credential by that name.
-            throw new IllegalStateException("a credential named '" + label.trim()
-                    + "' already exists here with a different id; flows from the import that "
-                    + "reference the old id need re-pointing.");
+        } catch (DuplicateKeyException e) {
+            throw labelTakenOnImport(label);
         }
+    }
+
+    /** Same label, different id: this machine already has its own credential by that name. */
+    private static IllegalStateException labelTakenOnImport(String label) {
+        return new IllegalStateException("a credential named '" + label.trim()
+                + "' already exists here with a different id; flows from the import that "
+                + "reference the old id need re-pointing.");
     }
 
     /** What a placeholder's value starts with, so an import can tell one from a real secret. */
@@ -227,17 +233,13 @@ public class CredentialStore {
                 log.info("Imported credential '{}' with its value.", label.trim());
                 return ImportOutcome.CREATED;
             }
-        } catch (org.springframework.dao.DuplicateKeyException e) {
-            throw new IllegalStateException("a credential named '" + label.trim()
-                    + "' already exists here with a different id; flows from the import that "
-                    + "reference the old id need re-pointing.");
+        } catch (DuplicateKeyException e) {
+            throw labelTakenOnImport(label);
         }
 
-        List<String> stored = jdbc.queryForList(
-                "select secret from credentials where id = ? and organization_id = ?",
-                String.class, id, organizationId);
+        Optional<String> stored = storedSecret(organizationId, id);
         if (stored.isEmpty()) return ImportOutcome.KEPT;
-        SecretCipher.Reading existing = cipher.open(stored.get(0));
+        SecretCipher.Reading existing = cipher.open(stored.get());
         boolean placeholder = !existing.locked() && existing.plaintext() != null
                 && existing.plaintext().startsWith(PLACEHOLDER_PREFIX);
         if (!existing.locked() && !placeholder) return ImportOutcome.KEPT;
@@ -281,7 +283,7 @@ public class CredentialStore {
         try {
             jdbc.update("update credentials set label = ?, updated_at = ? where id = ? and organization_id = ?",
                     label.trim(), System.currentTimeMillis(), id, organizationId);
-        } catch (org.springframework.dao.DuplicateKeyException e) {
+        } catch (DuplicateKeyException e) {
             throw new IllegalStateException("A credential named '" + label.trim() + "' already exists.");
         }
         // A save is a moment this row is being written anyway; a value still in the clear from
@@ -356,20 +358,22 @@ public class CredentialStore {
      */
     public Optional<String> revealForExport(String organizationId, String id) {
         if (!isAvailable() || id == null || id.isBlank()) return Optional.empty();
-        List<String> stored = jdbc.queryForList(
-                "select secret from credentials where id = ? and organization_id = ?",
-                String.class, id, organizationId);
-        if (stored.isEmpty()) return Optional.empty();
-        return Optional.ofNullable(cipher.open(stored.get(0)).orNull());
+        return storedSecret(organizationId, id).map(stored -> cipher.open(stored).orNull());
     }
 
     private void sealIfClear(String organizationId, String id) {
         if (!cipher.hasKey()) return;
-        List<String> stored = jdbc.queryForList(
-                "select secret from credentials where id = ? and organization_id = ?",
-                String.class, id, organizationId);
-        if (stored.isEmpty() || SecretCipher.isSealed(stored.get(0))) return;
-        sealInPlace(id, stored.get(0), stored.get(0));
+        storedSecret(organizationId, id)
+                .filter(stored -> !SecretCipher.isSealed(stored))
+                .ifPresent(stored -> sealInPlace(id, stored, stored));
+    }
+
+    /** The value as the table holds it — sealed or clear — for the one row in this organization. */
+    private Optional<String> storedSecret(String organizationId, String id) {
+        return jdbc.queryForList(
+                        "select secret from credentials where id = ? and organization_id = ?",
+                        String.class, id, organizationId)
+                .stream().findFirst();
     }
 
     /**

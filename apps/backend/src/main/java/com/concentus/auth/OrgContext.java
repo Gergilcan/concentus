@@ -1,9 +1,11 @@
 package com.concentus.auth;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Optional;
 
@@ -59,6 +61,18 @@ public class OrgContext {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) return Optional.empty();
         return auth.getPrincipal() instanceof ConcentusUserDetails u ? Optional.of(u) : Optional.empty();
+    }
+
+    /**
+     * The signed-in user, for an endpoint that answers about the caller themselves.
+     *
+     * @throws ResponseStatusException 401 when there is none. Unlike {@link #requireOrganizationId()}
+     *         this is not a coding error: these endpoints are reachable without a session by
+     *         design, and "not signed in" is the honest answer to somebody who isn't.
+     */
+    public ConcentusUserDetails requireUser() {
+        return currentUser()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not signed in."));
     }
 
     /**

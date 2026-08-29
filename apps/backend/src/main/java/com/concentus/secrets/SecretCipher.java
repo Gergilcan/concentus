@@ -2,6 +2,7 @@ package com.concentus.secrets;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -75,7 +76,9 @@ public class SecretCipher {
     private final String keySource;
     private final SecureRandom random = new SecureRandom();
 
-    @org.springframework.beans.factory.annotation.Autowired
+    // @Autowired is load-bearing: there is a second constructor below, and Spring faced with two
+    // unannotated ones picks neither.
+    @Autowired
     public SecretCipher(@Value("${app.secret-key:}") String configuredKey,
                         @Value("${app.data-dir:./data}") String dataDir) {
         SecretKey found = parseKey(configuredKey, "CONCENTUS_SECRET_KEY");

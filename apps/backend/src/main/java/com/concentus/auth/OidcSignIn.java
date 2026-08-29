@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -105,14 +106,15 @@ public class OidcSignIn {
      * than an absence somebody reads as no.
      */
     public List<Map<String, Object>> offerable() {
-        List<String> ready = registry.all().stream().map(OidcRegistry.Configured::id).toList();
-        List<Map<String, Object>> out = new java.util.ArrayList<>();
-        for (OidcRegistry.Configured configured : registry.all()) {
+        // Read once: the registry resolves its configuration on every call.
+        List<OidcRegistry.Configured> ready = registry.all();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (OidcRegistry.Configured configured : ready) {
             out.add(Map.of("id", configured.id(), "name", configured.displayName(),
                     "configured", true));
         }
         for (String id : OidcRegistry.PRESETS) {
-            if (ready.contains(id)) continue;
+            if (ready.stream().anyMatch(c -> c.id().equals(id))) continue;
             out.add(Map.of("id", id, "name", OidcProvider.of(id, null, null, null, null).displayName(),
                     "configured", false));
         }

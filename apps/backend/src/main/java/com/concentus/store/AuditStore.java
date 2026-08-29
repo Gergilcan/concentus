@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -74,10 +76,8 @@ public class AuditStore {
      */
     public List<AuditEvent> list(String organizationId, Filter filter, Long beforeId, int limit) {
         if (!isAvailable()) return List.of();
-        StringBuilder sql = new StringBuilder("select * from audit_events where organization_id = ?");
         List<Object> args = new ArrayList<>();
-        args.add(organizationId);
-        appendFilter(sql, args, filter);
+        StringBuilder sql = select(organizationId, filter, args);
         if (beforeId != null) {
             sql.append(" and id < ?");
             args.add(beforeId);
@@ -93,10 +93,8 @@ public class AuditStore {
      */
     public void forEach(String organizationId, Filter filter, Consumer<AuditEvent> sink) {
         if (!isAvailable()) return;
-        StringBuilder sql = new StringBuilder("select * from audit_events where organization_id = ?");
         List<Object> args = new ArrayList<>();
-        args.add(organizationId);
-        appendFilter(sql, args, filter);
+        StringBuilder sql = select(organizationId, filter, args);
         sql.append(" order by id asc");
         jdbc.query(sql.toString(), rs -> {
             sink.accept(row(rs));
@@ -107,6 +105,14 @@ public class AuditStore {
     public int deleteOlderThan(long cutoffMillis) {
         if (!isAvailable()) return 0;
         return jdbc.update("delete from audit_events where at < ?", cutoffMillis);
+    }
+
+    /** The organization's rows narrowed by the filter, with the arguments the SQL binds added to {@code args}. */
+    private static StringBuilder select(String organizationId, Filter filter, List<Object> args) {
+        StringBuilder sql = new StringBuilder("select * from audit_events where organization_id = ?");
+        args.add(organizationId);
+        appendFilter(sql, args, filter);
+        return sql;
     }
 
     private static void appendFilter(StringBuilder sql, List<Object> args, Filter filter) {
@@ -131,7 +137,7 @@ public class AuditStore {
         }
     }
 
-    private static AuditEvent row(java.sql.ResultSet rs) throws java.sql.SQLException {
+    private static AuditEvent row(ResultSet rs) throws SQLException {
         return new AuditEvent(rs.getLong("id"), rs.getLong("at"), rs.getString("actor_email"),
                 rs.getString("actor_role"), rs.getString("kind"), rs.getString("subject_type"),
                 rs.getString("subject_id"), rs.getString("subject_label"),
