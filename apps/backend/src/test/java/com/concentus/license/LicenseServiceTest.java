@@ -91,16 +91,60 @@ class LicenseServiceTest {
         assertTrue(e.getMessage().contains("CONCENTUS_LICENSE"));
     }
 
-    // CONCENTUS_LICENSE_TEST_KEYS hook: LicenseVerifier.forProduction(envTestKeys) is what a
-    // production entry point (the Spring constructor here, LicenseCheck's one-arg entry) builds its
-    // verifier from instead of LicenseVerifier.production(). Passing that same function's result in
-    // here — the way the Spring constructor does — is what proves the hook actually reaches
-    // LicenseService, not just that forProduction itself works (LicenseVerifierTest covers that).
+    // The team tier through the service: the same answers an enterprise license gets — the gates
+    // (AccountController, OidcRegistry, LicenseCheck) all ask enterpriseActive()/seatLimit() and
+    // nothing else, so proving those two here is proving every gate.
+
+    @Test
+    void teamLicense_unlocksTheSameGatesAsEnterprise(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("license.key"), TestLicenses.token("team-test.license"));
+        LicenseService s = new LicenseService(TestLicenses.verifier(), dir, "", at("2026-08-22"));
+        assertTrue(s.enterpriseActive());
+        assertEquals(3, s.seatLimit());
+        LicenseStatus status = s.status();
+        assertTrue(status.valid());
+        assertEquals(License.TIER_TEAM, status.tier());
+        assertEquals("Test Team", status.licensee());
+        assertEquals(3, status.seats());
+        assertEquals("2099-01-01", status.expires());
+    }
+
+    @Test
+    void teamLicense_getsTheSameGrace_andTheExpiredProblemNamesItsTier(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("license.key"), TestLicenses.token("team-expired-test.license"));
+        // expired 2020-06-01; day 9 of 14 -> still active, with the countdown
+        LicenseService inGrace = new LicenseService(TestLicenses.verifier(), dir, "", at("2020-06-10"));
+        assertTrue(inGrace.enterpriseActive());
+        assertEquals(5, inGrace.status().graceDaysLeft());
+        // past expires+14 -> one seat again, and the message says "team", not "enterprise": the
+        // owner renews the thing they bought, from the card they bought it on.
+        LicenseService over = new LicenseService(TestLicenses.verifier(), dir, "", at("2020-06-16"));
+        assertFalse(over.enterpriseActive());
+        assertEquals(1, over.seatLimit());
+        assertTrue(over.status().problem().contains("team license"), over.status().problem());
+    }
+
+    @Test
+    void teamLicense_whenTheTierIsOff_isUnverifiable_andTheProblemNamesTheProperty(@TempDir Path dir)
+            throws Exception {
+        Files.writeString(dir.resolve("license.key"), TestLicenses.token("team-test.license"));
+        LicenseService s = new LicenseService(LicenseVerifier.forProduction("", ""), dir, "", at("2026-08-22"));
+        assertFalse(s.status().valid());
+        assertEquals(1, s.seatLimit());
+        assertTrue(s.status().problem().contains(LicenseVerifier.PROPERTY_TEAM_PUBLIC_KEY), s.status().problem());
+    }
+
+    // CONCENTUS_LICENSE_TEST_KEYS hook: LicenseVerifier.forProduction(envTestKeys, teamKey) is what
+    // a production entry point (the Spring constructor here, LicenseCheck's two-arg entry) builds
+    // its verifier from instead of LicenseVerifier.production(). Passing that same function's
+    // result in here — the way the Spring constructor does — is what proves the hook actually
+    // reaches LicenseService, not just that forProduction itself works (LicenseVerifierTest covers
+    // that).
 
     @Test
     void envTestKeys_pointingAtTheFixture_aFixtureSignedLicensePasses(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("license.key"), TestLicenses.token("enterprise-test.license"));
-        LicenseVerifier v = LicenseVerifier.forProduction(TestLicenses.testKeysPath().toString());
+        LicenseVerifier v = LicenseVerifier.forProduction(TestLicenses.testKeysPath().toString(), "");
         LicenseService s = new LicenseService(v, dir, "", at("2026-08-22"));
         assertTrue(s.enterpriseActive());
         assertEquals("Test Corp", s.status().licensee());
@@ -111,7 +155,7 @@ class LicenseServiceTest {
     void withoutEnvTestKeys_productionKeysAreUsed_aFixtureSignedLicenseIsRejected(@TempDir Path dir)
             throws Exception {
         Files.writeString(dir.resolve("license.key"), TestLicenses.token("enterprise-test.license"));
-        LicenseService s = new LicenseService(LicenseVerifier.forProduction(""), dir, "", at("2026-08-22"));
+        LicenseService s = new LicenseService(LicenseVerifier.forProduction("", ""), dir, "", at("2026-08-22"));
         assertFalse(s.status().valid());
         assertEquals(1, s.seatLimit());
     }

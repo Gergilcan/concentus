@@ -27,21 +27,25 @@ public final class LicenseCheck {
      *
      * <p>Three answers, not two, because a free license and no license are different situations:
      * <ul>
-     *   <li><b>true</b> — an enterprise license (or its 14-day grace) covers it: use the external
-     *       database.</li>
+     *   <li><b>true</b> — an enterprise or team license (or its 14-day grace) covers it: use the
+     *       external database.</li>
      *   <li><b>false</b> — a valid <em>individual</em> license is installed: the app should run,
      *       WITH the limitation — the caller falls back to the embedded database. Refusing to
      *       start over a free license would wall off the whole product from the people it is free
      *       for.</li>
-     *   <li><b>throws</b> — no valid license at all, or an enterprise license past its grace:
-     *       startup stops and the message names the fix. An expired team deliberately does NOT
-     *       fall back — their data lives in the shared database, and opening an empty embedded
-     *       one instead would look like the update ate everything.</li>
+     *   <li><b>throws</b> — no valid license at all, or a paid license past its grace: startup
+     *       stops and the message names the fix. An expired team deliberately does NOT fall back —
+     *       their data lives in the shared database, and opening an empty embedded one instead
+     *       would look like the update ate everything.</li>
      * </ul>
+     *
+     * @param teamPublicKeySpki the {@code license.team-public-key} property's value — a {@code
+     *                          @Bean} method can read it where a static helper cannot; blank means
+     *                          the team tier is off here
      */
-    public static boolean enterpriseCoversExternalDatabase(Path dataDir) {
+    public static boolean enterpriseCoversExternalDatabase(Path dataDir, String teamPublicKeySpki) {
         return enterpriseCoversExternalDatabase(dataDir,
-                LicenseVerifier.forProduction(System.getenv(LicenseVerifier.ENV_TEST_KEYS)),
+                LicenseVerifier.forProduction(System.getenv(LicenseVerifier.ENV_TEST_KEYS), teamPublicKeySpki),
                 System.getenv(LicenseService.ENV_VAR), Clock.systemUTC());
     }
 
@@ -49,7 +53,7 @@ public final class LicenseCheck {
      * Testable overload: an injectable verifier (fixture keys), env value and clock. The env value
      * is a parameter here rather than read again from {@code System.getenv} — a test that wants "no
      * env license" must be able to get that regardless of what is actually set in the process
-     * running the test, which the one-arg entry point above is the only caller allowed to assume.
+     * running the test, which the two-arg entry point above is the only caller allowed to assume.
      */
     static boolean enterpriseCoversExternalDatabase(Path dataDir, LicenseVerifier verifier,
                                                     String envLicense, Clock clock) {
@@ -61,8 +65,8 @@ public final class LicenseCheck {
         // recognizes that phrase in the log and shows the license wall instead of a stack trace.
         if (license != null) {
             throw new IllegalStateException(
-                    "The shared database is an enterprise feature, and the enterprise license for \""
-                            + license.licensee() + "\" expired on " + license.expires()
+                    "The shared database is an enterprise feature, and the " + license.tier()
+                            + " license for \"" + license.licensee() + "\" expired on " + license.expires()
                             + " (14-day grace included). Renew at " + LICENSE_URL + ".");
         }
         throw new IllegalStateException(

@@ -1,8 +1,11 @@
 {
   "individual": {
-    "publicKeySpkiBase64": "MCowBQYDK2VwAyEA80m72tq0Yo7eIU4/GzbCrg/WB94E3zKPlyforysmEoQ="
+    "publicKeySpkiBase64": "MCowBQYDK2VwAyEAeGY2e9WwsygQwoWTYtUi12Y082FTmyZoa9/Pr+tja9A="
   },
   "enterprise": {
-    "publicKeySpkiBase64": "MCowBQYDK2VwAyEAVsa6CSdhc3QmMJAq1RDKW3wDxsfkUB21MTj9xFJfi5M="
+    "publicKeySpkiBase64": "MCowBQYDK2VwAyEAgSk3/SHWYFwNKVU/ARHHd1sVyhxPnmtUCM+F1xQyspQ="
+  },
+  "team": {
+    "publicKeySpkiBase64": "MCowBQYDK2VwAyEAKeAz1Ioz5ZMaSXB9WfKEKjm/Spca9zcsaQcCNYGywrE="
   }
 }

@@ -55,10 +55,11 @@ jobs:
         run: pnpm --filter frontend test
 
       # Explicit file paths, not directories: node --test on a bare directory is unreliable on
-      # Windows Node, so this is the exact command developers run locally too — CI stays honest
+      # Windows Node. The website's list lives in its package.json (`npm test` there is what a
+      # developer runs locally too); the enterprise CLI's test is named here — CI stays honest
       # about what "green" means.
       - name: License tooling tests
-        run: node --test apps/website/api/_lib/license-format.test.mjs packaging/license/mint-license.test.mjs apps/website/api/license.test.mjs
+        run: npm --prefix apps/website test && node --test packaging/license/mint-license.test.mjs
 
       - name: Build
         run: pnpm --filter frontend build

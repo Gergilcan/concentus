@@ -2,6 +2,11 @@
   "name": "concentus-website",
   "private": true,
   "description": "The website and its serverless functions. Deliberately NOT a pnpm workspace member: these dependencies exist for Vercel's function runtime, which installs them at deploy time — the repo's own install and CI never need them.",
+  "scripts": {
+    "//test": "Explicit file paths, not a glob or a directory: node --test on a bare directory is unreliable on Windows Node, and this list is exactly what CI runs.",
+    "test": "node --test api/_lib/license-format.test.mjs api/_lib/pricing.test.mjs api/_lib/stripe.test.mjs api/license.test.mjs api/checkout.test.mjs api/stripe-webhook.test.mjs",
+    "keygen": "node scripts/keygen.mjs"
+  },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0"
   }

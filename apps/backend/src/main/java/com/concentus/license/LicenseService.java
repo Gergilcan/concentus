@@ -17,7 +17,7 @@ import java.util.Optional;
 
 /**
  * The answer to "is this installation licensed": where the license comes from, whether an expired
- * enterprise one is still inside its grace window, and how many seats that buys.
+ * paid license is still inside its grace window, and how many seats that buys.
  *
  * <p>Two sources, first match wins: the {@code CONCENTUS_LICENSE} environment variable, then
  * {@code license.key} in the data directory. An environment variable is how a container or a
@@ -26,7 +26,13 @@ import java.util.Optional;
  * and cached — a license does not change mid-request, and every endpoint on every request asking
  * "am I licensed" must not mean a filesystem read each time.
  *
- * <p><b>Grace, not a cliff.</b> An enterprise license that has expired keeps working for
+ * <p><b>Two paid tiers, one set of gates.</b> Enterprise and team licenses unlock the same things
+ * (the shared database, members up to {@code seats}, SSO); they differ in who signs them and how
+ * big they may be, which is {@link LicenseVerifier}'s concern. Everything in here asks "is a paid
+ * license active" and never "which one" — so a gate written for enterprise covers team without a
+ * second condition to forget.
+ *
+ * <p><b>Grace, not a cliff.</b> A paid license that has expired keeps working for
  * {@link #GRACE_DAYS} more days. Renewal is a purchase order, not a click, and a flow that stops
  * running the moment a date rolls over — mid-afternoon, on whoever is on call — is a worse failure
  * than a warning banner for two weeks. An individual license never expires at all: it is free, so
@@ -37,7 +43,7 @@ public class LicenseService {
 
     private static final Logger log = LoggerFactory.getLogger(LicenseService.class);
 
-    /** Days an expired enterprise license keeps working before it stops counting as active. */
+    /** Days an expired paid license keeps working before it stops counting as active. */
     public static final int GRACE_DAYS = 14;
 
     /** The environment variable that, when set, wins over any installed license file. */
@@ -48,7 +54,7 @@ public class LicenseService {
 
     private static final String LICENSE_URL = "https://www.concentus-ai.com/#license";
     private static final String FIX_HINT = "Individuals can request a free one at " + LICENSE_URL
-            + "; the shared database, extra members and SSO need an enterprise license.";
+            + "; the shared database, extra members and SSO need a team or enterprise license.";
     private static final String NO_LICENSE_PROBLEM = "No license installed. " + FIX_HINT;
 
     private final LicenseVerifier verifier;
@@ -63,8 +69,10 @@ public class LicenseService {
     @Autowired
     public LicenseService(@Value("${app.data-dir}") String dataDir,
                           @Value("${" + ENV_VAR + ":}") String envLicense,
-                          @Value("${" + LicenseVerifier.ENV_TEST_KEYS + ":}") String envTestKeys) {
-        this(LicenseVerifier.forProduction(envTestKeys), Path.of(dataDir), envLicense, Clock.systemUTC());
+                          @Value("${" + LicenseVerifier.ENV_TEST_KEYS + ":}") String envTestKeys,
+                          @Value("${" + LicenseVerifier.PROPERTY_TEAM_PUBLIC_KEY + ":}") String teamPublicKey) {
+        this(LicenseVerifier.forProduction(envTestKeys, teamPublicKey), Path.of(dataDir), envLicense,
+                Clock.systemUTC());
     }
 
     /** For tests: an injectable verifier (fixture keys), directory and clock. */
@@ -95,23 +103,29 @@ public class LicenseService {
                 graceDaysLeft, valid, problem);
     }
 
-    /** A verified enterprise license, not yet past its expiry date plus {@link #GRACE_DAYS}. */
+    /**
+     * A verified paid license — enterprise or team — not yet past its expiry date plus
+     * {@link #GRACE_DAYS}. The name says "enterprise" because that is what the FEATURES it unlocks
+     * are called everywhere a person sees them; a team license is a smaller way to buy the same
+     * ones, not a different set.
+     */
     public boolean enterpriseActive() {
         License license = loaded.license;
-        if (license == null || !License.TIER_ENTERPRISE.equals(license.tier())) return false;
+        if (license == null || !isPaidTier(license)) return false;
         if (license.expires() == null) return true;
         return !LocalDate.now(clock).isAfter(license.expires().plusDays(GRACE_DAYS));
     }
 
     /**
      * How many seats this installation may use. Never null and never "unlimited": no license, an
-     * unverifiable one, an individual license, or an enterprise one past its grace window all mean
-     * exactly one — a single-user installation is always allowed to keep working.
+     * unverifiable one, an individual license, or a paid one past its grace window all mean exactly
+     * one — a single-user installation is always allowed to keep working.
      *
      * <p>An active enterprise license with no seat count on it — hand-minted rather than issued by
      * {@code mint-license.mjs}, or otherwise malformed — clamps to one too: a license that names no
      * seats grants none extra, and the alternative (returning null here) would NPE every caller
-     * that unboxes this into an {@code int}, which is all of them.
+     * that unboxes this into an {@code int}, which is all of them. (A team license cannot reach
+     * here seatless: the verifier refuses it.)
      */
     public Integer seatLimit() {
         if (!enterpriseActive()) return 1;
@@ -187,8 +201,13 @@ public class LicenseService {
         String licensee = status().licensee();
         String licensedAs = licensee == null ? "no license installed" : "licensed to " + licensee;
         return "This installation is limited to " + limit + (limit == 1 ? " member" : " members")
-                + " (" + licensedAs + "). An enterprise license — or a bigger one — raises the "
-                + "limit; get one at " + LICENSE_URL + ".";
+                + " (" + licensedAs + "). A team or enterprise license — or a bigger one — raises "
+                + "the limit; get one at " + LICENSE_URL + ".";
+    }
+
+    /** Enterprise or team: the tiers that unlock the paid features and carry an expiry to lapse. */
+    static boolean isPaidTier(License license) {
+        return License.TIER_ENTERPRISE.equals(license.tier()) || License.TIER_TEAM.equals(license.tier());
     }
 
     private static String invalidLicenseProblem(String reason) {
@@ -196,9 +215,9 @@ public class LicenseService {
     }
 
     private static String expiredBeyondGraceProblem(License license) {
-        return "The enterprise license for " + license.licensee() + " expired on " + license.expires()
-                + " and its " + GRACE_DAYS + "-day grace period is over. Renew at " + LICENSE_URL
-                + " to restore enterprise features.";
+        return "The " + license.tier() + " license for " + license.licensee() + " expired on "
+                + license.expires() + " and its " + GRACE_DAYS + "-day grace period is over. Renew at "
+                + LICENSE_URL + " to restore enterprise features.";
     }
 
     /** What construction (or {@link #install}) resolved: a license, or why there isn't one. */

@@ -11,6 +11,8 @@ import java.security.PublicKey;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.Clock;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -45,17 +47,25 @@ public final class TestLicenses {
         return Path.of(TestLicenses.class.getResource("/license/test-keys.json").toURI());
     }
 
-    /** A {@link LicenseVerifier} trusting the committed test keys, not the production ones. */
+    /** A {@link LicenseVerifier} trusting the committed test keys (all three tiers), not the production ones. */
     public static LicenseVerifier verifier() throws Exception {
+        KeyFactory kf = KeyFactory.getInstance("Ed25519");
+        Map<String, PublicKey> byTier = new HashMap<>();
+        for (String tier : List.of(License.TIER_INDIVIDUAL, License.TIER_ENTERPRISE, License.TIER_TEAM)) {
+            byTier.put(tier, kf.generatePublic(new X509EncodedKeySpec(
+                    Base64.getDecoder().decode(publicKeySpkiBase64(tier)))));
+        }
+        return new LicenseVerifier(byTier);
+    }
+
+    /**
+     * One tier's public key from {@code test-keys.json}, as the SPKI base64 string — the same shape
+     * the {@code license.team-public-key} property carries, so a test can hand the fixture team
+     * key to {@link LicenseVerifier#forProduction} exactly the way the property would.
+     */
+    public static String publicKeySpkiBase64(String tier) throws Exception {
         try (InputStream in = TestLicenses.class.getResourceAsStream("/license/test-keys.json")) {
-            var keys = new ObjectMapper().readTree(in);
-            KeyFactory kf = KeyFactory.getInstance("Ed25519");
-            PublicKey individual = kf.generatePublic(new X509EncodedKeySpec(
-                    Base64.getDecoder().decode(keys.get("individual").get("publicKeySpkiBase64").asText())));
-            PublicKey enterprise = kf.generatePublic(new X509EncodedKeySpec(
-                    Base64.getDecoder().decode(keys.get("enterprise").get("publicKeySpkiBase64").asText())));
-            return new LicenseVerifier(Map.of(
-                    License.TIER_INDIVIDUAL, individual, License.TIER_ENTERPRISE, enterprise));
+            return new ObjectMapper().readTree(in).get(tier).get("publicKeySpkiBase64").asText();
         }
     }
 

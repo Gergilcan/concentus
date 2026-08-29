@@ -138,3 +138,26 @@ node mint-license.mjs --licensee "ACME S.L." --email ops@acme.com --seats 20 --y
 2. Key generation + enterprise CLI. **Selling is possible from this point.**
 3. Vercel function + website form + Resend (automatic free licenses).
 4. Pricing page and docs.
+
+## 9. Team tier — self-serve, up to ten seats (added 2026-08-29)
+
+The gap the design above left: enterprise is "contact us", so a team of three wanting the shared
+database had to write an email and wait for a hand-minted license. This section adds a third
+tier that a card buys, WITHOUT giving up the security property in section 1 — a Vercel
+compromise still mints nothing sellable at enterprise scale.
+
+| Question | Decision |
+| --- | --- |
+| Tier name | `team`. Unlocks exactly what enterprise unlocks (shared database, members up to `seats`, SSO); the backend gates ask "is a paid license active", never "which one". |
+| Key | A THIRD keypair. Private half in Vercel (`TEAM_SIGNING_KEY`, PKCS8 base64, one line); public half in `application.properties` as `license.team-public-key` (SPKI base64). The enterprise key stays on the author's machine. Blank property = the tier does not exist for that build, and a pasted team token says so by name. |
+| Ceiling | The verifier refuses a team license with more than **10 seats** or with **no expiry**, even when genuinely signed. That ceiling — not the key's location — is what makes a key in Vercel acceptable: the worst a web-tier compromise can mint is a small, expiring license. Bigger teams are enterprise, and the enterprise key is not there to steal. |
+| Terms | Monthly or annual (annual −10 %), never perpetual. Same 14-day grace as enterprise after `expires`. |
+| Price | `TEAM_PRICE_MONTHLY_PER_SEAT` in Vercel, read by `GET /api/pricing`; nowhere in HTML or code. Null → the card prints "Pricing to be announced — write in" and checkout answers 503. |
+| Payment | Stripe Checkout, one payment per term (`mode: payment`), through the REST API with `fetch` — no SDK, no Product/Price objects: the line item carries an ad-hoc `price_data`. Renewal is buying again, exactly as enterprise renews by re-running the CLI. A subscription that re-mints on each invoice is a possible later step, not a different design. |
+| Fulfilment | `POST /api/stripe-webhook` verifies `Stripe-Signature` (HMAC-SHA256 over `t.body`, 300-second tolerance, constant-time compare), and on a PAID `checkout.session.completed` (or `async_payment_succeeded` for delayed methods) mints the team license from the session's `metadata {seats, term, email}`, emails it through the same Resend path the free license uses, and writes the ledger row (`kind: purchase`, `stripe_session`). |
+| Idempotency | Per session id, carried by a partial unique index in the ledger: a second delivery of the same session finds the row `sent` and sends nothing. A row still `pending_send` (Resend failed the first time) is taken over by the retry, which is why that one failure answers 500 — Stripe retries for up to three days, and the retry is the fix. Every other outcome answers 200 so Stripe stops. |
+| Not configured | Any required env var absent (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `TEAM_SIGNING_KEY`, `TEAM_PRICE_MONTHLY_PER_SEAT`, plus the Resend pair) → a clear 503 naming what is missing. Never a stack trace. |
+| Key generation | `node apps/website/scripts/keygen.mjs` prints both halves and writes nothing. No key is ever committed. |
+
+Section 6's "no payment gateway" is superseded for THIS tier only; enterprise stays a manual
+sale, and the enterprise CLI is unchanged.
