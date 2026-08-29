@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Concentus changelog</title>
+<meta name="description" content="What changed in each Concentus release, newest first — the same notes that ship with the installers, in one page." />
+<meta name="theme-color" content="#0e1117" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Concentus changelog" />
+<meta property="og:description" content="What changed in each release, newest first." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cpath d='M25 16 L20.5 23.8 L11.5 23.8 L7 16 L11.5 8.2 L20.5 8.2 Z' fill='none' stroke='%236ea8fe' stroke-width='2.6' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" />
+<style>
+  /*
+   * The application's own tokens, so the site and the app cannot drift apart. Every value below
+   * is copied from apps/frontend/src/styles/global.scss (the dark palette, which is its default);
+   * only --faint is derived, because the app has no tertiary text role and this page needs one.
+   */
+  :root {
+    color-scheme: dark;
+    --bg: #0e1117;
+    --panel: #161b22;
+    --panel-2: #1c2230;
+    --line: #2a3140;
+    --text: #e6edf3;
+    --muted: #98a2ad;
+    --faint: #6e7a89;
+
+    --accent: #6ea8fe;
+    --agent: #6ea8fe;
+    --coordinator: #b98cff;
+    --mcp: #63e6be;
+    --repo: #ffd43b;
+    --sql: #ff922b;
+    --api: #e64980;
+    --knowledge: #b98cff;
+    --merge: #ffa94d;
+    --verifier: #94d82d;
+    --gate: #f783ac;
+    --subflow: #4dabf7;
+
+    --danger: #ff6b6b;
+    --ok: #51cf66;
+    --warn: #ffd43b;
+    --accent-soft: rgba(110, 168, 254, 0.12);
+    --on-accent: #08111f;
+
+    /* The three type roles the app defines: display for brand and titles, system sans for
+       density, mono for data. Anything else would be a fourth voice nothing asked for. */
+    --display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+
+    --r: 8px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 86px; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15.5px;
+    line-height: 1.72;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+  /* The canvas ground, at the gap and size FlowCanvas actually renders it. */
+  .bg {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background-color: var(--bg);
+    background-image: radial-gradient(circle, var(--line) 1px, transparent 1px);
+    background-size: 18px 18px;
+    opacity: 0.5;
+  }
+
+  /* ------------------------------ top bar ------------------------------ */
+  /* The application's own header, reused: same metrics, same control shapes. */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(12px);
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-in {
+    display: flex; align-items: center; gap: 14px; height: 62px;
+    max-width: 1380px; margin: 0 auto; padding: 0 24px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 6px; color: var(--text);
+    font-family: var(--display); font-weight: 700; font-size: 15px; letter-spacing: 0.01em;
+  }
+  .brand:hover { text-decoration: none; }
+  .hex { color: var(--accent); font-size: 15.5px; }
+  .badge {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px;
+  }
+  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .nav-right a {
+    color: var(--muted); font-size: 12.5px; padding: 4px 10px;
+    border-radius: 6px; border: 1px solid transparent;
+  }
+  .nav-right a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+  .menu-btn {
+    display: none; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 11px; font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .menu-btn:hover { border-color: var(--accent); }
+
+  /* ------------------------------ layout ------------------------------ */
+  .shell {
+    display: grid;
+    grid-template-columns: 252px minmax(0, 1fr) 208px;
+    gap: 40px;
+    max-width: 1380px;
+    margin: 0 auto;
+    padding: 0 24px 120px;
+  }
+
+  /* ------------------------------ sidebar ------------------------------ */
+  .side {
+    position: sticky; top: 62px; align-self: start;
+    max-height: calc(100vh - 62px);
+    overflow-y: auto;
+    padding: 22px 0 40px;
+  }
+  .filter {
+    width: 100%; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 7px 10px; font: inherit; font-size: 12.5px; margin-bottom: 16px;
+  }
+  .filter::placeholder { color: var(--faint); }
+  .filter:hover { border-color: var(--accent); }
+  .side h4 {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--faint); margin: 22px 0 6px; padding: 0 10px; font-weight: 400;
+  }
+  .side h4:first-of-type { margin-top: 0; }
+  /* Same shape as the app's own nav buttons: 6px radius, a bordered panel when active. */
+  .side a {
+    display: block; color: var(--muted); font-size: 13px; padding: 5px 10px;
+    border-radius: 6px; border: 1px solid transparent;
+  }
+  .side a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+  .side a.on { color: var(--text); background: var(--panel-2); border-color: var(--line); }
+  .side a.hidden { display: none; }
+
+  /* ------------------------------ content ------------------------------ */
+  main { padding: 44px 0 0; min-width: 0; }
+  .lede { max-width: 70ch; padding-bottom: 32px; border-bottom: 1px solid var(--line); }
+  .lede h1 {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(30px, 4.2vw, 38px); line-height: 1.12; letter-spacing: -0.025em;
+    margin: 0 0 14px; text-wrap: balance;
+  }
+  .lede p { color: var(--muted); font-size: 17px; margin: 0 0 10px; }
+
+  /* A rule between sections rather than whitespace alone: this is a reference document, and the
+     eye needs a boundary to land on when it jumps rather than reads. */
+  section { padding-top: 40px; margin-top: 44px; border-top: 1px solid var(--line); max-width: 76ch; scroll-margin-top: 86px; }
+  section:first-of-type { border-top: 0; margin-top: 0; }
+  section > h2 {
+    font-family: var(--display); font-weight: 700;
+    font-size: 24px; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 8px;
+    text-wrap: balance; scroll-margin-top: 86px;
+  }
+  section > h2 + .sub { color: var(--muted); font-size: 15px; margin: 0 0 18px; }
+  h3 {
+    font-family: var(--display); font-weight: 600;
+    font-size: 16.5px; letter-spacing: -0.01em; margin: 30px 0 8px;
+  }
+  p { margin: 0 0 14px; }
+  ul, ol { margin: 0 0 14px; padding-left: 20px; }
+  li { margin: 6px 0; }
+  strong { color: var(--text); font-weight: 600; }
+  em { color: var(--muted); font-style: italic; }
+
+  code {
+    font-family: var(--mono); font-size: 0.85em;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 6px; color: var(--text);
+  }
+  pre {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--r); padding: 14px 16px; overflow-x: auto; margin: 0 0 16px;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: 13px; line-height: 1.65; }
+
+  /* The border lives on the wrapper so a scrolling table keeps a frame on both edges. */
+  .tablewrap {
+    overflow-x: auto; margin: 0 0 18px;
+    border: 1px solid var(--line); border-radius: var(--r);
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--faint); font-weight: 400; padding-top: 12px;
+  }
+  td { color: var(--muted); }
+  td strong { color: var(--text); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td code { white-space: nowrap; }
+
+  .note, .warn {
+    border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: var(--r);
+    padding: 15px 17px; margin: 0 0 18px; background: var(--accent-soft);
+  }
+  .note b, .warn b {
+    display: block; font-size: 14.5px; color: var(--text);
+    font-weight: 600; margin-bottom: 6px;
+  }
+  .note p, .warn p { color: var(--muted); font-size: 14.5px; }
+  .warn { border-left-color: var(--danger); background: rgba(255, 107, 107, 0.09); }
+  .note p:last-child, .warn p:last-child { margin-bottom: 0; }
+
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; background: var(--line); border-radius: 10px;
+    padding: 1px 6px; color: var(--muted); vertical-align: middle;
+  }
+
+  /* ------------------------------ on this page ------------------------------ */
+  .toc {
+    position: sticky; top: 62px; align-self: start;
+    max-height: calc(100vh - 62px); overflow-y: auto;
+    padding: 46px 0 40px;
+  }
+  .toc h4 {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--faint); margin: 0 0 10px; padding-left: 12px; font-weight: 400;
+  }
+  .toc a {
+    display: block; color: var(--faint); font-size: 12.5px;
+    padding: 5px 0 5px 12px; border-left: 1px solid var(--line);
+  }
+  .toc a:hover { color: var(--text); text-decoration: none; }
+  .toc a.on { color: var(--accent); border-left-color: var(--accent); }
+
+  footer {
+    border-top: 1px solid var(--line); margin-top: 72px; padding-top: 22px;
+    color: var(--faint); font-size: 14px; max-width: 76ch;
+  }
+
+  @media (max-width: 1180px) {
+    .shell { grid-template-columns: 236px minmax(0, 1fr); }
+    .toc { display: none; }
+  }
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .menu-btn { display: block; }
+    .nav-in { gap: 10px; }
+    .nav-right a { padding: 4px 8px; }
+    .side {
+      display: none; position: static; max-height: none; padding: 16px 0 6px;
+      border-bottom: 1px solid var(--line);
+    }
+    .side.open { display: block; }
+    main { padding-top: 28px; }
+    section { padding-top: 32px; margin-top: 36px; }
+  }
+  /* Narrow enough that Contents, Download and GitHub are all the bar can carry. */
+  @media (max-width: 560px) {
+    .nav-right a:nth-of-type(1) { display: none; }
+  }
+</style>
+<style>
+  /* The changelog is one column: no sidebar, the notes read top to bottom, newest first. */
+  .log { max-width: 820px; margin: 0 auto; padding: 28px 20px 64px; }
+  .log h1 { margin: 0 0 6px; }
+  .log .sub { color: var(--muted); margin: 0 0 28px; }
+  .log section { border-top: 1px solid var(--line); padding: 26px 0; }
+  .log h2 { margin: 0 0 12px; font-size: 1.35rem; }
+  .log h2 .date { font-size: .8rem; color: var(--muted); font-weight: 500; margin-left: 10px; font-family: ui-monospace, monospace; }
+  .log h3 { font-size: 1.05rem; margin: 18px 0 6px; }
+  .log h4 { font-size: .95rem; margin: 12px 0 4px; color: var(--muted); }
+  .log ul { padding-left: 20px; margin: 6px 0; }
+  .log li { margin: 4px 0; }
+  .log .meta { margin-top: 14px; font-size: .9rem; }
+</style>
+</head>
+<body>
+<header class="nav">
+  <div class="nav-in">
+    <a class="brand" href="/"><span class="hex">⬡</span> Concentus</a>
+    <span class="badge">Changelog</span>
+    <div class="nav-right">
+      <a href="/docs">Docs</a>
+      <a href="/#download">Download</a>
+      <a href="https://github.com/Gergilcan/concentus/releases">All releases</a>
+    </div>
+  </div>
+</header>
+
+<main class="log">
+  <h1>What changed</h1>
+  <p class="sub">Every release, newest first — the same notes that ship with the installers. The app updates itself from these releases; package-manager installs update through their manager.</p>
+
+  <section id="v0.1.8">
+    <h2>v0.1.8 <span class="date">2026-08-29</span></h2>
+<h3>What's new in 0.1.8</h3>
+<h4>The verifier can say why</h4>
+<ul>
+<li><strong><code>on rejected</code>, a new output on the Verifier.</strong> Wire a flow to it and, when the verifier's final word on any worker was a rejection, that flow receives one verification report: every worker, rejected first and accepted after, with the verdict, the reason, its output and its own console log — then the verifier's log. Put a Condition after it to react to one worker only ("contains Ads"). Mail it, file it, retry it: the rejection is something you can act on instead of something you find on a box afterwards.</li>
+</ul>
+<h4><code>on error</code> means *this* block</h4>
+<ul>
+<li>The error output of a block now fires when <strong>that block</strong> failed — including a worker that crashed while the others carried the run to completion — and hands the branch the failure plus the block's console log. A failure nobody pinned on a block ("every worker failed") fires the coordinator's. The first line of the payload is unchanged, so conditions drawn on it keep matching. A failed run whose error or rejected branch fired is still reported completed; one where nothing fired now names the block nothing was wired to.</li>
+</ul>
+<h4>Second outputs stay out of the way</h4>
+<ul>
+<li><code>on error</code> is no longer drawn on every block. Hover a block and click the <code>+ on error</code> chip to turn it on (the label puts it away again); a wire keeps it drawn for as long as the wire exists. Saved flows do not change.</li>
+</ul>
+<h4>Coordinator and Agent are two blocks</h4>
+<ul>
+<li>The palette has <strong>★ Coordinator</strong> and <strong>◆ Agent</strong>. No Role dropdown: a flow takes one coordinator, the button says so once it has one, and duplicating the coordinator gives you an agent. Stored flows, the MCP flow tools, the generator and the headless CLI keep the same file format.</li>
+<li>"Independent workers" drops its *(experimental)* tag.</li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.7...v0.1.8">https://github.com/Gergilcan/concentus/compare/v0.1.7...v0.1.8</a></p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.8">Installers and notes on GitHub →</a></p>
+  </section>
+
+  <section id="v0.1.7">
+    <h2>v0.1.7 <span class="date">2026-08-23</span></h2>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.6...v0.1.7">https://github.com/Gergilcan/concentus/compare/v0.1.6...v0.1.7</a></p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.7">Installers and notes on GitHub →</a></p>
+  </section>
+
+  <section id="v0.1.6">
+    <h2>v0.1.6 <span class="date">2026-08-23</span></h2>
+<p># Concentus 0.1.6</p>
+<p>The canvas grows editor manners, runs learn to answer "what would happen *now*", the machine stops being surprised by multiplication, the interface speaks Spanish and Catalan — and the PolyForm license line gets a mechanism.</p>
+<h3>The canvas</h3>
+<ul>
+<li><strong>Undo / redo.</strong> Every canvas change can be undone — <code>Ctrl+Z</code> / <code>Ctrl+Y</code>, or the ↶ ↷ buttons — including deleting a block, which used to be irreversible short of reloading without saving. A burst of typing counts as one step; a drag counts as one step.</li>
+<li><strong>⌗ Tidy.</strong> One button lays out a flow that grew by hand: the chain left to right, capabilities hung under their agents. A layout you hate is one <code>Ctrl+Z</code> from gone.</li>
+<li><strong>Alignment guides.</strong> Dragging a block snaps it to its neighbours' edges and centres, Figma-style.</li>
+<li><strong>Wires say which output they leave from.</strong> The on-error path is red and dashed, the else path amber — the failure path now reads at a distance, not only at the handle.</li>
+<li><strong>Cost on the block.</strong> Each block's tokens and estimated cost appear on its status badge during and after a run. The canvas is the cost report, which is where you are looking when a run comes out expensive.</li>
+<li><strong>Keyboard.</strong> <code>Tab</code> reaches blocks, <code>Enter</code> opens the focused one's properties.</li>
+</ul>
+<h3>Runs</h3>
+<ul>
+<li><strong>⟲ Replay vs current.</strong> Golden runs compare outputs; this compares decisions. From any execution, walk its recorded per-block outputs through the flow as saved *today* — without running anything — and the canvas paints where the path would diverge: a block that ran and would now be skipped, a skipped branch an edited condition would now fire, recorded work whose block was deleted. Where a decision would need output that was never recorded, it says "cannot be decided" rather than guessing.</li>
+</ul>
+<h3>The machine</h3>
+<ul>
+<li><strong>One ceiling over every <code>claude</code> process.</strong> <code>runs.max-concurrent</code> × <code>workers.max-concurrent</code> could put 32 processes on a laptop nobody sized for that. <code>execution.max-processes</code> (Settings, default 10) now caps the total, whichever run or fan-out started them. A worker that does not fit waits for a slot — with a line in its run saying exactly that — and a raised setting frees queued work without a restart.</li>
+</ul>
+<h3>The interface</h3>
+<ul>
+<li><strong>English, Spanish and Catalan.</strong> Every string in the app. The language follows your system by default; the choice lives next to the theme under Resources → Settings, applies instantly, and belongs to this browser.</li>
+</ul>
+<h3>Licensing</h3>
+<ul>
+<li><strong>Free for personal use, licensed for companies — now with a mechanism, not just a line in LICENSE.md.</strong> Individuals can request a free license from inside the app; companies get seats. The license is one signed line, pasted under Resources → Settings, verified locally by the backend. What needs one: the shared external database, seats beyond the free tier, SSO — each gate names its fix instead of failing mute. An expired license gets a grace window with a countdown in the header, not a locked door.</li>
+</ul>
+<h3>Install &amp; update</h3>
+<p>Existing installations update themselves. New ones:</p>
+<p>```</p>
+<p>scoop bucket add concentus <a href="https://github.com/Gergilcan/concentus">https://github.com/Gergilcan/concentus</a> &amp;&amp; scoop install concentus</p>
+<p>winget install concentus</p>
+<p>npx concentus</p>
+<p>```</p>
+<p>or the installers below.</p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.6">Installers and notes on GitHub →</a></p>
+  </section>
+
+  <section id="v0.1.5">
+    <h2>v0.1.5 <span class="date">2026-08-22</span></h2>
+<h3>What's Changed</h3>
+<ul>
+<li>feat(mac): dmg for both silicons, signed and notarized — macOS joins every channel by @Gergilcan in <a href="https://github.com/Gergilcan/concentus/pull/24">https://github.com/Gergilcan/concentus/pull/24</a></li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.4...v0.1.5">https://github.com/Gergilcan/concentus/compare/v0.1.4...v0.1.5</a></p>
+<h3>What's Changed</h3>
+<ul>
+<li>feat(mac): dmg for both silicons, signed and notarized — macOS joins every channel by @Gergilcan in <a href="https://github.com/Gergilcan/concentus/pull/24">https://github.com/Gergilcan/concentus/pull/24</a></li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.4...v0.1.5">https://github.com/Gergilcan/concentus/compare/v0.1.4...v0.1.5</a></p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.5">Installers and notes on GitHub →</a></p>
+  </section>
+
+  <section id="v0.1.4">
+    <h2>v0.1.4 <span class="date">2026-08-22</span></h2>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.3...v0.1.4">https://github.com/Gergilcan/concentus/compare/v0.1.3...v0.1.4</a></p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.4">Installers and notes on GitHub →</a></p>
+  </section>
+
+  <section id="v0.1.3">
+    <h2>v0.1.3 <span class="date">2026-08-22</span></h2>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.2...v0.1.3">https://github.com/Gergilcan/concentus/compare/v0.1.2...v0.1.3</a></p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.3">Installers and notes on GitHub →</a></p>
+  </section>
+</main>
+</body>
+</html>

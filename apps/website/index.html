@@ -4,11 +4,11 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Concentus — the desktop app for multi-agent orchestration</title>
-<meta name="description" content="A desktop app for Windows and Linux. Design multi-agent flows on a canvas, wire in MCP tools and databases, and run them on the Claude subscription already on your machine. No server, no database to install, no API key." />
+<meta name="description" content="A desktop app for Windows, macOS and Linux. Design multi-agent flows on a canvas, wire in MCP tools and databases, and run them on the Claude subscription already on your machine. No server, no database to install, no API key." />
 <meta name="theme-color" content="#0e1117" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="Concentus" />
-<meta property="og:description" content="Wire up a team of AI agents on a canvas and run them on your own Claude. A desktop app for Windows and Linux — nothing to deploy." />
+<meta property="og:description" content="Wire up a team of AI agents on a canvas and run them on your own Claude. A desktop app for Windows, macOS and Linux — nothing to deploy." />
 <meta property="og:site_name" content="Concentus" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Concentus" />
@@ -98,6 +98,7 @@
     font-family: var(--mono); font-size: 11px; text-transform: uppercase;
     letter-spacing: 0.16em; color: var(--muted);
   }
+  .position { font-size: 1.05rem; color: var(--accent); margin: 14px 0 0; max-width: 40ch; font-weight: 600; }
   .lede { font-size: 16.5px; line-height: 1.64; color: var(--muted); text-wrap: pretty; }
   .cap { font-family: var(--mono); font-size: 11.5px; color: var(--muted); line-height: 1.6; }
 
@@ -481,6 +482,7 @@
       <a class="navbtn" href="#download">Install</a>
       <a class="navbtn" href="#license">Pricing</a>
       <a class="navbtn" href="/docs">Docs</a>
+      <a class="navbtn" href="/changelog">Changelog</a>
     </nav>
     <div class="nav-right">
       <a class="pill" href="#" data-gh>GitHub</a>
@@ -497,13 +499,14 @@
       <div>
         <div class="eyebrow" style="display:flex;align-items:center;gap:8px">
           <span style="width:6px;height:6px;border-radius:50%;background:var(--mcp);display:block"></span>
-          Desktop app · Windows &amp; Linux
+          Desktop app · Windows, macOS &amp; Linux
         </div>
         <h1>Draw the crew.<br>Run it on your own Claude.</h1>
+        <p class="position">Think Dify or n8n, but for agents that read and change code — on your own machine, with a verifier that can say no.</p>
         <p class="lede">Concentus is a desktop application for wiring multi-agent flows on a canvas and running them against your own repositories, your own databases and the Claude subscription already sitting on your machine. No server to deploy, no database to provision, no API key to paste.</p>
 
         <div class="hero-actions">
-          <a class="btn go lg" href="#download">Download for Windows or Linux</a>
+          <a class="btn go lg" href="#download">Download for Windows, macOS or Linux</a>
           <a class="btn lg" href="#" data-gh>View the source</a>
         </div>
 
@@ -1100,6 +1103,7 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
     <span class="cap">A desktop studio for multi-agent flows.</span>
     <span class="foot-links">
       <a class="navbtn" href="/docs">Docs</a>
+      <a class="navbtn" href="/changelog">Changelog</a>
       <a class="navbtn" href="#" data-gh>GitHub</a>
       <a class="navbtn" href="#" data-gh="/releases">Releases</a>
       <a class="navbtn" href="#" data-gh="/blob/HEAD/README.md">README</a>
