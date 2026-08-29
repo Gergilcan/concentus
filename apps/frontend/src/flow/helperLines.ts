@@ -1,4 +1,5 @@
 import type { NodeChange } from '@xyflow/react'
+import { NODE_H, NODE_W } from './layout.ts'
 
 /**
  * Figma-style alignment guides while dragging one node.
@@ -35,7 +36,7 @@ interface Placed {
 }
 
 function sizeOf(n: Placed): { w: number; h: number } {
-  return { w: n.measured?.width ?? n.width ?? 214, h: n.measured?.height ?? n.height ?? 110 }
+  return { w: n.measured?.width ?? n.width ?? NODE_W, h: n.measured?.height ?? n.height ?? NODE_H }
 }
 
 /**

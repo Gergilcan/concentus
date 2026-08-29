@@ -60,4 +60,14 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': 'off',
     },
   },
+  {
+    // Playwright, not React: a fixture's `use` callback is Playwright's own, and `async ({}, use)`
+    // is its documented way to declare a fixture that depends on nothing. Both rules read those
+    // as mistakes.
+    files: ['e2e/**/*.ts'],
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
+      'no-empty-pattern': 'off',
+    },
+  },
 )

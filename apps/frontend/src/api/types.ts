@@ -52,7 +52,7 @@ export interface RunComparison {
   candidate: RunComparisonSide
 }
 
-type RunEventType ='system' | 'status' | 'agent_message' | 'tool_use' | 'error'
+type RunEventType = 'system' | 'status' | 'agent_message' | 'tool_use' | 'error'
 
 export interface RunEvent {
   type: RunEventType
@@ -62,11 +62,6 @@ export interface RunEvent {
   /** Canvas node id of that agent — unique even when two agents share a name. */
   agentId?: string | null
   ts: number
-}
-
-export interface RunDetail {
-  run: RunSummary
-  events: RunEvent[]
 }
 
 export type NodeExecStatus = 'pending' | 'running' | 'passed' | 'failed'
@@ -149,13 +144,6 @@ interface BackendStatus {
   available: boolean
 }
 
-/**
- * What the designer knows about models before a run.
- *
- * There is no provider list to choose from: it is Claude, or a model on your own hardware. Which
- * Claude credential is present and whether a self-hosted server is answering is what `backends`
- * reports, and the model named on an agent decides which of them runs the flow.
- */
 /** Whether MCP tool search will rank semantically, and what is missing when it will not. */
 export interface ToolSearchStatus {
   enabled: boolean
@@ -166,6 +154,13 @@ export interface ToolSearchStatus {
   detail: string
 }
 
+/**
+ * What the designer knows about models before a run.
+ *
+ * There is no provider list to choose from: it is Claude, or a model on your own hardware. Which
+ * Claude credential is present and whether a self-hosted server is answering is what `backends`
+ * reports, and the model named on an agent decides which of them runs the flow.
+ */
 export interface ModelCatalog {
   toolSearch?: ToolSearchStatus
   /** Model ids the self-hosted server is serving right now. Discovered, not configured. */
@@ -911,7 +906,6 @@ export interface FlowMemoryView {
   notes: FlowMemoryNote[]
 }
 
-
 export interface AuthStatus {
   mode: string
   source: 'api-key' | 'auth-token' | 'local' | 'none'
@@ -922,12 +916,6 @@ export interface AuthStatus {
   appVersion?: string | null
 }
 
-/**
- * What this installation is running under — mirrors the backend record field for field.
- *
- * No license installed (or an unverifiable one) is every field null/false except `problem`, which
- * always names the fix rather than just the failure.
- */
 /**
  * The rules an organization sets over every flow in it (Resources → Policies). Enterprise only:
  * on Team the record may exist but nothing in it is enforced, and the panel is read-only.
@@ -972,6 +960,12 @@ export interface PublishApprovalView {
   approvedAt: number | null
 }
 
+/**
+ * What this installation is running under — mirrors the backend record field for field.
+ *
+ * No license installed (or an unverifiable one) is every field null/false except `problem`, which
+ * always names the fix rather than just the failure.
+ */
 export interface LicenseStatus {
   tier: string | null
   licensee: string | null
@@ -1109,13 +1103,6 @@ export interface SignedInUser {
   role: string
 }
 
-/**
- * Who is signed in, and what to show if nobody is.
- *
- * Three states, not two. Signed in; not signed in; and an installation with no accounts at all,
- * which cannot ask anybody to sign in because there is nobody to be — that one gets the setup
- * screen.
- */
 /** One account in the organization, as the members screen reads it. Never carries a hash. */
 export interface Member {
   id: string
@@ -1255,6 +1242,13 @@ export interface SwitchableAccount {
   current: boolean
 }
 
+/**
+ * Who is signed in, and what to show if nobody is.
+ *
+ * Three states, not two. Signed in; not signed in; and an installation with no accounts at all,
+ * which cannot ask anybody to sign in because there is nobody to be — that one gets the setup
+ * screen.
+ */
 export interface SessionInfo {
   /** No accounts exist yet: the first launch, which asks for one instead of asking to sign in. */
   setupRequired?: boolean
@@ -1499,13 +1493,17 @@ export type KnowledgeHit = {
   score: number
 }
 
-/** The built-in, in-process embedding model — downloaded on demand from the app. */
-export interface EmbedderStatus {
+/** A model the backend downloads on demand and runs in-process, and how far along that is. */
+export interface ModelDownloadStatus {
   state: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'READY' | 'ERROR'
   percent: number
   error: string
   sizeMb: number
   model: string
+}
+
+/** The built-in embedding model. */
+export interface EmbedderStatus extends ModelDownloadStatus {
   /** Whether search ranks by meaning right now, through EITHER the built-in model or a server. */
   semantic: boolean
   detail: string
@@ -1601,13 +1599,7 @@ export interface FlowEvalResult {
 }
 
 /** The cross-encoder that reorders results by reading the question and the passage together. */
-export interface RerankerStatus {
-  state: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'READY' | 'ERROR'
-  percent: number
-  error: string
-  sizeMb: number
-  model: string
-}
+export type RerankerStatus = ModelDownloadStatus
 
 /** One operation from a parsed OpenAPI spec, as the API node inspector lists it. */
 export interface ApiOperationView {

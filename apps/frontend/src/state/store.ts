@@ -17,13 +17,13 @@ import type {
   NodeExec,
   NodeExecReport,
   NodeKind,
+  ReplayReport,
   RunDiff,
   RunEvent,
 } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL } from '../constants.ts'
-import { tidyLayout } from '../flow/layout.ts'
+import { NODE_H, NODE_W, tidyLayout } from '../flow/layout.ts'
 import { canConnect, isAnnotation, wiringRoleOf } from '../flow/wiring.ts'
-import type { ReplayReport } from '../api/types.ts'
 
 export type AppNode = Node<AppNodeData>
 
@@ -33,10 +33,6 @@ let pasteCount = 0
 function uid(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().slice(0, 8)}`
 }
-
-/** Canvas offset applied to each successive paste so copies never land on the original. */
-/** A node card's width, from nodes.module.scss. Placement has to know it to leave a real gap. */
-const NODE_W = 214
 
 /**
  * How many capabilities already hang under this box, so the next does not land on top of them.
@@ -58,14 +54,12 @@ function attached(
   }).length
 }
 
+/** Canvas offset applied to each successive paste so copies never land on the original. */
 const PASTE_OFFSET = 40
 
 /** A fresh frame: room for a short chain of cards, before the author drags a corner. */
 const GROUP_W = 480
 const GROUP_H = 260
-
-/** The card's own size when the canvas has not measured it yet — nodes.module.scss again. */
-const NODE_H = 110
 
 function sizeOf(n: AppNode): { w: number; h: number } {
   return {

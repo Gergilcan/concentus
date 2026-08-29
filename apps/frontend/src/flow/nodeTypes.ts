@@ -1,9 +1,16 @@
 import type { Node } from '@xyflow/react'
 import type {
   AgentNodeData,
+  ApiNodeData,
+  ConditionNodeData,
+  FlowRunNodeData,
+  ForEachNodeData,
+  GroupNodeData,
   KnowledgeNodeData,
+  MailNodeData,
   McpNodeData,
   MergeNodeData,
+  NoteNodeData,
   RepoNodeData,
   SqlNodeData,
   VerifierNodeData,
@@ -30,15 +37,15 @@ export type McpRFNode = Node<McpNodeData, 'mcp'>
 export type RepoRFNode = Node<RepoNodeData, 'repo'>
 export type SqlRFNode = Node<SqlNodeData, 'sql'>
 export type KnowledgeRFNode = Node<KnowledgeNodeData, 'knowledge'>
-export type ApiRFNode = Node<import('../api/types.ts').ApiNodeData, 'api'>
-export type FlowRunRFNode = Node<import('../api/types.ts').FlowRunNodeData, 'flow'>
+export type ApiRFNode = Node<ApiNodeData, 'api'>
+export type FlowRunRFNode = Node<FlowRunNodeData, 'flow'>
 export type MergeRFNode = Node<MergeNodeData, 'merge'>
 export type VerifierRFNode = Node<VerifierNodeData, 'verifier'>
-export type ConditionRFNode = Node<import('../api/types.ts').ConditionNodeData, 'condition'>
-export type ForEachRFNode = Node<import('../api/types.ts').ForEachNodeData, 'foreach'>
-export type MailRFNode = Node<import('../api/types.ts').MailNodeData, 'mail'>
-export type NoteRFNode = Node<import('../api/types.ts').NoteNodeData, 'note'>
-export type GroupRFNode = Node<import('../api/types.ts').GroupNodeData, 'group'>
+export type ConditionRFNode = Node<ConditionNodeData, 'condition'>
+export type ForEachRFNode = Node<ForEachNodeData, 'foreach'>
+export type MailRFNode = Node<MailNodeData, 'mail'>
+export type NoteRFNode = Node<NoteNodeData, 'note'>
+export type GroupRFNode = Node<GroupNodeData, 'group'>
 
 export const nodeTypes = {
   agent: AgentNode,
