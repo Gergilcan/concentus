@@ -82,7 +82,8 @@ class RunServiceTest {
                         "runs.max-concurrent", String.valueOf(maxConcurrent),
                         "runs.queue-capacity", String.valueOf(queueCapacity),
                         "runs.max-retained", String.valueOf(maxRetainedRuns))),
-                com.concentus.telemetry.Telemetry.none(), new ToolCallLoopGuard());
+                com.concentus.telemetry.Telemetry.none(), new ToolCallLoopGuard(),
+                mock(ClaudeUsageService.class));
         created.add(s);
         return s;
     }
@@ -177,6 +178,32 @@ class RunServiceTest {
 
         assertThat(summary.trigger()).isEqualTo("prompt");
         verify(localExecutor, timeout(2000)).runTurn(any(), any(), eq("go"));
+    }
+
+    @Test
+    void aTurnTheCeilingStoppedEndsAsAFailureNotAsAStop() throws Exception {
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        // The executor saw the ceiling trip mid-turn (the run's own check does that from the
+        // usage report) and its process was stopped; it comes back idle like any ended turn.
+        doAnswer(inv -> {
+            AgentRun run = inv.getArgument(0);
+            run.budgetTripped = true;
+            run.error = "Budget ceiling reached mid-run: $10.00 of the $10.00 monthly ceiling. The run was stopped here.";
+            run.status = "IDLE";
+            return null;
+        }).when(localExecutor).runTurn(any(), any(), any());
+        RunService svc = newService(4, 8, 10);
+
+        RunSummary summary = svc.start(flowWithPrompt("f1", "cron", "daily briefing"));
+        verify(localExecutor, timeout(2000)).runTurn(any(), any(), eq("daily briefing"));
+
+        long deadline = System.currentTimeMillis() + 2000;
+        while (System.currentTimeMillis() < deadline && svc.hasActiveRun("f1")) Thread.sleep(20);
+        // ERROR, not TERMINATED: nobody ended this on purpose, and the branch on the error output
+        // is how the flow is told.
+        assertThat(svc.get(summary.id()).orElseThrow().status).isEqualTo("ERROR");
+        verify(notifier, timeout(2000)).runFailed(any());
     }
 
     @Test
@@ -887,7 +914,8 @@ class RunServiceTest {
                         "runs.max-concurrent", "4",
                         "runs.queue-capacity", "8",
                         "runs.max-retained", "10")),
-                com.concentus.telemetry.Telemetry.none(), new ToolCallLoopGuard());
+                com.concentus.telemetry.Telemetry.none(), new ToolCallLoopGuard(),
+                mock(ClaudeUsageService.class));
         created.add(s);
         return s;
     }

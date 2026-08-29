@@ -75,6 +75,8 @@ public class RunService {
     /** What this service says about itself: a span per unit of work, and counters per outcome. */
     private final com.concentus.telemetry.Telemetry telemetry;
     private final ToolCallLoopGuard loops;
+    /** The subscription's allowance meter, so a run that starts near the edge says so. */
+    private final ClaudeUsageService usage;
 
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
                       ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
@@ -86,8 +88,10 @@ public class RunService {
                       com.concentus.store.VariableStore variableStore,
                       com.concentus.config.Settings settings,
                       com.concentus.telemetry.Telemetry telemetry,
-                      ToolCallLoopGuard loops) {
+                      ToolCallLoopGuard loops,
+                      ClaudeUsageService usage) {
         this.clientProvider = clientProvider;
+        this.usage = usage;
         this.compiler = compiler;
         this.launcher = launcher;
         this.backends = backends;
@@ -171,10 +175,8 @@ public class RunService {
         if (flow.id() == null || flow.budgetUsd() == null || flow.budgetUsd() <= 0) return;
         // An unregistered backend is the hosted API path, which bills. Unknown means billed on
         // purpose: forgetting to declare a new backend must not quietly disable everyone's ceiling.
-        if (!backends.byId(backend).map(ExecutionBackend::billsPerToken).orElse(true)) return;
-        long monthStart = java.time.LocalDate.now().withDayOfMonth(1)
-                .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
-        double spent = runStore.spendUsdSince(flow.id(), monthStart);
+        if (!billsPerToken(backend)) return;
+        double spent = runStore.spendUsdSince(flow.id(), monthStart());
         if (spent >= flow.budgetUsd()) {
             throw new IllegalStateException(String.format(java.util.Locale.ROOT,
                     "Budget reached: '%s' has spent $%.2f of its $%.2f monthly ceiling. "
@@ -297,6 +299,46 @@ public class RunService {
      * (used by webhook triggers to inject the event payload); otherwise the Input node's own
      * prompt is used for prompt/cron modes.
      */
+    private boolean billsPerToken(String backend) {
+        return backends.byId(backend).map(ExecutionBackend::billsPerToken).orElse(true);
+    }
+
+    private static long monthStart() {
+        return java.time.LocalDate.now().withDayOfMonth(1)
+                .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+    }
+
+    /**
+     * Arms the ceiling on a run that is about to execute. The month's spend so far is read
+     * once, here: reading it on every usage report would be a database query per token count.
+     */
+    private void armBudget(AgentRun run, FlowGraph flow) {
+        if (flow.id() == null || flow.budgetUsd() == null || flow.budgetUsd() <= 0) return;
+        run.budgetUsd = flow.budgetUsd();
+        run.billsPerToken = billsPerToken(run.backend);
+        run.spentBeforeUsd = runStore.spendUsdSince(flow.id(), monthStart());
+        run.onBudgetExceeded = () -> stop(run.id);
+    }
+
+    /**
+     * A subscription run that starts with the weekly allowance nearly or fully spent is told so
+     * in its first line. Told, not refused: the meter is a floor built from this app's own
+     * records, and a run the CLI still accepts is a run somebody wanted.
+     */
+    private void warnAboutAllowance(AgentRun run) {
+        if (usage == null || billsPerToken(run.backend)) return;
+        ClaudeUsageService.Allowance a = usage.allowance();
+        if (a == null || !a.nearlyGone()) return;
+        String figures = String.format(java.util.Locale.ROOT, "$%.2f of $%.2f", a.runsUsd(), a.allowanceUsd());
+        run.emit(RunEvent.of("system", a.exhausted()
+                ? "Weekly allowance for runs: spent (" + figures + " in the last 7 days). Runs on "
+                        + "this subscription may be refused until the window resets — an API key "
+                        + "or a self-hosted model is the way past it."
+                : "Weekly allowance for runs: " + a.percent() + "% used (" + figures
+                        + " in the last 7 days). Past it, runs on this subscription stop until "
+                        + "the window resets."));
+    }
+
     /**
      * A run started by another flow.
      *
@@ -339,6 +381,8 @@ public class RunService {
         run.backend = backend;
         run.compiled = compiled;
         run.flowJson = toJson(flow);
+        armBudget(run, flow);
+        warnAboutAllowance(run);
         // Stamped once, at launch, next to the snapshot it names — reading it later would report
         // whatever version the flow has been edited to since, which is the opposite of what an
         // execution's version badge is for.
@@ -588,6 +632,12 @@ public class RunService {
             if ("IDLE".equals(run.status)) {
                 run.status = endsWithQuestion(run.finalOutput()) ? "AWAITING_ANSWER" : "COMPLETED";
                 run.emit(RunEvent.of("status", run.status.toLowerCase()));
+            }
+            // Stopped by the ceiling, not by a person: that is a failure, with the branch on the
+            // error output as the way to be told, and not a run somebody ended on purpose.
+            if (run.budgetTripped && !"ERROR".equals(run.status)) {
+                run.status = "ERROR";
+                run.emit(RunEvent.of("status", "error"));
             }
             // Hand-offs BEFORE the failure is persisted or announced, and the order is the
             // feature: a failure whose error output is wired gets handled there and the run

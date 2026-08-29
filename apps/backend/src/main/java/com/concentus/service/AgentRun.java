@@ -425,6 +425,56 @@ public class AgentRun {
         totalOutputTokens += output;
         cacheReadTokens += cacheRead;
         cacheWriteTokens += cacheWrite;
+        checkBudget();
+    }
+
+    // --- the flow's monthly ceiling, copied at start so a flow edit mid-run cannot move it ---
+
+    /** The flow's ceiling in USD; null when the flow has none. */
+    public volatile Double budgetUsd;
+    /** What the flow had already spent this month when this run started. */
+    public volatile double spentBeforeUsd;
+    /** Whether this run's backend bills per token — the only case the ceiling stops anything. */
+    public volatile boolean billsPerToken;
+    /** Set once, when the ceiling was reached mid-run; the turn ends as ERROR because of it. */
+    public volatile boolean budgetTripped;
+    /** Set once, on a subscription run whose equivalent usage passed the ceiling — said, not stopped. */
+    public volatile boolean budgetNoted;
+    /** What to do the moment the ceiling is reached: installed by the run service, it stops the run. */
+    public volatile Runnable onBudgetExceeded;
+
+    /**
+     * The ceiling, applied while the run is going rather than only when the next one starts.
+     *
+     * <p>A ceiling that only refused the NEXT run let one run spend through it, which is what
+     * a ceiling is for stopping. Checked on every usage report, priced the way the run is
+     * priced (per block, per model), against what the month had already spent. On a
+     * subscription the same crossing is said once and nothing stops: there the figure is an
+     * equivalent, not a bill, and the allowance meter is the thing to watch instead.
+     */
+    private void checkBudget() {
+        Double ceiling = budgetUsd;
+        if (ceiling == null || ceiling <= 0 || budgetTripped || budgetNoted) return;
+        double now = spentBeforeUsd + estimatedCostUsd();
+        if (now < ceiling) return;
+        String figures = String.format(java.util.Locale.ROOT, "$%.2f of the $%.2f monthly ceiling", now, ceiling);
+        if (!billsPerToken) {
+            budgetNoted = true;
+            emit(RunEvent.of("system", "Equivalent usage has passed " + figures + ". Not stopped: "
+                    + "this run is on a subscription, where the figure is an equivalent and not a bill."));
+            return;
+        }
+        budgetTripped = true;
+        error = "Budget ceiling reached mid-run: " + figures + ". The run was stopped here.";
+        emit(RunEvent.of("error", error));
+        Runnable stop = onBudgetExceeded;
+        if (stop != null) {
+            try {
+                stop.run();
+            } catch (RuntimeException e) {
+                emit(RunEvent.of("system", "The run could not be stopped cleanly: " + e.getMessage()));
+            }
+        }
     }
 
     /** Get or create the execution record for a node. Returns null if nodeId is unknown. */
