@@ -1435,3 +1435,99 @@
   color: t.$text;
   background: t.$accent-soft;
 }
+
+/* ---- service accounts: the roster's styles, plus the one moment a token is on screen ---- */
+
+/** The Team cap, said in full above the list rather than only in the disabled button's tooltip. */
+.capNote {
+  border: 1px dashed t.$border;
+  border-radius: t.$radius;
+  padding: var(--sp-3) var(--sp-4);
+  margin: 0 0 var(--sp-4);
+  color: t.$muted;
+  font-size: 12.5px;
+  max-width: 72ch;
+}
+
+/** Shown once. Accent-bordered so it reads as the thing on this page to act on before leaving. */
+.tokenReveal {
+  border: 1px solid t.$accent;
+  border-radius: t.$radius;
+  background: t.$panel;
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+
+.tokenValue {
+  display: block;
+  margin: var(--sp-3) 0;
+  padding: 10px 12px;
+  border: 1px solid t.$border;
+  border-radius: 6px;
+  background: t.$bg;
+  font-size: 13px;
+  // Never wraps mid-token in a way that hides a character: scroll instead, and let it be selected whole.
+  overflow-x: auto;
+  white-space: nowrap;
+  user-select: all;
+}
+
+.tokenActs {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+/** A revoked row stays as the audit of what could act here, and reads as past tense. */
+.revokedRow {
+  color: t.$muted;
+
+  .memberEmail {
+    text-decoration: line-through;
+  }
+}
+
+.revokedTag {
+  flex: none;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$danger;
+  border: 1px solid t.$danger;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.roleChip {
+  font-size: 11px;
+  color: t.$muted;
+  border: 1px solid t.$border;
+  border-radius: 999px;
+  padding: 2px 8px;
+  min-width: 64px;
+  text-align: center;
+}
+
+.renameInput {
+  background: t.$bg;
+  border: 1px solid t.$accent;
+  color: t.$text;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 13px;
+  min-width: 0;
+  flex: 1;
+}
+
+/** One command, copyable, in the page's own type rather than a code block's. */
+.howTo {
+  margin: 6px 0 var(--sp-3);
+  padding: 8px 12px;
+  border: 1px solid t.$border;
+  border-radius: 6px;
+  background: t.$bg;
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre;
+  max-width: 72ch;
+}

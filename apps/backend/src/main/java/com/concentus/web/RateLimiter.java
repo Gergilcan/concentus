@@ -36,6 +36,17 @@ public class RateLimiter {
 
     /** True when this key may proceed; false when it has used up its allowance for the window. */
     public boolean tryAcquire(String key) {
+        return tryAcquire(key, maxRequests);
+    }
+
+    /**
+     * The same, against an allowance decided per call.
+     *
+     * <p>For a limit that depends on who is asking or what the deployment is licensed for — the
+     * published endpoints' rate is a constant on Team and a setting on Enterprise, and a setting
+     * is read where it is used, not once into a field. The window is still per key.
+     */
+    public boolean tryAcquire(String key, int allowance) {
         long now = System.currentTimeMillis();
         Window window = windows.compute(key == null ? "" : key, (k, existing) -> {
             if (existing == null || now - existing.startedAt >= windowMillis) {
@@ -48,7 +59,7 @@ public class RateLimiter {
         if (windows.size() > 10_000) {
             windows.entrySet().removeIf(e -> now - e.getValue().startedAt >= windowMillis);
         }
-        return window.count.incrementAndGet() <= maxRequests;
+        return window.count.incrementAndGet() <= allowance;
     }
 
     /** Test seam and operational reset. */

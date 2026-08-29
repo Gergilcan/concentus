@@ -1,5 +1,7 @@
 package com.concentus.config;
 
+import com.concentus.license.Feature;
+
 import java.util.List;
 
 import static com.concentus.config.SettingDef.choice;
@@ -40,6 +42,10 @@ public final class SettingsCatalog {
     public static final String GROUP_KNOWLEDGE = "Knowledge";
     public static final String GROUP_USAGE = "Usage";
     public static final String GROUP_APPROVALS = "Approvals";
+    public static final String GROUP_ENDPOINTS = "Endpoints";
+
+    /** The published endpoints' rate on Enterprise; 0 is unlimited. Read by PublicRunController. */
+    public static final String ENDPOINT_RATE_PER_MINUTE = "endpoints.rate-per-minute";
 
     private static final List<SettingDef> ALL = List.of(
             number("runs.max-concurrent", GROUP_RUNS, "Runs at once",
@@ -58,6 +64,15 @@ public final class SettingsCatalog {
                             + "four workers is thirty-two processes — and this is the cap on the "
                             + "product. A worker that does not fit waits, and its run says so. "
                             + "Applies without a restart.", true),
+
+            number(ENDPOINT_RATE_PER_MINUTE, GROUP_ENDPOINTS, "Requests per minute per published endpoint token",
+                    "How many calls one published flow's token may make in a minute before the "
+                            + "endpoint answers 429. Enterprise only: an Enterprise license lifts the "
+                            + "limit entirely (0, the default), and this puts one back where a caller "
+                            + "in a tight loop would otherwise start runs faster than they finish. A "
+                            + "Team license is fixed at " + Feature.TEAM_ENDPOINT_RATE_PER_MINUTE
+                            + ", and a free installation at the same figure, whatever is set here. "
+                            + "Applies without a restart.", false),
 
             secret("approvals.telegram.bot-token", GROUP_APPROVALS, "Telegram bot token",
                     "A bot from @BotFather. With a chat id below, every approval request and every "

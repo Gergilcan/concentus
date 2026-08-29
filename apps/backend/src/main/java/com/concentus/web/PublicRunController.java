@@ -1,6 +1,10 @@
 package com.concentus.web;
 
+import com.concentus.config.Settings;
+import com.concentus.config.SettingsCatalog;
 import com.concentus.integration.UntrustedContent;
+import com.concentus.license.Feature;
+import com.concentus.license.LicenseService;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.RunSummary;
 import com.concentus.model.TriggerSpec;
@@ -49,6 +53,11 @@ import java.util.Map;
  * cannot be timed into the token either. Requests are rate-limited per presented token — wrong
  * ones included, which is what throttles a guess.
  *
+ * <p>The rate is the tier's. A free installation and a Team deployment get
+ * {@link Feature#TEAM_ENDPOINT_RATE_PER_MINUTE} a minute per token; Enterprise has no limit unless
+ * the {@code endpoints.rate-per-minute} setting puts one back. Read per request, so changing the
+ * setting takes effect on the next call, and the 429 names both the figure and where it comes from.
+ *
  * <p>Publishing is orthogonal to the flow's own trigger: a cron flow keeps its schedule and also
  * answers here. Runs started this way carry the trigger label {@code api}.
  *
@@ -65,24 +74,34 @@ public class PublicRunController {
     static final int MAX_INPUT = 12_000;
     static final int DEFAULT_TIMEOUT_SECONDS = 120;
     static final int MAX_TIMEOUT_SECONDS = 600;
-    /** Per token and minute. Runs are expensive; a client retrying in a tight loop is not a use case. */
-    static final int MAX_REQUESTS_PER_MINUTE = 60;
+    /**
+     * Per token and minute on a free installation — the figure this endpoint has always had. Runs
+     * are expensive; a client retrying in a tight loop is not a use case. The same number as the
+     * Team constant, on purpose: Team buys the shared deployment, not a looser endpoint.
+     */
+    static final int FREE_REQUESTS_PER_MINUTE = Feature.TEAM_ENDPOINT_RATE_PER_MINUTE;
 
     private final FlowStore flows;
     private final RunService runService;
+    private final LicenseService license;
+    private final Settings settings;
     private final RateLimiter limiter;
     /** How often a waiting request looks at the run. A second is fine for runs measured in tens of them. */
     private final Duration pollInterval;
 
     @Autowired
-    public PublicRunController(FlowStore flows, RunService runService) {
-        this(flows, runService, new RateLimiter(MAX_REQUESTS_PER_MINUTE, 60_000), Duration.ofSeconds(1));
+    public PublicRunController(FlowStore flows, RunService runService, LicenseService license, Settings settings) {
+        this(flows, runService, license, settings, new RateLimiter(FREE_REQUESTS_PER_MINUTE, 60_000),
+                Duration.ofSeconds(1));
     }
 
     /** With the limiter and the poll interval exposed, so tests neither wait nor guess. */
-    PublicRunController(FlowStore flows, RunService runService, RateLimiter limiter, Duration pollInterval) {
+    PublicRunController(FlowStore flows, RunService runService, LicenseService license, Settings settings,
+                        RateLimiter limiter, Duration pollInterval) {
         this.flows = flows;
         this.runService = runService;
+        this.license = license;
+        this.settings = settings;
         this.limiter = limiter;
         this.pollInterval = pollInterval;
     }
@@ -154,9 +173,11 @@ public class PublicRunController {
      * so guessing is throttled, and the 404 is the same whether the flow is missing or unpublished.
      */
     private FlowGraph authorize(String flowId, String presented) {
-        if (!limiter.tryAcquire(keyOf(presented))) {
+        int allowance = allowancePerMinute();
+        if (allowance > 0 && !limiter.tryAcquire(keyOf(presented), allowance)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-                    "Too many requests for this token. Try again in a minute.");
+                    "Too many requests for this token: the limit is " + allowance + " a minute ("
+                            + tierLabel() + "). Try again in a minute.");
         }
         FlowGraph flow;
         try {
@@ -172,6 +193,30 @@ public class PublicRunController {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }
         return flow;
+    }
+
+    /**
+     * How many requests a token may make this minute: 0 means no limit at all.
+     *
+     * <p>Enterprise reads the setting each time — an admin lowering it should not have to restart
+     * the server to make it bite — and unset means unlimited, which is what the tier promises.
+     * Team is the constant, whatever the setting says: the setting is the Enterprise feature. A
+     * free installation keeps the figure the endpoint always had.
+     */
+    int allowancePerMinute() {
+        if (license.allows(Feature.UNLIMITED_ENDPOINT_RATE)) {
+            return Math.max(0, settings.number(SettingsCatalog.ENDPOINT_RATE_PER_MINUTE, 0));
+        }
+        if (license.teamTier()) return Feature.TEAM_ENDPOINT_RATE_PER_MINUTE;
+        return FREE_REQUESTS_PER_MINUTE;
+    }
+
+    /** Where the figure in a 429 comes from, so the caller knows what would change it. */
+    private String tierLabel() {
+        if (license.allows(Feature.UNLIMITED_ENDPOINT_RATE)) {
+            return "Enterprise license, the " + SettingsCatalog.ENDPOINT_RATE_PER_MINUTE + " setting";
+        }
+        return license.teamTier() ? "Team license" : "free installation";
     }
 
     /** The bearer token on the request, or null when there is none. */

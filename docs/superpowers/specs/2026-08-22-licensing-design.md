@@ -177,6 +177,23 @@ the team key, emailed through Resend, recorded in the ledger as `kind: trial`.
 | What the app shows | `LicenseStatus.trial`; the Settings panel leads with "Trial — N days left", counted from `expires`. The expired-beyond-grace messages say "trial" and point at buying, not renewing. |
 | Not configured | No `TEAM_SIGNING_KEY` (or Resend pair) → 503 "trials are not open yet", honest rather than generic: with no key there is nothing on its way. |
 
+## 14. Service accounts, and the endpoint rate by tier (added 2026-08-29)
+
+Item 7 of the Enterprise line: the two caps in `Feature` that were constants without a consumer
+— `TEAM_SERVICE_ACCOUNTS` and `TEAM_ENDPOINT_RATE_PER_MINUTE` — get the things they cap.
+
+| Question | Decision |
+| --- | --- |
+| What a service account is | A row in `service_accounts` (V16): organization, name, role, the SHA-256 of a token, who minted it, created / last used / revoked timestamps. The token is `csa_` + 40 random `[A-Za-z0-9]`, answered ONCE by `POST /api/service-accounts` and never stored. |
+| How it authenticates | `ServiceAccountTokenFilter`, before the session's own authentication on `/api/**`: a bearer shaped like ours is hashed, looked up, compared in constant time, and becomes a `ConcentusUserDetails` with the row's organization and role. A signed-in browser keeps its own principal. Unknown or revoked → 401 with a JSON reason, and the request goes no further. The bearer also exempts the request from CSRF (shape only, no lookup): a page cannot attach an `Authorization` header cross-site. |
+| Role ceiling | MEMBER. ADMIN is refused by name at minting and clamped at reading, so a hand-promoted row still acts as MEMBER — a token must never be able to mint tokens, and the admin gate on every `/api/service-accounts` route is what closes the loop. Default role OPERATOR. |
+| Seats | None. Service accounts are not members; the Members panel says so. |
+| Team cap | `TEAM_SERVICE_ACCOUNTS` (2) WORKING tokens per organization, counted at the moment of minting; the third answers 403 with `refusal(SERVICE_ACCOUNTS)` plus "N of 2 in use; revoke one". `GET` returns `{accounts, active, limit, refusal}` so the screen disables the button honestly. Enterprise and free: no cap. |
+| Revocation | `POST …/{id}/revoke` stamps `revoked_at`; the row stays as the audit. `last_used_at` is written at most once a minute per account. |
+| Headless CLI | `CONCENTUS_TOKEN` (environment only, no flag) replaces the sign-in: bearer on every request, checked once against `/api/account/session` so a dead token exits 4 before a run starts. |
+| Endpoint rate | `PublicRunController` asks the tier per request: free 60/min (the figure it always had), Team `TEAM_ENDPOINT_RATE_PER_MINUTE` (60), Enterprise the setting `endpoints.rate-per-minute` (catalog group "Endpoints", 0 = unlimited, the default — `UNLIMITED_ENDPOINT_RATE` is the feature). The 429 names the figure and the tier. `RateLimiter.tryAcquire(key, allowance)` takes the allowance per call so the setting is read where it is used. |
+| Audit | No `AuditService` exists on this branch; create / revoke / refused use are logged at INFO and the rows themselves are the trail. When the audit branch lands, the three events to record are minted, revoked, and use-refused. |
+
 ## 15. Isolated installs (29 Aug)
 
 Enterprise is the tier for a deployment behind a proxy or without internet: the license verifies

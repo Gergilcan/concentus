@@ -856,6 +856,11 @@ curl -X POST "http://localhost:8080/api/public/flows/{flowId}/run" \
 - An unknown flow and a flow that is not published answer the **same** `404`, so the endpoint
   cannot be used to learn which flow ids exist; a wrong token on a published flow is a `401` with
   no detail, compared in constant time. Requests are rate-limited per token — wrong ones included.
+- **The rate is the tier's.** A free installation and a Team deployment get **60 requests a
+  minute per token**; Enterprise has **no limit** unless *Resources → Settings → Endpoints →
+  Requests per minute per published endpoint token* (`endpoints.rate-per-minute`, 0 = unlimited)
+  puts one back — read on every call, so no restart. The `429` body names the figure and where it
+  comes from (`"the limit is 60 a minute (Team license)"`).
 - `GET /api/public/flows/{flowId}/chat?token={publishToken}` serves a minimal chat page for trying
   the flow from a browser. It is a demo surface, not a product: one static page, and the token in
   its address — do not share the link.
@@ -1439,6 +1444,7 @@ onto a valid delivery.
 | POST | `/api/account/setup` | create that first account. The only endpoint reachable without a session, and it refuses once one exists |
 | POST | `/api/account/login` · `/api/account/logout` | sign in / out ([details](#sign-in-and-organizations)) |
 | GET/POST | `/api/account/members` | organization members (admin only) · `POST /api/account/password` |
+| GET/POST | `/api/service-accounts` · PUT `…/{id}` · POST `…/{id}/revoke` | tokens for machines: list, mint (the token is in this one answer), rename, revoke (admin only; [details](#service-accounts)) |
 | GET | `/api/account/accounts` · POST `…/{userId}/use` | the accounts this browser has signed into, and switching to one |
 | GET/PUT | `/api/account/providers` | register Microsoft / Google / Discord, and the redirect URI to give them (admin only) |
 | GET/PUT | `/api/settings` | everything adjustable, with where each value came from (admin only) |
@@ -1448,6 +1454,43 @@ onto a valid delivery.
 | GET/POST | `/api/storage`, `/api/storage/migrate` | where this installation keeps its data, and copying it to another PostgreSQL (admin only) |
 
 Flows persist as JSON under `apps/backend/data/flows` (override with `APP_DATA_DIR`).
+
+### Service accounts
+
+A CI job, a cron entry or another system that calls the API used to do it with a person's email
+and password in its environment: that person's account, acting from a place they are not, with
+every power they have, and a password that has to change the day they leave. A **service account**
+is the honest shape — a name, a role, and a token shown exactly once.
+
+Under *Resources → Service accounts* (admin only) an admin mints one with a name and a role; the
+answer carries the token, `csa_` and forty random characters, and nothing carries it again: only
+its SHA-256 is stored, so a copy of the database is not a copy of the credentials. Present it as a
+bearer on any `/api/**` call and the request runs **as that account** — its organization, its role
+— under exactly the rules a signed-in person with that role gets:
+
+```sh
+curl -H "Authorization: Bearer csa_…" https://concentus.example.com/api/flows
+curl -X POST -H "Authorization: Bearer csa_…" -H "Content-Type: application/json" \
+  https://concentus.example.com/api/flows/{flowId}/run
+```
+
+- **Role ≤ Member.** A token can be a Viewer, an Operator (the default: running flows is what a
+  machine is usually for) or a Member — never an Admin, because a token that could administer
+  could mint more tokens, and one leak would become any number. Enforced where the row is made and
+  again where the token is read, so a row promoted by hand in the database still acts as a Member
+  at most. A service account therefore cannot reach `/api/service-accounts` itself.
+- **No seat.** Service accounts are not members and do not count against the license's seats.
+- **Revocation is a stamp, not a delete.** The row stays with `revoked_at` — "what could act as
+  this organization, and until when" is an answer an audit needs afterwards — and every request
+  presenting the token is refused with `401` from then on. `last_used_at` is written at most
+  once a minute per account, so a pipeline polling a run is one row write a minute.
+- **The bearer stands in for the CSRF token.** A page in a browser cannot attach an
+  `Authorization` header to a cross-site request without a preflight this server never approves,
+  so the header is the proof of intent; there is no cookie to obtain and no session is created.
+- **By tier.** A Team license holds **two** working tokens at once; minting a third is refused
+  with the feature's own sentence and the count (`"… 2 of 2 service accounts in use; revoke one
+  to mint another"`), and the screen disables the button before the form is filled in. Enterprise
+  is unlimited. A free installation — one person on their own machine — is never capped.
 
 ## Headless: run a flow from a terminal
 
@@ -1467,6 +1510,18 @@ would be a hole rather than a convenience — there is no unauthenticated mode a
 was no honest way to keep one for this. Prefer the environment variables over `--email` /
 `--password`: an argument ends up in the job's log and in the process list.
 
+**Against a server deployment, use a service account rather than a person's password:**
+
+```bash
+export CONCENTUS_TOKEN=csa_…                            # minted under Resources → Service accounts
+node scripts/concentus-run.mjs my-flow.json --url https://concentus.example.com --input "go"
+```
+
+`CONCENTUS_TOKEN` replaces the sign-in entirely — the token rides as a bearer on every request,
+the run is credited to the account's name, and revoking it stops the job without touching anyone's
+password. It is read from the environment only; there is deliberately no `--token` flag. A revoked
+or unknown token exits `4` before any run starts. See [Service accounts](#service-accounts).
+
 It boots the jar on a free port with a throwaway data directory, imports the flow, starts a run,
 prints the agents' messages on **stdout** and everything else (progress, errors, the outcome) on
 **stderr** — so `node scripts/concentus-run.mjs flow.json --input "go" --quiet > answer.txt` leaves
@@ -1480,6 +1535,7 @@ you the answer and nothing else.
 | `--timeout SECS` | give up waiting (default 1800) and exit 3. |
 | `--quiet` | only the answer and the outcome line. |
 | `--email` / `--password` | the account to sign in as. Default to `CONCENTUS_EMAIL` / `CONCENTUS_PASSWORD`. |
+| `CONCENTUS_TOKEN` (env only) | a service account token instead of a sign-in — the right credential for a machine. |
 
 **Exit codes**, because a shell needs to tell three different situations apart:
 

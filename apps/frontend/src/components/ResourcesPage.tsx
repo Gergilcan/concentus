@@ -13,14 +13,16 @@ import { McpServerJson } from './McpServerJson.tsx'
 import { MembersPanel } from './MembersPanel.tsx'
 import { ModelField } from './ModelField.tsx'
 import { PluginsPanel } from './PluginsPanel.tsx'
+import { ServiceAccountsPanel } from './ServiceAccountsPanel.tsx'
 import { SettingsPanel } from './SettingsPanel.tsx'
 import { SkillsPanel } from './SkillsPanel.tsx'
 import { StoragePanel } from './StoragePanel.tsx'
 import { UpdatesPanel } from './UpdatesPanel.tsx'
 import { shellBridge } from '../api/shell.ts'
+import { usePermissions } from '../state/permissions.tsx'
 import styles from './resources.module.scss'
 
-type Tab = 'settings' | 'members' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
+type Tab = 'settings' | 'members' | 'serviceAccounts' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
 
 /**
  * The tab strip, in display order. `desktopOnly` keeps Updates out of a browser tab, which has no
@@ -34,7 +36,7 @@ type Tab = 'settings' | 'members' | 'agents' | 'mcp' | 'facades' | 'databases' |
  * past "Members" and "Storage" to find it. The divider is the whole treatment — a second row or a
  * nested menu would cost more attention than the distinction is worth.
  */
-const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolean; startsAdmin?: boolean }> = [
+const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolean; startsAdmin?: boolean; adminOnly?: boolean }> = [
   { id: 'agents', label: 'Agents' },
   { id: 'mcp', label: 'MCP Servers' },
   {
@@ -67,6 +69,15 @@ const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolea
       'Who is in this organization and what each of them may do: read, run, edit, or administer. Enforced on every request, not only in the interface.',
   },
   {
+    id: 'serviceAccounts',
+    label: 'Service accounts',
+    // Admin only, and hidden rather than disabled for everyone else: every route behind it
+    // answers 403 to a non-admin, so a tab that opens onto an error is a tab that should not open.
+    adminOnly: true,
+    title:
+      'Tokens for machines — a CI job, a cron entry, another system. Each acts as its role on every request and takes no seat.',
+  },
+  {
     id: 'settings',
     label: 'Settings',
     title:
@@ -81,6 +92,7 @@ const isLocalServer = (draft: Record<string, unknown>) => String(draft.command ?
 
 export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
   const { t } = useTranslation()
+  const { canAdminister } = usePermissions()
   const [tab, setTab] = useState<Tab>('agents')
   // Remounts the MCP CrudPanel after a catalog add, so the new definition appears in its list —
   // the panel loads on mount and has no other way to be told.
@@ -93,7 +105,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
   return (
     <div className={styles.resources}>
       <div className={styles.tabs}>
-        {TABS.filter((td) => !td.desktopOnly || shellBridge()).map((td) => (
+        {TABS.filter((td) => (!td.desktopOnly || shellBridge()) && (!td.adminOnly || canAdminister)).map((td) => (
           <Fragment key={td.id}>
             {td.startsAdmin && <span className={styles.tabDivider} aria-hidden="true" />}
             <button
@@ -111,6 +123,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
 
       <div className={styles.tabBody}>
         {tab === 'members' && <MembersPanel pushError={pushError} />}
+        {tab === 'serviceAccounts' && canAdminister && <ServiceAccountsPanel pushError={pushError} />}
 
         {tab === 'agents' && (
           <CrudPanel<LibraryAgent>
