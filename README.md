@@ -994,8 +994,15 @@ npx concentus
 The app itself asks for none of that at runtime: it runs at a one-seat limit with no license at
 all, and a free individual license — same limit, just your name on it — is a form away at
 [concentus-ai.com/#license](https://www.concentus-ai.com/#license). A shared database, members
-beyond the first, and SSO are the enterprise features, priced per seat and billed monthly or
-annually. See [the licensing docs](https://www.concentus-ai.com/docs#licensing) for the details.
+beyond the first, and SSO are the paid features: a **team** license (up to ten seats, monthly or
+annual, bought on the site by card) or an **enterprise** one (any size, by contact) — or, to try
+first, a 14-day trial from the same page, no card. See
+[the licensing docs](https://www.concentus-ai.com/docs#licensing) for the details.
+
+Building from source and want the team tier to verify? It is off until a key exists: run
+`node apps/website/scripts/keygen.mjs`, paste the public line into `license.team-public-key` in
+`apps/backend/src/main/resources/application.properties`, and the private line into Vercel as
+`TEAM_SIGNING_KEY`. The script writes nothing; no key is ever in the repository.
 
 ## Updates
 

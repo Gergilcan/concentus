@@ -48,6 +48,16 @@ test('tier must match the signing key: enterprise payload under the individual k
   assert.throws(() => verifyLicense(token, keys), /signature/)
 })
 
+test('the private key is accepted as a PEM or as the one-line PKCS8 base64 keygen.mjs prints — same key, same signatures verify', () => {
+  const team = generateKeypair()
+  const payload = { tier: 'team', licensee: 'Team', email: 't@e.com', seats: 3, issued: '2026-08-29', expires: '2026-09-29', id: 't5' }
+  const fromPem = signLicense(payload, team.privateKeyPem)
+  const fromBase64 = signLicense(payload, team.privateKeyPkcs8Base64)
+  assert.equal(verifyLicense(fromPem, { team: team.publicKeyPem }).seats, 3)
+  assert.equal(verifyLicense(fromBase64, { team: team.publicKeyPem }).seats, 3)
+  assert.throws(() => signLicense(payload, ''), /no private key/)
+})
+
 test('garbage is refused, not crashed on', () => {
   assert.throws(() => verifyLicense('CONCENTUS.not-base64.!!', keys))
   assert.throws(() => verifyLicense('hello', keys))

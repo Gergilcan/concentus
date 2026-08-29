@@ -16,9 +16,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * an external database. Same fixtures and verifier as LicenseServiceTest — this only exercises the
  * static, Spring-free wrapper that a bean-less startup path can call.
  *
- * <p>Three-way contract: true = enterprise covers external; false = valid individual license, the
- * caller falls back to the embedded database (the app runs, WITH the limitation); throws = no
- * valid license, or an enterprise one past its grace.
+ * <p>Three-way contract: true = a paid license (enterprise or team) covers external; false = valid
+ * individual license, the caller falls back to the embedded database (the app runs, WITH the
+ * limitation); throws = no valid license, or a paid one past its grace.
  */
 class LicenseCheckTest {
 
@@ -39,6 +39,13 @@ class LicenseCheckTest {
     @Test
     void enterpriseFixtureInFile_coversExternal(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve(LicenseService.FILE_NAME), TestLicenses.token("enterprise-test.license"));
+        assertTrue(LicenseCheck.enterpriseCoversExternalDatabase(dir, TestLicenses.verifier(), "",
+                at("2026-08-22")));
+    }
+
+    @Test
+    void teamFixtureInFile_coversExternalExactlyLikeEnterprise(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve(LicenseService.FILE_NAME), TestLicenses.token("team-test.license"));
         assertTrue(LicenseCheck.enterpriseCoversExternalDatabase(dir, TestLicenses.verifier(), "",
                 at("2026-08-22")));
     }
@@ -66,6 +73,31 @@ class LicenseCheckTest {
     }
 
     @Test
+    void teamExpiredBeyondGrace_refusesTheSameWay_namingTheTeamLicense(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve(LicenseService.FILE_NAME), TestLicenses.token("team-expired-test.license"));
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> LicenseCheck.enterpriseCoversExternalDatabase(dir, TestLicenses.verifier(), "",
+                        at("2020-06-16")));
+        assertTrue(e.getMessage().contains("team license"), e.getMessage());
+        assertTrue(e.getMessage().contains("Renew"));
+        // Still the shell's phrase: the wall is the same wall whichever paid tier lapsed.
+        assertTrue(e.getMessage().contains("is an enterprise feature"));
+    }
+
+    @Test
+    void expiredTrial_refusesNamingTheTrial_andPointsAtBuyingNotRenewing(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve(LicenseService.FILE_NAME), TestLicenses.token("team-trial-test.license"));
+        // ended 2026-09-05; still covered on 2026-09-15 (grace), refused on 2026-09-20
+        assertTrue(LicenseCheck.enterpriseCoversExternalDatabase(dir, TestLicenses.verifier(), "", at("2026-09-15")));
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> LicenseCheck.enterpriseCoversExternalDatabase(dir, TestLicenses.verifier(), "",
+                        at("2026-09-20")));
+        assertTrue(e.getMessage().contains("the trial for"), e.getMessage());
+        assertTrue(e.getMessage().contains("Get a team or enterprise license"), e.getMessage());
+        assertTrue(e.getMessage().contains("is an enterprise feature"));
+    }
+
+    @Test
     void withinGrace_coversExternal(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve(LicenseService.FILE_NAME),
                 TestLicenses.token("enterprise-expired-test.license"));
@@ -89,12 +121,13 @@ class LicenseCheckTest {
     }
 
     // The same CONCENTUS_LICENSE_TEST_KEYS hook LicenseServiceTest exercises, through this class's
-    // own testable overload: LicenseVerifier.forProduction(envTestKeys) is what the one-arg
-    // production entry point now passes as the verifier instead of LicenseVerifier.production().
+    // own testable overload: LicenseVerifier.forProduction(envTestKeys, teamKey) is what the
+    // two-arg production entry point now passes as the verifier instead of
+    // LicenseVerifier.production().
     @Test
     void verifierFromEnvTestKeys_acceptsAFixtureSignedLicense(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve(LicenseService.FILE_NAME), TestLicenses.token("enterprise-test.license"));
-        LicenseVerifier v = LicenseVerifier.forProduction(TestLicenses.testKeysPath().toString());
+        LicenseVerifier v = LicenseVerifier.forProduction(TestLicenses.testKeysPath().toString(), "");
         assertTrue(LicenseCheck.enterpriseCoversExternalDatabase(dir, v, "", at("2026-08-22")));
     }
 }

@@ -939,6 +939,8 @@ export interface LicenseStatus {
   graceDaysLeft: number | null
   valid: boolean
   problem: string | null
+  /** True on the 14-day trial the website issues — a team license the panel counts down instead of naming. */
+  trial: boolean
 }
 
 // `type` aliases (not interfaces) so they satisfy the CrudPanel `Record<string, unknown>` constraint.

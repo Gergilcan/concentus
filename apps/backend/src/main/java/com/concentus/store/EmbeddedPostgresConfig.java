@@ -104,6 +104,7 @@ public class EmbeddedPostgresConfig {
                                  @Value("${PERSIST_DB_URL:}") String configuredUrl,
                                  @Value("${PERSIST_DB_USER:}") String configuredUser,
                                  @Value("${PERSIST_DB_PASSWORD:}") String configuredPassword,
+                                 @Value("${license.team-public-key:}") String teamPublicKey,
                                  ConfigurableApplicationContext context) throws IOException {
         StorageSettings settings = storageSettings.load();
         // A deployment that named a database in its environment meant it. Read from PERSIST_DB_URL
@@ -120,10 +121,10 @@ public class EmbeddedPostgresConfig {
         // does not refuse startup: the app runs WITH the limitation, on the embedded database
         // below. No valid license (or an enterprise one past its grace) still stops here, inside
         // enterpriseCoversExternalDatabase.
-        if (settings.isExternal() && !LicenseCheck.enterpriseCoversExternalDatabase(Path.of(dataDir))) {
+        if (settings.isExternal() && !LicenseCheck.enterpriseCoversExternalDatabase(Path.of(dataDir), teamPublicKey)) {
             log.warn("An external PostgreSQL is configured, but the installed license is individual —"
                     + " starting on the embedded database instead. The shared database unlocks with"
-                    + " an enterprise license: https://www.concentus-ai.com/#license");
+                    + " a team or enterprise license: https://www.concentus-ai.com/#license");
             settings = StorageSettings.embedded();
         }
         if (!settings.isExternal()) {
