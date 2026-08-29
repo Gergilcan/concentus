@@ -48,6 +48,9 @@ test('a schedule builds from natural choices, and custom cron still exists', asy
     .filter({ hasText: 'E2E cron flow' })
     .getByRole('button', { name: 'Open' })
     .click()
+  // The card's words prove the flow is loaded and the canvas has settled: a double-click during
+  // the opening fit-to-view lands its two clicks on different spots and opens nothing.
+  await expect(page.locator('.react-flow__node').getByText('Working days (Mon–Fri) at 07:00')).toBeVisible()
   await page.locator('.react-flow__node').first().dblclick()
   await expect(page.getByLabel(/^Schedule/)).toHaveValue('daily')
   await expect(page.getByLabel('At', { exact: true })).toHaveValue('07:00')
