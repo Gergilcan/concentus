@@ -20,10 +20,12 @@ interface Props {
   onView: (v: View) => void
   /** The signed-in address, or null when authentication is switched off. */
   signedInAs?: string | null
+  /** The organization this window is working in — given only when the account is in more than one. */
+  organizationName?: string | null
   onSignOut?: () => void
 }
 
-export function AppHeader({ view, onView, signedInAs, onSignOut }: Props) {
+export function AppHeader({ view, onView, signedInAs, organizationName, onSignOut }: Props) {
   const { t } = useTranslation()
   // Both fields off the same fetch: the chip only means something while the license is still
   // valid (mid-grace, counting down). Once grace runs out, valid flips to false and graceDaysLeft
@@ -83,6 +85,16 @@ export function AppHeader({ view, onView, signedInAs, onSignOut }: Props) {
         </span>
       )}
       <AuthBadge />
+      {/* Which organization's flows these are. Only shown past one: with a single organization the
+          name labels nothing, and with two it is the one fact the rest of the screen cannot say. */}
+      {organizationName && (
+        <span
+          className={styles.orgChip}
+          title={t('The organization this window is working in. Switch from the account menu.')}
+        >
+          {organizationName}
+        </span>
+      )}
       {signedInAs && onSignOut && <AccountMenu signedInAs={signedInAs} onSignOut={onSignOut} />}
     </header>
   )

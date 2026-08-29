@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.FlowGraph;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,8 +13,9 @@ import java.nio.file.Path;
 @Component
 public class FlowStore extends JsonStore<FlowGraph> {
 
-    public FlowStore(JdbcTemplate jdbc, @Value("${app.data-dir}") String dataDir, ObjectMapper mapper) {
-        super(jdbc, mapper, FlowGraph.class, "flow", "flow_", Path.of(dataDir, "flows"));
+    public FlowStore(JdbcTemplate jdbc, @Value("${app.data-dir}") String dataDir, ObjectMapper mapper,
+                     OrgContext orgContext) {
+        super(jdbc, mapper, FlowGraph.class, "flow", "flow_", Path.of(dataDir, "flows"), orgContext);
     }
 
     @Override

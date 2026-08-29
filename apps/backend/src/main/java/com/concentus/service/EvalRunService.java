@@ -1,5 +1,6 @@
 package com.concentus.service;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.FlowEvalCase;
 import com.concentus.model.FlowEvalCaseResult;
 import com.concentus.model.FlowEvalResult;
@@ -54,6 +55,8 @@ public class EvalRunService {
     private final RunService runs;
     private final EvalJudge judge;
     private final FlowVersionStore versions;
+    /** Whose results an evaluation writes: captured on the request thread, since the worker has no principal. */
+    private final OrgContext orgContext;
     private final long pollMillis;
     private final long caseTimeoutMillis;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
@@ -65,17 +68,20 @@ public class EvalRunService {
     // @Autowired because a second (test) constructor exists — without it Spring refuses the bean.
     @Autowired
     public EvalRunService(EvalDatasetStore dataset, EvalResultStore results, RunService runs,
-                          EvalJudge judge, FlowVersionStore versions) {
-        this(dataset, results, runs, judge, versions, DEFAULT_POLL_MILLIS, DEFAULT_CASE_TIMEOUT_MILLIS);
+                          EvalJudge judge, FlowVersionStore versions, OrgContext orgContext) {
+        this(dataset, results, runs, judge, versions, orgContext, DEFAULT_POLL_MILLIS,
+                DEFAULT_CASE_TIMEOUT_MILLIS);
     }
 
     EvalRunService(EvalDatasetStore dataset, EvalResultStore results, RunService runs,
-                   EvalJudge judge, FlowVersionStore versions, long pollMillis, long caseTimeoutMillis) {
+                   EvalJudge judge, FlowVersionStore versions, OrgContext orgContext,
+                   long pollMillis, long caseTimeoutMillis) {
         this.dataset = dataset;
         this.results = results;
         this.runs = runs;
         this.judge = judge;
         this.versions = versions;
+        this.orgContext = orgContext;
         this.pollMillis = pollMillis;
         this.caseTimeoutMillis = caseTimeoutMillis;
     }
@@ -100,22 +106,30 @@ public class EvalRunService {
             throw new IllegalArgumentException(
                     "This flow has no evaluation cases yet. Add at least one before running an evaluation.");
         }
-        FlowEvalResult pending = results.save(new FlowEvalResult(null, flow.id(),
+        // Captured on the request thread: the worker below has no principal, and the results must
+        // land in the organization of the person who can see this flow, not the deployment's.
+        String organizationId = orgContext.currentOrganizationId();
+        FlowEvalResult pending = results.saveIn(organizationId, new FlowEvalResult(null, flow.id(),
                 versions.currentVersion(flow.id()), System.currentTimeMillis(), null,
                 FlowEvalResult.RUNNING, List.of(), 0, cases.size()));
         worker.submit(() -> {
             try {
-                evaluate(pending, flow, cases);
+                evaluate(organizationId, pending, flow, cases);
             } catch (RuntimeException e) {
                 // The result must not stay "running" forever: an evaluation the UI keeps polling
                 // for is worse than one that says it broke.
                 log.error("Evaluation {} of flow {} stopped on an unexpected error.", pending.id(), flow.id(), e);
-                results.save(new FlowEvalResult(pending.id(), pending.flowId(), pending.flowVersion(),
-                        pending.startedAt(), System.currentTimeMillis(), FlowEvalResult.DONE,
-                        pending.cases(), pending.passed(), pending.total()));
+                results.saveIn(organizationId, new FlowEvalResult(pending.id(), pending.flowId(),
+                        pending.flowVersion(), pending.startedAt(), System.currentTimeMillis(),
+                        FlowEvalResult.DONE, pending.cases(), pending.passed(), pending.total()));
             }
         });
         return pending;
+    }
+
+    /** As {@link #evaluate(String, FlowEvalResult, FlowGraph, List)}, for the calling thread's organization. */
+    void evaluate(FlowEvalResult pending, FlowGraph flow, List<FlowEvalCase> cases) {
+        evaluate(orgContext.currentOrganizationId(), pending, flow, cases);
     }
 
     /**
@@ -123,20 +137,20 @@ public class EvalRunService {
      * done at the end. Package-private so a test can run it on its own thread and read the
      * outcome without a latch.
      */
-    void evaluate(FlowEvalResult pending, FlowGraph flow, List<FlowEvalCase> cases) {
+    void evaluate(String organizationId, FlowEvalResult pending, FlowGraph flow, List<FlowEvalCase> cases) {
         List<FlowEvalCaseResult> judged = new ArrayList<>();
         int passed = 0;
         for (FlowEvalCase c : cases) {
             FlowEvalCaseResult outcome = runCase(flow, c);
             judged.add(outcome);
             if (outcome.passed()) passed++;
-            results.save(new FlowEvalResult(pending.id(), pending.flowId(), pending.flowVersion(),
-                    pending.startedAt(), null, FlowEvalResult.RUNNING, List.copyOf(judged), passed,
-                    cases.size()));
+            results.saveIn(organizationId, new FlowEvalResult(pending.id(), pending.flowId(),
+                    pending.flowVersion(), pending.startedAt(), null, FlowEvalResult.RUNNING,
+                    List.copyOf(judged), passed, cases.size()));
         }
-        results.save(new FlowEvalResult(pending.id(), pending.flowId(), pending.flowVersion(),
-                pending.startedAt(), System.currentTimeMillis(), FlowEvalResult.DONE,
-                List.copyOf(judged), passed, cases.size()));
+        results.saveIn(organizationId, new FlowEvalResult(pending.id(), pending.flowId(),
+                pending.flowVersion(), pending.startedAt(), System.currentTimeMillis(),
+                FlowEvalResult.DONE, List.copyOf(judged), passed, cases.size()));
     }
 
     /**

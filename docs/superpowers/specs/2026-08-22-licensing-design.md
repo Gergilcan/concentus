@@ -220,6 +220,52 @@ question is asked anywhere else.
 | Tests | `AuditServiceTest` (actor, system actor, a failing store never throws), `AuditControllerTest` and `RetentionServiceTest` against the embedded PostgreSQL with the fixture licenses (team purges and spares the golden pair; enterprise and free keep all; the enterprise setting is ignored on team), the recording sites in `RunServiceTest` / `FlowControllerTest`, and `AuditPanel.test.tsx` (rows, filters, paging, the disabled export with its refusal). |
 | Not done | Member removal and license removal have no endpoint today, so there is no row for them; `PolicyStore` does not exist on this branch, so no policy row either — the site is `AuditService.record` when it arrives. |
 
+## 13. Several organizations on one deployment (added 2026-08-29)
+
+Item 6 of the Enterprise line: `Feature.MULTI_ORG`.
+
+**What the data model already had.** An `organizations` table and `users.organization_id`, one
+organization per account, with `credentials`, `settings`, `user_identities` and `device_accounts`
+keyed by it. **What it did not have:** any way for an account to be in two organizations, and any
+organization column on `resources` (flows, agents, MCP servers, facades, knowledge bases, skills,
+variables, databases, eval cases and results, folder-watch state) or `runs` — those were
+deployment-wide, and the README said so.
+
+**Migration V16.** `memberships(user_id, organization_id, role, created_at)`; every existing account
+becomes one membership in the organization it named. `users.organization_id` and `users.role`
+stay and now mean the *current* organization and the role there — every reader of the principal
+keeps reading one organization, and the switch is the only thing that rewrites them. `resources`
+and `runs` gain `organization_id`, backfilled to the oldest `organizations` row (the only one a
+deployment could have had); an organization every account names but no row describes becomes a
+row named "Default". No foreign keys, for the baseline reason V8 and V10 give.
+
+**Endpoints** (`OrganizationController`, `/api/organizations`): `GET` the caller's memberships;
+`POST` create — admin of the current organization, refused with `refusal(MULTI_ORG)` on every
+tier but Enterprise; the creator gets ADMIN there. `PUT /{id}` rename — admin of *that*
+organization, any tier. `GET /{id}/members`, `POST /{id}/members` (existing address joins, new
+address is created with a password and counted against the seats) — admin of that organization.
+`POST /{id}/switch` — any member; rewrites the account row and replaces the session principal.
+
+**Seats** are distinct accounts on the deployment (`AccountStore.countUsers()`), the same count
+`createMember` and the OIDC provisioning use; a person in two organizations is one seat.
+
+**Isolation.** `JsonStore` scopes `list/get/save/delete` to `OrgContext.currentOrganizationId()`
+(the principal's organization, else the default) and refuses an upsert onto another
+organization's id. Cross-organization reads exist by name only — `listAcrossOrganizations` for
+the three schedulers, `getAcrossOrganizations` for webhooks, published flows and a trigger firing
+by id, `getIn/saveIn` for a caller that knows its organization. `AgentRun.organizationId` is
+stamped at launch (principal's, else the flow row's) and persisted; `RunController` and the run
+WebSocket filter on it; every run-time lookup that had a run in hand (MCP proxy, worker tools,
+local-model MCP clients, mail hand-offs, CLI MCP grants, sub-flows) reads the run's organization
+instead of the default. Evaluation results are written under the organization captured on the
+request thread.
+
+**Not partitioned yet:** the static `AgentSpec` credential lookup (`McpServerSpec` token and
+env, `ApiSourceSpec` and `RepoSpec` tokens, `SqlSourceSpec` password) is called from a run's
+process-building threads with no run in hand, and `CredentialResolver` therefore resolves against
+the calling thread's organization — for a run, the default. Binding a run's organization to its
+threads (run pool, fan-out pool, watchdogs) is the remaining step; it is not faked here.
+
 ## 14. Service accounts, and the endpoint rate by tier (added 2026-08-29)
 
 Item 7 of the Enterprise line: the two caps in `Feature` that were constants without a consumer

@@ -69,7 +69,13 @@ export default function App() {
   // it down by hand would mean the one component that forgot is the one that offers a 403.
   return (
     <PermissionsProvider role={session?.role}>
-      <Workspace signedInAs={session?.email ?? null} onSignOut={signOut} />
+      <Workspace
+        signedInAs={session?.email ?? null}
+        // Named only when there is a choice: one organization's name in the header is a label for
+        // nothing, and the moment there are two it is the answer to "which one am I looking at".
+        organizationName={(session?.organizationCount ?? 0) > 1 ? (session?.organizationName ?? null) : null}
+        onSignOut={signOut}
+      />
     </PermissionsProvider>
   )
 }
@@ -202,10 +208,12 @@ function SidePanel({ side, label, railLabel, open, onToggle, startDrag, children
 
 interface WorkspaceProps {
   signedInAs: string | null
+  /** The current organization's name, when the account is in more than one. */
+  organizationName: string | null
   onSignOut: () => void
 }
 
-function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
+function Workspace({ signedInAs, organizationName, onSignOut }: WorkspaceProps) {
   const { t } = useTranslation()
   const [view, setView] = useState<View>('flows')
   const [commandsOpen, setCommandsOpen] = useState(false)
@@ -422,7 +430,13 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
 
   return (
     <div className={styles.app}>
-      <AppHeader view={view} onView={setView} signedInAs={signedInAs} onSignOut={onSignOut} />
+      <AppHeader
+        view={view}
+        onView={setView}
+        signedInAs={signedInAs}
+        organizationName={organizationName}
+        onSignOut={onSignOut}
+      />
 
       <ErrorBoundary>{renderView()}</ErrorBoundary>
 

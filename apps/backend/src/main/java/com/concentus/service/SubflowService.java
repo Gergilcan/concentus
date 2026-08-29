@@ -93,7 +93,7 @@ public class SubflowService {
                     + "it again would loop forever. Chain: " + String.join(" → ", chain) + ".");
         }
 
-        Optional<FlowGraph> child = flows.get(spec.flowId);
+        Optional<FlowGraph> child = flows.getIn(parent.organizationId, spec.flowId);
         if (child.isEmpty()) {
             return Result.refused("The flow '" + spec.label + "' no longer exists (id "
                     + spec.flowId + "). Point the node at another one.");

@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.FlowEvalCase;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,8 +19,8 @@ import java.util.List;
 @Component
 public class EvalDatasetStore extends JsonStore<FlowEvalCase> {
 
-    public EvalDatasetStore(JdbcTemplate jdbc, ObjectMapper mapper) {
-        super(jdbc, mapper, FlowEvalCase.class, "eval-case", "evc_", null);
+    public EvalDatasetStore(JdbcTemplate jdbc, ObjectMapper mapper, OrgContext orgContext) {
+        super(jdbc, mapper, FlowEvalCase.class, "eval-case", "evc_", null, orgContext);
     }
 
     @Override

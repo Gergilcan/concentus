@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.support.Ids;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -31,6 +32,16 @@ import java.util.stream.Stream;
  * their JSON deserialises to, so separate tables would be the same three columns three times, and
  * a new kind of record would need a migration instead of a constructor argument.
  *
+ * <p><b>Every row belongs to one organization.</b> {@link #list()}, {@link #get}, {@link #save}
+ * and {@link #delete} act for the organization the calling thread is in — the signed-in person's,
+ * or the installation's default when there is no principal — so a second organization on the
+ * same deployment sees none of the first one's records and cannot reach them by id. The few
+ * callers that legitimately act for no organization in particular — the schedulers, which fire
+ * every organization's triggers, and the endpoints a webhook or a published-flow token
+ * authenticates — say so by name: {@link #listAcrossOrganizations()} and
+ * {@link #getAcrossOrganizations}. A caller that knows which organization it acts for without
+ * having a principal (a run's own threads) names it: {@link #getIn}, {@link #saveIn}.
+ *
  * <p><b>What this costs.</b> A file-backed store worked whether or not the database did; this does
  * not. An unreachable database now means no flows rather than a degraded feature, so every read
  * fails soft — an empty list and a logged reason — while writes fail loudly, because silently
@@ -51,18 +62,21 @@ public abstract class JsonStore<T> {
     private final String idPrefix;
     /** The folder these records used to live in, imported once and then set aside. */
     private final Path legacyDir;
+    /** Whose records a call without an explicit organization reads and writes. */
+    private final OrgContext orgContext;
     private volatile boolean available;
     /** Every read selects the same single column; {@code parse} may return null, hence the filters. */
     private final RowMapper<T> jsonRow = (rs, i) -> parse(rs.getString("json"));
 
     protected JsonStore(JdbcTemplate jdbc, ObjectMapper mapper, Class<T> type, String kind,
-                        String idPrefix, Path legacyDir) {
+                        String idPrefix, Path legacyDir, OrgContext orgContext) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.type = type;
         this.kind = kind;
         this.idPrefix = idPrefix;
         this.legacyDir = legacyDir;
+        this.orgContext = orgContext;
     }
 
     @PostConstruct
@@ -90,10 +104,38 @@ public abstract class JsonStore<T> {
 
     protected abstract String sortKey(T item);
 
+    /** The organization a call that names none acts for. */
+    private String scope() {
+        return orgContext.currentOrganizationId();
+    }
+
     public List<T> list() {
+        return listIn(scope());
+    }
+
+    public List<T> listIn(String organizationId) {
         if (!available) return List.of();
         try {
             // Sorted in SQL, case-insensitively, to match what the file-backed version did.
+            return jdbc.query(
+                    "select json from resources where kind = ? and organization_id = ? "
+                            + "order by lower(coalesce(sort_key, '')), id",
+                    jsonRow, kind, organizationId)
+                    .stream().filter(Objects::nonNull).toList();
+        } catch (RuntimeException e) {
+            log.warn("Could not list {} records: {}", kind, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * Every organization's records. For the schedulers only — a cron, a mail poll or a folder
+     * watch has to fire for every organization's flows, and has no principal to be scoped by.
+     * Nothing that answers an HTTP request for a person should call this.
+     */
+    public List<T> listAcrossOrganizations() {
+        if (!available) return List.of();
+        try {
             return jdbc.query(
                     "select json from resources where kind = ? order by lower(coalesce(sort_key, '')), id",
                     jsonRow, kind)
@@ -105,11 +147,16 @@ public abstract class JsonStore<T> {
     }
 
     public Optional<T> get(String id) {
+        return getIn(scope(), id);
+    }
+
+    /** Empty for an id that exists in another organization, exactly as for one that does not exist. */
+    public Optional<T> getIn(String organizationId, String id) {
         if (!available) return Optional.empty();
         String safe = Ids.sanitize(id, BAD_ID);
         try {
-            return jdbc.query("select json from resources where kind = ? and id = ?",
-                            jsonRow, kind, safe)
+            return jdbc.query("select json from resources where kind = ? and id = ? and organization_id = ?",
+                            jsonRow, kind, safe, organizationId)
                     .stream().findFirst().filter(Objects::nonNull);
         } catch (RuntimeException e) {
             log.warn("Could not read {} {}: {}", kind, safe, e.getMessage());
@@ -117,36 +164,93 @@ public abstract class JsonStore<T> {
         }
     }
 
+    /**
+     * A record by id whichever organization holds it. For callers whose authorization is not a
+     * session but the id itself plus a secret of its own — a webhook delivery, a published-flow
+     * token, a trigger firing the flow it was scheduled for.
+     */
+    public Optional<T> getAcrossOrganizations(String id) {
+        if (!available) return Optional.empty();
+        String safe = Ids.sanitize(id, BAD_ID);
+        try {
+            return jdbc.query("select json from resources where kind = ? and id = ?", jsonRow, kind, safe)
+                    .stream().findFirst().filter(Objects::nonNull);
+        } catch (RuntimeException e) {
+            log.warn("Could not read {} {}: {}", kind, safe, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /** Which organization a record belongs to — what a run started with no principal is stamped with. */
+    public Optional<String> organizationOf(String id) {
+        if (!available || id == null || id.isBlank()) return Optional.empty();
+        try {
+            return jdbc.queryForList("select organization_id from resources where kind = ? and id = ?",
+                            String.class, kind, Ids.sanitize(id, BAD_ID))
+                    .stream().filter(Objects::nonNull).findFirst();
+        } catch (RuntimeException e) {
+            log.warn("Could not read the organization of {} {}: {}", kind, id, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
     public T save(T item) {
+        return saveIn(scope(), item);
+    }
+
+    /**
+     * @throws IllegalArgumentException when the id already names another organization's record —
+     *         an import of somebody else's backup, most likely. Refused rather than overwritten:
+     *         the write would otherwise reach across the one boundary this store exists to keep.
+     */
+    public T saveIn(String organizationId, T item) {
         requireAvailable();
         String given = idOf(item);
         String id = (given == null || given.isBlank())
                 ? Ids.generate(idPrefix, 10)
                 : Ids.sanitize(given, BAD_ID);
         T toSave = withId(item, id);
-        write(id, toSave);
+        write(organizationId, id, toSave);
         return toSave;
     }
 
     public boolean delete(String id) {
-        requireAvailable();
-        return jdbc.update("delete from resources where kind = ? and id = ?",
-                kind, Ids.sanitize(id, BAD_ID)) > 0;
+        return deleteIn(scope(), id);
     }
 
-    private void write(String id, T item) {
+    public boolean deleteIn(String organizationId, String id) {
+        requireAvailable();
+        return jdbc.update("delete from resources where kind = ? and id = ? and organization_id = ?",
+                kind, Ids.sanitize(id, BAD_ID), organizationId) > 0;
+    }
+
+    private void write(String organizationId, String id, T item) {
+        String json;
         try {
-            String json = mapper.writeValueAsString(item);
-            jdbc.update("""
-                    insert into resources (kind, id, sort_key, json, updated_at)
-                    values (?, ?, ?, ?, ?)
+            json = mapper.writeValueAsString(item);
+        } catch (Exception e) {
+            throw new IllegalStateException("Could not save " + kind + " " + id + ": " + e.getMessage(), e);
+        }
+        int written;
+        try {
+            // The update half applies only to a row this organization owns: with the guard, an id
+            // that collides with another organization's record touches nothing and is reported
+            // below, instead of quietly becoming that organization's record.
+            written = jdbc.update("""
+                    insert into resources (kind, id, sort_key, json, updated_at, organization_id)
+                    values (?, ?, ?, ?, ?, ?)
                     on conflict (kind, id) do update
                        set sort_key = excluded.sort_key,
                            json = excluded.json,
                            updated_at = excluded.updated_at
-                    """, kind, id, sortKey(item), json, System.currentTimeMillis());
+                     where resources.organization_id = excluded.organization_id
+                    """, kind, id, sortKey(item), json, System.currentTimeMillis(), organizationId);
         } catch (Exception e) {
             throw new IllegalStateException("Could not save " + kind + " " + id + ": " + e.getMessage(), e);
+        }
+        if (written == 0) {
+            throw new IllegalArgumentException("The id " + id + " already names a " + kind
+                    + " in another organization. Save it under a new id.");
         }
     }
 
@@ -201,6 +305,9 @@ public abstract class JsonStore<T> {
      * when the table already holds records of this kind — that is the case where an install has
      * been running on the database for a while and the folder is a stale leftover, and re-importing
      * it would resurrect flows the user had deleted.
+     *
+     * <p>Imported into the installation's default organization: files on disk predate there being
+     * more than one, and this runs at startup with nobody signed in.
      */
     private void migrateLegacyFiles() {
         if (legacyDir == null || !Files.isDirectory(legacyDir)) return;
@@ -215,7 +322,7 @@ public abstract class JsonStore<T> {
             int imported = 0;
             for (T item : legacy) {
                 try {
-                    write(Ids.sanitize(idOf(item), BAD_ID), item);
+                    write(orgContext.defaultOrganizationId(), Ids.sanitize(idOf(item), BAD_ID), item);
                     imported++;
                 } catch (Exception e) {
                     failed.add(idOf(item) + " (" + e.getMessage() + ")");

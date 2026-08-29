@@ -48,18 +48,16 @@ public class McpOAuthController {
     /**
      * Which organization owns an MCP grant.
      *
-     * <p>The deployment's, not the signed-in user's — deliberately, and this was a live bug. A run
-     * happens on a background thread with no principal, so it resolves credentials against the
-     * configured organization, exactly as the mail poller does. Storing the grant under whoever
-     * happened to click the button meant the UI could report "connected" while every run still got
-     * 401, with nothing on screen to explain the contradiction.
-     *
-     * <p>It is not a hole in the isolation: flows themselves are deployment-wide, so a credential a
-     * flow needs at run time has to be too. Who may create one is still gated by
-     * {@code requireAdmin()}.
+     * <p>The organization the admin is working in. This used to be the deployment's default, and
+     * for a reason: a run happens on a background thread with no principal, and once resolved
+     * grants against the configured organization — so a grant stored under whoever clicked the
+     * button read "connected" on screen while every run got 401. Runs now carry their flow's
+     * organization ({@code AgentRun.organizationId}) and present the grant stored under it, which
+     * is exactly this one: the flow, the admin connecting its server, and the run all belong to the
+     * same organization. Who may create one is still gated by {@code requireAdmin()}.
      */
     private String grantOwner() {
-        return orgContext.defaultOrganizationId();
+        return orgContext.currentOrganizationId();
     }
 
     /**

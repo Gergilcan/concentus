@@ -1,6 +1,5 @@
 package com.concentus.service;
 
-import com.concentus.auth.OrgContext;
 import com.concentus.config.AgentSpec.McpServerSpec;
 import com.concentus.llm.McpOAuthStore;
 import com.concentus.web.RunMcpProxyController;
@@ -31,14 +30,12 @@ public class CliMcpServers {
     public static final String RUN_TOKEN_HEADER = RunMcpProxyController.TOKEN_HEADER;
 
     private final McpOAuthStore oauth;
-    private final OrgContext orgContext;
     private final ObjectMapper mapper;
     private final int serverPort;
 
-    public CliMcpServers(McpOAuthStore oauth, OrgContext orgContext, ObjectMapper mapper,
+    public CliMcpServers(McpOAuthStore oauth, ObjectMapper mapper,
                          @Value("${server.port:8734}") int serverPort) {
         this.oauth = oauth;
-        this.orgContext = orgContext;
         this.mapper = mapper;
         this.serverPort = serverPort;
     }
@@ -72,7 +69,7 @@ public class CliMcpServers {
         return server;
     }
 
-    public ObjectNode node(McpServerSpec m, String runId, String runToolToken) {
+    public ObjectNode node(McpServerSpec m, String organizationId, String runId, String runToolToken) {
         var server = mapper.createObjectNode();
 
         // The stdio transport: the CLI launches the process itself, per run — the same
@@ -99,7 +96,7 @@ public class CliMcpServers {
             return server;
         }
 
-        String granted = oauth.accessToken(orgContext.defaultOrganizationId(), m.url).orElse(null);
+        String granted = oauth.accessToken(organizationId, m.url).orElse(null);
         if (granted == null || granted.isBlank()) {
             // Nothing to present. Deliberately no header rather than an empty one, so a grant the
             // CLI holds itself still gets its chance.

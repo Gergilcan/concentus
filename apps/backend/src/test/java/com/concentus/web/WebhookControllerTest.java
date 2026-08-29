@@ -47,7 +47,7 @@ class WebhookControllerTest {
     private WebhookController controllerFor(FlowGraph flow) {
         flows = mock(FlowStore.class);
         runService = mock(RunService.class);
-        when(flows.get("f1")).thenReturn(Optional.of(flow));
+        when(flows.getAcrossOrganizations("f1")).thenReturn(Optional.of(flow));
         when(runService.start(any(FlowGraph.class), anyString())).thenReturn(summary());
         return new WebhookController(flows, runService, new ObjectMapper());
     }

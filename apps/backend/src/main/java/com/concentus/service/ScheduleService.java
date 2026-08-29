@@ -56,7 +56,7 @@ public class ScheduleService {
     public synchronized void reschedule() {
         jobs.values().forEach(f -> f.cancel(false));
         jobs.clear();
-        for (FlowGraph flow : flows.list()) {
+        for (FlowGraph flow : flows.listAcrossOrganizations()) {
             TriggerSpec t = TriggerSpec.from(flow);
             if (flow.id() == null || !t.scheduled()) continue;
             if (!flow.enabledOrDefault()) {
@@ -77,7 +77,7 @@ public class ScheduleService {
     }
 
     private void fire(String flowId) {
-        flows.get(flowId).ifPresent(flow -> {
+        flows.getAcrossOrganizations(flowId).ifPresent(flow -> {
             if (runService.hasActiveRun(flowId)) {
                 log.info("Scheduled tick for '{}' skipped — a run is still active.", flow.name());
                 return;

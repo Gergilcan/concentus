@@ -22,8 +22,8 @@ class OrgPolicyStoreTest {
     void freshTables() {
         TestDatabase.reset(TestDatabase.jdbc());
         ObjectMapper mapper = new ObjectMapper();
-        policies = new OrgPolicyStore(TestDatabase.jdbc(), mapper);
-        approvals = new PublishApprovalStore(TestDatabase.jdbc(), mapper);
+        policies = new OrgPolicyStore(TestDatabase.jdbc(), mapper, new com.concentus.auth.OrgContext("default"));
+        approvals = new PublishApprovalStore(TestDatabase.jdbc(), mapper, new com.concentus.auth.OrgContext("default"));
         policies.init();
         approvals.init();
     }

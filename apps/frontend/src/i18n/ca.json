@@ -1801,5 +1801,22 @@
   "Unlimited retention of runs and versions": "Retenció il·limitada d'execucions i versions",
   "Several organizations on one deployment": "Diverses organitzacions en un mateix desplegament",
   "Unlimited service accounts": "Comptes de servei il·limitats",
-  "Published endpoints without a rate limit": "Endpoints publicats sense límit de peticions"
+  "Published endpoints without a rate limit": "Endpoints publicats sense límit de peticions",
+  "Organizations": "Organitzacions",
+  "Several organizations on one deployment, each with its own flows, credentials, runs and settings. Creating a second one is an Enterprise feature.": "Diverses organitzacions en un mateix desplegament, cadascuna amb els seus propis flows, credencials, execucions i ajustos. Crear-ne una segona és una funció Enterprise.",
+  "Each organization has its own flows, agents, servers, credentials, runs and settings; nothing is shared between them. People can be in several, with a role in each, and switch from the account menu.": "Cada organització té els seus propis flows, agents, servidors, credencials, execucions i ajustos; no es comparteix res entre elles. Una persona pot ser en diverses, amb un rol a cadascuna, i canviar des del menú del compte.",
+  "Seats are counted for the whole deployment, as distinct accounts: a person in two organizations uses one.": "Els seients es compten per a tot el desplegament, com a comptes diferents: una persona en dues organitzacions n’ocupa un.",
+  "New organization": "Nova organització",
+  "The team or company it is for": "L’equip o l’empresa a què pertany",
+  "You will administer it. Creating a second organization is an Enterprise feature.": "L’administraràs tu. Crear una segona organització és una funció Enterprise.",
+  "New name for {{name}}": "Nom nou per a {{name}}",
+  "created {{when}}": "creada {{when}}",
+  "Rename": "Reanomena",
+  "Hide members": "Amaga els membres",
+  "Only for an address with no account yet": "Només per a una adreça que encara no té compte",
+  "An existing account joins as it is and takes no extra seat; a new address needs a temporary password.": "Un compte existent s’hi incorpora tal qual i no ocupa cap seient més; una adreça nova necessita una contrasenya temporal.",
+  "Add to organization": "Afegeix a l’organització",
+  "Switch organization": "Canvia d’organització",
+  "Work in {{name}}. Its flows, credentials and runs are its own.": "Treballa a {{name}}. Els seus flows, credencials i execucions són seus.",
+  "The organization this window is working in. Switch from the account menu.": "L’organització en què treballa aquesta finestra. Canvia des del menú del compte."
 }

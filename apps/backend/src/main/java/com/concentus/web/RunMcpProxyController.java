@@ -1,6 +1,5 @@
 package com.concentus.web;
 
-import com.concentus.auth.OrgContext;
 import com.concentus.config.AgentSpec;
 import com.concentus.config.AgentSpec.McpServerSpec;
 import com.concentus.llm.McpOAuthStore;
@@ -65,7 +64,6 @@ public class RunMcpProxyController {
 
     private final RunService runs;
     private final McpOAuthStore oauth;
-    private final OrgContext orgContext;
     private final ObjectMapper mapper;
     /** A span per tool call: which server, on which run, and how long it took. */
     private final com.concentus.telemetry.Telemetry telemetry;
@@ -73,20 +71,19 @@ public class RunMcpProxyController {
             .connectTimeout(Duration.ofSeconds(20)).build();
 
     @org.springframework.beans.factory.annotation.Autowired
-    public RunMcpProxyController(RunService runs, McpOAuthStore oauth, OrgContext orgContext,
+    public RunMcpProxyController(RunService runs, McpOAuthStore oauth,
                                  ObjectMapper mapper,
                                  com.concentus.telemetry.Telemetry telemetry) {
         this.runs = runs;
         this.oauth = oauth;
-        this.orgContext = orgContext;
         this.mapper = mapper;
         this.telemetry = telemetry;
     }
 
     /** The shape tests build: a proxy that records nothing, because they are about what it proxies. */
-    RunMcpProxyController(RunService runs, McpOAuthStore oauth, OrgContext orgContext,
+    RunMcpProxyController(RunService runs, McpOAuthStore oauth,
                           ObjectMapper mapper) {
-        this(runs, oauth, orgContext, mapper, com.concentus.telemetry.Telemetry.none());
+        this(runs, oauth, mapper, com.concentus.telemetry.Telemetry.none());
     }
 
     @PostMapping("/{server}")
@@ -124,7 +121,7 @@ public class RunMcpProxyController {
             return ResponseEntity.status(404).build();
         }
 
-        String organizationId = orgContext.defaultOrganizationId();
+        String organizationId = run.organizationId;
         String bearer = oauth.accessToken(organizationId, spec.url).orElse(null);
         HttpResponse<byte[]> res = forward(spec.url, bearer, sessionId, protocolVersion, body);
 
@@ -161,7 +158,7 @@ public class RunMcpProxyController {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(spec.url))
                 .timeout(Duration.ofSeconds(10))
                 .DELETE();
-        String bearer = oauth.accessToken(orgContext.defaultOrganizationId(), spec.url).orElse(null);
+        String bearer = oauth.accessToken(run.organizationId, spec.url).orElse(null);
         if (bearer != null && !bearer.isBlank()) b.header("Authorization", "Bearer " + bearer);
         if (sessionId != null) b.header(SESSION_HEADER, sessionId);
         try {

@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.McpDef;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,7 +26,7 @@ class McpDefStoreTest {
     @BeforeEach
     void setUp() {
         TestDatabase.reset(TestDatabase.jdbc());
-        store = new McpDefStore(TestDatabase.jdbc(), dataDir.toString(), new ObjectMapper());
+        store = new McpDefStore(TestDatabase.jdbc(), dataDir.toString(), new ObjectMapper(), new OrgContext("default"));
         store.init();
     }
 

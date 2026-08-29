@@ -44,6 +44,17 @@ public class AgentRun {
     /** "cloud" (Managed Agents / API key) or "local" (claude CLI / subscription). */
     public volatile String backend = "cloud";
 
+    /**
+     * The organization this run belongs to: the flow's, stamped at launch by {@code RunService}
+     * and restored with the row.
+     *
+     * <p>A run's threads carry no principal, so this is how everything that happens inside one —
+     * a credential revealed for a mail, an OAuth grant presented to an MCP server, a sub-flow
+     * looked up by id — finds the right organization's records rather than the deployment's
+     * default. It is also what keeps one organization's run list from showing another's.
+     */
+    public volatile String organizationId;
+
     /** How this execution was triggered: "manual" | "prompt" | "cron" | "webhook". */
     public volatile String trigger = "manual";
     /**

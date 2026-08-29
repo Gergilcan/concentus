@@ -168,8 +168,8 @@ public class RunStore {
                       session_id, local_session_id, local_started, error,
                       total_input_tokens, total_output_tokens, flow_json, events_json, node_execs_json,
                       created_at, updated_at, initial_prompt, notify_webhook, cost_usd, golden,
-                      flow_version, started_by, patches_json)
-                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                      flow_version, started_by, patches_json, organization_id)
+                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     on conflict (id) do update set
                       flow_id=excluded.flow_id, flow_name=excluded.flow_name, mode=excluded.mode,
                       backend=excluded.backend, status=excluded.status, trigger_type=excluded.trigger_type,
@@ -184,13 +184,14 @@ public class RunStore {
                       golden=excluded.golden,
                       flow_version=excluded.flow_version,
                       started_by=excluded.started_by,
-                      patches_json=excluded.patches_json
+                      patches_json=excluded.patches_json,
+                      organization_id=excluded.organization_id
                     """,
                     run.id, run.flowId, run.flowName, run.mode, run.backend, run.status, run.trigger,
                     run.sessionId, run.localSessionId, run.localStarted, run.error,
                     run.totalInputTokens, run.totalOutputTokens, run.flowJson, eventsJson, execsJson,
                     run.createdAt, now, run.initialPrompt, run.notifyWebhook, run.estimatedCostUsd(),
-                    run.golden, run.flowVersion, run.startedBy, patchesJson);
+                    run.golden, run.flowVersion, run.startedBy, patchesJson, run.organizationId);
             } catch (Exception e) {
                 log.debug("persist run {} failed: {}", run.id, e.getMessage());
             }
@@ -225,7 +226,8 @@ public class RunStore {
                     rs.getLong("created_at"), rs.getString("initial_prompt"),
                     rs.getString("notify_webhook"), rs.getBoolean("golden"),
                     rs.getInt("flow_version"), rs.getString("started_by"),
-                    parseList(rs.getString("patches_json"), new TypeReference<List<RunPatch>>() {})),
+                    parseList(rs.getString("patches_json"), new TypeReference<List<RunPatch>>() {}),
+                    rs.getString("organization_id")),
                 limit);
         } catch (Exception e) {
             log.warn("Loading persisted runs failed: {}", e.getMessage());
@@ -292,7 +294,23 @@ public class RunStore {
                          /** The person who pressed Run; null for a schedule, a webhook or a sub-flow. */
                          String startedBy,
                          /** What the run did to its repositories — see {@link RunPatch}. */
-                         List<RunPatch> patches) {
+                         List<RunPatch> patches,
+                         /** Whose run this is; null only on a row written before runs were stamped. */
+                         String organizationId) {
+
+        /** The shape before runs belonged to an organization. */
+        public RunRow(String id, String flowId, String flowName, String mode, String backend,
+                      String status, String trigger, String sessionId, String localSessionId,
+                      boolean localStarted, String error, long totalInputTokens,
+                      long totalOutputTokens, String flowJson, List<RunEvent> events,
+                      List<NodeExec> nodeExecs, long createdAt, String initialPrompt,
+                      String notifyWebhook, boolean golden, int flowVersion, String startedBy,
+                      List<RunPatch> patches) {
+            this(id, flowId, flowName, mode, backend, status, trigger, sessionId, localSessionId,
+                    localStarted, error, totalInputTokens, totalOutputTokens, flowJson, events,
+                    nodeExecs, createdAt, initialPrompt, notifyWebhook, golden, flowVersion,
+                    startedBy, patches, null);
+        }
 
         /** The shape before the run's repository changes were stored with it. */
         public RunRow(String id, String flowId, String flowName, String mode, String backend,

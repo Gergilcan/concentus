@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.Variable;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,8 +15,9 @@ import java.util.Map;
 @Component
 public class VariableStore extends JsonStore<Variable> {
 
-    public VariableStore(JdbcTemplate jdbc, @Value("${app.data-dir}") String dataDir, ObjectMapper mapper) {
-        super(jdbc, mapper, Variable.class, "variable", "var_", Path.of(dataDir, "variables"));
+    public VariableStore(JdbcTemplate jdbc, @Value("${app.data-dir}") String dataDir, ObjectMapper mapper,
+                         OrgContext orgContext) {
+        super(jdbc, mapper, Variable.class, "variable", "var_", Path.of(dataDir, "variables"), orgContext);
     }
 
     /**

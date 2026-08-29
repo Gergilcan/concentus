@@ -1,6 +1,5 @@
 package com.concentus.service;
 
-import com.concentus.auth.OrgContext;
 import com.concentus.integration.Redact;
 import com.concentus.mail.MailAccount;
 import com.concentus.mail.MailHandOffSpec;
@@ -41,12 +40,10 @@ public class MailHandOffService {
 
     private final MailSender sender;
     private final CredentialStore credentials;
-    private final OrgContext orgContext;
 
-    public MailHandOffService(MailSender sender, CredentialStore credentials, OrgContext orgContext) {
+    public MailHandOffService(MailSender sender, CredentialStore credentials) {
         this.sender = sender;
         this.credentials = credentials;
-        this.orgContext = orgContext;
     }
 
     /**
@@ -125,7 +122,7 @@ public class MailHandOffService {
                         + drawn.missingFields() + "."));
                 continue;
             }
-            String password = credentials.reveal(orgContext.defaultOrganizationId(), drawn.credentialId())
+            String password = credentials.reveal(run.organizationId, drawn.credentialId())
                     .orElse(null);
             if (password == null) {
                 run.emit(RunEvent.of("system", "Mail '" + drawn.label() + "' was not sent: its credential "

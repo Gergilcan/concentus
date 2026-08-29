@@ -1,5 +1,7 @@
 package com.concentus.service;
 
+import com.concentus.auth.OrgContext;
+import com.concentus.store.FlowStore;
 import com.concentus.config.AgentSpec;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.FlowNode;
@@ -93,7 +95,7 @@ class RunServiceTest {
                         "runs.queue-capacity", String.valueOf(queueCapacity),
                         "runs.max-retained", String.valueOf(maxRetainedRuns))),
                 com.concentus.telemetry.Telemetry.none(), new ToolCallLoopGuard(),
-                mock(ClaudeUsageService.class), audit, policies);
+                mock(ClaudeUsageService.class), audit, policies, new OrgContext("default"), mock(FlowStore.class));
         created.add(s);
         return s;
     }
@@ -1001,7 +1003,7 @@ class RunServiceTest {
                         "runs.queue-capacity", "8",
                         "runs.max-retained", "10")),
                 com.concentus.telemetry.Telemetry.none(), new ToolCallLoopGuard(),
-                mock(ClaudeUsageService.class), audit, policies);
+                mock(ClaudeUsageService.class), audit, policies, new OrgContext("default"), mock(FlowStore.class));
         created.add(s);
         return s;
     }

@@ -288,8 +288,9 @@ public class OidcSignIn {
             return Outcome.failed(notInvitedMessage(email));
         }
 
+        // Seats are distinct accounts on the deployment, whatever organizations they are in.
         int limit = licenseService.seatLimit();
-        if (accounts.listUsers(organizationId).size() >= limit) {
+        if (accounts.countUsers() >= limit) {
             return Outcome.failed(licenseService.seatLimitReachedMessage(limit));
         }
 

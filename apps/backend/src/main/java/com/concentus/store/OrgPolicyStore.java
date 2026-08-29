@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.policy.OrgPolicy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -13,10 +14,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class OrgPolicyStore extends JsonStore<OrgPolicy> {
 
-    public OrgPolicyStore(JdbcTemplate jdbc, ObjectMapper mapper) {
+    public OrgPolicyStore(JdbcTemplate jdbc, ObjectMapper mapper, OrgContext orgContext) {
         // No legacy folder: policies never lived on disk. The prefix is never used either — a
         // policy is always saved under its organization — but the base class asks for one.
-        super(jdbc, mapper, OrgPolicy.class, "org-policy", "orgpol_", null);
+        super(jdbc, mapper, OrgPolicy.class, "org-policy", "orgpol_", null, orgContext);
     }
 
     @Override

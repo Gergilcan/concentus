@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
-import type { SwitchableAccount } from '../api/types.ts'
+import type { Organization, SwitchableAccount } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { shellBridge } from '../api/shell.ts'
 import { usePermissions } from '../state/permissions.tsx'
@@ -46,6 +46,7 @@ export function AccountMenu({
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [accounts, setAccounts] = useState<SwitchableAccount[]>([])
+  const [organizations, setOrganizations] = useState<Organization[]>([])
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const box = useRef<HTMLDivElement>(null)
@@ -60,6 +61,12 @@ export function AccountMenu({
       .switchableAccounts()
       .then(setAccounts)
       .catch(() => setAccounts([]))
+    // Same moment, same reason: which organizations this account can work in is a fact about the
+    // account, and it changes when an admin invites it somewhere while the menu is closed.
+    api
+      .listOrganizations()
+      .then(setOrganizations)
+      .catch(() => setOrganizations([]))
     const away = (e: MouseEvent) => {
       if (!box.current?.contains(e.target as Node)) setOpen(false)
     }
@@ -90,6 +97,21 @@ export function AccountMenu({
     }
   }
 
+  // The same person, a different workspace: the session stays, the organization behind every
+  // store call changes, and a reload is what discards everything fetched under the old one.
+  const switchOrganization = async (org: Organization) => {
+    if (org.current) return setOpen(false)
+    setBusy(org.id)
+    setNote(null)
+    try {
+      await api.switchOrganization(org.id)
+      window.location.reload()
+    } catch (e) {
+      setNote(errMessage(e))
+      setBusy(null)
+    }
+  }
+
   const forget = async (account: SwitchableAccount) => {
     setBusy(account.userId)
     setNote(null)
@@ -111,6 +133,9 @@ export function AccountMenu({
   }
 
   const others = accounts.filter((a) => !a.current)
+  // One organization is not a choice, so the section only exists once there are two: a menu
+  // entry that names the only place you could be answers no question.
+  const otherOrganizations = organizations.length > 1 ? organizations.filter((o) => !o.current) : []
 
   return (
     <div className={styles.account} ref={box}>
@@ -147,6 +172,30 @@ export function AccountMenu({
               ×
             </span>
           </div>
+
+          {otherOrganizations.length > 0 && (
+            <div className={styles.orgSection}>
+              <span className={styles.orgLabel}>{t('Switch organization')}</span>
+              <ul className={styles.accountList}>
+                {otherOrganizations.map((o) => (
+                  <li key={o.id}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={styles.accountRow}
+                      disabled={busy === o.id}
+                      title={t('Work in {{name}}. Its flows, credentials and runs are its own.', { name: o.name })}
+                      onClick={() => void switchOrganization(o)}
+                    >
+                      <span className={styles.avatar}>{initial(o.name)}</span>
+                      <span className={styles.accountRowText}>{o.name}</span>
+                      {o.role && <span className={styles.roleChip}>{roleLabel(o.role)}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {others.length > 0 && (
             <ul className={styles.accountList}>

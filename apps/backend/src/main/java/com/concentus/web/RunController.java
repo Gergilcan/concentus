@@ -34,16 +34,24 @@ public class RunController {
     private final RunService runService;
     private final FlowStore flows;
     private final RunDiffService diffs;
+    private final com.concentus.auth.OrgContext orgContext;
 
-    public RunController(RunService runService, FlowStore flows, RunDiffService diffs) {
+    public RunController(RunService runService, FlowStore flows, RunDiffService diffs,
+                         com.concentus.auth.OrgContext orgContext) {
         this.runService = runService;
         this.flows = flows;
         this.diffs = diffs;
+        this.orgContext = orgContext;
     }
 
+    /** The caller's organization's runs. Runs live in one registry for the deployment; this is where it is partitioned. */
     @GetMapping
     public List<RunSummary> list() {
-        return runService.list();
+        String mine = orgContext.requireOrganizationId();
+        return runService.list().stream()
+                .filter(summary -> runService.get(summary.id())
+                        .map(run -> mine.equals(run.organizationId)).orElse(false))
+                .toList();
     }
 
     @GetMapping("/{id}")
@@ -243,13 +251,21 @@ public class RunController {
     private RunComparison.Side side(String id) {
         // Names the id, unlike requireRun: a comparison has two of them, and "No such run" alone
         // would not say which side is missing.
-        AgentRun run = runService.get(id)
+        AgentRun run = runService.get(id).filter(this::mine)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run: " + id));
         return new RunComparison.Side(run.toSummary(), run.pricedNodeExecList(), run.finalOutput());
     }
 
+    /**
+     * Another organization's run answers exactly as a run that does not exist. The id is not a
+     * secret, but it must not be a key either.
+     */
     private AgentRun requireRun(String id) {
-        return runService.get(id)
+        return runService.get(id).filter(this::mine)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run"));
+    }
+
+    private boolean mine(AgentRun run) {
+        return orgContext.requireOrganizationId().equals(run.organizationId);
     }
 }

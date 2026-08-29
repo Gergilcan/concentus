@@ -41,7 +41,7 @@ class OrgPolicyServiceTest {
 
     @Test
     void onTeamTheStoredPolicyIsShownButNothingIsEnforced(@TempDir Path dir) throws Exception {
-        when(store.get("default")).thenReturn(Optional.of(STRICT));
+        when(store.getAcrossOrganizations("default")).thenReturn(Optional.of(STRICT));
         OrgPolicyService s = serviceOn(dir, "team-test.license");
 
         assertThat(s.enforced()).isFalse();
@@ -74,7 +74,7 @@ class OrgPolicyServiceTest {
 
     @Test
     void withNoLicenseAtAllTheAnswerIsTheSameAsTeam(@TempDir Path dir) throws Exception {
-        when(store.get("default")).thenReturn(Optional.of(STRICT));
+        when(store.getAcrossOrganizations("default")).thenReturn(Optional.of(STRICT));
         OrgPolicyService s = serviceOn(dir, null);
 
         assertThat(s.enforced()).isFalse();
@@ -83,8 +83,8 @@ class OrgPolicyServiceTest {
 
     @Test
     void onEnterpriseTheStoredPolicyIsTheOneEnforced(@TempDir Path dir) throws Exception {
-        when(store.get("default")).thenReturn(Optional.of(STRICT));
-        when(approvals.get("flow_1")).thenReturn(Optional.of(
+        when(store.getAcrossOrganizations("default")).thenReturn(Optional.of(STRICT));
+        when(approvals.getAcrossOrganizations("flow_1")).thenReturn(Optional.of(
                 new PublishApproval("flow_1", "tok-approved", "admin@acme.test", 1L)));
         OrgPolicyService s = serviceOn(dir, "enterprise-test.license");
 
@@ -104,7 +104,7 @@ class OrgPolicyServiceTest {
 
     @Test
     void anOrganizationThatNeverWroteAPolicyHasNone(@TempDir Path dir) throws Exception {
-        when(store.get("default")).thenReturn(Optional.empty());
+        when(store.getAcrossOrganizations("default")).thenReturn(Optional.empty());
         OrgPolicyService s = serviceOn(dir, "enterprise-test.license");
 
         assertThat(s.effective().requireFacade()).isFalse();

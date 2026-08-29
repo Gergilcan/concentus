@@ -119,6 +119,17 @@ public class AccountController {
             out.put("email", u.email());
             out.put("organizationId", u.organizationId());
             out.put("role", u.role());
+            // What the organization is called, and whether there is more than one to be in —
+            // the header names the current one only when the name disambiguates something.
+            // Best effort: this endpoint is what decides between the sign-in screen and the
+            // workspace, and a database that went away must not turn that into a 500.
+            try {
+                accounts.findOrganization(u.organizationId())
+                        .ifPresent(org -> out.put("organizationName", org.name()));
+                out.put("organizationCount", accounts.membershipsOf(u.userId()).size());
+            } catch (org.springframework.dao.DataAccessException e) {
+                LOG.debug("Could not read the organizations of {}: {}", u.email(), e.getMessage());
+            }
         });
         // Every way in this application knows about, and whether each is ready.
         //
@@ -340,9 +351,10 @@ public class AccountController {
         String organizationId = orgContext.requireOrganizationId();
         // Existing members are never touched — this only refuses to add one more. A free
         // installation is licensed for exactly one seat, so the admin who is signed in is already
-        // using it; anyone beyond them needs an enterprise license.
+        // using it; anyone beyond them needs an enterprise license. Seats are counted across the
+        // deployment, as distinct accounts: a person in two organizations is one seat.
         int limit = licenseService.seatLimit();
-        if (accounts.listUsers(organizationId).size() >= limit) {
+        if (accounts.countUsers() >= limit) {
             throw new IllegalArgumentException(licenseService.seatLimitReachedMessage(limit));
         }
         if (body == null || body.email() == null || body.email().isBlank()) {
@@ -385,8 +397,9 @@ public class AccountController {
             throw new IllegalArgumentException("Unknown role. Use one of: "
                     + String.join(", ", Accounts.ROLES) + ".");
         }
-        Accounts.UserAccount target = accounts.findById(userId)
-                .filter(u -> organizationId.equals(u.organizationId()))
+        // The membership, not the account row: the account may be working in another
+        // organization right now, and the role being changed is the one held HERE.
+        Accounts.Membership target = accounts.membership(userId, organizationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "No such member of this organization."));
         boolean demotingAnAdmin = Accounts.ROLE_ADMIN.equalsIgnoreCase(target.role())
@@ -396,9 +409,12 @@ public class AccountController {
                     "This is the organization's only admin. Promote someone else first.");
         }
         accounts.updateRole(userId, organizationId, role);
-        audit.record(com.concentus.audit.AuditKinds.MEMBER_ROLE_CHANGED, "member", target.id(),
-                target.email(), java.util.Map.of("from", target.role(), "to", role));
-        return accounts.findById(userId).orElseThrow().redacted();
+        audit.record(com.concentus.audit.AuditKinds.MEMBER_ROLE_CHANGED, "member", userId,
+                accounts.findById(userId).map(u -> u.email()).orElse(userId),
+                java.util.Map.of("from", target.role(), "to", role));
+        return accounts.listUsers(organizationId).stream()
+                .filter(u -> u.id().equals(userId))
+                .findFirst().orElseThrow().redacted();
     }
 
     @PostMapping("/password")

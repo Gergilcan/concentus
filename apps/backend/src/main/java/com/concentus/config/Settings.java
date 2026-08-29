@@ -79,9 +79,7 @@ public class Settings {
      * and on every deployment but a multi-tenant one those are the same organization anyway.
      */
     private String organizationId() {
-        return orgContext.currentUser()
-                .map(com.concentus.auth.ConcentusUserDetails::organizationId)
-                .orElseGet(orgContext::defaultOrganizationId);
+        return orgContext.currentOrganizationId();
     }
 
     public String get(String key, String fallback) {

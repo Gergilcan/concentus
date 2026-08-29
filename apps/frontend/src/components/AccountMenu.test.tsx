@@ -7,12 +7,16 @@ const openWindow = vi.fn()
 const switchableAccounts = vi.fn()
 const useAccount = vi.fn()
 const forgetAccount = vi.fn()
+const listOrganizations = vi.fn()
+const switchOrganization = vi.fn()
 
 vi.mock('../api/client.ts', () => ({
   api: {
     switchableAccounts: () => switchableAccounts(),
     useAccount: (id: string) => useAccount(id),
     forgetAccount: (id: string) => forgetAccount(id),
+    listOrganizations: () => listOrganizations(),
+    switchOrganization: (id: string) => switchOrganization(id),
   },
 }))
 
@@ -35,6 +39,12 @@ describe('AccountMenu', () => {
     ])
     useAccount.mockResolvedValue({ userId: '2' })
     forgetAccount.mockResolvedValue(undefined)
+    // One organization by default — the case every single-team deployment is in, where the
+    // section must not appear at all.
+    listOrganizations.mockResolvedValue([
+      { id: 'org_a', name: 'Tecnovent', role: 'ADMIN', current: true, createdAt: 1 },
+    ])
+    switchOrganization.mockResolvedValue({ userId: '1', organizationId: 'org_b' })
   })
 
   afterEach(() => {
@@ -83,6 +93,30 @@ describe('AccountMenu', () => {
     await screen.findByText('auditoria@tecnovent.com')
 
     expect(screen.getAllByText('gerard@tecnovent.com')).toHaveLength(1)
+  })
+
+  // A person in one organization has nowhere to switch to, and a section saying so would be
+  // noise on every single-team deployment.
+  it('offers no organization switch while the account is in only one', async () => {
+    open()
+    await screen.findByText('auditoria@tecnovent.com')
+
+    expect(screen.queryByText('Switch organization')).not.toBeInTheDocument()
+  })
+
+  it('switches organization in one click once there are two', async () => {
+    listOrganizations.mockResolvedValue([
+      { id: 'org_a', name: 'Tecnovent', role: 'ADMIN', current: true, createdAt: 1 },
+      { id: 'org_b', name: 'Filial Norte', role: 'VIEWER', current: false, createdAt: 2 },
+    ])
+    open()
+
+    expect(await screen.findByText('Switch organization')).toBeInTheDocument()
+    // The current organization is not on offer: it is where this window already is.
+    expect(screen.queryByRole('menuitem', { name: /Tecnovent/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: /Filial Norte/ }))
+
+    await waitFor(() => expect(switchOrganization).toHaveBeenCalledWith('org_b'))
   })
 
   it('switches to another account in one click', async () => {

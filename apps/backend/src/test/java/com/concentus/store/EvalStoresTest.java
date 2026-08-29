@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.FlowEvalCase;
 import com.concentus.model.FlowEvalCaseResult;
 import com.concentus.model.FlowEvalResult;
@@ -24,9 +25,9 @@ class EvalStoresTest {
     @BeforeEach
     void setUp() {
         TestDatabase.reset(TestDatabase.jdbc());
-        cases = new EvalDatasetStore(TestDatabase.jdbc(), new ObjectMapper());
+        cases = new EvalDatasetStore(TestDatabase.jdbc(), new ObjectMapper(), new OrgContext("default"));
         cases.init();
-        results = new EvalResultStore(TestDatabase.jdbc(), new ObjectMapper());
+        results = new EvalResultStore(TestDatabase.jdbc(), new ObjectMapper(), new OrgContext("default"));
         results.init();
     }
 

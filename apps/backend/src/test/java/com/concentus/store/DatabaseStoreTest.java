@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.DatabaseDef;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,7 +25,7 @@ class DatabaseStoreTest {
     @BeforeEach
     void setUp() {
         TestDatabase.reset(TestDatabase.jdbc());
-        store = new DatabaseStore(TestDatabase.jdbc(), dataDir.toString(), new ObjectMapper());
+        store = new DatabaseStore(TestDatabase.jdbc(), dataDir.toString(), new ObjectMapper(), new OrgContext("default"));
         store.init();
     }
 

@@ -85,6 +85,18 @@ public class KnowledgeAccess {
      * anybody who could press Run on the right flow.
      */
     public boolean mayRunRead(String baseId, String startedByEmail) {
+        return mayRunRead(orgContext.currentOrganizationId(), baseId, startedByEmail);
+    }
+
+    /**
+     * As {@link #mayRunRead(String, String)}, for a run that knows its organization: a run's
+     * threads carry no principal, so the base is looked up in the organization the run was
+     * stamped with rather than in whatever the calling thread would resolve to. A base of another
+     * organization is simply not there, whatever the role.
+     */
+    public boolean mayRunRead(String organizationId, String baseId, String startedByEmail) {
+        Optional<KnowledgeDef> base = store.getIn(organizationId, baseId);
+        if (base.isEmpty()) return false;
         if (startedByEmail == null || startedByEmail.isBlank()) {
             // Nobody started it: a schedule, a webhook delivery, a flow started by another flow.
             // There is no person to restrict, and the run acts as the installation itself.
@@ -95,7 +107,7 @@ public class KnowledgeAccess {
                 // An email with no account behind it any more — somebody who has left. Their runs
                 // do not inherit the reach they no longer have.
                 .orElse(Accounts.ROLE_VIEWER);
-        return mayRead(baseId, role);
+        return mayRead(base.get(), role);
     }
 
     private String currentRole() {

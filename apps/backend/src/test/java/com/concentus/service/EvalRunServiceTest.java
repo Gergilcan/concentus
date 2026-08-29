@@ -1,5 +1,6 @@
 package com.concentus.service;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.FlowEvalCase;
 import com.concentus.model.FlowEvalCaseResult;
 import com.concentus.model.FlowEvalResult;
@@ -53,8 +54,8 @@ class EvalRunServiceTest {
     void setUp() {
         // The result store hands back what it was given, with an id when it had none — the one
         // behaviour of the real store the runner depends on.
-        when(results.save(any())).thenAnswer(inv -> {
-            FlowEvalResult r = inv.getArgument(0);
+        when(results.saveIn(anyString(), any())).thenAnswer(inv -> {
+            FlowEvalResult r = inv.getArgument(1);
             return r.id() != null ? r : new FlowEvalResult("evr_1", r.flowId(), r.flowVersion(),
                     r.startedAt(), r.finishedAt(), r.status(), r.cases(), r.passed(), r.total());
         });
@@ -63,7 +64,7 @@ class EvalRunServiceTest {
         when(support.command()).thenReturn(Optional.of("claude"));
         EvalJudge judge = new EvalJudge(support, (args, t) -> new CliProcess.Result(1, "unused"));
         // Polls fast and gives up fast: the tests below never want to wait for a real run.
-        service = new EvalRunService(dataset, results, runs, judge, versions, 5, 200);
+        service = new EvalRunService(dataset, results, runs, judge, versions, new OrgContext("default"), 5, 200);
     }
 
     @AfterEach
@@ -91,7 +92,7 @@ class EvalRunServiceTest {
 
     private FlowEvalResult lastSaved() {
         ArgumentCaptor<FlowEvalResult> saved = ArgumentCaptor.forClass(FlowEvalResult.class);
-        verify(results, atLeastOnce()).save(saved.capture());
+        verify(results, atLeastOnce()).saveIn(anyString(), saved.capture());
         return saved.getValue();
     }
 
@@ -131,7 +132,7 @@ class EvalRunServiceTest {
         service.evaluate(pending(2), FLOW, List.of(aCase("c1", "one", "yes"), aCase("c2", "two", "yes")));
 
         ArgumentCaptor<FlowEvalResult> saved = ArgumentCaptor.forClass(FlowEvalResult.class);
-        verify(results, atLeastOnce()).save(saved.capture());
+        verify(results, atLeastOnce()).saveIn(anyString(), saved.capture());
         // After the first case: still running, one judged. Then two. Then done.
         assertThat(saved.getAllValues()).extracting(r -> r.cases().size()).containsExactly(1, 2, 2);
         assertThat(saved.getAllValues()).extracting(FlowEvalResult::status)
@@ -234,7 +235,7 @@ class EvalRunServiceTest {
         assertThat(started.total()).isEqualTo(1);
         assertThat(started.cases()).isEmpty();
         // The worker finishes the job behind the returned handle.
-        verify(results, timeout(2_000)).save(
+        verify(results, timeout(2_000)).saveIn(anyString(),
                 org.mockito.ArgumentMatchers.argThat(r -> FlowEvalResult.DONE.equals(r.status())));
     }
 

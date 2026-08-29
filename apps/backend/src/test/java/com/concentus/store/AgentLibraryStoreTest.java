@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.LibraryAgent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -23,7 +24,7 @@ class AgentLibraryStoreTest {
     private AgentLibraryStore store(Path dir) {
         TestDatabase.reset(TestDatabase.jdbc());
         AgentLibraryStore store =
-                new AgentLibraryStore(TestDatabase.jdbc(), dir.toString(), dir.toString(), new ObjectMapper());
+                new AgentLibraryStore(TestDatabase.jdbc(), dir.toString(), dir.toString(), new ObjectMapper(), new OrgContext("default"));
         store.init();
         return store;
     }
@@ -57,7 +58,7 @@ class AgentLibraryStoreTest {
 
         // A second start against the same directory must not bring the deleted agent back.
         AgentLibraryStore second =
-                new AgentLibraryStore(TestDatabase.jdbc(), dir.toString(), dir.toString(), new ObjectMapper());
+                new AgentLibraryStore(TestDatabase.jdbc(), dir.toString(), dir.toString(), new ObjectMapper(), new OrgContext("default"));
         second.init();
 
         assertThat(second.list()).extracting(LibraryAgent::id).doesNotContain("custom");
@@ -158,7 +159,7 @@ class AgentLibraryStoreTest {
         AgentLibraryStore store = store(dir);
         // What a row from an older build looks like: no version, no description.
         TestDatabase.jdbc().update(
-                "insert into resources (kind, id, sort_key, json, updated_at) values ('agent', 'old', 'Old', ?, 0)",
+                "insert into resources (kind, id, sort_key, json, updated_at, organization_id) values ('agent', 'old', 'Old', ?, 0, 'default')",
                 "{\"id\":\"old\",\"name\":\"Old\",\"model\":\"claude-x\",\"effort\":\"high\","
                         + "\"maxTokens\":1000,\"systemPrompt\":\"\"}");
 

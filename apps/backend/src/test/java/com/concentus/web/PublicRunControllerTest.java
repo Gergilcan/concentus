@@ -105,11 +105,11 @@ class PublicRunControllerTest {
     @BeforeEach
     void aPublishedFlowAndARunThatStarts() throws Exception {
         free = TestLicenses.serviceOn(dir);
-        when(flows.get("f1")).thenReturn(Optional.of(flow("f1", published(TOKEN))));
+        when(flows.getAcrossOrganizations("f1")).thenReturn(Optional.of(flow("f1", published(TOKEN))));
         Map<String, Object> unpublished = new HashMap<>(published(TOKEN));
         unpublished.put("published", false);
-        when(flows.get("f2")).thenReturn(Optional.of(flow("f2", unpublished)));
-        when(flows.get("nope")).thenReturn(Optional.empty());
+        when(flows.getAcrossOrganizations("f2")).thenReturn(Optional.of(flow("f2", unpublished)));
+        when(flows.getAcrossOrganizations("nope")).thenReturn(Optional.empty());
         when(runService.startTriggered(any(FlowGraph.class), anyString(), eq("api"))).thenReturn(
                 new RunSummary("run_1", "f1", "Flow", "local", "STARTING", 0L, null, List.of(), null, "api",
                         0L, 0L, 0.0, false, 1));
@@ -302,7 +302,7 @@ class PublicRunControllerTest {
     @Test
     void aRunOfAnotherFlowIsNoSuchRunHere() {
         // f3 is published with its own token; its holder must not be able to read f1's runs.
-        when(flows.get("f3")).thenReturn(Optional.of(flow("f3", published("other-token"))));
+        when(flows.getAcrossOrganizations("f3")).thenReturn(Optional.of(flow("f3", published("other-token"))));
 
         assertThatThrownBy(() -> controller().poll("f3", "run_1", bearing("other-token")))
                 .isInstanceOfSatisfying(ResponseStatusException.class,

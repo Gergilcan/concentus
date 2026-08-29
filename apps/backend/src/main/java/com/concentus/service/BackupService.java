@@ -118,7 +118,7 @@ public class BackupService {
         // the import able to keep every reference pointing at something re-fillable.
         ArrayNode credentialMeta = root.putArray("credentials");
         if (credentials.isAvailable()) {
-            String organizationId = orgContext.defaultOrganizationId();
+            String organizationId = orgContext.currentOrganizationId();
             for (CredentialStore.Credential c : credentials.list(organizationId)) {
                 ObjectNode meta = credentialMeta.addObject();
                 meta.put("id", c.id());
@@ -205,12 +205,12 @@ public class BackupService {
             try {
                 if (!secret.isBlank()) {
                     CredentialStore.ImportOutcome outcome = credentials.importSecret(
-                            orgContext.defaultOrganizationId(), id, label, kind, secret);
+                            orgContext.currentOrganizationId(), id, label, kind, secret);
                     if (outcome != CredentialStore.ImportOutcome.KEPT) imported++;
                     continue;
                 }
                 boolean created = credentials.importPlaceholder(
-                        orgContext.defaultOrganizationId(), id, label, kind);
+                        orgContext.currentOrganizationId(), id, label, kind);
                 if (created) {
                     reenter.add(label);
                     imported++;

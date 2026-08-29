@@ -83,6 +83,10 @@ public class RunService {
     private final com.concentus.audit.AuditService audit;
     /** The organization's rules: its budget beside the flow's, and the permission ceiling. */
     private final com.concentus.policy.OrgPolicyService policies;
+    /** Whose run a launch is — see {@link #organizationFor}. */
+    private final com.concentus.auth.OrgContext orgContext;
+    /** Read-only: which organization a saved flow belongs to, for launches with no principal. */
+    private final com.concentus.store.FlowStore flows;
 
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
                       ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
@@ -97,11 +101,15 @@ public class RunService {
                       ToolCallLoopGuard loops,
                       ClaudeUsageService usage,
                       com.concentus.audit.AuditService audit,
-                      com.concentus.policy.OrgPolicyService policies) {
+                      com.concentus.policy.OrgPolicyService policies,
+                      com.concentus.auth.OrgContext orgContext,
+                      com.concentus.store.FlowStore flows) {
         this.clientProvider = clientProvider;
         this.usage = usage;
         this.audit = audit;
         this.policies = policies;
+        this.orgContext = orgContext;
+        this.flows = flows;
         this.compiler = compiler;
         this.launcher = launcher;
         this.backends = backends;
@@ -557,6 +565,7 @@ public class RunService {
 
         String runId = Ids.generate("run_", 12);
         AgentRun run = new AgentRun(runId, flow.id(), flow.name(), flow.modeOrDefault());
+        run.organizationId = organizationFor(flow);
         run.backend = backend;
         run.compiled = compiled;
         run.flowJson = toJson(flow);
@@ -654,6 +663,22 @@ public class RunService {
      * depends on authentication being switched on: with accounts off there is no context, no name,
      * and the run is credited to nobody — which is the truth on a single-user desktop install.
      */
+    /**
+     * The organization a launch belongs to.
+     *
+     * <p>The signed-in person's when there is one — they could only have reached a flow of their
+     * own organization, and an ad-hoc run of an unsaved flow has no other owner. Otherwise the
+     * saved flow's own: a schedule, a mail poll, a webhook or a parent flow launches with no
+     * principal, and the flow row says whose it is. The default only for a flow that is neither
+     * — an unsaved flow launched by something other than a person, which nothing does today.
+     */
+    private String organizationFor(FlowGraph flow) {
+        return orgContext.currentUser()
+                .map(com.concentus.auth.ConcentusUserDetails::organizationId)
+                .or(() -> flows.organizationOf(flow.id()))
+                .orElseGet(orgContext::defaultOrganizationId);
+    }
+
     private static String signedInEmail() {
         var auth = org.springframework.security.core.context.SecurityContextHolder.getContext()
                 .getAuthentication();
@@ -1203,6 +1228,10 @@ public class RunService {
             try {
                 AgentRun run = new AgentRun(row.id(), row.flowId(), row.flowName(), row.mode());
                 run.createdAt = row.createdAt();
+                // A row from before runs were stamped belongs to the organization the deployment
+                // had then, which is the default one — the same reading the migration applied.
+                run.organizationId = row.organizationId() != null
+                        ? row.organizationId() : orgContext.defaultOrganizationId();
                 run.backend = row.backend();
                 // A run that was mid-flight when the server stopped cannot be continued in place
                 // — the process is gone — so it lands as IDLE, and is told: Resume starts it

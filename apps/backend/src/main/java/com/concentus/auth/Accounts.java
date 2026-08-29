@@ -5,10 +5,13 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 /**
  * The two records the account system is built from.
  *
- * <p>An <b>organization</b> is the isolation boundary: every row the integrations write carries an
- * {@code organization_id}, and every query filters on it. A <b>user</b> belongs to exactly one
- * organization, which is what makes "verify ownership on every endpoint" a single lookup rather
- * than a per-controller convention.
+ * <p>An <b>organization</b> is the isolation boundary: every row the stores write carries an
+ * {@code organization_id}, and every query filters on it. A <b>user</b> holds a
+ * {@link Membership} in one organization or several, each with its own role, and is working in
+ * exactly one of them at a time — the <em>current</em> organization, which the account row names.
+ * That is what keeps "verify ownership on every endpoint" a single lookup rather than a
+ * per-controller convention: the principal carries one organization, and the switch is the only
+ * thing that changes it.
  */
 public final class Accounts {
 
@@ -99,7 +102,21 @@ public final class Accounts {
     }
 
     /**
+     * One account's place in one organization.
+     *
+     * <p>The role lives here, not on the account: the same person may administer the organization
+     * they set up and only read the one they were invited into. {@link UserAccount#role} is a
+     * copy of this for the account's current organization.
+     */
+    public record Membership(String userId, String organizationId, String role, long createdAt) {
+    }
+
+    /**
      * One sign-in identity.
+     *
+     * <p>{@code organizationId} and {@code role} describe the organization the account is
+     * currently working in; the memberships table holds every other one. Switching organization
+     * rewrites both, so everything that reads the principal keeps reading one organization.
      *
      * <p>{@code passwordHash} is a BCrypt digest and is marked {@link JsonIgnore} so a user record
      * can be returned from a controller without the hash ever reaching the client.

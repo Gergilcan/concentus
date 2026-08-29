@@ -31,7 +31,7 @@ class CredentialResolverTest {
 
     private CredentialResolver resolver() {
         OrgContext org = mock(OrgContext.class);
-        when(org.defaultOrganizationId()).thenReturn(ORG);
+        when(org.currentOrganizationId()).thenReturn(ORG);
         return new CredentialResolver(credentials, oauth, org);
     }
 

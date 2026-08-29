@@ -63,7 +63,6 @@ public class LocalModelAgentExecutor {
     private final LocalModelClient client;
     private final LocalModelCatalog catalog;
     private final com.concentus.llm.McpOAuthStore mcpOAuth;
-    private final com.concentus.auth.OrgContext orgContext;
     private final RagContextInjector ragInjector;
     private final ObjectMapper mapper;
     private final FileTools fileTools;
@@ -77,7 +76,6 @@ public class LocalModelAgentExecutor {
 
     public LocalModelAgentExecutor(LocalModelClient client, LocalModelCatalog catalog,
                                    com.concentus.llm.McpOAuthStore mcpOAuth,
-                                   com.concentus.auth.OrgContext orgContext,
                                    RagContextInjector ragInjector,
                                    ObjectMapper mapper, FileTools fileTools,
                                    ContextFolderResolver contextFolders,
@@ -88,7 +86,6 @@ public class LocalModelAgentExecutor {
         this.client = client;
         this.catalog = catalog;
         this.mcpOAuth = mcpOAuth;
-        this.orgContext = orgContext;
         this.ragInjector = ragInjector;
         this.mapper = mapper;
         this.fileTools = fileTools;
@@ -315,7 +312,7 @@ public class LocalModelAgentExecutor {
                 // also what the facade and the tool picker use, so all three see one server the
                 // same way and a rejected token is renewed rather than merely reported.
                 McpClient.TokenSource auth = McpAuthSources.forServer(server, mcpOAuth,
-                        orgContext.defaultOrganizationId());
+                        run.organizationId);
                 authenticated.put(server.name, auth.current() != null);
                 McpClient client = run.mcpClients.computeIfAbsent(server.name,
                         k -> new McpClient(server.name, server.url, auth, mapper));

@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.policy.PublishApproval;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -9,8 +10,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class PublishApprovalStore extends JsonStore<PublishApproval> {
 
-    public PublishApprovalStore(JdbcTemplate jdbc, ObjectMapper mapper) {
-        super(jdbc, mapper, PublishApproval.class, "publish-approval", "pubapp_", null);
+    public PublishApprovalStore(JdbcTemplate jdbc, ObjectMapper mapper, OrgContext orgContext) {
+        super(jdbc, mapper, PublishApproval.class, "publish-approval", "pubapp_", null, orgContext);
     }
 
     @Override

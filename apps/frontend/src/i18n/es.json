@@ -1801,5 +1801,22 @@
   "Unlimited retention of runs and versions": "Retención ilimitada de ejecuciones y versiones",
   "Several organizations on one deployment": "Varias organizaciones en un mismo despliegue",
   "Unlimited service accounts": "Cuentas de servicio ilimitadas",
-  "Published endpoints without a rate limit": "Endpoints publicados sin límite de peticiones"
+  "Published endpoints without a rate limit": "Endpoints publicados sin límite de peticiones",
+  "Organizations": "Organizaciones",
+  "Several organizations on one deployment, each with its own flows, credentials, runs and settings. Creating a second one is an Enterprise feature.": "Varias organizaciones en un mismo despliegue, cada una con sus propios flows, credenciales, ejecuciones y ajustes. Crear una segunda es una función Enterprise.",
+  "Each organization has its own flows, agents, servers, credentials, runs and settings; nothing is shared between them. People can be in several, with a role in each, and switch from the account menu.": "Cada organización tiene sus propios flows, agentes, servidores, credenciales, ejecuciones y ajustes; nada se comparte entre ellas. Una persona puede estar en varias, con un rol en cada una, y cambiar desde el menú de la cuenta.",
+  "Seats are counted for the whole deployment, as distinct accounts: a person in two organizations uses one.": "Los asientos se cuentan para todo el despliegue, como cuentas distintas: una persona en dos organizaciones ocupa uno.",
+  "New organization": "Nueva organización",
+  "The team or company it is for": "El equipo o la empresa a la que pertenece",
+  "You will administer it. Creating a second organization is an Enterprise feature.": "La administrarás tú. Crear una segunda organización es una función Enterprise.",
+  "New name for {{name}}": "Nuevo nombre para {{name}}",
+  "created {{when}}": "creada {{when}}",
+  "Rename": "Renombrar",
+  "Hide members": "Ocultar miembros",
+  "Only for an address with no account yet": "Solo para una dirección que aún no tiene cuenta",
+  "An existing account joins as it is and takes no extra seat; a new address needs a temporary password.": "Una cuenta existente se incorpora tal cual y no ocupa un asiento más; una dirección nueva necesita una contraseña temporal.",
+  "Add to organization": "Añadir a la organización",
+  "Switch organization": "Cambiar de organización",
+  "Work in {{name}}. Its flows, credentials and runs are its own.": "Trabajar en {{name}}. Sus flows, credenciales y ejecuciones son suyos.",
+  "The organization this window is working in. Switch from the account menu.": "La organización en la que trabaja esta ventana. Cambia desde el menú de la cuenta."
 }

@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.mail.MailTriggerSpec;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.TriggerSpec;
@@ -27,7 +28,7 @@ class FlowLibrarySeederTest {
 
     private FlowStore seedInto(Path dataDir) {
         TestDatabase.reset(TestDatabase.jdbc());
-        FlowStore flows = new FlowStore(TestDatabase.jdbc(), dataDir.toString(), mapper);
+        FlowStore flows = new FlowStore(TestDatabase.jdbc(), dataDir.toString(), mapper, new OrgContext("default"));
         flows.init();
         new FlowLibrarySeeder(TestDatabase.jdbc(), flows, mapper).seed();
         return flows;
@@ -133,7 +134,7 @@ class FlowLibrarySeederTest {
         // The naive "seed only when the directory is empty" rule would skip the starter for every
         // install that already had a flow — which is all of them.
         TestDatabase.reset(TestDatabase.jdbc());
-        FlowStore flows = new FlowStore(TestDatabase.jdbc(), dataDir.toString(), mapper);
+        FlowStore flows = new FlowStore(TestDatabase.jdbc(), dataDir.toString(), mapper, new OrgContext("default"));
         flows.init();
         flows.save(new FlowGraph("existing", "Something else", "local", java.util.List.of(),
                 java.util.List.of(), true, java.util.List.of(), false, null));

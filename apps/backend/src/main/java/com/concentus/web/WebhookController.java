@@ -85,7 +85,7 @@ public class WebhookController {
             @RequestBody(required = false) byte[] body,
             HttpServletRequest request) {
 
-        FlowGraph flow = flows.get(flowId)
+        FlowGraph flow = flows.getAcrossOrganizations(flowId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such flow"));
 
         TriggerSpec trigger = TriggerSpec.from(flow);

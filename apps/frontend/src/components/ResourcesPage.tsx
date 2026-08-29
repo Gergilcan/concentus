@@ -12,6 +12,7 @@ import { McpCatalog, type CatalogSetup } from './McpCatalog.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import { McpServerJson } from './McpServerJson.tsx'
 import { MembersPanel } from './MembersPanel.tsx'
+import { OrganizationsPanel } from './OrganizationsPanel.tsx'
 import { ModelField } from './ModelField.tsx'
 import { PluginsPanel } from './PluginsPanel.tsx'
 import { ServiceAccountsPanel } from './ServiceAccountsPanel.tsx'
@@ -24,7 +25,7 @@ import { shellBridge } from '../api/shell.ts'
 import { usePermissions } from '../state/permissions.tsx'
 import styles from './resources.module.scss'
 
-type Tab = 'settings' | 'members' | 'serviceAccounts' | 'audit' | 'policies' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
+type Tab = 'settings' | 'members' | 'serviceAccounts' | 'audit' | 'policies' | 'organizations' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
 
 /**
  * The tab strip, in display order. `desktopOnly` keeps Updates out of a browser tab, which has no
@@ -38,7 +39,15 @@ type Tab = 'settings' | 'members' | 'serviceAccounts' | 'audit' | 'policies' | '
  * past "Members" and "Storage" to find it. The divider is the whole treatment — a second row or a
  * nested menu would cost more attention than the distinction is worth.
  */
-const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolean; startsAdmin?: boolean; adminOnly?: boolean }> = [
+const TABS: Array<{
+  id: Tab
+  label: string
+  title?: string
+  desktopOnly?: boolean
+  startsAdmin?: boolean
+  /** Shown to administrators only: the backend refuses everyone else, and a tab that only 403s is a broken tab. */
+  adminOnly?: boolean
+}> = [
   { id: 'agents', label: 'Agents' },
   { id: 'mcp', label: 'MCP Servers' },
   {
@@ -92,6 +101,13 @@ const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolea
       'Rules over every flow in the organization: a default facade for workers, a permission ceiling, an organization-wide budget, approval for published endpoints. Enterprise; read-only elsewhere.',
   },
   {
+    id: 'organizations',
+    label: 'Organizations',
+    adminOnly: true,
+    title:
+      'Several organizations on one deployment, each with its own flows, credentials, runs and settings. Creating a second one is an Enterprise feature.',
+  },
+  {
     id: 'settings',
     label: 'Settings',
     title:
@@ -140,6 +156,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
         {tab === 'serviceAccounts' && canAdminister && <ServiceAccountsPanel pushError={pushError} />}
         {tab === 'audit' && <AuditPanel pushError={pushError} />}
         {tab === 'policies' && <PoliciesPanel pushError={pushError} />}
+        {tab === 'organizations' && canAdminister && <OrganizationsPanel pushError={pushError} />}
 
         {tab === 'agents' && (
           <CrudPanel<LibraryAgent>

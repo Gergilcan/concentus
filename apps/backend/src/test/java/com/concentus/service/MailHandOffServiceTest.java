@@ -1,6 +1,5 @@
 package com.concentus.service;
 
-import com.concentus.auth.OrgContext;
 import com.concentus.config.AgentSpec;
 import com.concentus.mail.MailAccount;
 import com.concentus.mail.MailHandOffSpec;
@@ -52,7 +51,7 @@ class MailHandOffServiceTest {
 
     private MailHandOffService service() {
         when(credentials.reveal("default", "cred_mail")).thenReturn(Optional.of("app-password"));
-        return new MailHandOffService(sender, credentials, new OrgContext("default"));
+        return new MailHandOffService(sender, credentials);
     }
 
     private static Map<String, Object> mailData(String subject) {
@@ -106,6 +105,7 @@ class MailHandOffServiceTest {
 
     private static AgentRun run(String status, String subject) {
         AgentRun run = new AgentRun("run-1", "flow_parent", "Ads campaign", "managed");
+        run.organizationId = "default";
         run.status = status;
         run.compiled = new CompiledFlow(agent("a", "Planner"),
                 List.of(agent("w1", "Ads writer"), agent("w2", "Ads reviewer")),
@@ -272,7 +272,7 @@ class MailHandOffServiceTest {
     @Test
     void a_credential_that_no_longer_exists_is_said_in_the_log_rather_than_thrown() {
         when(credentials.reveal(anyString(), anyString())).thenReturn(Optional.empty());
-        MailHandOffService service = new MailHandOffService(sender, credentials, new OrgContext("default"));
+        MailHandOffService service = new MailHandOffService(sender, credentials);
         AgentRun run = run("COMPLETED");
         run.restoreEvents(List.of(RunEvent.of("agent_message", "Done.")));
 
@@ -334,6 +334,7 @@ class MailHandOffServiceTest {
     @Test
     void a_node_missing_its_account_is_reported_instead_of_attempted() {
         AgentRun run = new AgentRun("run-1", "flow_parent", "Ads campaign", "managed");
+        run.organizationId = "default";
         run.status = "COMPLETED";
         run.restoreEvents(List.of(RunEvent.of("agent_message", "Done.")));
         FlowNode bare = new FlowNode("m1", "mail", null, Map.of("label", "Mail me", "to", "gerard@example.com"));

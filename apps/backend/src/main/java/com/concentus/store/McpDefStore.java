@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.model.McpDef;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,8 +13,9 @@ import java.nio.file.Path;
 @Component
 public class McpDefStore extends JsonStore<McpDef> {
 
-    public McpDefStore(JdbcTemplate jdbc, @Value("${app.data-dir}") String dataDir, ObjectMapper mapper) {
-        super(jdbc, mapper, McpDef.class, "mcp", "mcp_", Path.of(dataDir, "mcp-servers"));
+    public McpDefStore(JdbcTemplate jdbc, @Value("${app.data-dir}") String dataDir, ObjectMapper mapper,
+                       OrgContext orgContext) {
+        super(jdbc, mapper, McpDef.class, "mcp", "mcp_", Path.of(dataDir, "mcp-servers"), orgContext);
     }
 
     @Override

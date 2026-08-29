@@ -61,7 +61,7 @@ public class OrgPolicyService {
      * Team deployment, so a downgrade does not look like a deletion.
      */
     public OrgPolicy stored() {
-        return store.get(organizationId()).orElse(OrgPolicy.NONE.withId(organizationId()));
+        return store.getAcrossOrganizations(organizationId()).orElse(OrgPolicy.NONE.withId(organizationId()));
     }
 
     /** The policy every enforcement point applies: the record where licensed, nothing otherwise. */
@@ -127,7 +127,7 @@ public class OrgPolicyService {
      */
     public boolean publishBlocked(String flowId, String token) {
         if (!publishRequiresApproval()) return false;
-        return approvals.get(flowId).filter(a -> a.covers(token)).isEmpty();
+        return approvals.getAcrossOrganizations(flowId).filter(a -> a.covers(token)).isEmpty();
     }
 
     /** The approval on record for a flow, whatever token it names. */

@@ -1,6 +1,5 @@
 package com.concentus.web;
 
-import com.concentus.auth.OrgContext;
 import com.concentus.config.AgentSpec;
 import com.concentus.llm.McpOAuthStore;
 import com.concentus.model.RunEvent;
@@ -71,6 +70,7 @@ class RunMcpProxyControllerTest {
         remote.start();
 
         run = new AgentRun("run-1", "flow-1", "Google Ads — Tecnovent", "local");
+        run.organizationId = "default";
         AgentSpec coordinator = new AgentSpec();
         coordinator.name = "Estratega";
         AgentSpec.McpServerSpec server = new AgentSpec.McpServerSpec();
@@ -93,9 +93,7 @@ class RunMcpProxyControllerTest {
     }
 
     private RunMcpProxyController controller() {
-        OrgContext org = mock(OrgContext.class);
-        when(org.defaultOrganizationId()).thenReturn("local");
-        return new RunMcpProxyController(runs, oauth, org, MAPPER);
+        return new RunMcpProxyController(runs, oauth, MAPPER);
     }
 
     private ResponseEntity<byte[]> call(String token) {

@@ -1,5 +1,6 @@
 package com.concentus.store;
 
+import com.concentus.auth.OrgContext;
 import com.concentus.config.AgentSpec;
 import com.concentus.model.LibraryAgent;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -49,9 +50,9 @@ public class AgentLibraryStore extends JsonStore<LibraryAgent> {
     public AgentLibraryStore(JdbcTemplate jdbc,
                              @Value("${app.agents-dir:}") String agentsDir,
                              @Value("${app.data-dir}") String dataDir,
-                             ObjectMapper mapper) {
+                             ObjectMapper mapper, OrgContext orgContext) {
         super(jdbc, mapper, LibraryAgent.class, "agent", "agent_",
-                (agentsDir == null || agentsDir.isBlank()) ? Path.of(dataDir, "agents") : Path.of(agentsDir));
+                (agentsDir == null || agentsDir.isBlank()) ? Path.of(dataDir, "agents") : Path.of(agentsDir), orgContext);
     }
 
     @Override

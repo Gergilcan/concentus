@@ -62,7 +62,7 @@ class OrgPolicyControllerTest {
 
     @Test
     void aMemberReadsThePolicyAndCannotWriteIt(@TempDir Path dir) throws Exception {
-        when(store.get("default")).thenReturn(Optional.of(new OrgPolicy("default", "", false, "plan", null, false)));
+        when(store.getAcrossOrganizations("default")).thenReturn(Optional.of(new OrgPolicy("default", "", false, "plan", null, false)));
         OrgPolicyController c = controller(dir, "enterprise-test.license", false);
 
         OrgPolicyController.PolicyView view = c.get();
@@ -77,7 +77,7 @@ class OrgPolicyControllerTest {
 
     @Test
     void onTeamTheViewCarriesTheRefusalAndEvenAnAdminCannotWrite(@TempDir Path dir) throws Exception {
-        when(store.get("default")).thenReturn(Optional.empty());
+        when(store.getAcrossOrganizations("default")).thenReturn(Optional.empty());
         OrgPolicyController c = controller(dir, "team-test.license", true);
 
         OrgPolicyController.PolicyView view = c.get();
@@ -92,7 +92,7 @@ class OrgPolicyControllerTest {
 
     @Test
     void anAdminOnEnterpriseSavesThePolicy(@TempDir Path dir) throws Exception {
-        when(store.get("default")).thenReturn(Optional.empty());
+        when(store.getAcrossOrganizations("default")).thenReturn(Optional.empty());
         when(store.save(any())).thenAnswer(i -> i.getArgument(0));
         OrgPolicyController c = controller(dir, "enterprise-test.license", true);
 
@@ -104,7 +104,7 @@ class OrgPolicyControllerTest {
 
     @Test
     void anApprovalIsOfTheSavedTokenAndARegeneratedTokenIsNotApproved(@TempDir Path dir) throws Exception {
-        when(store.get("default")).thenReturn(Optional.of(new OrgPolicy("default", "", false, "", null, true)));
+        when(store.getAcrossOrganizations("default")).thenReturn(Optional.of(new OrgPolicy("default", "", false, "", null, true)));
         when(flows.get("f1")).thenReturn(Optional.of(published("f1", "tok-saved")));
         when(approvals.save(any())).thenAnswer(i -> i.getArgument(0));
         OrgPolicyController c = controller(dir, "enterprise-test.license", true);
@@ -133,7 +133,7 @@ class OrgPolicyControllerTest {
 
     @Test
     void approvingAnUnpublishedFlowIsRefusedAndAMemberCannotApproveAtAll(@TempDir Path dir) throws Exception {
-        when(store.get("default")).thenReturn(Optional.of(new OrgPolicy("default", "", false, "", null, true)));
+        when(store.getAcrossOrganizations("default")).thenReturn(Optional.of(new OrgPolicy("default", "", false, "", null, true)));
         Map<String, Object> unpublished = new HashMap<>(Map.of("mode", "manual", "published", false));
         when(flows.get("f2")).thenReturn(Optional.of(new FlowGraph("f2", "Flow", "local",
                 List.of(new FlowNode("in1", "input", null, unpublished)), List.of(), null, List.of(), null, null)));
