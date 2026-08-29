@@ -153,8 +153,16 @@ concentus/
     unattributed rather than blamed on the coordinator.
 - **Agent library** — reusable agents, MCP servers, database connections and knowledge bases are
   managed under **Resources** and stored in the app's database (legacy YAMLs from
-  `apps/backend/data/agents/` are migrated in on first launch). The agent node inspector's
-  **Load from library** dropdown populates a node from one. The MCP tab also has a **one-click
+  `apps/backend/data/agents/` are migrated in on first launch). An agent block can **link to a
+  library agent**: the block keeps the id and the version it took, and at every run the name,
+  model, effort, max tokens, system prompt and routing text are read from the library — so an edit
+  under Resources → Agents reaches every flow that links it, and twenty flows with "the same
+  reviewer" are one reviewer rather than twenty copies drifting apart. Tools, skills, plugins,
+  folders, retries, facade and escalation stay the block's own. Every save of a library agent is a
+  new version; the doctor warns when a block is stamped behind it, the block shows the field-by-field
+  diff and **Take the current version** re-stamps it, **Unlink (keep a copy)** turns the fields back
+  into local values, and a deleted library agent is a compile error naming the block. **Copy fields
+  once** is the old one-off copy. The MCP tab also has a **one-click
   catalog** — GitHub, Linear, Notion, Sentry, Stripe and more — each entry saying how it
   authenticates, because that is the question that actually stops people.
 - **RAG** — two kinds of context, injected at run start:

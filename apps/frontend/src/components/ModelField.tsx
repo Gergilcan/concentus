@@ -37,6 +37,7 @@ export function ModelField({
   onChange,
   label,
   allowNone = false,
+  readOnly = false,
 }: {
   value: string
   onChange: (v: string) => void
@@ -44,6 +45,8 @@ export function ModelField({
   label?: ReactNode
   /** Adds an explicit empty choice, for a model that is optional rather than required. */
   allowNone?: boolean
+  /** Shown, not editable — a block linked to a library agent takes its model from the library. */
+  readOnly?: boolean
 }) {
   const { t } = useTranslation()
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null)
@@ -92,6 +95,7 @@ export function ModelField({
         <span>{label ?? t('Model')}</span>
         <select
           value={custom ? CUSTOM : value}
+          disabled={readOnly}
           onChange={(e) => {
             if (e.target.value === CUSTOM) {
               setCustom(true)
@@ -132,6 +136,7 @@ export function ModelField({
           label={t('Model id')}
           value={value}
           placeholder={t('e.g. claude-opus-4-8')}
+          readOnly={readOnly}
           onChange={onChange}
         />
       )}

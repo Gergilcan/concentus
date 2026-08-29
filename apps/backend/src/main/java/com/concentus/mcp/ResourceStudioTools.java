@@ -91,7 +91,9 @@ public class ResourceStudioTools implements StudioToolset {
                         """
                         Creates or updates one library entry. Omit id to create, give it to update. \
                         Fields per kind:
-                          agents       {id, name, model, effort, maxTokens, systemPrompt}
+                          agents       {id, name, model, effort, maxTokens, systemPrompt, description} \
+                        — every save of an existing agent bumps its version, which the blocks that link \
+                        it (libraryAgentId on an agent node) are compared against
                           mcp-servers  {id, name, url, credentialId, authHeader} for a remote server, \
                         or {id, name, command, args[], env{}} for a local stdio one
                           databases    {id, label, jdbcUrl, username, credentialId}

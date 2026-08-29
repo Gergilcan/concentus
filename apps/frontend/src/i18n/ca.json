@@ -746,7 +746,6 @@
   "Linear-Signature": "Linear-Signature",
   "List repositories": "Llista els repositoris",
   "Listing…": "Llistant…",
-  "Load from library": "Carrega de la biblioteca",
   "Load it again": "Torna a carregar-lo",
   "Load none": "No en carreguis cap",
   "Load operations": "Carrega les operacions",
@@ -1589,5 +1588,17 @@
   "Go to block: {{name}} ({{kind}})": "Ves al bloc: {{name}} ({{kind}})",
   "Minimap": "Minimapa",
   "Show the minimap": "Mostra el minimapa",
-  "Hide the minimap": "Amaga el minimapa"
+  "Hide the minimap": "Amaga el minimapa",
+  "Link to a library agent ⓘ": "Vincula a un agent de la biblioteca ⓘ",
+  "Copy fields once ⓘ": "Copia els camps una vegada ⓘ",
+  "The block follows the library agent: name, model, effort, max tokens, system prompt and routing are read from the library at every run, so an edit under Resources → Agents reaches every flow that links it. Tools, skills, plugins, folders and the rest stay this block's own.": "El bloc segueix l'agent de la biblioteca: nom, model, esforç, màxim de tokens, prompt de sistema i encaminament es llegeixen de la biblioteca a cada execució, així que una edició a Recursos → Agents arriba a tots els fluxos que el vinculen. Eines, skills, plugins, carpetes i la resta continuen sent propis d'aquest bloc.",
+  "Copies the definition fields onto this block once and forgets where they came from — the way \"Load from library\" always worked. Later edits to the library agent do not reach this block.": "Copia els camps de definició en aquest bloc una vegada i oblida d'on venen — com sempre ha funcionat \"Carrega de la biblioteca\". Les edicions posteriors de l'agent de la biblioteca no arriben a aquest bloc.",
+  "linked to library · v{{n}}": "vinculat a la biblioteca · v{{n}}",
+  "Unlink (keep a copy)": "Desvincula (conserva una còpia)",
+  "This library agent no longer exists ({{id}}). A run refuses to start until the block is unlinked — its copy of the fields stays — or linked to another agent.": "Aquest agent de la biblioteca ja no existeix ({{id}}). Una execució es nega a arrencar fins que el bloc es desvinculi — la seva còpia dels camps es conserva — o es vinculi a un altre agent.",
+  "The library agent changed since this block linked it (v{{from}} → v{{to}}). The next run uses the new version; take it to refresh the copy this block shows.": "L'agent de la biblioteca ha canviat des que aquest bloc el va vincular (v{{from}} → v{{to}}). La propera execució usa la versió nova; pren-la per refrescar la còpia que mostra aquest bloc.",
+  "No field differs — the library agent was saved again without changes.": "Cap camp difereix — l'agent de la biblioteca s'ha desat de nou sense canvis.",
+  "Take the current version": "Pren la versió actual",
+  "These fields come from the library agent. Unlink the block to edit them here, or edit the agent under Resources → Agents.": "Aquests camps venen de l'agent de la biblioteca. Desvincula el bloc per editar-los aquí, o edita l'agent a Recursos → Agents.",
+  "linked to library agent {{name}}, v{{n}}": "vinculat a l'agent de biblioteca {{name}}, v{{n}}"
 }

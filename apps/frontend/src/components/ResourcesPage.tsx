@@ -132,11 +132,17 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
               },
               { key: 'effort', label: t('Effort'), type: 'select', options: [...EFFORT_OPTIONS] },
               { key: 'maxTokens', label: t('Max tokens'), type: 'number' },
+              // The routing text a delegator reads. Here because a block linked to this agent
+              // takes it from the library like the prompt — a field the block cannot edit has
+              // to be editable somewhere.
+              { key: 'description', label: t('Delegate when… (routing)'), type: 'textarea' },
               { key: 'systemPrompt', label: t('System prompt'), type: 'textarea' },
             ]}
-            labelOf={(a) => a.name}
+            // The version beside the name: every save is one, and it is the number a linked
+            // block is compared against, so the list is where you check what the blocks link.
+            labelOf={(a) => (a.version ? `${a.name} · v${a.version}` : a.name)}
             idOf={(a) => a.id}
-            empty={() => ({ name: '', model: DEFAULT_MODEL, effort: 'high', maxTokens: DEFAULT_MAX_TOKENS, systemPrompt: '' })}
+            empty={() => ({ name: '', model: DEFAULT_MODEL, effort: 'high', maxTokens: DEFAULT_MAX_TOKENS, description: '', systemPrompt: '' })}
             load={api.listAgents}
             save={api.saveAgent}
             remove={api.deleteAgent}

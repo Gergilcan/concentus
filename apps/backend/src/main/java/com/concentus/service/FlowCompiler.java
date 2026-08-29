@@ -9,7 +9,10 @@ import com.concentus.config.AgentSpec.SqlSourceSpec;
 import com.concentus.model.FlowEdge;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.FlowNode;
+import com.concentus.model.LibraryAgent;
+import com.concentus.store.AgentLibraryStore;
 import com.concentus.support.Variables;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import static com.concentus.support.MapValues.bool;
@@ -26,12 +29,57 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
 /** Compiles a {@link FlowGraph} into a coordinator + sub-agent {@link AgentSpec}s. */
 @Component
 public class FlowCompiler {
+
+    /**
+     * Where a linked block's definition comes from. A function rather than the store itself so a
+     * test can compile a linked flow against three records in a map, and so the compiler stays
+     * usable with no database at all — which is how every existing compiler test runs.
+     */
+    @FunctionalInterface
+    public interface LibraryResolver {
+        Optional<LibraryAgent> find(String id);
+    }
+
+    /**
+     * A linked block whose library agent is gone. Its own type, and carrying the block, because
+     * the doctor points findings at the block they concern — and a deleted library agent is the
+     * one compile error whose fix is on a different page than the canvas.
+     */
+    public static class MissingLibraryAgent extends IllegalArgumentException {
+        private final String nodeId;
+
+        MissingLibraryAgent(String message, String nodeId) {
+            super(message);
+            this.nodeId = nodeId;
+        }
+
+        public String nodeId() {
+            return nodeId;
+        }
+    }
+
+    private final LibraryResolver library;
+
+    /** No library: a linked block cannot compile. For tests, and for slices that never link. */
+    public FlowCompiler() {
+        this(id -> Optional.empty());
+    }
+
+    public FlowCompiler(LibraryResolver library) {
+        this.library = library;
+    }
+
+    @Autowired
+    public FlowCompiler(AgentLibraryStore store) {
+        this(store::get);
+    }
 
     public CompiledFlow compile(FlowGraph flow) {
         return compile(flow, Map.of(), null);
@@ -381,8 +429,40 @@ public class FlowCompiler {
         }
     }
 
+    /**
+     * The node's data, with the definition fields read from the library when the block links one.
+     *
+     * <p>Resolved here, at compile time, and not when the block was linked: that is the whole
+     * point of a link. The block stores a copy of the fields too — the canvas card and the
+     * inspector show it without asking the server — but the run never reads that copy, so an edit
+     * under Resources → Agents reaches every linked flow on its next run without anyone opening
+     * the flows. Everything else on the node (tools, skills, plugins, folders, retries, facade,
+     * escalation…) is the block's own: the library says what the agent IS, the flow says what it
+     * gets to use here.
+     *
+     * <p>A linked agent that no longer exists is refused with the block and the id named. Falling
+     * back to the block's stale copy would run a reviewer somebody deleted on purpose, silently.
+     */
+    private Map<String, Object> withLibraryFields(FlowNode node, Map<String, Object> d) {
+        String id = str(d, "libraryAgentId", "");
+        if (id.isBlank()) return d;
+        LibraryAgent agent = library.find(id).orElseThrow(() -> new MissingLibraryAgent(
+                "The block '" + str(d, "name", node.id()) + "' is linked to the library agent "
+                        + id + ", which no longer exists. Open the block and unlink it (keeping "
+                        + "a copy), or link it to another agent under Resources → Agents.",
+                node.id()));
+        Map<String, Object> merged = new LinkedHashMap<>(d);
+        merged.put("name", agent.name());
+        merged.put("model", agent.model());
+        merged.put("effort", agent.effort());
+        merged.put("maxTokens", agent.maxTokens());
+        merged.put("systemPrompt", agent.systemPrompt());
+        merged.put("description", agent.description());
+        return merged;
+    }
+
     private AgentSpec buildAgentSpec(FlowNode node, FlowGraph flow, Resources resources) {
-        Map<String, Object> d = node.dataOrEmpty();
+        Map<String, Object> d = withLibraryFields(node, node.dataOrEmpty());
         AgentSpec s = new AgentSpec();
         s.mode = flow.modeOrDefault();
         s.nodeId = node.id();

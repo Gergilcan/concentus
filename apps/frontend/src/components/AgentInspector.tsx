@@ -15,9 +15,38 @@ interface Props {
   set: (patch: Record<string, unknown>) => void
 }
 
+/**
+ * The fields a library link governs — what the agent IS. Everything else on the block is what it
+ * gets to use in this flow, and stays editable whether the block is linked or not.
+ */
+const LINKED_FIELDS = ['name', 'model', 'effort', 'maxTokens', 'systemPrompt', 'description'] as const
+type LinkedField = (typeof LINKED_FIELDS)[number]
+
+/** The six governed fields as the library agent has them today. */
+function definitionOf(a: LibraryAgent): Pick<AgentNodeData, LinkedField> {
+  return {
+    name: a.name,
+    model: a.model,
+    effort: a.effort,
+    maxTokens: a.maxTokens,
+    systemPrompt: a.systemPrompt,
+    description: a.description ?? '',
+  }
+}
+
+/** Enough of a value to recognise it in a diff line; a whole system prompt would be the panel. */
+function short(value: unknown): string {
+  const s = String(value ?? '')
+  return s.length > 60 ? `${s.slice(0, 57)}…` : s
+}
+
 export function AgentInspector({ data, set }: Props) {
   const { t } = useTranslation()
   const [library, setLibrary] = useState<LibraryAgent[]>([])
+  // Whether the library answered. A linked block whose agent is not in the list is "deleted" only
+  // once the list has actually arrived; before that, or after a failed fetch, it is "unknown", and
+  // telling someone their agent is gone because the network blinked would send them unlinking.
+  const [libraryState, setLibraryState] = useState<'loading' | 'ready' | 'failed'>('loading')
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [facades, setFacades] = useState<FacadeProfile[]>([])
   const [plugins, setPlugins] = useState<PluginInfo[]>([])
@@ -25,8 +54,14 @@ export function AgentInspector({ data, set }: Props) {
   useEffect(() => {
     api
       .listAgents()
-      .then(setLibrary)
-      .catch(() => setLibrary([]))
+      .then((v) => {
+        setLibrary(v)
+        setLibraryState('ready')
+      })
+      .catch(() => {
+        setLibrary([])
+        setLibraryState('failed')
+      })
     api.listSkills().then(setSkills).catch(() => setSkills([]))
     api.listFacadeProfiles().then(setFacades).catch(() => setFacades([]))
     api
@@ -35,40 +70,148 @@ export function AgentInspector({ data, set }: Props) {
       .catch(() => setPlugins([]))
   }, [])
 
-  const applyLibrary = (id: string) => {
+  const linked = !!data.libraryAgentId
+  const linkedAgent = linked ? library.find((x) => x.id === data.libraryAgentId) : undefined
+  const linkedVersion = linkedAgent?.version ?? 1
+  // What the library changed since the block took its copy — by value, not only by version
+  // number, so the list is the actual difference and an agent re-saved untouched shows none.
+  const changes = linkedAgent
+    ? LINKED_FIELDS.filter((f) => String(data[f] ?? '') !== String(definitionOf(linkedAgent)[f] ?? ''))
+    : []
+  const behind = !!linkedAgent && ((data.libraryVersion ?? 0) < linkedVersion || changes.length > 0)
+
+  /** The old behaviour, still here: the fields are copied and nothing remembers where from. */
+  const copyOnce = (id: string) => {
     const a = library.find((x) => x.id === id)
     if (!a) return
-    set({
-      name: a.name,
-      model: a.model,
-      effort: a.effort,
-      maxTokens: a.maxTokens,
-      systemPrompt: a.systemPrompt,
-      description: a.description ?? '',
-    })
+    set(definitionOf(a))
+  }
+
+  /**
+   * A link: the id and the version, plus a copy of the fields so the card and this panel can show
+   * them without a round trip. The run never reads the copy — the compiler resolves the library.
+   */
+  const linkTo = (id: string) => {
+    const a = library.find((x) => x.id === id)
+    if (!a) return
+    set({ libraryAgentId: a.id, libraryVersion: a.version ?? 1, ...definitionOf(a) })
+  }
+
+  /** The copy the block already holds becomes its own; only the reference is dropped. */
+  const unlink = () => {
+    const kept: Record<string, unknown> = {}
+    for (const f of LINKED_FIELDS) kept[f] = data[f] ?? ''
+    set({ libraryAgentId: undefined, libraryVersion: undefined, ...kept })
+  }
+
+  const takeCurrent = () => {
+    if (!linkedAgent) return
+    set({ libraryVersion: linkedVersion, ...definitionOf(linkedAgent) })
+  }
+
+  const fieldLabel: Record<LinkedField, string> = {
+    name: t('Name'),
+    model: t('Model'),
+    effort: t('Effort'),
+    maxTokens: t('Max tokens'),
+    systemPrompt: t('System prompt'),
+    description: t('Delegate when… (routing)'),
   }
 
   return (
     <>
-      {library.length > 0 && (
-        <SelectField label={t('Load from library')} value="" onChange={applyLibrary} className={styles.libraryField}>
-          <option value="">{t('— choose an agent —')}</option>
-          {library.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name} ({a.model})
-            </option>
-          ))}
-        </SelectField>
+      {linked && (
+        <div className={styles.libraryField}>
+          <div className={styles.linkedHead}>
+            <span
+              className={styles.linkedChip}
+              title={t("The block follows the library agent: name, model, effort, max tokens, system prompt and routing are read from the library at every run, so an edit under Resources → Agents reaches every flow that links it. Tools, skills, plugins, folders and the rest stay this block's own.")}
+            >
+              ⛓ {t('linked to library · v{{n}}', { n: data.libraryVersion ?? 1 })}
+            </span>
+            <strong>{linkedAgent?.name ?? data.name}</strong>
+            <button type="button" className={styles.dup} onClick={unlink}>
+              {t('Unlink (keep a copy)')}
+            </button>
+          </div>
+          {libraryState === 'ready' && !linkedAgent && (
+            <p className={styles.previewErr}>
+              {t('This library agent no longer exists ({{id}}). A run refuses to start until the block is unlinked — its copy of the fields stays — or linked to another agent.', { id: data.libraryAgentId })}
+            </p>
+          )}
+          {behind && linkedAgent && (
+            <div className={styles.linkedDiff}>
+              {t('The library agent changed since this block linked it (v{{from}} → v{{to}}). The next run uses the new version; take it to refresh the copy this block shows.', { from: data.libraryVersion ?? 1, to: linkedVersion })}
+              {changes.length > 0 ? (
+                <ul>
+                  {changes.map((f) => (
+                    <li key={f}>
+                      <b>{fieldLabel[f]}</b>: <s>{short(data[f])}</s> → {short(definitionOf(linkedAgent)[f])}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className={styles.hint}>{t('No field differs — the library agent was saved again without changes.')}</p>
+              )}
+              <button type="button" className={styles.dup} onClick={takeCurrent}>
+                {t('Take the current version')}
+              </button>
+            </div>
+          )}
+          {linkedAgent && !behind && (
+            <p className={styles.hint}>
+              {t('These fields come from the library agent. Unlink the block to edit them here, or edit the agent under Resources → Agents.')}
+            </p>
+          )}
+        </div>
       )}
 
-      <Field label={t('Name')} value={data.name} onChange={(v) => set({ name: v })} />
-      <ModelField value={data.model} onChange={(v) => set({ model: v })} />
+      {!linked && library.length > 0 && (
+        <div className={styles.libraryField}>
+          <SelectField
+            label={
+              <span title={t("The block follows the library agent: name, model, effort, max tokens, system prompt and routing are read from the library at every run, so an edit under Resources → Agents reaches every flow that links it. Tools, skills, plugins, folders and the rest stay this block's own.")}>
+                {t('Link to a library agent ⓘ')}
+              </span>
+            }
+            value=""
+            onChange={linkTo}
+          >
+            <option value="">{t('— choose an agent —')}</option>
+            {library.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} ({a.model})
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label={
+              <span title={t('Copies the definition fields onto this block once and forgets where they came from — the way "Load from library" always worked. Later edits to the library agent do not reach this block.')}>
+                {t('Copy fields once ⓘ')}
+              </span>
+            }
+            value=""
+            onChange={copyOnce}
+          >
+            <option value="">{t('— choose an agent —')}</option>
+            {library.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} ({a.model})
+              </option>
+            ))}
+          </SelectField>
+        </div>
+      )}
+
+      <Field label={t('Name')} value={data.name} readOnly={linked} onChange={(v) => set({ name: v })} />
+      <ModelField value={data.model} readOnly={linked} onChange={(v) => set({ model: v })} />
       {data.kind === 'agent' && (
         <TextArea
           label={t('Delegate when… (routing)')}
           rows={3}
           placeholder={t('Use PROACTIVELY for backend/Java work. Give it only the backend part of the plan.')}
           value={data.description ?? ''}
+          readOnly={linked}
           onChange={(v) => set({ description: v })}
         />
       )}
@@ -86,10 +229,16 @@ export function AgentInspector({ data, set }: Props) {
           onChange={(ids) => set({ plugins: ids })}
         />
       )}
-      <TextArea label={t('System prompt')} rows={6} value={data.systemPrompt} onChange={(v) => set({ systemPrompt: v })} />
+      <TextArea
+        label={t('System prompt')}
+        rows={6}
+        value={data.systemPrompt}
+        readOnly={linked}
+        onChange={(v) => set({ systemPrompt: v })}
+      />
 
       <FineTuning>
-        <SelectField label={t('Effort')} value={data.effort} onChange={(v) => set({ effort: v })}>
+        <SelectField label={t('Effort')} value={data.effort} readOnly={linked} onChange={(v) => set({ effort: v })}>
           {EFFORT_OPTIONS.map((v) => (
             <option key={v} value={v}>
               {v}
@@ -100,6 +249,7 @@ export function AgentInspector({ data, set }: Props) {
           label={t('Max tokens')}
           type="number"
           value={data.maxTokens}
+          readOnly={linked}
           onChange={(v) => set({ maxTokens: Number(v) })}
         />
         {data.kind === 'agent' && (

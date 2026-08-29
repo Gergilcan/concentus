@@ -346,3 +346,12 @@
     background: t.$border;
   }
 }
+
+/* The link glyph beside a linked block's name: small and quiet, because it is a fact about
+   where the definition lives, not a status. The title says which agent and which version. */
+.linkGlyph {
+  margin-left: 4px;
+  font-size: 10px;
+  color: t.$muted;
+  cursor: help;
+}

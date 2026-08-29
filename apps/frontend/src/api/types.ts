@@ -353,6 +353,19 @@ export type AgentNodeData = {
   systemPrompt: string
   maxTokens: number
   effort: string
+  /**
+   * The library agent this block is a live reference to. When set, `name`, `model`, `effort`,
+   * `maxTokens`, `systemPrompt` and `description` are read from the library at compile time —
+   * the copies on the block are what the card and the inspector show, never what runs. Everything
+   * else on the block (tools, skills, plugins, folders, retries, facade, escalation…) is the flow's
+   * own. Unlinking keeps the copies and forgets the id.
+   */
+  libraryAgentId?: string
+  /**
+   * The library agent's version whose copy this block carries. The doctor warns when the library
+   * is past it; "Take the current version" refreshes the copies and re-stamps.
+   */
+  libraryVersion?: number
   // Optional: flows saved before these existed simply omit them.
   /** Host folders this agent should treat as its source of truth (CLI `--add-dir`). */
   contextFolders?: string[]
@@ -883,6 +896,12 @@ export type LibraryAgent = {
   maxTokens: number
   description?: string
   systemPrompt: string
+  /**
+   * Counts saves, from 1; the store assigns it. A block that links this agent stamps the version
+   * it took, and is warned when the library has moved past it. Absent on a record from before
+   * versions existed, which reads as 1.
+   */
+  version?: number
 }
 
 /**

@@ -6,6 +6,7 @@ import com.concentus.model.DoctorFinding;
 import com.concentus.model.FlowGraph;
 import com.concentus.model.FlowNode;
 import com.concentus.secrets.CredentialResolver;
+import com.concentus.store.AgentLibraryStore;
 import com.concentus.store.RunStore;
 import com.concentus.store.VariableStore;
 import com.concentus.support.LocalClaudeSupport;
@@ -45,11 +46,13 @@ public class FlowDoctor {
     private final OrgContext orgContext;
     /** Resolves the profile a worker names, to say what it will withhold. */
     private final com.concentus.store.FacadeProfileStore facades;
+    /** Resolves the library agent a linked block names, to say whether it moved on. */
+    private final AgentLibraryStore agentLibrary;
 
     public FlowDoctor(LocalClaudeSupport claude, FlowCompiler compiler, CredentialResolver credentials,
                       McpOAuthStore mcpOAuth, PluginRegistry plugins, RuntimeProbe runtimes,
                       RunStore runStore, VariableStore variables, OrgContext orgContext,
-                      com.concentus.store.FacadeProfileStore facades) {
+                      com.concentus.store.FacadeProfileStore facades, AgentLibraryStore agentLibrary) {
         this.claude = claude;
         this.compiler = compiler;
         this.credentials = credentials;
@@ -60,6 +63,7 @@ public class FlowDoctor {
         this.variables = variables;
         this.orgContext = orgContext;
         this.facades = facades;
+        this.agentLibrary = agentLibrary;
     }
 
     /** Everything worth knowing before pressing Run. An empty list means "nothing found". */
@@ -95,6 +99,14 @@ public class FlowDoctor {
         try {
             checkFanout(compiler.compile(flow, variables.merged(flow.variables()), unresolved),
                     findings);
+        } catch (FlowCompiler.MissingLibraryAgent e) {
+            // The compiler's own message, pointed at the block: the fix is on the block (unlink)
+            // or under Resources → Agents, and "fix the flow on the canvas" would send someone
+            // looking for a wire.
+            findings.add(DoctorFinding.error("library", e.getMessage(),
+                    "Open the block and press \"Unlink (keep a copy)\", or link it to an agent "
+                            + "that exists — a run would refuse to start with this.", e.nodeId()));
+            return;
         } catch (RuntimeException e) {
             findings.add(DoctorFinding.error("graph",
                     e.getMessage() == null ? "This flow does not compile." : e.getMessage(),
@@ -280,6 +292,7 @@ public class FlowDoctor {
 
     private void checkAgentNode(FlowNode node, Map<String, Object> data, Set<String> installed,
                                 List<DoctorFinding> findings) {
+        checkLibraryLink(node, data, findings);
         // Null means the CLI could not be asked. Reporting every selected plugin as missing when
         // the CHECK is what failed would send someone reinstalling things they already have.
         if (installed == null) return;
@@ -291,6 +304,29 @@ public class FlowDoctor {
                     "\"" + label(node) + "\" uses the plugin " + pluginId + ", which is not installed.",
                     "Install it under Resources → Plugins, or clear it on the agent.", node.id()));
         }
+    }
+
+    /**
+     * A linked block whose library agent moved on since the block last took it.
+     *
+     * <p>A warning, not an error: the run works, and it runs the NEW version — a link exists so
+     * that it does. What the person has not seen is the change, and the block's own fields still
+     * show the old copy, so this says where to look. A missing agent is not reported here — the
+     * compiler refuses it with the block named, and {@link #checkGraph} places that finding.
+     */
+    private void checkLibraryLink(FlowNode node, Map<String, Object> data, List<DoctorFinding> findings) {
+        String id = text(data, "libraryAgentId");
+        if (id.isBlank()) return;
+        var current = agentLibrary.get(id);
+        if (current.isEmpty()) return;
+        long stamped = com.concentus.support.MapValues.lng(data, "libraryVersion", 0);
+        if (stamped >= current.get().version()) return;
+        findings.add(DoctorFinding.warn("library",
+                "\"" + label(node) + "\" links the library agent \"" + current.get().name()
+                        + "\", which changed since this block linked it (v" + stamped + " → v"
+                        + current.get().version() + "). The next run uses the new version.",
+                "Open the block to see the diff and press \"Take the current version\" to re-stamp it.",
+                node.id()));
     }
 
     /**
