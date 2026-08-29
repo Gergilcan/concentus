@@ -64,7 +64,7 @@ public class MailAuthProvider {
         String stored = credentials.reveal(organizationId, spec.credentialId()).orElse(null);
         if (stored == null) return null;
 
-        if (!MODE_MICROSOFT.equalsIgnoreCase(spec.authMode())) {
+        if (!spec.usesMicrosoftOAuth()) {
             return new MailAuth(stored, false);
         }
         return new MailAuth(accessToken(spec, organizationId, stored), true);

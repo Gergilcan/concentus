@@ -46,7 +46,7 @@ public final class Redact {
      */
     public static String personalData(String text) {
         if (text == null || text.isEmpty()) return text;
-        return EMAIL.matcher(secrets(text)).replaceAll(Redact::maskEmail);
+        return EMAIL.matcher(secrets(text)).replaceAll(m -> email(m.group()));
     }
 
     /** Keeps an address recognisable to an operator without storing it: {@code a…a@example.com}. */
@@ -58,10 +58,6 @@ public final class Redact {
         String domain = email.substring(at);
         if (local.length() <= 2) return local.charAt(0) + "…" + domain;
         return local.charAt(0) + "…" + local.charAt(local.length() - 1) + domain;
-    }
-
-    private static String maskEmail(java.util.regex.MatchResult m) {
-        return email(m.group());
     }
 
     private static String quotedFieldName(String matched) {

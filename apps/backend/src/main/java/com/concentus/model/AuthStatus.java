@@ -15,12 +15,6 @@ package com.concentus.model;
 public record AuthStatus(String mode, String source, boolean authenticated,
                          String detail, String hint, String appVersion) {
 
-    /** The pre-version shape, kept so the provider and tests stay untouched. */
-    public AuthStatus(String mode, String source, boolean authenticated,
-                      String detail, String hint) {
-        this(mode, source, authenticated, detail, hint, null);
-    }
-
     /** A copy carrying the installed version, or this instance when there is none to carry. */
     public AuthStatus withAppVersion(String version) {
         if (version == null || version.isBlank()) return this;

@@ -21,7 +21,7 @@ import com.concentus.service.CompiledFlow;
  */
 public interface ExecutionBackend {
 
-    /** Stable id, matching what is stored in {@code AgentRun.backend}: "local" or "cloud". */
+    /** Stable id, matching what is stored in {@code AgentRun.backend}: "local", "local-model" or "cloud". */
     String id();
 
     /** Name shown in the designer when explaining where a flow will run. */
@@ -93,7 +93,12 @@ public interface ExecutionBackend {
     /** Runs one turn. Blocking — callers run it on a worker thread. */
     void runTurn(AgentRun run, CompiledFlow flow, String userText);
 
-    /** Stops an in-flight turn. Best effort; a backend with no child process may simply mark it. */
+    /**
+     * Stops an in-flight turn. Best effort: a backend with no child process to kill — the work is
+     * happening in a model server — simply marks the run, which is what stops the agent loop. It
+     * checks the status between turns, so an in-flight generation finishes and nothing further is
+     * dispatched.
+     */
     default void stop(AgentRun run) {
         run.status = "TERMINATED";
     }

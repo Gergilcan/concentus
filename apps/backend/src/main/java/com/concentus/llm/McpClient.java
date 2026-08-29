@@ -177,13 +177,9 @@ public class McpClient implements AutoCloseable {
         StringBuilder sb = new StringBuilder();
         for (JsonNode part : content) {
             String type = part.path("type").asText("");
-            if ("text".equals(type)) {
-                if (!sb.isEmpty()) sb.append('\n');
-                sb.append(part.path("text").asText(""));
-            } else if (!type.isBlank()) {
-                if (!sb.isEmpty()) sb.append('\n');
-                sb.append("(").append(type).append(" content omitted)");
-            }
+            if (type.isBlank()) continue;
+            if (!sb.isEmpty()) sb.append('\n');
+            sb.append("text".equals(type) ? part.path("text").asText("") : "(" + type + " content omitted)");
         }
         return sb.toString();
     }

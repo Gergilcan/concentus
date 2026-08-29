@@ -1,6 +1,7 @@
 package com.concentus.git;
 
 import com.concentus.integration.Redact;
+import com.concentus.support.Texts;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -175,7 +176,7 @@ public class GitProviderClient {
     }
 
     private static String defaulted(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value.trim().replaceAll("/+$", "");
+        return value == null || value.isBlank() ? fallback : Texts.trimTrailingSlashes(value);
     }
 
     /** GitLab group paths contain slashes and must arrive URL-encoded as a single path segment. */

@@ -1,6 +1,5 @@
 package com.concentus.integration.content;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -29,14 +28,6 @@ public class AttachmentPolicy {
         this.maxBytesPerAttachment = maxBytesPerAttachment;
         this.maxBytesTotal = maxBytesTotal;
         this.maxAttachments = maxAttachments;
-    }
-
-    public long maxBytesPerAttachment() {
-        return maxBytesPerAttachment;
-    }
-
-    public long maxBytesTotal() {
-        return maxBytesTotal;
     }
 
     public int maxAttachments() {

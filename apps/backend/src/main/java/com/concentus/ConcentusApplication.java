@@ -8,8 +8,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * Spring Boot entry point for the agent designer/runner API.
  *
  * <p>Anthropic credentials are resolved by {@code AnthropicClientProvider} — by default
- * from your {@code ant auth login} Claude login, or from {@code ANTHROPIC_API_KEY} when set.
- * The client is built lazily, so the server starts without any credentials.
+ * from {@code ANTHROPIC_API_KEY} when set, otherwise from the {@code claude} CLI's own login.
+ * The API client is built lazily, so the server starts without any credentials.
  *
  * <p>Scheduling is on for the one job that is the application's own rather than a flow's — the
  * nightly retention purge ({@code RetentionService}). Flow schedules run on their own

@@ -34,7 +34,7 @@ public class AnthropicClientProvider {
 
     /** "cloud" (API key), "local" (claude CLI subscription), or "none". */
     public String backend() {
-        boolean key = hasKey() || hasToken();
+        boolean key = apiKeyAvailable();
         boolean local = localSupport.available();
         return switch (mode) {
             case "api-key" -> key ? "cloud" : "none";
@@ -95,7 +95,8 @@ public class AnthropicClientProvider {
         String hint = ok ? null
                 : "Not signed in. Sign in to Claude Code (`claude`) to run on your subscription, "
                 + "or set ANTHROPIC_API_KEY to use the cloud API.";
-        return new AuthStatus(mode, source, ok, detail, hint);
+        // No app version here: AuthController stamps the shell's version on the way out.
+        return new AuthStatus(mode, source, ok, detail, hint, null);
     }
 
     /** Whether a hosted-API credential exists at all, whatever the auth mode prefers. */

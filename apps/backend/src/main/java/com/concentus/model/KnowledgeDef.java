@@ -16,16 +16,4 @@ package com.concentus.model;
  *                    before this field existed meant and must go on meaning
  */
 public record KnowledgeDef(String id, String name, String description, String minRole) {
-
-    /**
-     * A base with no restriction stated.
-     *
-     * <p>Kept because {@code KnowledgeDef} is deserialised from rows written before this field
-     * existed, and because a two-argument constructor is what most callers want. Jackson fills the
-     * missing component with null, and every read of {@link #minRole()} treats null as "anybody" —
-     * so an upgrade cannot silently lock somebody out of a base they could read yesterday.
-     */
-    public KnowledgeDef(String id, String name, String description) {
-        this(id, name, description, null);
-    }
 }

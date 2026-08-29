@@ -57,7 +57,7 @@ public class ProcessedMailStore {
     }
 
     /**
-     * False when the table could not be created.
+     * False when the table the migrations should have created is not there.
      *
      * <p>The poller refuses to run in that state. A mail trigger with no memory would re-launch
      * an agent for the same message every minute, which is worse than not running at all.

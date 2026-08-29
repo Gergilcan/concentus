@@ -85,14 +85,6 @@ public class LocalModelExecutionBackend implements ExecutionBackend {
         executor.runTurn(run, flow, userText);
     }
 
-    /**
-     * There is no child process to kill — the work is happening in the model server.
-     *
-     * <p>Marking the run terminated is what stops the agent loop: it checks the status between
-     * turns, so an in-flight generation finishes and nothing further is dispatched.
-     */
-    @Override
-    public void stop(AgentRun run) {
-        run.status = "TERMINATED";
-    }
+    // stop() is the interface default: there is no child process to kill, and marking the run
+    // terminated is what stops the agent loop.
 }

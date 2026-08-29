@@ -11,14 +11,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 /**
- * Entry point.
+ * Entry point of the standalone YAML runner. Not the jar's main class — that is
+ * {@link ConcentusApplication} — so it is named on the command line:
  *
  * <pre>
- *   java -jar target/concentus-backend.jar &lt;config.yaml&gt; [prompt]
+ *   java -cp target/concentus-backend.jar com.concentus.Main &lt;config.yaml&gt; [prompt]
  * </pre>
  *
  * If no prompt argument is given, the prompt is read from stdin.
- * Requires ANTHROPIC_API_KEY (or an `ant auth login` profile) in the environment.
+ * Requires ANTHROPIC_API_KEY in the environment.
  */
 public final class Main {
 
