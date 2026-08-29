@@ -397,4 +397,46 @@ class FlowDoctorTest {
         assertThat(ofArea(doctor.check(flow), "fanout")).noneSatisfy(f ->
                 assertThat(f.message()).contains("not cloned"));
     }
+
+    // ---------------------------------------------------------------- send mail
+
+    private static FlowGraph flowWithMail(Map<String, Object> mailData) {
+        return new FlowGraph("f1", "Flow", "local",
+                List.of(input("manual", ""), coordinator(), new FlowNode("mail-1", "mail", null, mailData)),
+                List.of(new FlowEdge("e1", "in-1", "a-1"), new FlowEdge("e2", "a-1", "mail-1")),
+                null, null, null, null, null);
+    }
+
+    @Test
+    void aMailNodeWithNoRecipientAndNoCredentialIsWarnedAboutBeforeTheRun() {
+        Map<String, Object> data = new HashMap<>();
+        data.put("label", "Avisar");
+        data.put("smtpHost", "smtp.gmail.com");
+        data.put("from", "bot@gmail.com");
+
+        List<DoctorFinding> mail = ofArea(doctor.check(flowWithMail(data)), "mail");
+
+        // Warnings, not errors: the run starts and finishes; only the mail at the end is missing.
+        assertThat(mail).hasSize(2);
+        assertThat(mail).allSatisfy(f -> {
+            assertThat(f.level()).isEqualTo("warn");
+            assertThat(f.where()).isEqualTo("mail-1");
+            assertThat(f.message()).contains("Avisar");
+        });
+        assertThat(mail).anySatisfy(f -> assertThat(f.message()).contains("no recipient"));
+        assertThat(mail).anySatisfy(f -> assertThat(f.message()).contains("no mail account credential"));
+    }
+
+    @Test
+    void aConfiguredMailNodeReportsNothing() {
+        when(credentials.resolve("cred_mail")).thenReturn("pw");
+        Map<String, Object> data = new HashMap<>();
+        data.put("label", "Avisar");
+        data.put("to", "gerard@example.com");
+        data.put("smtpHost", "smtp.gmail.com");
+        data.put("from", "bot@gmail.com");
+        data.put("credentialId", "cred_mail");
+
+        assertThat(doctor.check(flowWithMail(data))).isEmpty();
+    }
 }

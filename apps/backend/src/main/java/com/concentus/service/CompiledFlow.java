@@ -2,6 +2,7 @@ package com.concentus.service;
 
 import com.concentus.config.AgentSpec;
 import com.concentus.config.AgentSpec.RepoSpec;
+import com.concentus.mail.MailHandOffSpec;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -13,28 +14,36 @@ import java.util.Map;
  * fan-out flows — an optional adversarial verifier and an optional merge step.
  */
 public record CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger,
-                           AgentSpec verifier, List<AgentSpec.SubflowSpec> afterFlows) {
+                           AgentSpec verifier, List<AgentSpec.SubflowSpec> afterFlows,
+                           List<MailHandOffSpec> afterMails) {
 
     public CompiledFlow {
-        // Never null downstream: the hand-off list is walked at the end of every run, and a null
+        // Never null downstream: the hand-off lists are walked at the end of every run, and a null
         // there would turn "this flow chains nothing" into an exception at the worst moment.
         afterFlows = afterFlows == null ? List.of() : List.copyOf(afterFlows);
+        afterMails = afterMails == null ? List.of() : List.copyOf(afterMails);
     }
 
     /** The shape every caller had before the merge node existed: no merger, no verifier. */
     public CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents) {
-        this(coordinator, subAgents, null, null, List.of());
+        this(coordinator, subAgents, null, null, List.of(), List.of());
     }
 
     /** The shape every caller had before the verifier node existed: no verifier. */
     public CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger) {
-        this(coordinator, subAgents, merger, null, List.of());
+        this(coordinator, subAgents, merger, null, List.of(), List.of());
     }
 
     /** The shape every caller had before flows could run other flows. */
     public CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger,
                         AgentSpec verifier) {
-        this(coordinator, subAgents, merger, verifier, List.of());
+        this(coordinator, subAgents, merger, verifier, List.of(), List.of());
+    }
+
+    /** The shape every caller had before a flow could send mail when it finished. */
+    public CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger,
+                        AgentSpec verifier, List<AgentSpec.SubflowSpec> afterFlows) {
+        this(coordinator, subAgents, merger, verifier, afterFlows, List.of());
     }
 
     /**

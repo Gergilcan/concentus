@@ -44,6 +44,20 @@ describe('wiring rules', () => {
     expect(canConnect('mcp', 'sql')).toBe(false)
     expect(canConnect('knowledge', 'flow')).toBe(false)
   })
+
+  it('a send-mail node only ever receives — from a block or a gate, never from a capability', () => {
+    expect(wiringRoleOf('mail')).toBe('receives')
+    for (const kind of ['agent', 'coordinator', 'merge', 'verifier', 'condition', 'foreach'] as const) {
+      expect(canConnect(kind, 'mail')).toBe(true)
+    }
+    for (const kind of ['mcp', 'knowledge', 'input', 'flow', 'mail'] as const) {
+      expect(canConnect(kind, 'mail')).toBe(false)
+    }
+    // A mailbox hands nothing back, so a wire leaving the box would be a picture of nothing.
+    for (const kind of ['agent', 'coordinator', 'flow', 'condition', 'mcp', 'input'] as const) {
+      expect(canConnect('mail', kind)).toBe(false)
+    }
+  })
 })
 
 describe('the canvas refuses a wire the rules reject', () => {
@@ -74,6 +88,22 @@ describe('the canvas refuses a wire the rules reject', () => {
     onConnect({ source: mcp.id, target: agent.id, sourceHandle: null, targetHandle: null })
 
     expect(useFlowStore.getState().edges).toHaveLength(1)
+  })
+
+  it('keeps agent → mail and drops mail → agent', () => {
+    const { addNode, onConnect } = useFlowStore.getState()
+    addNode('agent')
+    addNode('mail')
+    const [agent, mail] = useFlowStore.getState().nodes
+    // Adding the box beside the agent already drew the wire that means something; this test is
+    // about the pair drawn by hand, both ways round.
+    useFlowStore.setState({ edges: [] })
+
+    onConnect({ source: mail.id, target: agent.id, sourceHandle: null, targetHandle: null })
+    onConnect({ source: agent.id, target: mail.id, sourceHandle: 'error', targetHandle: null })
+
+    const between = useFlowStore.getState().edges.filter((e) => [e.source, e.target].includes(mail.id))
+    expect(between.map((e) => [e.source, e.target, e.sourceHandle])).toEqual([[agent.id, mail.id, 'error']])
   })
 
   it('lets a sub-flow be wired either way', () => {

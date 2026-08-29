@@ -183,6 +183,7 @@ public class FlowDoctor {
             switch (node.type() == null ? "" : node.type()) {
                 case "mcp" -> checkMcpNode(node, data, findings);
                 case "agent" -> checkAgentNode(node, data, installedPlugins, findings);
+                case "mail" -> checkMailNode(node, findings);
                 default -> {
                     // Every other node type's credential is already covered above.
                 }
@@ -243,6 +244,37 @@ public class FlowDoctor {
                                 + " from a credential that no longer exists (" + id + ").",
                         "Create it under Resources → Credentials, or change the value.", node.id()));
             }
+        }
+    }
+
+    /**
+     * A Send mail node that could not send. Warnings rather than errors: the run itself starts and
+     * finishes fine, it is the mail at the end that quietly does not go out — which is exactly the
+     * kind of thing to hear about before the run rather than from an empty inbox afterwards.
+     */
+    private static void checkMailNode(FlowNode node, List<DoctorFinding> findings) {
+        com.concentus.mail.MailHandOffSpec spec = com.concentus.mail.MailHandOffSpec.from(node);
+        if (spec.to().isBlank()) {
+            findings.add(DoctorFinding.warn("mail",
+                    "\"" + label(node) + "\" has no recipient, so it sends nothing.",
+                    "Type one or more addresses in the node's To field.", node.id()));
+        }
+        if (spec.credentialId().isBlank()) {
+            findings.add(DoctorFinding.warn("mail",
+                    "\"" + label(node) + "\" has no mail account credential, so it cannot sign in to send.",
+                    "Store the mailbox password under Resources → Credentials and pick it on the node.",
+                    node.id()));
+        }
+        if (spec.smtpHost().isBlank()) {
+            findings.add(DoctorFinding.warn("mail",
+                    "\"" + label(node) + "\" has no SMTP host, so it has no server to send through.",
+                    "Fill in your provider's SMTP host on the node (Gmail: smtp.gmail.com · "
+                            + "Microsoft 365: smtp.office365.com).", node.id()));
+        }
+        if (spec.sender().isBlank()) {
+            findings.add(DoctorFinding.warn("mail",
+                    "\"" + label(node) + "\" has no From address and no username, so there is nobody to send as.",
+                    "Fill in the mailbox address on the node.", node.id()));
         }
     }
 

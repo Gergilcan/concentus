@@ -174,8 +174,10 @@ public class SubflowService {
         // completion still fires its own branch; one on the verifier's rejected output runs when
         // the verifier's final word on any worker was a rejection.
         // Mid-run the run is still going, so nothing here reads as "the run failed": only the
-        // settled block's own branches are considered, on that block's own facts.
-        boolean failed = finalCall && !"COMPLETED".equals(run.status);
+        // settled block's own branches are considered, on that block's own facts. At the end, a
+        // failure the other family of hand-off (mail) already handled — and turned green on the
+        // way past — is still a failure the wires here were drawn for.
+        boolean failed = finalCall && (!"COMPLETED".equals(run.status) || run.failureHandled);
         // A failure nobody pinned on a block — "every worker failed", a budget — belongs to the
         // coordinator, the block that stands for the run.
         boolean unattributed = failed && run.failedNodeLabel() == null;
@@ -207,7 +209,7 @@ public class SubflowService {
         }
 
         if (toRun.isEmpty()) {
-            if (failed && !run.recoveryFired) {
+            if (failed && !run.recoveryFired && !run.failureHandled) {
                 String where = run.failedNodeLabel();
                 run.emit(com.concentus.model.RunEvent.of("system", (where == null
                         ? "This run did not complete, and nothing is wired to its coordinator's error output"
@@ -260,10 +262,13 @@ public class SubflowService {
      * goes wrong and it happened; leaving the run red would report an unattended failure and put
      * a flow in the drifted column for working as designed. A rejected branch counts: a run that
      * failed because the verifier rejected everything, with a branch drawn for exactly that, did
-     * what it was drawn to do. A branch that fired mid-run counts the same — the run remembers.
+     * what it was drawn to do. A branch that fired mid-run counts the same — the run remembers,
+     * and so does the mail hand-off, which reads the same flag.
      */
     private static void settle(AgentRun run, boolean failed) {
         if (failed && run.recoveryFired) {
+            run.failureHandled = true;
+            if ("COMPLETED".equals(run.status)) return;
             run.status = "COMPLETED";
             run.emit(com.concentus.model.RunEvent.of("system",
                     "The failure was handled by the branch wired to the failing block's second "

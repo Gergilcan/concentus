@@ -74,7 +74,8 @@ concentus/
   API node turns any REST API into typed tools from its OpenAPI spec, with each operation
   allowed explicitly — a **Run another flow** node, which is either a tool an agent may call and
   wait on (wire it to the agent) or a hand-off that fires when the run completes (leave it
-  unconnected) — and, for fan-out flows, a **Merge** node. Connect a capability to
+  unconnected) — a **Send mail** node, wired out of a block's output, which mails whatever that
+  output carries when the run ends — and, for fan-out flows, a **Merge** node. Connect a capability to
   an agent to grant access — and drag a node from the palette to place it wherever you want. Each sub-agent's *Delegate when…* description is what its delegator uses to route,
   and it receives only its own slice of the plan.
 - **Delegation chains** — an agent delegates to the agents wired *behind* it, so hierarchies work,
@@ -172,7 +173,11 @@ concentus/
   hands the branch a full verification report — every worker, rejected and accepted, with the
   verdict, the reason, its output and its console log — so a rejection can be mailed, filed or
   acted on instead of only read on a box afterwards (a condition after it filters by worker
-  name). On a **condition** the second output is **else**, always drawn: the main branch runs when
+  name). A **Send mail** node on any of these outputs mails what the wire carries — the final
+  answer, the block's failure and log, or the verification report — with `{{flow}}` and
+  `{{status}}` available in the subject, so "email me the report when the verifier rejects the
+  Ads agents" is one box and one wire, with no agent asked to remember to send it. On a
+  **condition** the second output is **else**, always drawn: the main branch runs when
   the test holds, the else branch when it does not — one test read from both sides, so the two
   branches cannot drift apart and no input can fall between them. After a for-each, the else
   branch receives the rejected items rather than dropping them.

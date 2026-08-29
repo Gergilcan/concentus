@@ -16,6 +16,7 @@ import { RepoInspector } from './RepoInspector.tsx'
 import { RerunBlockDialog } from './RerunBlockDialog.tsx'
 import { KnowledgeInspector } from './KnowledgeInspector.tsx'
 import { FlowRunInspector } from './FlowRunInspector.tsx'
+import { MailInspector } from './MailInspector.tsx'
 import { SqlInspector } from './SqlInspector.tsx'
 import { VerifierInspector } from './VerifierInspector.tsx'
 import styles from './panels.module.scss'
@@ -33,6 +34,7 @@ function title(data: AppNodeData): string {
   if (data.kind === 'verifier') return 'Verifier'
   if (data.kind === 'condition') return 'Condition'
   if (data.kind === 'foreach') return 'For each'
+  if (data.kind === 'mail') return 'Send mail'
   return 'Repository'
 }
 
@@ -203,6 +205,7 @@ export function Inspector() {
       {shownTab === 'properties' && data.kind === 'flow' && <FlowRunInspector data={data} set={set} />}
       {shownTab === 'properties' && data.kind === 'condition' && <ConditionInspector data={data} set={set} />}
       {shownTab === 'properties' && data.kind === 'foreach' && <ForEachInspector data={data} set={set} />}
+      {shownTab === 'properties' && data.kind === 'mail' && <MailInspector data={data} set={set} />}
 
       {shownTab === 'properties' && data.kind === 'merge' && <MergeInspector data={data} set={set} />}
 

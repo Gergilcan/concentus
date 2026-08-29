@@ -228,6 +228,7 @@ export type NodeKind =
   | 'verifier'
   | 'condition'
   | 'foreach'
+  | 'mail'
 
 export type InputNodeData = {
   kind: 'input'
@@ -481,6 +482,34 @@ export type FlowRunNodeData = {
   mode?: 'tool' | 'after'
 }
 
+/**
+ * A mail sent when the run finishes — or when the block it hangs off failed, or when the verifier
+ * rejected, depending on which output the wire left from.
+ *
+ * Only ever a target: a mailbox has nothing to hand an agent. There is no body field, because the
+ * body is whatever arrived on the wire — the run's final answer, the failing block's error and
+ * log, or the verification report. The SMTP account lives here and only the password in a stored
+ * credential, the split the IMAP trigger settled on: every save snapshots the flow's JSON, and a
+ * secret on the node would fan out into every revision.
+ */
+export type MailNodeData = {
+  kind: 'mail'
+  label: string
+  /** Comma-separated recipients. */
+  to: string
+  /** May carry {{flow}} and {{status}}, filled in when the mail is sent. */
+  subject: string
+  smtpHost: string
+  smtpPort: number
+  /** On: STARTTLS on 587. Off: implicit TLS on 465. Never plain, whichever is chosen. */
+  smtpStarttls: boolean
+  /** The login; blank signs in as the From address, which for nearly every provider is the same mailbox. */
+  smtpUsername: string
+  from: string
+  /** Id of the stored mailbox password, never the password itself. */
+  credentialId: string
+}
+
 export type KnowledgeNodeData = {
   kind: 'knowledge'
   label: string
@@ -616,6 +645,7 @@ export type AppNodeData =
   | VerifierNodeData
   | ConditionNodeData
   | ForEachNodeData
+  | MailNodeData
 
 export interface SqlPreview {
   columns: string[]
