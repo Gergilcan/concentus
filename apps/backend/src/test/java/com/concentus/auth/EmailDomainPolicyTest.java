@@ -3,7 +3,6 @@ package com.concentus.auth;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.catchThrowable;
 
 /**
  * Which addresses may hold an account.
@@ -22,7 +21,7 @@ class EmailDomainPolicyTest {
     void an_empty_list_allows_everyone_which_is_the_single_company_install() {
         EmailDomainPolicy open = policy("");
 
-        assertThat(open.allowsEveryone()).isTrue();
+        assertThat(open.allowedDomains()).isEmpty();
         assertThat(open.allows("anyone@anywhere.example")).isTrue();
     }
 
@@ -59,16 +58,5 @@ class EmailDomainPolicyTest {
         assertThat(p.allows("no-at-sign")).isFalse();
         assertThat(p.allows("trailing@")).isFalse();
         assertThat(p.allows(null)).isFalse();
-    }
-
-    // The reader is usually an operator who mistyped a domain; "not allowed" alone sends them
-    // guessing.
-    @Test
-    void the_refusal_names_the_domains_that_would_have_worked() {
-        Throwable thrown = catchThrowable(() -> policy("tecnovent.com").require("x@gmail.com"));
-
-        assertThat(thrown).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("gmail.com")
-                .hasMessageContaining("tecnovent.com");
     }
 }

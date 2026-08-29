@@ -55,26 +55,23 @@ public class CredentialResolver {
      */
     public String resolve(String credentialId) {
         if (credentialId == null || credentialId.isBlank()) return null;
-        String reference = credentialId.trim();
-        int sep = reference.indexOf(FIELD_SEPARATOR);
-        String id = sep < 0 ? reference : reference.substring(0, sep);
-        String field = sep < 0 ? null : reference.substring(sep + 1);
+        Reference ref = Reference.parse(credentialId);
 
         try {
             String organizationId = orgContext.currentOrganizationId();
-            if (oauthCredentials.isOAuth(organizationId, id)) {
+            if (oauthCredentials.isOAuth(organizationId, ref.id())) {
                 // Field by field, never the stored document: it holds the client secret and the
                 // refresh token together, and a node that asked for a bearer must not receive them.
-                return oauthCredentials.field(organizationId, id, field).orElse(null);
+                return oauthCredentials.field(organizationId, ref.id(), ref.field()).orElse(null);
             }
-            if (field != null) {
+            if (ref.field() != null) {
                 // A field of something that has no fields. Null rather than the whole secret,
                 // which is what a lenient reading here would hand over by accident.
                 log.warn("Credential {} is not an OAuth authorization, so it has no '{}' field.",
-                        id, field);
+                        ref.id(), ref.field());
                 return null;
             }
-            return credentials.reveal(organizationId, id).orElse(null);
+            return credentials.reveal(organizationId, ref.id()).orElse(null);
         } catch (RuntimeException e) {
             // A database that went away mid-run, typically. Null rather than a throw, so a node
             // with an unreadable credential behaves like one with none — the caller already
@@ -94,14 +91,22 @@ public class CredentialResolver {
      */
     public boolean isLocked(String credentialId) {
         if (credentialId == null || credentialId.isBlank()) return false;
-        String reference = credentialId.trim();
-        int sep = reference.indexOf(FIELD_SEPARATOR);
-        String id = sep < 0 ? reference : reference.substring(0, sep);
         try {
-            return credentials.find(orgContext.currentOrganizationId(), id)
+            return credentials.find(orgContext.currentOrganizationId(), Reference.parse(credentialId).id())
                     .map(CredentialStore.Credential::locked).orElse(false);
         } catch (RuntimeException e) {
             return false;
+        }
+    }
+
+    /** A node's reference, split at the separator: the id, and the field or null when none was asked for. */
+    private record Reference(String id, String field) {
+        static Reference parse(String raw) {
+            String reference = raw.trim();
+            int sep = reference.indexOf(FIELD_SEPARATOR);
+            return sep < 0
+                    ? new Reference(reference, null)
+                    : new Reference(reference.substring(0, sep), reference.substring(sep + 1));
         }
     }
 }

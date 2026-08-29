@@ -114,18 +114,7 @@ public abstract class JsonStore<T> {
     }
 
     public List<T> listIn(String organizationId) {
-        if (!available) return List.of();
-        try {
-            // Sorted in SQL, case-insensitively, to match what the file-backed version did.
-            return jdbc.query(
-                    "select json from resources where kind = ? and organization_id = ? "
-                            + "order by lower(coalesce(sort_key, '')), id",
-                    jsonRow, kind, organizationId)
-                    .stream().filter(Objects::nonNull).toList();
-        } catch (RuntimeException e) {
-            log.warn("Could not list {} records: {}", kind, e.getMessage());
-            return List.of();
-        }
+        return listWhere("kind = ? and organization_id = ?", kind, organizationId);
     }
 
     /**
@@ -134,16 +123,7 @@ public abstract class JsonStore<T> {
      * Nothing that answers an HTTP request for a person should call this.
      */
     public List<T> listAcrossOrganizations() {
-        if (!available) return List.of();
-        try {
-            return jdbc.query(
-                    "select json from resources where kind = ? order by lower(coalesce(sort_key, '')), id",
-                    jsonRow, kind)
-                    .stream().filter(Objects::nonNull).toList();
-        } catch (RuntimeException e) {
-            log.warn("Could not list {} records: {}", kind, e.getMessage());
-            return List.of();
-        }
+        return listWhere("kind = ?", kind);
     }
 
     public Optional<T> get(String id) {
@@ -154,14 +134,7 @@ public abstract class JsonStore<T> {
     public Optional<T> getIn(String organizationId, String id) {
         if (!available) return Optional.empty();
         String safe = Ids.sanitize(id, BAD_ID);
-        try {
-            return jdbc.query("select json from resources where kind = ? and id = ? and organization_id = ?",
-                            jsonRow, kind, safe, organizationId)
-                    .stream().findFirst().filter(Objects::nonNull);
-        } catch (RuntimeException e) {
-            log.warn("Could not read {} {}: {}", kind, safe, e.getMessage());
-            return Optional.empty();
-        }
+        return getWhere(safe, "kind = ? and id = ? and organization_id = ?", kind, safe, organizationId);
     }
 
     /**
@@ -172,11 +145,29 @@ public abstract class JsonStore<T> {
     public Optional<T> getAcrossOrganizations(String id) {
         if (!available) return Optional.empty();
         String safe = Ids.sanitize(id, BAD_ID);
+        return getWhere(safe, "kind = ? and id = ?", kind, safe);
+    }
+
+    /** The rows matching {@code condition}, or nothing when the database cannot be read. */
+    private List<T> listWhere(String condition, Object... args) {
+        if (!available) return List.of();
         try {
-            return jdbc.query("select json from resources where kind = ? and id = ?", jsonRow, kind, safe)
+            // Sorted in SQL, case-insensitively, to match what the file-backed version did.
+            return jdbc.query("select json from resources where " + condition
+                            + " order by lower(coalesce(sort_key, '')), id", jsonRow, args)
+                    .stream().filter(Objects::nonNull).toList();
+        } catch (RuntimeException e) {
+            log.warn("Could not list {} records: {}", kind, e.getMessage());
+            return List.of();
+        }
+    }
+
+    private Optional<T> getWhere(String id, String condition, Object... args) {
+        try {
+            return jdbc.query("select json from resources where " + condition, jsonRow, args)
                     .stream().findFirst().filter(Objects::nonNull);
         } catch (RuntimeException e) {
-            log.warn("Could not read {} {}: {}", kind, safe, e.getMessage());
+            log.warn("Could not read {} {}: {}", kind, id, e.getMessage());
             return Optional.empty();
         }
     }

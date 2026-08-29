@@ -99,52 +99,38 @@ public class RunStore {
     }
 
     /**
-     * What this flow has spent since {@code sinceMillis} — the budget gate's one query.
-     * Zero when persistence is down: a broken database must not also stop every budgeted flow.
-     */
-    /**
      * What every run on one execution backend has cost since a moment, across all flows — the
      * figure a subscription's allowance is measured against. Backend rather than flow, because
      * the allowance belongs to the login, not to a drawing.
      */
     public double spendUsdOnBackendSince(String backend, long sinceMillis) {
-        if (!isAvailable()) return 0d;
-        try {
-            Double sum = jdbc.queryForObject(
-                    "select coalesce(sum(cost_usd), 0) from runs where backend = ? and created_at >= ?",
-                    Double.class, backend, sinceMillis);
-            return sum == null ? 0d : sum;
-        } catch (Exception e) {
-            log.debug("spend query failed: {}", e.getMessage());
-            return 0d;
-        }
+        return sumCostUsd("backend = ? and created_at >= ?", backend, sinceMillis);
     }
 
+    /** What this flow has spent since {@code sinceMillis} — the flow's own budget gate. */
     public double spendUsdSince(String flowId, long sinceMillis) {
-        if (!isAvailable()) return 0d;
-        try {
-            Double sum = jdbc.queryForObject(
-                    "select coalesce(sum(cost_usd), 0) from runs where flow_id = ? and created_at >= ?",
-                    Double.class, flowId, sinceMillis);
-            return sum == null ? 0d : sum;
-        } catch (Exception e) {
-            log.debug("spend query failed: {}", e.getMessage());
-            return 0d;
-        }
+        return sumCostUsd("flow_id = ? and created_at >= ?", flowId, sinceMillis);
     }
 
     /**
      * What every flow together has cost since a moment — the organization's budget gate. Every
      * flow rather than one organization's, because runs are not partitioned by organization (see
      * the README on isolation); on the single-organization deployment this is, the two are the
-     * same sum. Zero when persistence is down, as for the flow's own ceiling.
+     * same sum.
      */
     public double spendUsdSince(long sinceMillis) {
+        return sumCostUsd("created_at >= ?", sinceMillis);
+    }
+
+    /**
+     * The cost of the runs matching {@code condition}. Zero when persistence is down: a broken
+     * database must not also stop every budgeted flow.
+     */
+    private double sumCostUsd(String condition, Object... args) {
         if (!isAvailable()) return 0d;
         try {
             Double sum = jdbc.queryForObject(
-                    "select coalesce(sum(cost_usd), 0) from runs where created_at >= ?",
-                    Double.class, sinceMillis);
+                    "select coalesce(sum(cost_usd), 0) from runs where " + condition, Double.class, args);
             return sum == null ? 0d : sum;
         } catch (Exception e) {
             log.debug("spend query failed: {}", e.getMessage());
@@ -298,34 +284,10 @@ public class RunStore {
                          /** Whose run this is; null only on a row written before runs were stamped. */
                          String organizationId) {
 
-        /** The shape before runs belonged to an organization. */
-        public RunRow(String id, String flowId, String flowName, String mode, String backend,
-                      String status, String trigger, String sessionId, String localSessionId,
-                      boolean localStarted, String error, long totalInputTokens,
-                      long totalOutputTokens, String flowJson, List<RunEvent> events,
-                      List<NodeExec> nodeExecs, long createdAt, String initialPrompt,
-                      String notifyWebhook, boolean golden, int flowVersion, String startedBy,
-                      List<RunPatch> patches) {
-            this(id, flowId, flowName, mode, backend, status, trigger, sessionId, localSessionId,
-                    localStarted, error, totalInputTokens, totalOutputTokens, flowJson, events,
-                    nodeExecs, createdAt, initialPrompt, notifyWebhook, golden, flowVersion,
-                    startedBy, patches, null);
-        }
-
-        /** The shape before the run's repository changes were stored with it. */
-        public RunRow(String id, String flowId, String flowName, String mode, String backend,
-                      String status, String trigger, String sessionId, String localSessionId,
-                      boolean localStarted, String error, long totalInputTokens,
-                      long totalOutputTokens, String flowJson, List<RunEvent> events,
-                      List<NodeExec> nodeExecs, long createdAt, String initialPrompt,
-                      String notifyWebhook, boolean golden, int flowVersion, String startedBy) {
-            this(id, flowId, flowName, mode, backend, status, trigger, sessionId, localSessionId,
-                    localStarted, error, totalInputTokens, totalOutputTokens, flowJson, events,
-                    nodeExecs, createdAt, initialPrompt, notifyWebhook, golden, flowVersion,
-                    startedBy, List.of());
-        }
-
-        /** The shape before executions were credited to a person, for the callers that predate it. */
+        /**
+         * A row with no author, no patches and no organization — the shape tests that predate
+         * those three build.
+         */
         public RunRow(String id, String flowId, String flowName, String mode, String backend,
                       String status, String trigger, String sessionId, String localSessionId,
                       boolean localStarted, String error, long totalInputTokens,
@@ -334,7 +296,8 @@ public class RunStore {
                       String notifyWebhook, boolean golden, int flowVersion) {
             this(id, flowId, flowName, mode, backend, status, trigger, sessionId, localSessionId,
                     localStarted, error, totalInputTokens, totalOutputTokens, flowJson, events,
-                    nodeExecs, createdAt, initialPrompt, notifyWebhook, golden, flowVersion, null);
+                    nodeExecs, createdAt, initialPrompt, notifyWebhook, golden, flowVersion,
+                    null, List.of(), null);
         }
     }
 }

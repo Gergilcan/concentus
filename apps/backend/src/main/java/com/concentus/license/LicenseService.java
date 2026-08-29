@@ -28,11 +28,11 @@ import java.util.Optional;
  * and cached — a license does not change mid-request, and every endpoint on every request asking
  * "am I licensed" must not mean a filesystem read each time.
  *
- * <p><b>Two paid tiers, one set of gates.</b> Enterprise and team licenses unlock the same things
- * (the shared database, members up to {@code seats}, SSO); they differ in who signs them and how
- * big they may be, which is {@link LicenseVerifier}'s concern. Everything in here asks "is a paid
- * license active" and never "which one" — so a gate written for enterprise covers team without a
- * second condition to forget.
+ * <p><b>Two paid tiers.</b> Team and Enterprise both unlock what a paid license buys — the shared
+ * database, members up to {@code seats}, SSO — which is what {@link #enterpriseActive()} answers
+ * and what most gates ask. Enterprise alone carries the {@link Feature}s: {@link #allows},
+ * {@link #withheld} and {@link #refusal} are the line between the two. Who may sign each tier,
+ * and how big it may be, is {@link LicenseVerifier}'s concern.
  *
  * <p><b>Grace, not a cliff.</b> A paid license that has expired keeps working for
  * {@link #GRACE_DAYS} more days. Renewal is a purchase order, not a click, and a flow that stops
@@ -54,7 +54,9 @@ public class LicenseService {
     /** The license file's name inside the data directory. */
     public static final String FILE_NAME = "license.key";
 
-    private static final String LICENSE_URL = "https://www.concentus-ai.com/#license";
+    /** Where a license is bought or requested — every refusal that names a fix points here. */
+    public static final String LICENSE_URL = "https://www.concentus-ai.com/#license";
+
     private static final String FIX_HINT = "Individuals can request a free one at " + LICENSE_URL
             + "; the shared database, extra members and SSO need a team or enterprise license.";
     private static final String NO_LICENSE_PROBLEM = "No license installed. " + FIX_HINT;

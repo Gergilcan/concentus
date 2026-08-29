@@ -199,6 +199,11 @@ public class AccountStore {
                 """, USER_MAPPER, organizationId);
     }
 
+    /** One member of an organization, with the role held THERE — the same read as {@link #listUsers}. */
+    public Optional<Accounts.UserAccount> findMember(String userId, String organizationId) {
+        return listUsers(organizationId).stream().filter(u -> u.id().equals(userId)).findFirst();
+    }
+
     /**
      * Distinct accounts on the deployment. This is what a license's seats count: a person in two
      * organizations is one seat, because they are one person.

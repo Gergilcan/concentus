@@ -62,11 +62,12 @@ class FirstAccountSetupTest {
                 new PersistentTokenBasedRememberMeServices("test-key", username -> null, tokens);
 
         LicenseService licenseService = TestLicenses.serviceOn(licenseDir);
+        DeviceAccountStore devices = new DeviceAccountStore(jdbc, 30);
         AccountController controller = new AccountController(
                 mock(org.springframework.security.authentication.AuthenticationManager.class),
-                accounts, ENCODER, orgContext, mock(OidcSignIn.class), rememberMe,
-                new DeviceAccountStore(jdbc, 30), licenseService,
-                mock(com.concentus.audit.AuditService.class), 30, "Concentus");
+                accounts, ENCODER, orgContext, mock(OidcSignIn.class),
+                new BrowserSignIn(rememberMe, devices, 30), devices, licenseService,
+                mock(com.concentus.audit.AuditService.class), "Concentus");
         return new Fixture(controller, accounts);
     }
 

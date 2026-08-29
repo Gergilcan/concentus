@@ -2,15 +2,7 @@ package com.concentus.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpSession;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices;
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
-import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -35,23 +27,14 @@ import java.nio.charset.StandardCharsets;
 public class OidcSignInController {
 
     private final OidcSignIn signIn;
-    private final PersistentTokenBasedRememberMeServices rememberMe;
-    private final DeviceAccountStore devices;
-    private final int rememberMeDays;
-    private final SecurityContextRepository contextRepository = new HttpSessionSecurityContextRepository();
+    private final BrowserSignIn browser;
 
-    public OidcSignInController(OidcSignIn signIn,
-                                PersistentTokenBasedRememberMeServices rememberMe,
-                                DeviceAccountStore devices,
-                                @org.springframework.beans.factory.annotation.Value(
-                                        "${app.auth.remember-me-days:30}") int rememberMeDays) {
+    public OidcSignInController(OidcSignIn signIn, BrowserSignIn browser) {
         this.signIn = signIn;
-        this.rememberMe = rememberMe;
-        this.devices = devices;
-        this.rememberMeDays = rememberMeDays;
+        this.browser = browser;
     }
 
-/**
+    /**
      * Sends the browser to a provider. A link, not a fetch: the destination is another origin.
      *
      * <p>Named in the query because a deployment can offer several, and the name is checked
@@ -96,29 +79,10 @@ public class OidcSignInController {
                     + URLEncoder.encode(outcome.error(), StandardCharsets.UTF_8));
             return;
         }
-
-        Accounts.UserAccount account = outcome.account();
-        ConcentusUserDetails principal = ConcentusUserDetails.of(account);
-        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
-                principal, null, principal.getAuthorities());
-
-        // A brand-new session id after authenticating, so a session fixed before sign-in cannot be
-        // reused afterwards — the same rule the password path follows.
-        HttpSession existing = request.getSession(false);
-        if (existing != null) existing.invalidate();
-        request.getSession(true);
-
-        SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(authentication);
-        SecurityContextHolder.setContext(context);
-        contextRepository.saveContext(context, request, response);
-        // The cookie that survives a restart of this backend. Without it, signing in through a
-        // directory would still mean signing in again after every deploy.
-        rememberMe.loginSuccess(request, response, authentication);
-        // The same as the password path: this browser has now proved it may be this person, so it
-        // may switch back to them without proving it again.
-        devices.attach(DeviceCookie.ensure(request, response, rememberMeDays), account);
-
+        // The same session, cookie and device attachment the password path gets: without the
+        // cookie, signing in through a directory would still mean signing in again after every
+        // deploy.
+        browser.signIn(outcome.account(), request, response);
         response.sendRedirect("/");
     }
 

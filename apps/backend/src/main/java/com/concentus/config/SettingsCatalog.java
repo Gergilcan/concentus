@@ -3,6 +3,7 @@ package com.concentus.config;
 import com.concentus.license.Feature;
 
 import java.util.List;
+import java.util.Optional;
 
 import static com.concentus.config.SettingDef.choice;
 import static com.concentus.config.SettingDef.flag;
@@ -191,7 +192,7 @@ public final class SettingsCatalog {
         return ALL;
     }
 
-    public static java.util.Optional<SettingDef> byKey(String key) {
+    public static Optional<SettingDef> byKey(String key) {
         return ALL.stream().filter(d -> d.key().equals(key)).findFirst();
     }
 

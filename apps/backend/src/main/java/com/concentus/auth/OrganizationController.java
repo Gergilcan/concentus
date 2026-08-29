@@ -5,7 +5,6 @@ import com.concentus.license.LicenseService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -78,7 +77,7 @@ public class OrganizationController {
     /** The organizations the caller is in. Every role: a Viewer in two of them switches too. */
     @GetMapping
     public List<OrganizationView> mine() {
-        ConcentusUserDetails me = requireMe();
+        ConcentusUserDetails me = orgContext.requireUser();
         return accounts.organizationsOf(me.userId()).stream()
                 .map(org -> view(org, me))
                 .toList();
@@ -94,7 +93,7 @@ public class OrganizationController {
     @PostMapping
     public OrganizationView create(@RequestBody NameRequest body) {
         orgContext.requireAdmin();
-        ConcentusUserDetails me = requireMe();
+        ConcentusUserDetails me = orgContext.requireUser();
         if (!licenseService.allows(Feature.MULTI_ORG)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, licenseService.refusal(Feature.MULTI_ORG));
         }
@@ -107,7 +106,7 @@ public class OrganizationController {
     /** Renames an organization the caller administers. Allowed on every tier. */
     @PutMapping("/{id}")
     public OrganizationView rename(@PathVariable String id, @RequestBody NameRequest body) {
-        ConcentusUserDetails me = requireMe();
+        ConcentusUserDetails me = orgContext.requireUser();
         requireAdminOf(me, id);
         accounts.renameOrganization(id, requireName(body));
         return view(accounts.findOrganization(id).orElseThrow(), me);
@@ -116,7 +115,7 @@ public class OrganizationController {
     /** Everyone in one organization the caller administers, with the role each holds there. */
     @GetMapping("/{id}/members")
     public List<Accounts.UserAccount> members(@PathVariable String id) {
-        requireAdminOf(requireMe(), id);
+        requireAdminOf(orgContext.requireUser(), id);
         return accounts.listUsers(id).stream().map(Accounts.UserAccount::redacted).toList();
     }
 
@@ -129,17 +128,11 @@ public class OrganizationController {
      */
     @PostMapping("/{id}/members")
     public Accounts.UserAccount invite(@PathVariable String id, @RequestBody InviteRequest body) {
-        requireAdminOf(requireMe(), id);
+        requireAdminOf(orgContext.requireUser(), id);
         if (body == null || body.email() == null || body.email().isBlank()) {
             throw new IllegalArgumentException("An email address is required.");
         }
-        String role = body.role() == null || body.role().isBlank()
-                ? Accounts.ROLE_MEMBER
-                : Accounts.normalizeRole(body.role());
-        if (role == null) {
-            throw new IllegalArgumentException("Unknown role '" + body.role() + "'. Use one of: "
-                    + String.join(", ", Accounts.ROLES) + ".");
-        }
+        String role = Accounts.roleOrMember(body.role());
         Accounts.UserAccount existing = accounts.findByEmail(body.email()).orElse(null);
         if (existing != null) {
             accounts.addMembership(existing.id(), id, role);
@@ -155,10 +148,7 @@ public class OrganizationController {
             Accounts.requireStrongPassword(body.password());
             existing = accounts.createUser(id, body.email(), encoder.encode(body.password()), role);
         }
-        String userId = existing.id();
-        return accounts.listUsers(id).stream()
-                .filter(u -> u.id().equals(userId))
-                .findFirst().orElseThrow().redacted();
+        return accounts.findMember(existing.id(), id).orElseThrow().redacted();
     }
 
     /**
@@ -172,15 +162,15 @@ public class OrganizationController {
     @PostMapping("/{id}/switch")
     public Map<String, Object> switchTo(@PathVariable String id, HttpServletRequest request,
                                         HttpServletResponse response) {
-        ConcentusUserDetails me = requireMe();
+        ConcentusUserDetails me = orgContext.requireUser();
         if (!accounts.switchOrganization(me.userId(), id)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "You are not a member of that organization.");
         }
         Accounts.UserAccount account = accounts.findById(me.userId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "That account no longer exists."));
-        ConcentusUserDetails principal = ConcentusUserDetails.of(account);
-        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
-                principal, null, principal.getAuthorities());
+        // The session itself is kept — this is the same person, not a new sign-in — so only the
+        // principal in it is replaced, and no remember-me cookie is reissued.
+        Authentication authentication = BrowserSignIn.authenticationFor(ConcentusUserDetails.of(account));
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
@@ -189,11 +179,6 @@ public class OrganizationController {
                 "organizationId", account.organizationId(),
                 "organizationName", accounts.findOrganization(id).map(Accounts.Organization::name).orElse(id),
                 "role", account.role());
-    }
-
-    private ConcentusUserDetails requireMe() {
-        return orgContext.currentUser()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not signed in."));
     }
 
     /** Admin of THAT organization, by membership — not of whichever one the caller is working in. */

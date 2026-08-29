@@ -114,11 +114,8 @@ public class ShellTokenFilter extends OncePerRequestFilter {
 
     /** The token from either accepted header, matching the style of the MCP endpoints. */
     private static String presented(HttpServletRequest request) {
-        String authorization = request.getHeader("Authorization");
-        if (authorization != null && authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
-            String value = authorization.substring(7).trim();
-            if (!value.isEmpty()) return value;
-        }
+        String bearer = ServiceAccountTokenFilter.bearer(request);
+        if (bearer != null) return bearer;
         String header = request.getHeader("X-Concentus-Shell-Token");
         return header == null || header.isBlank() ? null : header.trim();
     }

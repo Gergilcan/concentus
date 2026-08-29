@@ -23,12 +23,15 @@ import org.springframework.security.web.authentication.rememberme.PersistentToke
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
+import javax.sql.DataSource;
+import java.time.Duration;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Sign-in, session handling and which endpoints are reachable without one.
  *
- * <p>Three groups of endpoints are deliberately outside the session check, because each carries
+ * <p>Four groups of endpoints are deliberately outside the session check, because each carries
  * its own credential that a browser session could not supply:
  *
  * <ul>
@@ -85,21 +88,20 @@ public class SecurityConfig {
      */
     @Bean
     public PersistentTokenBasedRememberMeServices rememberMeServices(
-            AccountUserDetailsService uds, javax.sql.DataSource dataSource,
+            AccountUserDetailsService uds, DataSource dataSource,
             @Value("${app.auth.remember-me-secret:}") String secret,
             @Value("${app.auth.remember-me-days:30}") int days) {
         JdbcTokenRepositoryImpl tokens = new JdbcTokenRepositoryImpl();
         tokens.setDataSource(dataSource);
         String key = secret == null || secret.isBlank()
-                ? java.util.UUID.randomUUID().toString()
+                ? UUID.randomUUID().toString()
                 : secret;
         PersistentTokenBasedRememberMeServices services =
                 new PersistentTokenBasedRememberMeServices(key, uds, tokens);
         services.setAlwaysRemember(true);
-        services.setTokenValiditySeconds((int) java.time.Duration.ofDays(Math.max(1, days)).toSeconds());
-        // Sent only over HTTPS where the request arrived over HTTPS. Not hardcoded true: the
-        // desktop app and local development are plain http on loopback, and a cookie the browser
-        // refuses to send is a sign-in that silently never persists.
+        services.setTokenValiditySeconds((int) Duration.ofDays(Math.max(1, days)).toSeconds());
+        // Never flagged Secure: the desktop app and local development are plain http on loopback,
+        // and a cookie the browser refuses to send is a sign-in that silently never persists.
         services.setUseSecureCookie(false);
         return services;
     }

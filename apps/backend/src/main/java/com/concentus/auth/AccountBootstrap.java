@@ -8,6 +8,8 @@ import org.springframework.context.event.EventListener;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+
 /**
  * Makes sure the administrator account named in configuration exists.
  *
@@ -71,8 +73,8 @@ public class AccountBootstrap {
                     + "The API will reject every request until it is available.");
             return;
         }
-        // The default organization must exist even with auth off, because integration rows are
-        // written against it either way.
+        // The default organization must exist before any account does: integration rows, and the
+        // first account itself, are written against it.
         accounts.createOrganization(orgContext.defaultOrganizationId(), organizationName);
 
         if (adminEmail.isBlank()) {
@@ -87,8 +89,9 @@ public class AccountBootstrap {
         }
 
         String email = adminEmail.trim();
-        if (accounts.findByEmail(email).isPresent()) {
-            handleExisting(email);
+        Optional<Accounts.UserAccount> existing = accounts.findByEmail(email);
+        if (existing.isPresent()) {
+            handleExisting(email, existing.get());
             return;
         }
         create(email);
@@ -101,11 +104,10 @@ public class AccountBootstrap {
                     + "first launch ask for one.", email);
             return;
         }
-        String password = adminPassword;
         try {
             // The same rule that governs changing a password later, so the account cannot be
             // created in a state from which it could not be re-set.
-            Accounts.requireStrongPassword(password);
+            Accounts.requireStrongPassword(adminPassword);
         } catch (IllegalArgumentException e) {
             log.error("""
 
@@ -120,12 +122,12 @@ public class AccountBootstrap {
             return;
         }
 
-        accounts.createUser(orgContext.defaultOrganizationId(), email, encoder.encode(password),
+        accounts.createUser(orgContext.defaultOrganizationId(), email, encoder.encode(adminPassword),
                 Accounts.ROLE_ADMIN);
         log.info("Created the administrator account for {}.", email);
     }
 
-    private void handleExisting(String email) {
+    private void handleExisting(String email, Accounts.UserAccount user) {
         if (!resetPassword) {
             // Said out loud, because "configuration present, nothing happened" is exactly the
             // silence that makes a failed sign-in impossible to diagnose.
@@ -144,8 +146,7 @@ public class AccountBootstrap {
             log.error("Cannot reset the password for {}: {}", email, e.getMessage());
             return;
         }
-        accounts.findByEmail(email).ifPresent(user ->
-                accounts.updatePassword(user.id(), encoder.encode(adminPassword)));
+        accounts.updatePassword(user.id(), encoder.encode(adminPassword));
         log.warn("Reset the password for {} from configuration. "
                 + "Remove CONCENTUS_ADMIN_PASSWORD_RESET so the next restart does not do it again.",
                 email);

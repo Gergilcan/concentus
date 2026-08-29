@@ -20,8 +20,6 @@ import java.time.Clock;
  */
 public final class LicenseCheck {
 
-    private static final String LICENSE_URL = "https://www.concentus-ai.com/#license";
-
     private LicenseCheck() { }
 
     /**
@@ -60,9 +58,7 @@ public final class LicenseCheck {
      *                          the team tier is off here
      */
     public static boolean enterpriseCoversExternalDatabase(Path dataDir, String teamPublicKeySpki) {
-        return enterpriseCoversExternalDatabase(dataDir,
-                LicenseVerifier.forProduction(System.getenv(LicenseVerifier.ENV_TEST_KEYS), teamPublicKeySpki),
-                System.getenv(LicenseService.ENV_VAR), Clock.systemUTC());
+        return enterpriseCoversExternalDatabase(dataDir, serviceBeforeContext(dataDir, teamPublicKeySpki));
     }
 
     /**
@@ -73,7 +69,10 @@ public final class LicenseCheck {
      */
     static boolean enterpriseCoversExternalDatabase(Path dataDir, LicenseVerifier verifier,
                                                     String envLicense, Clock clock) {
-        LicenseService service = new LicenseService(verifier, dataDir, envLicense, clock);
+        return enterpriseCoversExternalDatabase(dataDir, new LicenseService(verifier, dataDir, envLicense, clock));
+    }
+
+    private static boolean enterpriseCoversExternalDatabase(Path dataDir, LicenseService service) {
         if (service.enterpriseActive()) return true;
         License license = service.current().orElse(null);
         if (license != null && License.TIER_INDIVIDUAL.equals(license.tier())) return false;
@@ -85,12 +84,12 @@ public final class LicenseCheck {
             throw new IllegalStateException(
                     "The shared database is an enterprise feature, and the " + what + " for \""
                             + license.licensee() + "\" expired on " + license.expires()
-                            + " (14-day grace included). " + fix + LICENSE_URL + ".");
+                            + " (14-day grace included). " + fix + LicenseService.LICENSE_URL + ".");
         }
         throw new IllegalStateException(
                 "The shared database is an enterprise feature. Install a license via the "
                         + LicenseService.ENV_VAR + " environment variable or "
                         + dataDir.resolve(LicenseService.FILE_NAME)
-                        + ", or get one at " + LICENSE_URL + ".");
+                        + ", or get one at " + LicenseService.LICENSE_URL + ".");
     }
 }

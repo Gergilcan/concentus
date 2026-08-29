@@ -52,8 +52,14 @@ public class OrgPolicyService {
 
     /** The organization whose policy applies to this thread. */
     public String organizationId() {
-        return orgContext.currentUser().map(u -> u.organizationId())
-                .orElse(orgContext.defaultOrganizationId());
+        return orgContext.currentOrganizationId();
+    }
+
+    /** The Enterprise gate on every write: refused with the sentence the panel already shows. */
+    private void requireEnforced() {
+        if (!enforced()) {
+            throw new OrgContext.AccessDeniedForOrganization(refusal());
+        }
     }
 
     /**
@@ -75,9 +81,7 @@ public class OrgPolicyService {
      * typo in the ceiling cannot widen anything: an unknown mode is rejected, never stored.
      */
     public OrgPolicy save(OrgPolicy draft) {
-        if (!enforced()) {
-            throw new OrgContext.AccessDeniedForOrganization(refusal());
-        }
+        requireEnforced();
         String ceiling = draft.maxPermissionModeOrEmpty();
         if (!ceiling.isEmpty() && !PermissionCeiling.known(ceiling)) {
             throw new IllegalArgumentException("'" + ceiling + "' is not a permission mode. One of: "
@@ -137,17 +141,13 @@ public class OrgPolicyService {
 
     /** Records an admin's approval of {@code token} for the flow. Admin-ness is the controller's check. */
     public PublishApproval approve(String flowId, String token, String approvedBy) {
-        if (!enforced()) {
-            throw new OrgContext.AccessDeniedForOrganization(refusal());
-        }
+        requireEnforced();
         return approvals.save(new PublishApproval(flowId, token, approvedBy, System.currentTimeMillis()));
     }
 
     /** Withdraws the approval, so the endpoint answers 404 again until the next one. */
     public void revoke(String flowId) {
-        if (!enforced()) {
-            throw new OrgContext.AccessDeniedForOrganization(refusal());
-        }
+        requireEnforced();
         approvals.delete(flowId);
     }
 }

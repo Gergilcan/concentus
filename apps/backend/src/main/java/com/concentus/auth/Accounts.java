@@ -72,6 +72,23 @@ public final class Accounts {
     }
 
     /**
+     * The role an admin asked for when adding somebody, MEMBER when they asked for none.
+     *
+     * <p>An unrecognised name is refused rather than quietly downgraded: an admin who typed
+     * "editor" meaning MEMBER should be told, not handed an account that cannot do the job and
+     * a puzzle to solve next week.
+     */
+    public static String roleOrMember(String requested) {
+        if (requested == null || requested.isBlank()) return ROLE_MEMBER;
+        String role = normalizeRole(requested);
+        if (role == null) {
+            throw new IllegalArgumentException("Unknown role '" + requested + "'. Use one of: "
+                    + String.join(", ", ROLES) + ".");
+        }
+        return role;
+    }
+
+    /**
      * Minimum password length, applied everywhere a password is set.
      *
      * <p>Shared rather than duplicated per call site, because an account created under a looser

@@ -1,10 +1,12 @@
 package com.concentus.config;
 
 import com.concentus.auth.OrgContext;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -36,7 +38,7 @@ public class Settings {
      * whole settings feature was inert without a single error anywhere. It is the third time today
      * that two constructors on one bean have cost an afternoon.
      */
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public Settings(SettingsStore store, Environment environment, OrgContext orgContext) {
         this.store = store;
         this.environment = environment;
@@ -61,7 +63,7 @@ public class Settings {
      * <p>Values as strings, as they arrive from a form or an environment, so a test exercises the
      * same parsing the real thing does rather than a typed shortcut around it.
      */
-    public static Settings of(java.util.Map<String, String> values) {
+    public static Settings of(Map<String, String> values) {
         return new Settings(null, null, null) {
             @Override
             public Optional<String> get(String key) {
@@ -88,10 +90,7 @@ public class Settings {
 
     public Optional<String> get(String key) {
         if (store == null) return Optional.empty();
-        Optional<String> stored = store.get(organizationId(), key);
-        if (stored.isPresent()) return stored;
-        String configured = environment.getProperty(key);
-        return configured == null || configured.isBlank() ? Optional.empty() : Optional.of(configured);
+        return forOrganization(organizationId(), key);
     }
 
     /**

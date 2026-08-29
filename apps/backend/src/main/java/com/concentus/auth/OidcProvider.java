@@ -48,17 +48,16 @@ public record OidcProvider(String id, String displayName, String issuer, String 
                 ? "generic"
                 : preset.trim().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "");
         return switch (id) {
-            case "microsoft" -> discovered(id, name(displayName, "Microsoft"),
-                    MS_ISSUER.formatted(tenant == null || tenant.isBlank()
-                            ? "organizations" : tenant.trim()),
-                    scopes(scope, "openid profile email"));
-            case "google" -> discovered(id, name(displayName, "Google"),
-                    "https://accounts.google.com", scopes(scope, "openid profile email"));
+            case "microsoft" -> discovered(id, orDefault(displayName, "Microsoft"),
+                    MS_ISSUER.formatted(orDefault(tenant, "organizations")),
+                    orDefault(scope, "openid profile email"));
+            case "google" -> discovered(id, orDefault(displayName, "Google"),
+                    "https://accounts.google.com", orDefault(scope, "openid profile email"));
             // OAuth2, not OpenID Connect: no discovery document, and the person's id is "id"
             // rather than "sub". Stated here so it costs a client id and a secret like the others,
             // rather than being a shape this application cannot express.
-            case "discord" -> new OidcProvider(id, name(displayName, "Discord"), "",
-                    scopes(scope, "identify email"),
+            case "discord" -> new OidcProvider(id, orDefault(displayName, "Discord"), "",
+                    orDefault(scope, "identify email"),
                     "https://discord.com/oauth2/authorize",
                     "https://discord.com/api/oauth2/token",
                     "https://discord.com/api/users/@me",
@@ -66,9 +65,9 @@ public record OidcProvider(String id, String displayName, String issuer, String 
             // Anything else keeps the name the deployment gave it. Not folded into one
             // "generic": two providers configured that way would answer to the same id, so the
             // second would shadow the first and its button would send people to the wrong one.
-            default -> discovered(id, name(displayName, "your organization"),
+            default -> discovered(id, orDefault(displayName, "your organization"),
                     issuer == null ? "" : issuer.trim().replaceAll("/+$", ""),
-                    scopes(scope, "openid profile email"));
+                    orDefault(scope, "openid profile email"));
         };
     }
 
@@ -95,11 +94,8 @@ public record OidcProvider(String id, String displayName, String issuer, String 
                 blankToNull(email) == null ? emailClaim : email.trim());
     }
 
-    private static String scopes(String configured, String fallback) {
-        return configured == null || configured.isBlank() ? fallback : configured.trim();
-    }
-
-    private static String name(String configured, String fallback) {
+    /** The configured value, trimmed, or the preset's own when configuration says nothing. */
+    private static String orDefault(String configured, String fallback) {
         return configured == null || configured.isBlank() ? fallback : configured.trim();
     }
 
