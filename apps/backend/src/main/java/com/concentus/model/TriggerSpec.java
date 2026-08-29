@@ -1,8 +1,11 @@
 package com.concentus.model;
 
+import static com.concentus.support.MapValues.bool;
+import static com.concentus.support.MapValues.lng;
 import static com.concentus.support.MapValues.str;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * How a flow starts, read from its {@code input} node. One flow has at most one input node.
@@ -28,12 +31,6 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
                           String permissionMode, boolean shadow,
                           String watchPath, String watchGlob, long watchDebounceSeconds,
                           boolean published, String publishToken) {
-
-    /** The pre-shadow shape, kept for existing callers. */
-    public TriggerSpec(String mode, String prompt, String cron, String secret, String authParam,
-                       String permissionMode) {
-        this(mode, prompt, cron, secret, authParam, permissionMode, false);
-    }
 
     /** The pre-watch shape: no folder, nothing published. */
     public TriggerSpec(String mode, String prompt, String cron, String secret, String authParam,
@@ -63,11 +60,11 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
      * important one: an unrecognised value is rejected by the CLI at launch, and a typo must never
      * be able to <em>widen</em> what a flow is allowed to do.
      */
-    public static final java.util.Set<String> PERMISSION_MODES =
-            java.util.Set.of("default", "acceptEdits", "bypassPermissions", "plan");
+    public static final Set<String> PERMISSION_MODES =
+            Set.of("default", "acceptEdits", "bypassPermissions", "plan");
 
     /** A recognised mode, or blank to defer to the deployment default. */
-    static String permissionModeOf(String configured) {
+    private static String permissionModeOf(String configured) {
         if (configured == null) return "";
         String trimmed = configured.trim();
         return PERMISSION_MODES.contains(trimmed) ? trimmed : "";
@@ -85,16 +82,15 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
                         str(d, "secret", ""),
                         str(d, "authParam", DEFAULT_AUTH_PARAM),
                         permissions,
-                        com.concentus.support.MapValues.bool(d, "shadow", false),
+                        bool(d, "shadow", false),
                         str(d, "watchPath", "").trim(),
                         str(d, "watchGlob", "").trim(),
-                        debounceOf(com.concentus.support.MapValues.lng(
-                                d, "watchDebounceSeconds", DEFAULT_WATCH_DEBOUNCE_SECONDS)),
-                        com.concentus.support.MapValues.bool(d, "published", false),
+                        debounceOf(lng(d, "watchDebounceSeconds", DEFAULT_WATCH_DEBOUNCE_SECONDS)),
+                        bool(d, "published", false),
                         str(d, "publishToken", "").trim());
             }
         }
-        return new TriggerSpec("manual", "", "", "", DEFAULT_AUTH_PARAM, permissions);
+        return new TriggerSpec("manual", "", "", "", DEFAULT_AUTH_PARAM, permissions, false);
     }
 
     /**
@@ -102,7 +98,7 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
      * progress — the exact behaviour the debounce exists to avoid — so anything below one second
      * reads as "the default" rather than as a request for that.
      */
-    static long debounceOf(long configured) {
+    private static long debounceOf(long configured) {
         return configured < 1 ? DEFAULT_WATCH_DEBOUNCE_SECONDS : configured;
     }
 

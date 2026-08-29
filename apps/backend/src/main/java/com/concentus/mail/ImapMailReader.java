@@ -26,7 +26,9 @@ import org.springframework.stereotype.Component;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  * Reads and files mail over IMAP.
@@ -71,13 +73,6 @@ public class ImapMailReader {
     }
 
     /**
-     * Fetches messages matching the spec's conditions.
-     *
-     * @param excludeIdentities message identities already processed, filtered out locally because
-     *                          IMAP has no way to express "not these Message-IDs"
-     * @param limit             hard cap on how many are returned
-     */
-    /**
      * One poll's worth of results, with enough context to explain an empty one.
      *
      * <p>"Nothing to do" has three quite different causes — an empty folder, conditions that match
@@ -91,8 +86,15 @@ public class ImapMailReader {
     public record Fetched(List<FetchedMail> mails, int matchedSearch, int inFolder) {
     }
 
+    /**
+     * Fetches messages matching the spec's conditions.
+     *
+     * @param excludeIdentities message identities already processed, filtered out locally because
+     *                          IMAP has no way to express "not these Message-IDs"
+     * @param limit             hard cap on how many are returned
+     */
     public Fetched fetch(MailTriggerSpec spec, MailAuthProvider.MailAuth auth,
-                         java.util.Set<String> excludeIdentities, int limit) {
+                         Set<String> excludeIdentities, int limit) {
         Store store = null;
         Folder folder = null;
         try {
@@ -107,7 +109,7 @@ public class ImapMailReader {
 
             // Not a lambda over `folder`: it is reassigned in this method, so capturing it would
             // not compile — and an if reads more plainly here anyway.
-            java.util.Optional<SearchTerm> term = searchTerm(spec);
+            Optional<SearchTerm> term = searchTerm(spec);
             Message[] found = term.isPresent() ? search(folder, term.get()) : messages(folder);
             int inFolder = folder.getMessageCount();
 
@@ -177,27 +179,6 @@ public class ImapMailReader {
         }
     }
 
-    /** Opens a connection and closes it, so "Test connection" proves the whole path. */
-    public String testConnection(MailTriggerSpec spec, MailAuthProvider.MailAuth auth) {
-        Store store = null;
-        Folder folder = null;
-        try {
-            store = connect(spec, auth);
-            folder = store.getFolder(spec.folder());
-            if (!folder.exists()) {
-                throw new MailException("Connected, but no folder named '" + spec.folder() + "' exists.");
-            }
-            folder.open(Folder.READ_ONLY);
-            return "Connected to " + spec.host() + "; folder '" + spec.folder() + "' has "
-                    + folder.getMessageCount() + " message(s).";
-        } catch (MessagingException e) {
-            throw new MailException("Could not connect to " + spec.host() + ": "
-                    + Redact.secrets(String.valueOf(e.getMessage())), e);
-        } finally {
-            close(folder, store);
-        }
-    }
-
     // ---- conditions ----
 
     /**
@@ -206,7 +187,7 @@ public class ImapMailReader {
      * <p>Empty when nothing is set, in which case the caller lists the folder instead — a SEARCH
      * with no terms is not something to construct.
      */
-    private static java.util.Optional<SearchTerm> searchTerm(MailTriggerSpec spec) {
+    private static Optional<SearchTerm> searchTerm(MailTriggerSpec spec) {
         List<SearchTerm> terms = new ArrayList<>();
         if (spec.unseenOnly()) terms.add(new FlagTerm(new Flags(Flags.Flag.SEEN), false));
         if (spec.flaggedOnly()) terms.add(new FlagTerm(new Flags(Flags.Flag.FLAGGED), true));
@@ -214,8 +195,8 @@ public class ImapMailReader {
         if (!spec.subjectContains().isBlank()) terms.add(new SubjectTerm(spec.subjectContains()));
         if (!spec.bodyContains().isBlank()) terms.add(new BodyTerm(spec.bodyContains()));
 
-        if (terms.isEmpty()) return java.util.Optional.empty();
-        return java.util.Optional.of(terms.size() == 1
+        if (terms.isEmpty()) return Optional.empty();
+        return Optional.of(terms.size() == 1
                 ? terms.get(0)
                 : new AndTerm(terms.toArray(new SearchTerm[0])));
     }
@@ -240,15 +221,12 @@ public class ImapMailReader {
         for (Message m : folder.getMessages()) {
             if (m instanceof MimeMessage mime) {
                 String id = mime.getMessageID();
-                if (id != null && normalize(id).equals(normalize(messageId))) return m;
+                if (id != null && FetchedMail.normalize(id).equals(FetchedMail.normalize(messageId))) {
+                    return m;
+                }
             }
         }
         return null;
-    }
-
-    private static String normalize(String messageId) {
-        return messageId == null ? ""
-                : messageId.trim().replaceAll("^<|>$", "").toLowerCase(java.util.Locale.ROOT);
     }
 
     // ---- reading ----
@@ -391,11 +369,6 @@ public class ImapMailReader {
         Store store = session.getStore(protocol);
         store.connect(spec.host(), spec.port(), spec.username(), auth.secret());
         return store;
-    }
-
-    /** Convenience for the plain-password path, used by tests and by non-Microsoft mailboxes. */
-    Store connect(MailTriggerSpec spec, String password) throws MessagingException {
-        return connect(spec, new MailAuthProvider.MailAuth(password, false));
     }
 
     private static void close(Folder folder, Store store) {

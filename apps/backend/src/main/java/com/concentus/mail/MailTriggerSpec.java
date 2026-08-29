@@ -56,7 +56,7 @@ public record MailTriggerSpec(String host, int port, boolean ssl, String usernam
                 str(d, "mailCredentialId", ""),
                 // Microsoft 365 refuses a password over IMAP at all — Basic auth is retired there
                 // — so the mode is per node rather than inferred from the host.
-                str(d, "mailAuthMode", "password"),
+                str(d, "mailAuthMode", MailAuthProvider.MODE_PASSWORD),
                 str(d, "mailTenantId", ""),
                 str(d, "mailClientId", ""),
                 str(d, "mailFolder", "INBOX"),
@@ -79,7 +79,7 @@ public record MailTriggerSpec(String host, int port, boolean ssl, String usernam
 
     /** True when this node signs in with Microsoft OAuth rather than a password. */
     public boolean usesMicrosoftOAuth() {
-        return "microsoft-oauth".equalsIgnoreCase(authMode);
+        return MailAuthProvider.MODE_MICROSOFT.equalsIgnoreCase(authMode);
     }
 
     /**

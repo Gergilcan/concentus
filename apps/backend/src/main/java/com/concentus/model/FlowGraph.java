@@ -61,19 +61,6 @@ public record FlowGraph(String id, String name, String mode,
                 folder, null);
     }
 
-    /** The pre-folders shape, kept so the many existing constructions stay valid. */
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    public FlowGraph(String id, String name, String mode,
-                     List<FlowNode> nodes, List<FlowEdge> edges,
-                     Boolean enabled, List<String> tags, Boolean favorite,
-                     String notifyWebhook, Double budgetUsd,
-                     String approvalSlackCredentialId, String approvalSlackChannel,
-                     String approvalTeamsWebhook, Map<String, String> variables) {
-        this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
-                approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, variables,
-                null, null);
-    }
-
     /** The pre-variables shape, kept so the many existing constructions stay valid. */
     @com.fasterxml.jackson.annotation.JsonIgnore
     public FlowGraph(String id, String name, String mode,
@@ -104,7 +91,7 @@ public record FlowGraph(String id, String name, String mode,
                      Boolean enabled, List<String> tags, Boolean favorite,
                      String notifyWebhook, Double budgetUsd) {
         this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
-                null, null, null, null);
+                null, null, null);
     }
 
     /** The pre-budget shape, kept for the same reason. */
@@ -135,10 +122,6 @@ public record FlowGraph(String id, String name, String mode,
     // Jackson does not recognise as a getter cannot collide with anything.
     public boolean enabledOrDefault() {
         return enabled == null || enabled;
-    }
-
-    public boolean favoriteOrDefault() {
-        return favorite != null && favorite;
     }
 
     public String modeOrDefault() {

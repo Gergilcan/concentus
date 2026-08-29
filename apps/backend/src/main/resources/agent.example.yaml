@@ -1,11 +1,11 @@
 # =============================================================================
 # Example agent specification.
 #
-# Copy this file, edit it, and pass it to the app:
-#   java -jar target/concentus-backend.jar my-agent.yaml "Summarize the open issues"
+# Copy this file, edit it, and pass it to the standalone runner:
+#   java -cp target/concentus-backend.jar com.concentus.Main my-agent.yaml "Summarize the open issues"
 #
-# Secrets are NEVER written here. Fields ending in `Env` name an environment
-# variable that holds the token; the app reads the value at runtime.
+# Secrets are NEVER written here. A `credentialId` names a credential stored in
+# the app (Resources -> Credentials); the token is looked up at runtime.
 # =============================================================================
 
 # Which runner drives the agent loop:

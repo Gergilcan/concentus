@@ -5,7 +5,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Turns a message's attachments into text the extraction step can read.
@@ -26,14 +28,14 @@ public class AttachmentExtractionService {
      * File extensions per detected type, for {@link #supportedExtensions()}. The extension is a
      * hint for pickers; actual handling is decided by content detection at ingest.
      */
-    private static final java.util.Map<DetectedType, java.util.List<String>> EXTENSIONS = java.util.Map.of(
-            DetectedType.PDF, java.util.List.of(".pdf"),
-            DetectedType.DOCX, java.util.List.of(".docx"),
-            DetectedType.XLSX, java.util.List.of(".xlsx"),
-            DetectedType.PPTX, java.util.List.of(".pptx"),
-            DetectedType.TEXT, java.util.List.of(".txt", ".md", ".html"),
-            DetectedType.CSV, java.util.List.of(".csv"),
-            DetectedType.IMAGE, java.util.List.of(".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff"));
+    private static final Map<DetectedType, List<String>> EXTENSIONS = Map.of(
+            DetectedType.PDF, List.of(".pdf"),
+            DetectedType.DOCX, List.of(".docx"),
+            DetectedType.XLSX, List.of(".xlsx"),
+            DetectedType.PPTX, List.of(".pptx"),
+            DetectedType.TEXT, List.of(".txt", ".md", ".html"),
+            DetectedType.CSV, List.of(".csv"),
+            DetectedType.IMAGE, List.of(".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff"));
 
     /**
      * The extensions an upload can actually be extracted from, derived from the extractors that
@@ -43,14 +45,12 @@ public class AttachmentExtractionService {
      * drifted twice: it offered .doc/.xls, which no extractor claims (they detect as
      * LEGACY_OFFICE and fail at ingest), and it silently dropped images, which OCR reads fine.
      */
-    public java.util.List<String> supportedExtensions() {
-        java.util.List<String> out = new java.util.ArrayList<>();
+    public List<String> supportedExtensions() {
+        List<String> out = new ArrayList<>();
         for (var entry : EXTENSIONS.entrySet()) {
-            boolean handled = extractors.stream()
-                    .anyMatch(e -> e.supports(entry.getKey()) && e.isAvailable());
-            if (handled) out.addAll(entry.getValue());
+            if (extractorFor(entry.getKey()) != null) out.addAll(entry.getValue());
         }
-        java.util.Collections.sort(out);
+        Collections.sort(out);
         return out;
     }
 

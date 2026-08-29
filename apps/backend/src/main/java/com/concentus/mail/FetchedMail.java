@@ -1,6 +1,7 @@
 package com.concentus.mail;
 
 import java.util.List;
+import java.util.Locale;
 
 /**
  * One message, read out of IMAP and detached from the connection.
@@ -32,8 +33,15 @@ public record FetchedMail(String messageId, long uid, String subject, String fro
 
     /** A stable identity even for the rare message that arrives with no {@code Message-ID}. */
     public String identity() {
-        return messageId != null && !messageId.isBlank()
-                ? messageId.trim().replaceAll("^<|>$", "").toLowerCase(java.util.Locale.ROOT)
-                : "uid:" + uid;
+        return messageId != null && !messageId.isBlank() ? normalize(messageId) : "uid:" + uid;
+    }
+
+    /**
+     * A {@code Message-ID} as it is compared: angle brackets off, lower-cased. Servers and clients
+     * differ on both, and the same message must read as itself whichever spelling comes back.
+     */
+    static String normalize(String messageId) {
+        return messageId == null ? ""
+                : messageId.trim().replaceAll("^<|>$", "").toLowerCase(Locale.ROOT);
     }
 }
