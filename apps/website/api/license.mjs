@@ -5,16 +5,11 @@
  * cheap; revisit if the form ever meets real abuse.
  */
 import { signLicense } from './_lib/license-format.mjs'
-import { openLedger } from './_lib/ledger.mjs'
+import { openLedger, payloadOf } from './_lib/ledger.mjs'
 import { sendEmail } from './_lib/resend.mjs'
-import { clientIp, looksLikeEmail, readBody } from './_lib/http.mjs'
+import { clientIp, looksLikeEmail, readBody, requestCounter } from './_lib/http.mjs'
 
-// ip -> count and normalized-email -> count, this instance; serverless instances recycle, and
-// that is fine. Two independent counters, same threshold: an attacker rotating IPs against one
-// address is still capped by the email counter, and one behind a shared IP (an office, a NAT)
-// hammering many addresses is still capped by the IP counter.
-const seenByIp = new Map()
-const seenByEmail = new Map()
+const requests = requestCounter(10)
 const OK = { message: 'If that address is valid, your license is on its way.' }
 
 /**
@@ -40,7 +35,7 @@ async function recordPending(token) {
 async function markSent(ledger, token) {
   if (!ledger) return
   try {
-    await ledger.markSent(JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).id)
+    await ledger.markSent(payloadOf(token).id)
   } catch (err) {
     console.error('license analytics sent-update failed', err)
   }
@@ -53,13 +48,8 @@ export default async function handler(req, res) {
   if (!looksLikeEmail(email) || !name || String(name).length > 200) {
     return res.status(200).json(OK)
   }
-  const ip = clientIp(req)
-  const normalizedEmail = String(email).trim().toLowerCase()
-  const ipCount = (seenByIp.get(ip) ?? 0) + 1
-  seenByIp.set(ip, ipCount)
-  const emailCount = (seenByEmail.get(normalizedEmail) ?? 0) + 1
-  seenByEmail.set(normalizedEmail, emailCount)
-  if (ipCount > 10 || emailCount > 10) return res.status(200).json(OK)
+  // Lower-cased so Jane@ and jane@ share one count.
+  if (requests.exceeded(clientIp(req), String(email).trim().toLowerCase())) return res.status(200).json(OK)
 
   const token = signLicense(
     { tier: 'individual', licensee: String(name).trim(), email: String(email).trim(),

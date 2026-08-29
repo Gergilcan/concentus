@@ -13,10 +13,9 @@ import { openLedger, payloadOf } from './_lib/ledger.mjs'
 import { parseSeats } from './_lib/pricing.mjs'
 import { sendEmail } from './_lib/resend.mjs'
 import { TRIAL_DAYS, addDaysUtc, isoDate, mintTeamLicense, trialEmail } from './_lib/team-license.mjs'
-import { clientIp, looksLikeEmail, missingEnv, readBody } from './_lib/http.mjs'
+import { clientIp, looksLikeEmail, missingEnv, readBody, requestCounter } from './_lib/http.mjs'
 
-const seenByIp = new Map()
-const seenByEmail = new Map()
+const requests = requestCounter(10)
 const OK = { message: 'If that address is valid, your trial license is on its way.' }
 const REQUIRED_ENV = ['TEAM_SIGNING_KEY', 'RESEND_API_KEY', 'LICENSE_FROM']
 const CONTACT = 'gila791@hotmail.com'
@@ -79,12 +78,7 @@ export default async function handler(req, res) {
   if (!looksLikeEmail(email) || !name || name.length > 200 || company.length > 200 || !seats) {
     return res.status(200).json(OK)
   }
-  const ip = clientIp(req)
-  const ipCount = (seenByIp.get(ip) ?? 0) + 1
-  seenByIp.set(ip, ipCount)
-  const emailCount = (seenByEmail.get(email) ?? 0) + 1
-  seenByEmail.set(email, emailCount)
-  if (ipCount > 10 || emailCount > 10) return res.status(200).json(OK)
+  if (requests.exceeded(clientIp(req), email)) return res.status(200).json(OK)
 
   await issueTrial({ name, company, email, seats }, { ledger: await openLedger() })
   return res.status(200).json(OK)

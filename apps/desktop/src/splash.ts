@@ -1,6 +1,7 @@
 import { BrowserWindow } from 'electron'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { escapeHtml } from './html'
 
 /**
  * The splash screen: what the user looks at while the backend comes up.
@@ -124,9 +125,4 @@ function page(version: string): string {
   </script>
 </body>
 </html>`
-}
-
-/** The version string is ours, but escaping is cheaper than remembering that forever. */
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }

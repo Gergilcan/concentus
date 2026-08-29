@@ -50,3 +50,25 @@ export function clientIp(req) {
 export function missingEnv(names, env = process.env) {
   return names.filter((name) => env[name] == null || String(env[name]).trim() === '')
 }
+
+/**
+ * The per-instance rate cap the form issuers share: a count per IP and a count per address, the
+ * same threshold on each. Two independent counters on purpose — an attacker rotating IPs against
+ * one address is still capped by the email counter, and one behind a shared IP (an office, a NAT)
+ * hammering many addresses is still capped by the IP counter. Serverless instances recycle and
+ * take the counts with them; that is fine for launch volume.
+ */
+export function requestCounter(limit) {
+  const byIp = new Map()
+  const byEmail = new Map()
+  return {
+    /** Counts this request against both keys and says whether either is now over the cap. */
+    exceeded(ip, email) {
+      const ipCount = (byIp.get(ip) ?? 0) + 1
+      byIp.set(ip, ipCount)
+      const emailCount = (byEmail.get(email) ?? 0) + 1
+      byEmail.set(email, emailCount)
+      return ipCount > limit || emailCount > limit
+    },
+  }
+}

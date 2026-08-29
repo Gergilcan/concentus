@@ -227,7 +227,7 @@ function stageJarForRun(jar: string): string {
   } catch (err) {
     // Degrade to the old behaviour rather than refusing to start: running the artifact directly
     // worked for months — its only cost is that rebuilding while the app runs corrupts the build.
-    log.warn(`Could not stage the backend jar (${err instanceof Error ? err.message : String(err)}); running ${jar} directly.`)
+    log.warn(`Could not stage the backend jar (${message(err)}); running ${jar} directly.`)
     return jar
   }
 }
@@ -556,7 +556,7 @@ export async function stopBackend(backend: RunningBackend | null): Promise<void>
  * installation directory, which is exactly the file an update is about to overwrite — and the
  * installer stops and says the application is still open.
  */
-async function killTree(child: import('node:child_process').ChildProcess): Promise<void> {
+async function killTree(child: ChildProcess): Promise<void> {
   const pid = child.pid
   if (pid == null) return
 
@@ -581,7 +581,7 @@ async function killTree(child: import('node:child_process').ChildProcess): Promi
       }
     }
   } catch (err) {
-    log.warn(`Could not terminate the backend tree: ${err instanceof Error ? err.message : String(err)}`)
+    log.warn(`Could not terminate the backend tree: ${message(err)}`)
     child.kill('SIGKILL')
   }
 
@@ -599,6 +599,6 @@ export function backendLogTail(maxChars = 6_000): string {
     const text = fs.readFileSync(file, 'utf8')
     return text.length > maxChars ? text.slice(-maxChars) : text
   } catch (err) {
-    return `(could not read the backend log: ${err instanceof Error ? err.message : String(err)})`
+    return `(could not read the backend log: ${message(err)})`
   }
 }

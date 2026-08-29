@@ -205,7 +205,7 @@ test('valid request: Resend is called with a token that verifies (individual, no
 test('analytics is best-effort: a broken DATABASE_URL neither blocks the license nor changes the answer', async () => {
   // Locally the Neon driver is not even installed (apps/website is not a workspace member; Vercel
   // installs it at deploy time), so this exercises the failure path for real: the dynamic import
-  // rejects, recordIssue swallows it, and the email still goes out.
+  // rejects, recordPending swallows it, and the email still goes out.
   process.env.DATABASE_URL = 'not-a-database-url'
   try {
     const handler = await freshHandler()

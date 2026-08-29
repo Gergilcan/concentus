@@ -155,7 +155,6 @@ export type UpdaterLoader = () => import('electron-updater').AppUpdater
 // Required lazily: electron-updater reads app paths at import time, and pulling it in at module
 // scope would also make the dev run pay for it.
 const loadElectronUpdater: UpdaterLoader = () =>
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   (require('electron-updater') as typeof import('electron-updater')).autoUpdater
 
 export function startAutoUpdates(load: UpdaterLoader = loadElectronUpdater): void {

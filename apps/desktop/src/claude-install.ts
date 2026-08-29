@@ -133,8 +133,8 @@ export async function openLoginTerminal(command: string): Promise<InstallResult>
   const full = `${cmdQuote(command)} ${LOGIN_ARGS.join(' ')}`
   try {
     if (process.platform === 'win32') {
-      // /k rather than /c for both shapes now: the sign-in exits when it is done, and a window
-      // that vanishes at that moment is a window that never showed whether it worked.
+      // /k rather than /c: the sign-in exits when it is done, and a window that vanishes at that
+      // moment is a window that never showed whether it worked.
       spawn('cmd.exe', ['/c', 'start', 'Claude sign-in', 'cmd', '/k', full],
         { detached: true, stdio: 'ignore', windowsHide: false }).unref()
       return { ok: true, detail: '' }

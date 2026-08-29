@@ -6,15 +6,8 @@
  * is almost always in it — a port conflict, a missing jar, a JVM that refused to start.
  */
 
+import { escapeHtml } from './html'
 import { updateStrip } from './update-strip'
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
 
 export function failurePage(message: string, logTail: string, logPath: string): string {
   return `<!doctype html>
