@@ -928,6 +928,50 @@ export interface AuthStatus {
  * No license installed (or an unverifiable one) is every field null/false except `problem`, which
  * always names the fix rather than just the failure.
  */
+/**
+ * The rules an organization sets over every flow in it (Resources → Policies). Enterprise only:
+ * on Team the record may exist but nothing in it is enforced, and the panel is read-only.
+ */
+export interface OrgPolicy {
+  /** The organization id — set by the backend from the principal, never from this form. */
+  id?: string | null
+  /** Facade profile an independent worker runs behind when its node names none; '' = no default. */
+  defaultFacadeProfileId?: string | null
+  /** A worker with MCP servers wired, no profile and no default is refused at compile time. */
+  requireFacade: boolean
+  /** The most a run may do without asking: plan < default < acceptEdits < bypassPermissions; '' = none. */
+  maxPermissionMode?: string | null
+  /** A ceiling on what every flow of the organization spends together in a month; null = none. */
+  monthlyBudgetUsd?: number | null
+  /** A published flow's endpoint answers only once an admin approved its current token. */
+  publishRequiresApproval: boolean
+}
+
+/** The policy as the panel reads it: the record, whether it applies, why not, and who may edit. */
+export interface OrgPolicyView {
+  policy: OrgPolicy
+  /** The Enterprise gate: false on Team, where the panel is read-only and nothing is enforced. */
+  enforced: boolean
+  /** The gate's own sentence when not enforced; null when it is. */
+  refusal: string | null
+  /** Enforced, and the caller is an admin. */
+  canEdit: boolean
+}
+
+/**
+ * One flow's publish approval as the Input node needs it. The approval names a token, so a
+ * regenerated token is simply not approved — nothing is cleared; the two just stop matching.
+ */
+export interface PublishApprovalView {
+  /** Whether the organization requires an admin's approval at all. */
+  required: boolean
+  /** The token the SAVED flow carries — to tell an unsaved regeneration from a token nobody looked at. */
+  savedToken: string | null
+  approvedToken: string | null
+  approvedBy: string | null
+  approvedAt: number | null
+}
+
 export interface LicenseStatus {
   tier: string | null
   licensee: string | null

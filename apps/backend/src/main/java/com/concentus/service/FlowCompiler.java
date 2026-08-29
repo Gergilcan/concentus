@@ -65,20 +65,52 @@ public class FlowCompiler {
         }
     }
 
-    private final LibraryResolver library;
+    /**
+     * A fan-out worker the organization's policy refuses: MCP servers wired, no facade profile
+     * of its own, no default to fill it with, and a policy that requires one. Its own type for
+     * the reason {@link MissingLibraryAgent} is: the doctor points it at the block, and the fix
+     * is on the block (pick a profile) or under Resources → Policies (set a default), not "fix
+     * the graph".
+     */
+    public static class PolicyViolation extends IllegalArgumentException {
+        private final String nodeId;
 
-    /** No library: a linked block cannot compile. For tests, and for slices that never link. */
+        PolicyViolation(String message, String nodeId) {
+            super(message);
+            this.nodeId = nodeId;
+        }
+
+        public String nodeId() {
+            return nodeId;
+        }
+    }
+
+    private final LibraryResolver library;
+    /**
+     * The organization's policy at compile time, read per compile rather than once: an admin
+     * changing the default profile must reach the next run, not the next restart. A supplier
+     * rather than the service so a test compiles against a literal policy with no license, no
+     * store and no principal in sight — the same reason the library is a function.
+     */
+    private final java.util.function.Supplier<com.concentus.policy.OrgPolicy> policy;
+
+    /** No library, no policy: a linked block cannot compile. For tests, and for slices that never link. */
     public FlowCompiler() {
         this(id -> Optional.empty());
     }
 
     public FlowCompiler(LibraryResolver library) {
+        this(library, () -> com.concentus.policy.OrgPolicy.NONE);
+    }
+
+    public FlowCompiler(LibraryResolver library, java.util.function.Supplier<com.concentus.policy.OrgPolicy> policy) {
         this.library = library;
+        this.policy = policy;
     }
 
     @Autowired
-    public FlowCompiler(AgentLibraryStore store) {
-        this(store::get);
+    public FlowCompiler(AgentLibraryStore store, com.concentus.policy.OrgPolicyService policies) {
+        this(store::get, policies::effective);
     }
 
     public CompiledFlow compile(FlowGraph flow) {
@@ -139,7 +171,48 @@ public class FlowCompiler {
         AgentSpec verifier = singleAgentNode(flow, "verifier", resources);
 
         requireEveryFlowNodeIsWired(flow);
-        return new CompiledFlow(coordinator, subAgents, merger, verifier, afterFlows(flow), afterMails(flow));
+        CompiledFlow compiled = new CompiledFlow(coordinator, subAgents, merger, verifier,
+                afterFlows(flow), afterMails(flow));
+        applyFacadePolicy(compiled);
+        return compiled;
+    }
+
+    /**
+     * The organization's facade rule, applied to every independent worker that reaches MCP.
+     *
+     * <p>Only for fan-out, because a facade only exists there: a sub-agent of a shared session
+     * reaches whatever the session reaches, and no profile could be enforced on it. And only for
+     * workers with servers wired — a worker with nothing to reach has nothing to run behind.
+     *
+     * <p>A blank on the node takes the organization's default, marked as such so the run says
+     * so. With no default and a policy that requires one, the flow does not compile: the doctor
+     * reports it on the block, and a run refuses to start rather than running a worker open
+     * against a rule that says it must not. The merge step counts as a worker here for the same
+     * reason it does in the executor — it is an independent process with servers of its own.
+     */
+    private void applyFacadePolicy(CompiledFlow compiled) {
+        if (!compiled.fanout()) return;
+        com.concentus.policy.OrgPolicy rules = policy.get();
+        if (rules == null) return;
+        String fallback = rules.defaultFacadeProfileIdOrEmpty();
+        if (fallback.isEmpty() && !rules.requireFacade()) return;
+
+        List<AgentSpec> workers = new ArrayList<>(compiled.subAgents());
+        if (compiled.merger() != null) workers.add(compiled.merger());
+        for (AgentSpec worker : workers) {
+            if (worker.mcpServers.isEmpty()) continue;
+            if (worker.facadeProfileId != null && !worker.facadeProfileId.isBlank()) continue;
+            if (!fallback.isEmpty()) {
+                worker.facadeProfileId = fallback;
+                worker.facadeByPolicy = true;
+                continue;
+            }
+            throw new PolicyViolation("The organization's policy requires a facade profile on every "
+                    + "independent worker that reaches MCP, and '" + worker.name + "' has none — "
+                    + "it is wired to " + worker.mcpServers.size() + " MCP server(s). Pick a profile "
+                    + "on the block, or have an admin set a default under Resources → Policies.",
+                    worker.nodeId);
+        }
     }
 
     /**

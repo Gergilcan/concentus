@@ -821,9 +821,27 @@ public class LocalClaudeExecutor {
         String mode = run.permissionMode == null || run.permissionMode.isBlank()
                 ? deploymentDefault : run.permissionMode;
         if (APPROVAL_MODE.equalsIgnoreCase(mode)) {
-            return run.approved ? "bypassPermissions" : "plan";
+            mode = run.approved ? "bypassPermissions" : "plan";
         }
-        return mode;
+        return clampToCeiling(run, mode);
+    }
+
+    /**
+     * The organization's ceiling, applied last — after the flow's choice, the deployment default
+     * and the approval mapping have all had their say — so nothing a flow, a setting or an
+     * approval can do reaches above it. Said once per run rather than on every turn: the mode
+     * does not change between turns, and a line per turn would be noise about a fact already told.
+     */
+    private static String clampToCeiling(AgentRun run, String mode) {
+        String ceiling = run.maxPermissionMode;
+        if (!com.concentus.policy.PermissionCeiling.above(mode, ceiling)) return mode;
+        if (!run.permissionClampNoted) {
+            run.permissionClampNoted = true;
+            run.emit(RunEvent.of("system", "Permission mode '" + mode + "' is above the organization's "
+                    + "ceiling '" + ceiling.trim() + "', so this run gets '" + ceiling.trim()
+                    + "' (organization policy)."));
+        }
+        return ceiling.trim();
     }
 
     /**

@@ -4,6 +4,7 @@ import { api } from '../api/client.ts'
 import type { FacadeProfile, PluginInfo, SkillInfo } from '../api/types.ts'
 import type { AgentNodeData, LibraryAgent } from '../api/types.ts'
 import { EFFORT_OPTIONS } from '../constants.ts'
+import { aboveCeiling } from '../utils/permissionCeiling.ts'
 import { Field, FineTuning, SelectField, TextArea } from './fields.tsx'
 import { ModelField } from './ModelField.tsx'
 import { PluginPicker } from './PluginPicker.tsx'
@@ -50,6 +51,10 @@ export function AgentInspector({ data, set }: Props) {
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [facades, setFacades] = useState<FacadeProfile[]>([])
   const [plugins, setPlugins] = useState<PluginInfo[]>([])
+  // The organization's permission ceiling, or '' when there is none (or the policy is not
+  // enforced): the modes above it are disabled below, because a run would clamp them anyway
+  // and a picker that lets you choose what you will not get is a lie with a dropdown.
+  const [ceiling, setCeiling] = useState('')
 
   useEffect(() => {
     api
@@ -68,6 +73,10 @@ export function AgentInspector({ data, set }: Props) {
       .listPlugins()
       .then((v) => setPlugins(v.plugins))
       .catch(() => setPlugins([]))
+    api
+      .getOrgPolicy()
+      .then((v) => setCeiling(v.enforced ? (v.policy.maxPermissionMode ?? '') : ''))
+      .catch(() => setCeiling(''))
   }, [])
 
   const linked = !!data.libraryAgentId
@@ -323,11 +332,27 @@ export function AgentInspector({ data, set }: Props) {
             >
               <option value="">{t('Default (bypass — no prompts)')}</option>
               <option value="approval">{t('Ask me to approve the plan, then act')}</option>
-              <option value="plan">{t('Plan only — proposes, changes nothing')}</option>
-              <option value="default">{t('Ask — prompts before each sensitive action')}</option>
-              <option value="acceptEdits">{t('Auto-accept file edits, ask for the rest')}</option>
-              <option value="bypassPermissions">{t('Bypass all checks')}</option>
+              <option value="plan" disabled={aboveCeiling('plan', ceiling)}>
+                {t('Plan only — proposes, changes nothing')}
+              </option>
+              <option value="default" disabled={aboveCeiling('default', ceiling)}>
+                {t('Ask — prompts before each sensitive action')}
+              </option>
+              <option value="acceptEdits" disabled={aboveCeiling('acceptEdits', ceiling)}>
+                {t('Auto-accept file edits, ask for the rest')}
+              </option>
+              <option value="bypassPermissions" disabled={aboveCeiling('bypassPermissions', ceiling)}>
+                {t('Bypass all checks')}
+              </option>
             </SelectField>
+            {ceiling && (
+              <p className={styles.hint}>
+                {t('Organization policy caps this at')} <code>{ceiling}</code>.{' '}
+                {t(
+                  'Modes above it are disabled; a run asking for more — the deployment default and an approved plan included — gets the ceiling instead, and its log says so.',
+                )}
+              </p>
+            )}
             <SelectField
               label={
                 <span title={t('Subagents: one claude process runs the whole flow; sub-agents share its session, its folders and its MCP list, and run one at a time. Independent workers: one claude process per worker — own workspace and instructions, own model, real parallelism; workers cannot delegate or run shell commands (a Merge node runs the checks). Drawn sub-agents are the plan; with none drawn, the coordinator runs read-only first and submits a plan (plan_submit), and each item becomes a worker. Workers reach MCP through the facade endpoint always; a profile narrows that to an allowlist, read-only or simulated writes, and without one nothing is filtered. Repositories wired to a worker are cloned into its workspace; its changes reach the merge step as patches, and the merge commits and opens the pull request.')}>

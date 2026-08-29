@@ -15,6 +15,7 @@ import { MembersPanel } from './MembersPanel.tsx'
 import { ModelField } from './ModelField.tsx'
 import { PluginsPanel } from './PluginsPanel.tsx'
 import { ServiceAccountsPanel } from './ServiceAccountsPanel.tsx'
+import { PoliciesPanel } from './PoliciesPanel.tsx'
 import { SettingsPanel } from './SettingsPanel.tsx'
 import { SkillsPanel } from './SkillsPanel.tsx'
 import { StoragePanel } from './StoragePanel.tsx'
@@ -23,7 +24,7 @@ import { shellBridge } from '../api/shell.ts'
 import { usePermissions } from '../state/permissions.tsx'
 import styles from './resources.module.scss'
 
-type Tab = 'settings' | 'members' | 'serviceAccounts' | 'audit' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
+type Tab = 'settings' | 'members' | 'serviceAccounts' | 'audit' | 'policies' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
 
 /**
  * The tab strip, in display order. `desktopOnly` keeps Updates out of a browser tab, which has no
@@ -85,6 +86,12 @@ const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolea
       'Who did what, and when. Readable by administrators on every tier; exporting it as a file is an Enterprise feature.',
   },
   {
+    id: 'policies',
+    label: 'Policies',
+    title:
+      'Rules over every flow in the organization: a default facade for workers, a permission ceiling, an organization-wide budget, approval for published endpoints. Enterprise; read-only elsewhere.',
+  },
+  {
     id: 'settings',
     label: 'Settings',
     title:
@@ -132,6 +139,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
         {tab === 'members' && <MembersPanel pushError={pushError} />}
         {tab === 'serviceAccounts' && canAdminister && <ServiceAccountsPanel pushError={pushError} />}
         {tab === 'audit' && <AuditPanel pushError={pushError} />}
+        {tab === 'policies' && <PoliciesPanel pushError={pushError} />}
 
         {tab === 'agents' && (
           <CrudPanel<LibraryAgent>

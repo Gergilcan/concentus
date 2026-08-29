@@ -489,4 +489,86 @@ class FlowCompilerTest {
         assertThat(spec.name).isEqualTo("Old copy");
         assertThat(spec.systemPrompt).isEqualTo("own prompt");
     }
+
+    // ------------------------------------------------------- organization policy: facades
+
+    /** A fan-out lead with one worker wired to a remote MCP server and one with nothing wired. */
+    private static FlowGraph fanoutWithAWiredWorker(String workerProfile) {
+        FlowNode lead = new FlowNode("c1", "agent", "coordinator",
+                Map.of("name", "Lead", "execution", "fanout"));
+        Map<String, Object> w = new java.util.HashMap<>(Map.of("name", "Reader"));
+        if (workerProfile != null) w.put("facadeProfileId", workerProfile);
+        FlowNode wired = new FlowNode("w1", "agent", "subagent", w);
+        FlowNode lonely = agent("w2", "subagent", "Thinker");
+        FlowNode mcpNode = mcp("m1", "linear", "https://mcp.linear.app/mcp");
+        return new FlowGraph("f1", "Flow", "managed", List.of(lead, wired, lonely, mcpNode),
+                List.of(edge("c1", "w1"), edge("c1", "w2"), edge("w1", "m1")),
+                null, List.<String>of(), null, null);
+    }
+
+    private static FlowCompiler under(com.concentus.policy.OrgPolicy policy) {
+        return new FlowCompiler(id -> java.util.Optional.empty(), () -> policy);
+    }
+
+    private static AgentSpec named(CompiledFlow compiled, String name) {
+        return compiled.subAgents().stream().filter(s -> s.name.equals(name)).findFirst().orElseThrow();
+    }
+
+    @Test
+    void theOrganizationsDefaultProfileFillsAWorkerThatNamesNoneAndIsMarkedAsSuch() {
+        CompiledFlow compiled = under(new com.concentus.policy.OrgPolicy("o", "fprof_reader", false, "", null, false))
+                .compile(fanoutWithAWiredWorker(null));
+
+        AgentSpec reader = named(compiled, "Reader");
+        assertThat(reader.facadeProfileId).isEqualTo("fprof_reader");
+        assertThat(reader.facadeByPolicy).isTrue();
+        // Nothing to reach, nothing to run behind: the default is not sprayed over every block.
+        assertThat(named(compiled, "Thinker").facadeProfileId).isEmpty();
+        assertThat(named(compiled, "Thinker").facadeByPolicy).isFalse();
+    }
+
+    @Test
+    void aWorkersOwnProfileWinsOverTheOrganizationsDefault() {
+        CompiledFlow compiled = under(new com.concentus.policy.OrgPolicy("o", "fprof_reader", true, "", null, false))
+                .compile(fanoutWithAWiredWorker("fprof_mine"));
+
+        AgentSpec reader = named(compiled, "Reader");
+        assertThat(reader.facadeProfileId).isEqualTo("fprof_mine");
+        assertThat(reader.facadeByPolicy).isFalse();
+    }
+
+    @Test
+    void aRequiredFacadeWithNoDefaultRefusesTheFlowNamingTheWorker() {
+        FlowCompiler strict = under(new com.concentus.policy.OrgPolicy("o", "", true, "", null, false));
+
+        assertThatThrownBy(() -> strict.compile(fanoutWithAWiredWorker(null)))
+                .isInstanceOfSatisfying(FlowCompiler.PolicyViolation.class, e -> {
+                    assertThat(e.nodeId()).isEqualTo("w1");
+                    assertThat(e.getMessage()).contains("organization's policy").contains("'Reader'")
+                            .contains("Resources → Policies");
+                });
+        // The same rule is satisfied by a profile on the block, with no default in sight.
+        assertThat(strict.compile(fanoutWithAWiredWorker("fprof_mine")).subAgents()).hasSize(2);
+    }
+
+    @Test
+    void theFacadeRuleIsOnlyForIndependentWorkers() {
+        FlowCompiler strict = under(new com.concentus.policy.OrgPolicy("o", "fprof_reader", true, "", null, false));
+        FlowNode lead = agent("c1", "coordinator", "Lead");
+        FlowNode sub = agent("s1", "subagent", "Sub");
+        FlowNode mcpNode = mcp("m1", "linear", "https://mcp.linear.app/mcp");
+        FlowGraph shared = new FlowGraph("f1", "Flow", "managed", List.of(lead, sub, mcpNode),
+                List.of(edge("c1", "s1"), edge("s1", "m1")), null, List.<String>of(), null, null);
+
+        // A sub-agent of a shared session has no facade to run behind, so nothing is filled or refused.
+        assertThat(strict.compile(shared).subAgents().get(0).facadeProfileId).isEmpty();
+    }
+
+    @Test
+    void withNoPolicyTheCompilerDoesExactlyWhatItDidBefore() {
+        CompiledFlow compiled = new FlowCompiler().compile(fanoutWithAWiredWorker(null));
+
+        assertThat(named(compiled, "Reader").facadeProfileId).isEmpty();
+        assertThat(named(compiled, "Reader").facadeByPolicy).isFalse();
+    }
 }

@@ -49,6 +49,12 @@ class RunServiceTest {
     private final NotificationService notifier = mock(NotificationService.class);
     private final RemoteApprovalService remoteApprovals = mock(RemoteApprovalService.class);
     /**
+     * The organization's rules, stubbed per test. A fresh mock answers "no budget, no ceiling",
+     * which is what every pre-existing scenario assumes and what a Team deployment sees.
+     */
+    private final com.concentus.policy.OrgPolicyService policies =
+            mock(com.concentus.policy.OrgPolicyService.class);
+    /**
      * Version history, stubbed per test. The default 0 is what a run without a database sees: no
      * version number, so no badge. The versioning itself is covered by {@code FlowVersionStoreTest}.
      */
@@ -87,7 +93,7 @@ class RunServiceTest {
                         "runs.queue-capacity", String.valueOf(queueCapacity),
                         "runs.max-retained", String.valueOf(maxRetainedRuns))),
                 com.concentus.telemetry.Telemetry.none(), new ToolCallLoopGuard(),
-                mock(ClaudeUsageService.class), audit);
+                mock(ClaudeUsageService.class), audit, policies);
         created.add(s);
         return s;
     }
@@ -995,7 +1001,7 @@ class RunServiceTest {
                         "runs.queue-capacity", "8",
                         "runs.max-retained", "10")),
                 com.concentus.telemetry.Telemetry.none(), new ToolCallLoopGuard(),
-                mock(ClaudeUsageService.class), audit);
+                mock(ClaudeUsageService.class), audit, policies);
         created.add(s);
         return s;
     }
@@ -1200,5 +1206,64 @@ class RunServiceTest {
                 org.mockito.ArgumentMatchers.argThat(d -> original.id().equals(d.get("of"))));
         verify(audit, org.mockito.Mockito.times(1)).recordSystem(any(),
                 eq(com.concentus.audit.AuditKinds.RUN_STARTED), any(), any(), any(), any());
+    }
+
+    // ------------------------------------------------- organization policy
+
+    // The organization's ceiling is the flow's ceiling one level up: summed over every flow,
+    // checked in the same place, refused with the same shape of message — naming the
+    // organization, because "raise the budget in the flow's settings" would be the wrong fix.
+    @org.junit.jupiter.api.Test
+    void anOrganizationAtItsMonthlyBudgetRefusesARunOfAFlowThatHasNoCeilingOfItsOwn() {
+        when(compiler.compile(any(), any(), any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(clientProvider.backend()).thenReturn("cloud");
+        when(policies.monthlyBudgetUsd()).thenReturn(200.0);
+        when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.anyLong())).thenReturn(200.5);
+        com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
+                "flow-c", "Sin techo propio", "local", List.of(), List.of(),
+                null, List.of(), null, null, null);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> newService(2, 4, 10).start(flow))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Budget reached")
+                .hasMessageContaining("the organization has spent $200.50")
+                .hasMessageContaining("Resources → Policies");
+    }
+
+    @org.junit.jupiter.api.Test
+    void anOrganizationUnderItsBudgetArmsBothCeilingsOnTheRun() {
+        when(compiler.compile(any(), any(), any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(clientProvider.backend()).thenReturn("cloud");
+        when(policies.monthlyBudgetUsd()).thenReturn(200.0);
+        when(policies.maxPermissionMode()).thenReturn("acceptEdits");
+        when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.anyLong())).thenReturn(120.0);
+        when(runStore.spendUsdSince(eq("flow-d"), org.mockito.ArgumentMatchers.anyLong())).thenReturn(3.0);
+        com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
+                "flow-d", "Con techo", "local", List.of(), List.of(),
+                null, List.of(), null, null, 25.0);
+
+        RunSummary summary = newService(2, 4, 10).start(flow);
+
+        AgentRun run = created.get(created.size() - 1).get(summary.id()).orElseThrow();
+        assertThat(run.budgetUsd).isEqualTo(25.0);
+        assertThat(run.spentBeforeUsd).isEqualTo(3.0);
+        assertThat(run.orgBudgetUsd).isEqualTo(200.0);
+        assertThat(run.orgSpentBeforeUsd).isEqualTo(120.0);
+        // The ceiling travels with the run, so a policy edited mid-run cannot move it.
+        assertThat(run.maxPermissionMode).isEqualTo("acceptEdits");
+    }
+
+    // The gate: a Team deployment's policy service answers "no budget", and the organization's
+    // spend is never even asked for.
+    @org.junit.jupiter.api.Test
+    void withoutAnOrganizationBudgetTheOrganizationsSpendIsNeverQueried() {
+        when(compiler.compile(any(), any(), any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(clientProvider.backend()).thenReturn("cloud");
+        when(policies.monthlyBudgetUsd()).thenReturn(null);
+
+        newService(2, 4, 10).start(flow("f1"));
+
+        org.mockito.Mockito.verify(runStore, org.mockito.Mockito.never())
+                .spendUsdSince(org.mockito.ArgumentMatchers.anyLong());
     }
 }

@@ -50,12 +50,19 @@ public class FlowDoctor {
     private final AgentLibraryStore agentLibrary;
     /** The allowlist a watched folder must sit under — the same one agents' context folders obey. */
     private final ContextFolderResolver contextRoots;
+    /** The organization's rules, to say which of them this flow would run into. */
+    private final com.concentus.policy.OrgPolicyService policies;
+    /** Where the deployment's own permission mode lives — what a flow that names none gets. */
+    private final com.concentus.config.Settings settings;
 
     public FlowDoctor(LocalClaudeSupport claude, FlowCompiler compiler, CredentialResolver credentials,
                       McpOAuthStore mcpOAuth, PluginRegistry plugins, RuntimeProbe runtimes,
                       RunStore runStore, VariableStore variables, OrgContext orgContext,
                       com.concentus.store.FacadeProfileStore facades, AgentLibraryStore agentLibrary,
-                      ContextFolderResolver contextRoots) {
+                      ContextFolderResolver contextRoots, com.concentus.policy.OrgPolicyService policies,
+                      com.concentus.config.Settings settings) {
+        this.policies = policies;
+        this.settings = settings;
         this.claude = claude;
         this.compiler = compiler;
         this.credentials = credentials;
@@ -78,6 +85,7 @@ public class FlowDoctor {
         checkNodes(flow, findings);
         checkTrigger(flow, findings);
         checkBudget(flow, findings);
+        checkPolicy(flow, findings);
         return findings;
     }
 
@@ -110,6 +118,14 @@ public class FlowDoctor {
             findings.add(DoctorFinding.error("library", e.getMessage(),
                     "Open the block and press \"Unlink (keep a copy)\", or link it to an agent "
                             + "that exists — a run would refuse to start with this.", e.nodeId()));
+            return;
+        } catch (FlowCompiler.PolicyViolation e) {
+            // The organization's rule, pointed at the block it refuses. The fix is on the block or
+            // on the Policies tab, and neither is "the canvas".
+            findings.add(DoctorFinding.error("policy", e.getMessage(),
+                    "Pick a facade profile on that block, or have an admin set a default under "
+                            + "Resources → Policies — a run would refuse to start with this.",
+                    e.nodeId()));
             return;
         } catch (RuntimeException e) {
             findings.add(DoctorFinding.error("graph",
@@ -462,6 +478,49 @@ public class FlowDoctor {
                                 + "to protect.",
                         spent, flow.budgetUsd()),
                 "Raise the budget in the flow's settings, or wait for next month.", null));
+    }
+
+    // ---------------------------------------------------------------- the organization's rules
+
+    /**
+     * The two policy rules a run does not refuse over, said before the run: the ceiling, which
+     * quietly clamps the mode the flow asked for, and publish approval, which keeps the endpoint
+     * shut. (The third, a required facade, refuses at compile time and lands in
+     * {@link #checkGraph} with the block it concerns.) Nothing here where policies are not
+     * enforced: the service answers "no ceiling" and "not blocked" there, so a Team deployment
+     * hears none of this.
+     */
+    private void checkPolicy(FlowGraph flow, List<DoctorFinding> findings) {
+        com.concentus.model.TriggerSpec trigger = com.concentus.model.TriggerSpec.from(flow);
+        String ceiling = policies.maxPermissionMode();
+        if (ceiling != null && !ceiling.isBlank()) {
+            String asked = trigger.permissionMode();
+            // Blank on the flow means the deployment's default — usually bypassPermissions, which
+            // is the mode most ceilings exist to stop, so it must be checked rather than skipped.
+            String effective = asked == null || asked.isBlank()
+                    ? settings.get("local.permission-mode", "bypassPermissions") : asked;
+            if (com.concentus.policy.PermissionCeiling.above(effective, ceiling)) {
+                findings.add(DoctorFinding.warn("policy",
+                        (asked == null || asked.isBlank()
+                                ? "This flow names no permission mode, so it would get the deployment's '"
+                                        + effective + "'"
+                                : "This flow asks for the permission mode '" + asked + "'")
+                                + ", which is above the organization's ceiling '" + ceiling
+                                + "'. Runs get '" + ceiling + "' instead.",
+                        "Set the coordinator's permission mode to '" + ceiling + "' or below so the "
+                                + "flow says what it will actually get, or ask an admin to raise the "
+                                + "ceiling under Resources → Policies.", null));
+            }
+        }
+        if (flow.id() != null && trigger.publishedWithToken()
+                && policies.publishBlocked(flow.id(), trigger.publishToken())) {
+            findings.add(DoctorFinding.error("policy",
+                    "This flow is published, but the organization requires an admin's approval "
+                            + "before a published endpoint answers. Until then the endpoint answers "
+                            + "404, exactly as if the flow were not published.",
+                    "An admin approves it on the Input node (\"Approve this endpoint\") once the "
+                            + "flow is saved. Regenerating the token asks for a new approval.", null));
+        }
     }
 
     // ---------------------------------------------------------------- helpers

@@ -78,4 +78,53 @@ class AgentRunBudgetTest {
 
         assertThat(run.budgetTripped).isFalse();
     }
+
+    // ---- the organization's ceiling, beside the flow's (organization policy) ----
+
+    @Test
+    void the_organizations_ceiling_trips_a_run_whose_own_flow_has_room_and_says_which_one() {
+        AgentRun run = run(true);
+        run.budgetUsd = 100.0;          // the flow could spend $96 more...
+        run.orgBudgetUsd = 50.0;        // ...but the organization only $2 more
+        run.orgSpentBeforeUsd = 48.0;
+        AtomicInteger stops = new AtomicInteger();
+        run.onBudgetExceeded = stops::incrementAndGet;
+
+        spend(run, 200_000); // $3: past the organization's, nowhere near the flow's
+
+        assertThat(run.budgetTripped).isTrue();
+        assertThat(stops).hasValue(1);
+        assertThat(run.error).contains("organization's $50.00 monthly ceiling")
+                .contains("organization policy");
+    }
+
+    @Test
+    void when_both_ceilings_are_reached_the_one_with_less_room_is_named() {
+        AgentRun run = run(true);
+        run.budgetUsd = 10.0;           // $6 of room
+        run.spentBeforeUsd = 4.0;
+        run.orgBudgetUsd = 20.0;        // $2 of room: the stricter, though the bigger number
+        run.orgSpentBeforeUsd = 18.0;
+        run.onBudgetExceeded = () -> { };
+
+        spend(run, 400_000); // $6: both reached at once
+
+        assertThat(run.error).contains("organization's $20.00 monthly ceiling");
+    }
+
+    @Test
+    void a_run_with_only_an_organization_ceiling_is_stopped_by_it() {
+        AgentRun run = run(true);
+        run.budgetUsd = null;
+        run.orgBudgetUsd = 5.0;
+        run.orgSpentBeforeUsd = 0.0;
+        AtomicInteger stops = new AtomicInteger();
+        run.onBudgetExceeded = stops::incrementAndGet;
+
+        spend(run, 200_000); // $3
+        assertThat(run.budgetTripped).isFalse();
+        spend(run, 200_000); // $6
+        assertThat(run.budgetTripped).isTrue();
+        assertThat(stops).hasValue(1);
+    }
 }

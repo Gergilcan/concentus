@@ -177,6 +177,28 @@ the team key, emailed through Resend, recorded in the ledger as `kind: trial`.
 | What the app shows | `LicenseStatus.trial`; the Settings panel leads with "Trial — N days left", counted from `expires`. The expired-beyond-grace messages say "trial" and point at buying, not renewing. |
 | Not configured | No `TEAM_SIGNING_KEY` (or Resend pair) → 503 "trials are not open yet", honest rather than generic: with no key there is nothing on its way. |
 
+## 11. Organization policies — the first Enterprise-only feature (added 2026-08-29)
+
+`Feature.ORG_POLICIES`: the rules an organization sets over every flow in it, edited by an
+admin under Resources → Policies and enforced where each rule bites. Sections 9 and 10 gave Team
+everything Enterprise had; this is the first thing that stays on the Enterprise side of the line,
+and it is chosen because it is governance — the thing an organization asks for and a team of five
+never does.
+
+| Question | Decision |
+| --- | --- |
+| Shape | One `OrgPolicy` record per organization, keyed by the organization id in the shared resources table (`kind: org-policy`). No new table, no migration. |
+| Gate | `LicenseService.allows(Feature.ORG_POLICIES)`, asked in exactly one place — `OrgPolicyService.effective()` — which answers `OrgPolicy.NONE` where the feature is not licensed. Every enforcement point reads from the service, never from the store, so a Team deployment's compiler, executors, run service, public endpoint and doctor all see "no rules" behind one condition rather than six. |
+| Team | The record may exist (a downgrade is not a deletion) and the panel shows it read-only under `refusal(Feature.ORG_POLICIES)`; a save is refused with the same sentence; nothing is enforced. Team behaves exactly as before policies existed. |
+| Who edits | ADMIN only, through `OrgContext.requireAdmin()` like the license and settings screens. Every signed-in role reads: the panel renders for a member, and the Input node has to tell a member their endpoint is waiting. |
+| Default facade | Applied by the compiler to fan-out workers with MCP servers wired and no profile of their own (`AgentSpec.facadeByPolicy` marks it so the run log says "applied by organization policy"); by the fan-out executor to plan-born workers the compiler never saw. Only fan-out: a sub-agent of a shared session has no facade to run behind. |
+| Require facade | Compile-time refusal (`FlowCompiler.PolicyViolation`, carrying the node id) so the doctor points at the block and a run refuses to start. A plan-born worker in the same position fails closed before its process exists. |
+| Ceiling | `plan < default < acceptEdits < bypassPermissions`, applied last in `effectivePermissionMode` — after the flow's mode, the deployment default and the approval mapping — so nothing reaches above it. Stamped on the run at launch, like the mode itself, so a policy edited mid-run cannot move a running agent. Said once per run. An unknown ceiling is refused at save, never stored: a typo must not widen anything. |
+| Organization budget | `RunStore.spendUsdSince(sinceMillis)` over every flow (runs are not partitioned by organization; on the single-organization deployment this is, the sums coincide). Refused at start beside the flow's ceiling; mid-run, `AgentRun` trips on whichever ceiling has less headroom and names it. Same billing rule as the flow ceiling: subscription and self-hosted runs are told, not stopped. |
+| Publish approval | A `PublishApproval` record per flow (`kind: publish-approval`), naming the **token** it approved. Per token, not per flow: regenerating the token revokes what a client holds, and an approval that survived it would approve a door nobody looked at — so nothing is cleared, the two just stop matching. The approval is always of the saved token, read from the store, never from a request. `PublicRunController` answers the same 404 as unpublished until then — a door that is "merely waiting" must not read differently from one that does not exist. |
+| Context roots | Not on the panel. They are `local.context-roots`, a deployment setting; the panel says so. |
+| Doctor | Area `policy`: facade missing (error, on the block), mode above the ceiling (warn — the run proceeds, clamped), published-unapproved (error — the endpoint is shut). Silent on Team, by the gate. |
+
 ## 12. Audit trail and retention (added 2026-08-29)
 
 Item 4 of the Enterprise line: the record of who did what, its export, and what a deployment

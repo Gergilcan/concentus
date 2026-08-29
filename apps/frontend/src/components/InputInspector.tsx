@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clockTime } from '../utils/format.ts'
-import type { Credential, InputNodeData, MailDeviceCode, MailOAuthDefaults, MailStatus } from '../api/types.ts'
+import type {
+  Credential,
+  InputNodeData,
+  MailDeviceCode,
+  MailOAuthDefaults,
+  MailStatus,
+  PublishApprovalView,
+} from '../api/types.ts'
 import { api, publicChatUrl, publicRunUrl, webhookUrl } from '../api/client.ts'
+import { usePermissions } from '../state/permissions.tsx'
 import { useFlowStore } from '../state/store.ts'
+import { aboveCeiling } from '../utils/permissionCeiling.ts'
 import { CronBuilder } from './CronBuilder.tsx'
 import { CheckboxField, Field, FineTuning, SelectField, TextArea } from './fields.tsx'
 import { errMessage } from '../utils/errMessage.ts'
@@ -97,6 +106,18 @@ export function InputInspector({ data, set }: Props) {
   }
   const [credentials, setCredentials] = useState<Credential[]>([])
 
+  // The organization's permission ceiling, asked for only when this node still carries the
+  // legacy mode it would be measured against — most nodes carry none, and a request per
+  // inspector open for a hint that never shows would be waste.
+  const [ceiling, setCeiling] = useState('')
+  useEffect(() => {
+    if (!data.permissionMode) return
+    void api
+      .getOrgPolicy()
+      .then((v) => setCeiling(v.enforced ? (v.policy.maxPermissionMode ?? '') : ''))
+      .catch(() => setCeiling(''))
+  }, [data.permissionMode])
+
   // Loaded regardless of mode: the hook must not be conditional, and the list is small.
   // A failure leaves the picker empty rather than breaking the inspector.
   const reloadCredentials = useCallback(() => {
@@ -165,6 +186,13 @@ export function InputInspector({ data, set }: Props) {
           {t('This flow sets permissions')} (<code>{data.permissionMode}</code>){' '}
           {t('on its trigger, which is where they used to live. They still apply. To change them, open the')}{' '}
           <b>{t('coordinator')}</b> {t('agent — setting them there replaces this.')}
+          {aboveCeiling(data.permissionMode, ceiling) && (
+            <>
+              {' '}
+              {t('It is above the organization’s ceiling')} (<code>{ceiling}</code>){' '}
+              {t('— runs get the ceiling instead.')}
+            </>
+          )}
         </p>
       )}
       {data.mode !== 'manual' && data.mode !== 'prompt' && (
@@ -512,6 +540,7 @@ export function InputInspector({ data, set }: Props) {
           <p className={styles.hint}>
             {t('Anyone holding this token can start runs of this flow. Regenerating it revokes the old one as soon as the flow is saved.')}
           </p>
+          <PublishApprovalStatus flowId={flowId} token={data.publishToken ?? ''} />
           <Field
             label={t('Endpoint URL')}
             value={runUrl ?? t('Save the flow first to generate the URL.')}
@@ -542,6 +571,84 @@ export function InputInspector({ data, set }: Props) {
         </>
       )}
       <p className={styles.hint}>{t("Connect this node's output to your coordinator agent.")}</p>
+    </>
+  )
+}
+
+/**
+ * Whether the organization has let this endpoint open (organization policy: published endpoints
+ * need an administrator's approval).
+ *
+ * <p>Nothing at all where the rule is off — most deployments — so the publish block reads as it
+ * always did. Where it is on, the approval is of a token: a member sees whether the token in
+ * this node is the approved one, an admin gets the button. An approval is always of the SAVED
+ * token, so a regenerated-but-unsaved token is told to save first rather than offered a button
+ * that would approve the wrong thing.
+ */
+function PublishApprovalStatus({ flowId, token }: { flowId: string | null; token: string }) {
+  const { t } = useTranslation()
+  const { canAdminister } = usePermissions()
+  const [view, setView] = useState<PublishApprovalView | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(() => {
+    if (!flowId) return
+    void api
+      .publishApproval(flowId)
+      .then(setView)
+      .catch(() => setView(null))
+  }, [flowId])
+
+  useEffect(load, [load])
+
+  if (!flowId || !view || !view.required) return null
+
+  const approved = !!view.approvedToken && view.approvedToken === token
+  const unsaved = view.savedToken !== token
+
+  const decide = async (approve: boolean) => {
+    setBusy(true)
+    setError(null)
+    try {
+      setView(approve ? await api.approvePublish(flowId) : await api.revokePublish(flowId))
+    } catch (e) {
+      setError(errMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <p className={styles.hint}>
+        {approved ? (
+          <>
+            <b>{t('Approved')}</b>
+            {view.approvedBy ? ` ${t('by')} ${view.approvedBy}` : ''}
+            {view.approvedAt ? ` (${clockTime(view.approvedAt)})` : ''}.{' '}
+            {t('Regenerating the token asks for a new approval.')}
+          </>
+        ) : unsaved ? (
+          <>
+            <b>{t('Save the flow')}</b>{' '}
+            {t("— an administrator approves the saved token, and this one is not saved yet. Until then the endpoint answers 404.")}
+          </>
+        ) : (
+          <>
+            <b>{t("Waiting for an administrator's approval")}</b>{' '}
+            {t('— the organization requires one before a published endpoint answers. Until then it answers 404, exactly as if the flow were not published.')}
+          </>
+        )}
+      </p>
+      {canAdminister && !unsaved && (
+        <div className={styles.mcpBtns}>
+          <button className={styles.previewBtn} disabled={busy} onClick={() => void decide(!approved)}>
+            {approved ? t('Revoke approval') : t('Approve this endpoint')}
+          </button>
+        </div>
+      )}
+      {error && <p className={styles.hint}>{error}</p>}
     </>
   )
 }

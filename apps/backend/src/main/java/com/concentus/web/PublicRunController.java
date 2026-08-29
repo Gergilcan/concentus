@@ -85,23 +85,27 @@ public class PublicRunController {
     private final RunService runService;
     private final LicenseService license;
     private final Settings settings;
+    /** Whether the organization wants an admin's word before an endpoint answers. */
+    private final com.concentus.policy.OrgPolicyService policies;
     private final RateLimiter limiter;
     /** How often a waiting request looks at the run. A second is fine for runs measured in tens of them. */
     private final Duration pollInterval;
 
     @Autowired
-    public PublicRunController(FlowStore flows, RunService runService, LicenseService license, Settings settings) {
-        this(flows, runService, license, settings, new RateLimiter(FREE_REQUESTS_PER_MINUTE, 60_000),
+    public PublicRunController(FlowStore flows, RunService runService, LicenseService license, Settings settings,
+                               com.concentus.policy.OrgPolicyService policies) {
+        this(flows, runService, license, settings, policies, new RateLimiter(FREE_REQUESTS_PER_MINUTE, 60_000),
                 Duration.ofSeconds(1));
     }
 
     /** With the limiter and the poll interval exposed, so tests neither wait nor guess. */
     PublicRunController(FlowStore flows, RunService runService, LicenseService license, Settings settings,
-                        RateLimiter limiter, Duration pollInterval) {
+                        com.concentus.policy.OrgPolicyService policies, RateLimiter limiter, Duration pollInterval) {
         this.flows = flows;
         this.runService = runService;
         this.license = license;
         this.settings = settings;
+        this.policies = policies;
         this.limiter = limiter;
         this.pollInterval = pollInterval;
     }
@@ -187,6 +191,12 @@ public class PublicRunController {
         }
         TriggerSpec trigger = flow == null ? null : TriggerSpec.from(flow);
         if (trigger == null || !trigger.publishedWithToken()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such flow");
+        }
+        // Published but not yet approved, where the organization requires approval: the same
+        // 404 as unpublished, on purpose. The door is not open, and a different answer would tell
+        // a caller that a door exists and is merely waiting.
+        if (policies != null && policies.publishBlocked(flowId, trigger.publishToken())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such flow");
         }
         if (presented == null || presented.isBlank() || !constantTimeEquals(trigger.publishToken(), presented)) {

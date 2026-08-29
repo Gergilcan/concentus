@@ -48,6 +48,9 @@ class PublicRunControllerTest {
 
     private final FlowStore flows = mock(FlowStore.class);
     private final RunService runService = mock(RunService.class);
+    /** The organization's rules: a fresh mock requires no approval, as before approvals existed. */
+    private final com.concentus.policy.OrgPolicyService policies =
+            mock(com.concentus.policy.OrgPolicyService.class);
     private final AgentRun run = new AgentRun("run_1", "f1", "Flow", "local");
 
     /** Empty, so the license read from it is "none" — the free installation every test but the tier ones is. */
@@ -64,7 +67,7 @@ class PublicRunControllerTest {
     }
 
     private PublicRunController controller(RateLimiter limiter, LicenseService license, Settings settings) {
-        return new PublicRunController(flows, runService, license, settings, limiter, Duration.ofMillis(1));
+        return new PublicRunController(flows, runService, license, settings, policies, limiter, Duration.ofMillis(1));
     }
 
     /** A license service reading {@code fixture} — the tier the tests about the rate are about. */
@@ -385,5 +388,39 @@ class PublicRunControllerTest {
         ResponseStatusException e = tooMany(limited);
         assertThat(e.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
         assertThat(e.getReason()).contains("5 a minute").contains("Enterprise").contains("endpoints.rate-per-minute");
+    }
+
+    // ---- publish approval (organization policy) ----
+
+    @Test
+    void aPublishedFlowAwaitingApprovalAnswersTheSame404AsAnUnpublishedOne() {
+        when(policies.publishBlocked("f1", TOKEN)).thenReturn(true);
+        PublicRunController c = controller();
+
+        ResponseStatusException waiting = (ResponseStatusException) org.assertj.core.api.Assertions.catchThrowable(
+                () -> c.run("f1", input("hi"), true, null, bearing(TOKEN)));
+        ResponseStatusException unpublished = (ResponseStatusException) org.assertj.core.api.Assertions.catchThrowable(
+                () -> c.run("f2", input("hi"), true, null, bearing(TOKEN)));
+
+        assertThat(waiting.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        // Byte for byte the same: a door that is "merely waiting" must not read differently from
+        // one that does not exist.
+        assertThat(waiting.getReason()).isEqualTo(unpublished.getReason());
+        // And the chat page and the poll are shut too, not only the run.
+        assertThatThrownBy(() -> c.chat("f1", TOKEN))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+        verify(runService, never()).startTriggered(any(), anyString(), anyString());
+    }
+
+    @Test
+    void onceApprovedTheSameCallStartsTheRun() {
+        when(policies.publishBlocked("f1", TOKEN)).thenReturn(false);
+        run.status = "COMPLETED";
+
+        ResponseEntity<Map<String, Object>> response = controller().run("f1", input("hi"), true, null, bearing(TOKEN));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(runService).startTriggered(any(FlowGraph.class), anyString(), eq("api"));
     }
 }

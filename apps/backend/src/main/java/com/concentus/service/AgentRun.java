@@ -384,6 +384,14 @@ public class AgentRun {
      */
     public volatile String permissionMode = "";
     /**
+     * The organization's permission ceiling at launch, or blank for none. Copied here for the
+     * reason the mode itself is: a policy edited mid-run must not change what a running agent
+     * may do — in either direction.
+     */
+    public volatile String maxPermissionMode = "";
+    /** Set once the ceiling has clamped this run's mode and the log has said so. */
+    public volatile boolean permissionClampNoted;
+    /**
      * Set once a human has approved the plan, in approval mode. Not persisted as a permission:
      * it is a fact about this run, and a restart that lost it would re-ask rather than proceed —
      * which is the safe direction for the one setting whose whole point is asking first.
@@ -473,6 +481,10 @@ public class AgentRun {
     public volatile Double budgetUsd;
     /** What the flow had already spent this month when this run started. */
     public volatile double spentBeforeUsd;
+    /** The organization's ceiling in USD (organization policy); null when there is none. */
+    public volatile Double orgBudgetUsd;
+    /** What every flow of the organization had already spent this month when this run started. */
+    public volatile double orgSpentBeforeUsd;
     /** Whether this run's backend bills per token — the only case the ceiling stops anything. */
     public volatile boolean billsPerToken;
     /** Set once, when the ceiling was reached mid-run; the turn ends as ERROR because of it. */
@@ -511,11 +523,9 @@ public class AgentRun {
      * equivalent, not a bill, and the allowance meter is the thing to watch instead.
      */
     private void checkBudget() {
-        Double ceiling = budgetUsd;
-        if (ceiling == null || ceiling <= 0 || budgetTripped || budgetNoted) return;
-        double now = spentBeforeUsd + estimatedCostUsd();
-        if (now < ceiling) return;
-        String figures = String.format(java.util.Locale.ROOT, "$%.2f of the $%.2f monthly ceiling", now, ceiling);
+        if (budgetTripped || budgetNoted) return;
+        String figures = ceilingReached();
+        if (figures == null) return;
         if (!billsPerToken) {
             budgetNoted = true;
             emit(RunEvent.of("system", "Equivalent usage has passed " + figures + ". Not stopped: "
@@ -533,6 +543,33 @@ public class AgentRun {
                 emit(RunEvent.of("system", "The run could not be stopped cleanly: " + e.getMessage()));
             }
         }
+    }
+
+    /**
+     * Which ceiling this run has just reached, as the figures for the log — or null while under
+     * both.
+     *
+     * <p>Two ceilings, the flow's own and the organization's, and the stricter one wins: whichever
+     * has the least headroom left is the one that trips first, and when both trip on the same
+     * usage report the one with less room is the one named. Named, because "budget reached" on a
+     * run whose flow has plenty left sends somebody to raise the wrong number.
+     */
+    private String ceilingReached() {
+        double cost = estimatedCostUsd();
+        Double flowCeiling = budgetUsd != null && budgetUsd > 0 ? budgetUsd : null;
+        Double orgCeiling = orgBudgetUsd != null && orgBudgetUsd > 0 ? orgBudgetUsd : null;
+        double flowNow = spentBeforeUsd + cost;
+        double orgNow = orgSpentBeforeUsd + cost;
+        boolean flowHit = flowCeiling != null && flowNow >= flowCeiling;
+        boolean orgHit = orgCeiling != null && orgNow >= orgCeiling;
+        if (!flowHit && !orgHit) return null;
+        boolean nameTheOrg = orgHit && (!flowHit || orgCeiling - orgNow <= flowCeiling - flowNow);
+        return nameTheOrg
+                ? String.format(java.util.Locale.ROOT,
+                        "$%.2f of the organization's $%.2f monthly ceiling (organization policy)",
+                        orgNow, orgCeiling)
+                : String.format(java.util.Locale.ROOT, "$%.2f of the $%.2f monthly ceiling",
+                        flowNow, flowCeiling);
     }
 
     /** Get or create the execution record for a node. Returns null if nodeId is unknown. */

@@ -1,14 +1,20 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { fireEvent } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentNodeData, LibraryAgent } from '../api/types.ts'
+import type { AgentNodeData, LibraryAgent, OrgPolicyView } from '../api/types.ts'
 import { AgentInspector } from './AgentInspector.tsx'
 
 const listAgentsMock = vi.fn<() => Promise<LibraryAgent[]>>()
 const listPluginsMock = vi.fn()
+// The organization's permission ceiling. No policy by default, which is what every scenario
+// before policies existed assumes; the ceiling tests override it.
+const getOrgPolicyMock = vi.fn<() => Promise<OrgPolicyView>>(() =>
+  Promise.resolve({ policy: { requireFacade: false, publishRequiresApproval: false }, enforced: false, refusal: 'x', canEdit: false }),
+)
 
 vi.mock('../api/client.ts', () => ({
   api: {
+    getOrgPolicy: () => getOrgPolicyMock(),
     listAgents: (...args: unknown[]) => listAgentsMock(...(args as [])),
     // The skills multiselect loads the installed list; empty keeps it out of these tests.
     listSkills: () => Promise.resolve([]),
@@ -298,5 +304,40 @@ describe('AgentInspector', () => {
     await screen.findByLabelText('Name')
     await waitFor(() => expect(listPluginsMock).toHaveBeenCalled())
     expect(screen.queryByText(/Plugins/)).not.toBeInTheDocument()
+  })
+
+  // Organization policy: the modes a run would clamp are disabled, so the picker cannot offer
+  // what the run will not give. Only where the policy is enforced — on Team the picker is as
+  // it always was.
+  it("disables the modes above the organization's ceiling and says so", async () => {
+    getOrgPolicyMock.mockResolvedValueOnce({
+      policy: { requireFacade: false, publishRequiresApproval: false, maxPermissionMode: 'acceptEdits' },
+      enforced: true,
+      refusal: null,
+      canEdit: false,
+    })
+    render(<AgentInspector data={coordinatorData()} set={vi.fn()} />)
+
+    // The picker sits under Fine-tuning, collapsed until opened.
+    fireEvent.click(await screen.findByText('Fine-tuning'))
+    expect(await screen.findByText(/Organization policy caps this at/)).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Bypass all checks' })).toBeDisabled()
+    expect(screen.getByRole('option', { name: 'Auto-accept file edits, ask for the rest' })).toBeEnabled()
+    expect(screen.getByRole('option', { name: 'Plan only — proposes, changes nothing' })).toBeEnabled()
+  })
+
+  it('leaves every mode enabled where the policy is not enforced', async () => {
+    getOrgPolicyMock.mockResolvedValueOnce({
+      policy: { requireFacade: false, publishRequiresApproval: false, maxPermissionMode: 'plan' },
+      enforced: false,
+      refusal: 'Organization policies is an Enterprise feature.',
+      canEdit: false,
+    })
+    render(<AgentInspector data={coordinatorData()} set={vi.fn()} />)
+
+    fireEvent.click(await screen.findByText('Fine-tuning'))
+    await waitFor(() => expect(getOrgPolicyMock).toHaveBeenCalled())
+    expect(screen.getByRole('option', { name: 'Bypass all checks' })).toBeEnabled()
+    expect(screen.queryByText(/Organization policy caps this at/)).toBeNull()
   })
 })

@@ -55,6 +55,13 @@ public class AgentSpec {
      */
     public String facadeProfileId = "";
     /**
+     * True when {@link #facadeProfileId} came from the organization's policy rather than the
+     * node — the compiler filled a blank with the organization's default. Carried so the run log
+     * can say "applied by organization policy" instead of crediting the node with a choice it
+     * never made; nothing else reads it.
+     */
+    public boolean facadeByPolicy;
+    /**
      * What the fan-out coordinator's own process may do. Coordinator only, fan-out only — the
      * single-session path is governed by the flow's permission mode and gets no second knob.
      *
