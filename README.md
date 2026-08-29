@@ -968,6 +968,26 @@ a data migration that breaks existing installs.
 > The same material laid out to be looked things up in rather than read through is on the site,
 > at **/docs** — the source is [apps/website/docs/index.html](apps/website/docs/index.html).
 
+### Isolated and offline installs (Enterprise)
+
+What the backend talks to, exactly, so a network team can draw the boundary:
+
+- **Anthropic**, for the models — through the `claude` CLI on a subscription, or the API with a
+  key. This is the one connection a Claude-backed flow cannot do without. A flow whose agents run
+  on a **self-hosted model** (the local-model backend, Ollama or any OpenAI-compatible server on
+  your network) makes no call outside your network at all.
+- **The MCP servers, repositories, mail servers and APIs you wire into a flow** — yours, and only
+  those drawn on the canvas.
+- **Nothing else by default.** The license is verified offline (an Ed25519 signature against keys
+  embedded in the jar; no license server, no phone-home). Traces and metrics stay on the machine
+  unless an exporter is configured. The desktop app checks GitHub Releases for updates; a server
+  deployment runs the jar and updates when you replace it. The one file the app fetches at build
+  time, not at run time, is nothing: fonts and assets are inside the jar.
+
+An Enterprise license is the tier for this shape: the offline verification, the retention you
+choose, the audit trail export, and support that knows what "the proxy allows only these hosts"
+means. Write in with the hosts you can open and we will confirm the list against the code.
+
 ## Installing
 
 The installer for your platform is under **Releases** — or through a package manager, which also

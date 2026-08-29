@@ -176,3 +176,11 @@ the team key, emailed through Resend, recorded in the ledger as `kind: trial`.
 | How many | One per address, carried by a partial unique index in the ledger (`email where kind = 'trial'`). The second request gets the same generic line and no email — the answer never says "you already had one". Without a ledger the rule cannot be remembered and the trial is issued anyway, logged. |
 | What the app shows | `LicenseStatus.trial`; the Settings panel leads with "Trial — N days left", counted from `expires`. The expired-beyond-grace messages say "trial" and point at buying, not renewing. |
 | Not configured | No `TEAM_SIGNING_KEY` (or Resend pair) → 503 "trials are not open yet", honest rather than generic: with no key there is nothing on its way. |
+
+## 15. Isolated installs (29 Aug)
+
+Enterprise is the tier for a deployment behind a proxy or without internet: the license verifies
+offline, telemetry export is opt-in, the desktop shell's update check is the only GitHub call and a
+server deployment makes none. Claude itself needs Anthropic reachable; a flow on a self-hosted model
+needs nothing outside the network. Documented in the README ("Isolated and offline installs"); no
+code changes were needed for it beyond what §§9–14 gate.
