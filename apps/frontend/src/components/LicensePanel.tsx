@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
-import type { LicenseStatus } from '../api/types.ts'
+import type { LicenseFeature, LicenseStatus } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { Spinner } from './Spinner.tsx'
 import panels from './panels.module.scss'
 import styles from './resources.module.scss'
 
 const REQUEST_URL = 'https://www.concentus-ai.com/#license'
+
+/**
+ * The site's "Write in" address, the one fix for every Enterprise refusal. Every panel that prints
+ * one links here — the providers panel, the settings rows, the list below — so "write in" always
+ * means the same mailbox and the same subject line as the pricing page.
+ */
+export const WRITE_IN_URL = 'mailto:gila791@hotmail.com?subject=Concentus%20enterprise'
 
 /**
  * Whole days from today to the expiry date, both taken at UTC midnight so the answer does not
@@ -36,6 +44,41 @@ function statusLine(s: LicenseStatus): string {
   ]
     .filter((part): part is string => Boolean(part))
     .join(' · ')
+}
+
+/**
+ * Every Enterprise feature, a tick or a lock on each — the same list whatever is installed.
+ *
+ * <p>The locked lines are the reason the list exists: a Team admin reading "Send traces is
+ * disabled" somewhere else in Settings finds here, in one place, what the next tier has and how
+ * to ask for it. The labels are the backend enum's own words, so a refusal elsewhere and a line
+ * here name the feature identically.
+ */
+function FeatureList({ features }: { features: LicenseFeature[] }) {
+  const { t } = useTranslation()
+  if (features.length === 0) return null
+  const locked = features.some((f) => !f.allowed)
+  return (
+    <>
+      <h5 className={styles.featureHead}>{t('What this license unlocks')}</h5>
+      <ul className={styles.featureList}>
+        {features.map((f) => (
+          <li key={f.key} className={f.allowed ? styles.featureOn : styles.featureOff}>
+            <span aria-hidden="true">{f.allowed ? '✓' : '🔒'}</span>
+            <span>{t(f.label)}</span>
+          </li>
+        ))}
+      </ul>
+      {locked && (
+        <p className={styles.refusal}>
+          {t('The locked ones are Enterprise features.')}{' '}
+          <a className={styles.textLink} href={WRITE_IN_URL}>
+            {t('Write in')}
+          </a>
+        </p>
+      )}
+    </>
+  )
 }
 
 /**
@@ -96,6 +139,7 @@ export function LicensePanel() {
             </a>
           </>
         ))}
+      {status && <FeatureList features={status.features} />}
       <label className={panels.field}>
         <span>License token</span>
         <textarea rows={4} value={token} onChange={(e) => setToken(e.target.value)} />

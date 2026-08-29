@@ -5,7 +5,7 @@ import type { SettingEntry } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { LANGS, type LangId, setLang, storedLang } from '../i18n/index.ts'
 import { setTheme, THEMES, useTheme } from '../utils/theme.ts'
-import { LicensePanel } from './LicensePanel.tsx'
+import { LicensePanel, WRITE_IN_URL } from './LicensePanel.tsx'
 import { Spinner } from './Spinner.tsx'
 import styles from './resources.module.scss'
 import panels from './panels.module.scss'
@@ -237,12 +237,23 @@ function SettingRow({
   const value = draft ?? entry.value
   const id = `setting-${entry.key}`
   const edited = draft !== undefined && draft !== entry.value
+  // Held back by the license: the row stays, disabled, and says which tier has it — a switch
+  // that saved and then did nothing would look like it worked.
+  const withheld = entry.refusal != null
 
   return (
     <div className={edited ? `${styles.settingRow} ${styles.settingEdited}` : styles.settingRow}>
       <div className={styles.settingText}>
         <label htmlFor={id}>{entry.label}</label>
         <p>{entry.help}</p>
+        {withheld && (
+          <p className={styles.refusal}>
+            {entry.refusal}{' '}
+            <a className={styles.textLink} href={WRITE_IN_URL}>
+              {t('Write in')}
+            </a>
+          </p>
+        )}
         <span className={styles.settingMeta}>
           {SOURCE_LABEL[entry.source] ? t(SOURCE_LABEL[entry.source]) : entry.source}
           {entry.restartRequired && ` · ${t('needs a restart')}`}
@@ -250,12 +261,17 @@ function SettingRow({
       </div>
       <div className={styles.settingControl}>
         {entry.type === 'BOOLEAN' ? (
-          <select id={id} value={value || 'false'} onChange={(e) => onChange(e.target.value)}>
+          <select
+            id={id}
+            value={value || 'false'}
+            disabled={withheld}
+            onChange={(e) => onChange(e.target.value)}
+          >
             <option value="true">{t('On')}</option>
             <option value="false">{t('Off')}</option>
           </select>
         ) : entry.type === 'CHOICE' ? (
-          <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+          <select id={id} value={value} disabled={withheld} onChange={(e) => onChange(e.target.value)}>
             {/* Blank is a real choice here: it is how a field goes back to the deployment's own
                 value rather than being pinned to one of the options. */}
             <option value="">{t('(unset)')}</option>
@@ -270,6 +286,7 @@ function SettingRow({
             id={id}
             type={entry.type === 'NUMBER' ? 'number' : entry.type === 'SECRET' ? 'password' : 'text'}
             value={value}
+            disabled={withheld}
             placeholder={
               entry.type === 'SECRET' && entry.locked
                 ? t('locked — enter it again')

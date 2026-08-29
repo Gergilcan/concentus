@@ -193,4 +193,59 @@ class OidcSignInTest {
         assertThat(outcome.ok()).isTrue();
         assertThat(f.accounts().countUsers()).isEqualTo(2);
     }
+
+    // Feature.DOMAIN_JIT — accounts created for whoever the directory vouches for. Enterprise
+    // (above) provisions a stranger while seats remain; Team does not, whatever the seats say:
+    // its members are added by hand, and a stranger is told to ask. Free (the first tests here)
+    // is untouched — the seat limit is all that ever stopped it.
+
+    private Fixture onTeam(String databaseName) throws Exception {
+        Path licenseDir = Files.createTempDirectory("oidc-sign-in-test-team");
+        TestLicenses.installFixture(licenseDir, "team-test.license"); // 3 seats
+        return on(databaseName, licenseDir);
+    }
+
+    @Test
+    void on_a_team_license_a_stranger_is_refused_and_told_to_be_added_under_members() throws Exception {
+        Fixture f = onTeam("oidc_team_stranger");
+        arrive(f.oidc(), "subject-1", "first@acme.com");
+
+        OidcSignIn.Outcome outcome = arrive(f.oidc(), "subject-2", "stranger@acme.com");
+
+        assertThat(outcome.ok()).isFalse();
+        assertThat(outcome.error()).isEqualTo(OidcSignIn.notInvitedMessage("stranger@acme.com"));
+        assertThat(outcome.error()).contains("Members");
+        // Two seats were free; that is not the reason, and nothing was created.
+        assertThat(f.accounts().countUsers()).isEqualTo(1);
+    }
+
+    // The very first account is the exception: nobody exists yet who could have invited anyone,
+    // and a Team deployment must be able to claim itself through its own sign-in.
+    @Test
+    void on_a_team_license_the_first_arrival_still_claims_the_installation() throws Exception {
+        Fixture f = onTeam("oidc_team_first_arrival");
+
+        OidcSignIn.Outcome outcome = arrive(f.oidc(), "subject-1", "first@acme.com");
+
+        assertThat(outcome.ok()).isTrue();
+        assertThat(outcome.account().isAdmin()).isTrue();
+    }
+
+    // What "invite them first" buys: the member an admin added arrives through the directory and
+    // is linked to the account that already has their address — exactly as before the gate.
+    @Test
+    void on_a_team_license_a_member_an_admin_added_signs_in_as_before() throws Exception {
+        Fixture f = onTeam("oidc_team_invited");
+        arrive(f.oidc(), "subject-1", "first@acme.com");
+        f.accounts().createUser("default", "invited@acme.com", "{external}unused", Accounts.ROLE_OPERATOR);
+
+        OidcSignIn.Outcome outcome = arrive(f.oidc(), "subject-2", "invited@acme.com");
+
+        assertThat(outcome.ok()).isTrue();
+        assertThat(outcome.account().email()).isEqualTo("invited@acme.com");
+        assertThat(outcome.account().role()).isEqualTo(Accounts.ROLE_OPERATOR);
+        assertThat(f.accounts().countUsers()).isEqualTo(2);
+        // And, linked once, the subject alone is enough next time.
+        assertThat(arrive(f.oidc(), "subject-2", "invited@acme.com").ok()).isTrue();
+    }
 }

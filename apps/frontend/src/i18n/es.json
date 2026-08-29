@@ -1694,5 +1694,22 @@
   "locked — enter it again": "bloqueado — vuelve a introducirlo",
   "Exported with credential values in the clear — keep the file like the passwords it holds. Locked credentials travelled as names only.": "Exportado con los valores de las credenciales en claro — guarda el archivo como las contraseñas que contiene. Las credenciales bloqueadas han viajado solo como nombres.",
   "Include credential values": "Incluir los valores de las credenciales",
-  "Off, the file carries credential names only and is safe to pass around. On, it carries every value this installation can open, in the clear — for restoring after a lost key or moving to a new machine. Keep that file like the passwords it holds.": "Desmarcada, el archivo lleva solo los nombres de las credenciales y se puede compartir sin riesgo. Marcada, lleva todos los valores que esta instalación puede abrir, en claro — para restaurar tras perder la clave o pasar a otra máquina. Guarda ese archivo como las contraseñas que contiene."
+  "Off, the file carries credential names only and is safe to pass around. On, it carries every value this installation can open, in the clear — for restoring after a lost key or moving to a new machine. Keep that file like the passwords it holds.": "Desmarcada, el archivo lleva solo los nombres de las credenciales y se puede compartir sin riesgo. Marcada, lleva todos los valores que esta instalación puede abrir, en claro — para restaurar tras perder la clave o pasar a otra máquina. Guarda ese archivo como las contraseñas que contiene.",
+  "What this license unlocks": "Qué desbloquea esta licencia",
+  "The locked ones are Enterprise features.": "Las que tienen candado son funciones Enterprise.",
+  "Write in": "Escríbenos",
+  "Enterprise — inactive": "Enterprise — inactivo",
+  "Domains whose people get an account on first sign-in": "Dominios cuya gente recibe una cuenta al iniciar sesión por primera vez",
+  "any address a provider vouches for": "cualquier dirección que un proveedor avale",
+  "Add people under Members instead; they sign in with the providers below.": "Añade a la gente en Miembros; inician sesión con los proveedores de abajo.",
+  "Set at startup with AUTH_ALLOWED_DOMAINS. Blank admits any address a provider vouches for; people you add under Members sign in either way.": "Se fija al arrancar con AUTH_ALLOWED_DOMAINS. En blanco admite cualquier dirección que un proveedor avale; la gente que añades en Miembros inicia sesión igualmente.",
+  "Custom identity providers (any OpenID Connect issuer)": "Proveedores de identidad propios (cualquier emisor OpenID Connect)",
+  "Automatic accounts for an email domain": "Cuentas automáticas para un dominio de correo",
+  "OpenTelemetry export to your collector": "Exportación OpenTelemetry a tu colector",
+  "Organization policies": "Políticas de organización",
+  "Audit trail export": "Exportación del registro de auditoría",
+  "Unlimited retention of runs and versions": "Retención ilimitada de ejecuciones y versiones",
+  "Several organizations on one deployment": "Varias organizaciones en un mismo despliegue",
+  "Unlimited service accounts": "Cuentas de servicio ilimitadas",
+  "Published endpoints without a rate limit": "Endpoints publicados sin límite de peticiones"
 }

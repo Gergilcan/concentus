@@ -49,7 +49,7 @@ import type {
   SessionInfo,
   SignedInUser,
   SettingEntry,
-  SignInProviderConfig,
+  SignInProvidersList,
   SwitchableAccount,
   SqlPreview,
 } from './types.ts'
@@ -550,13 +550,8 @@ export const api = {
    * application will actually ask for, which depends on how the request arrived — localhost, a LAN
    * address, or a domain behind a proxy.
    */
-  listSignInProviders: () =>
-    req<{
-      providers: SignInProviderConfig[]
-      redirectUri: string
-      live: Array<{ id: string; name: string }>
-    }>('/account/providers'),
-  /** Saves one registration. A blank secret leaves the stored one alone. */
+  listSignInProviders: () => req<SignInProvidersList>('/account/providers'),
+  /** Saves one registration. A blank secret leaves the stored one alone. Answers the new list. */
   saveSignInProvider: (update: {
     id: string
     enabled: boolean
@@ -566,7 +561,7 @@ export const api = {
     issuer: string
     displayName: string
   }) =>
-    req<{ providers: SignInProviderConfig[]; redirectUri: string }>('/account/providers', {
+    req<SignInProvidersList>('/account/providers', {
       method: 'PUT',
       body: JSON.stringify(update),
     }),

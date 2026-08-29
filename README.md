@@ -999,6 +999,33 @@ annual, bought on the site by card) or an **enterprise** one (any size, by conta
 first, a 14-day trial from the same page, no card. See
 [the licensing docs](https://www.concentus-ai.com/docs#licensing) for the details.
 
+Team is what a team of up to ten needs to work together; Enterprise is scale and governance.
+The line between them is one enum in the backend, `Feature.java`, and every gate, the License
+panel and the site print its labels:
+
+<!-- Kept in sync by hand with apps/backend/src/main/java/com/concentus/license/Feature.java:
+     one row per constant, the label verbatim. Change the enum, change this table. -->
+
+| | Team | Enterprise |
+| --- | :---: | :---: |
+| The shared database, members and roles, up to your seats | ✓ | ✓ |
+| Google, Microsoft and Discord sign-in | ✓ | ✓ |
+| Custom identity providers (any OpenID Connect issuer) | — | ✓ |
+| Automatic accounts for an email domain | — | ✓ |
+| OpenTelemetry export to your collector | — | ✓ |
+| Organization policies | — | ✓ |
+| Audit trail export | — | ✓ |
+| Unlimited retention of runs and versions | 90 days | ✓ |
+| Several organizations on one deployment | — | ✓ |
+| Unlimited service accounts | 2 | ✓ |
+| Published endpoints without a rate limit | 60/min per token | ✓ |
+
+On a Team license a withheld feature says so where it lives — the providers panel marks a custom
+issuer "Enterprise — inactive", an unknown address arriving through a directory is told to ask an
+administrator, the telemetry switches are disabled with the reason — and Settings → License lists
+all nine with a tick or a lock. A free installation is one person on their own machine and none
+of this applies to it.
+
 Building from source and want the team tier to verify? It is off until a key exists: run
 `node apps/website/scripts/keygen.mjs`, paste the public line into `license.team-public-key` in
 `apps/backend/src/main/resources/application.properties`, and the private line into Vercel as

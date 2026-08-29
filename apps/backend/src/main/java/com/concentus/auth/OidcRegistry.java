@@ -1,15 +1,18 @@
 package com.concentus.auth;
 
+import com.concentus.license.Feature;
 import com.concentus.license.LicenseService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -47,6 +50,15 @@ import java.util.Optional;
  * <p>The single-provider keys that came before this still work unchanged. A deployment that set
  * {@code app.auth.oidc.enabled=true} with a client id and secret keeps exactly the provider it
  * had — an upgrade must not sign a company out of its own application.
+ *
+ * <p><b>On a Team license, the presets only.</b> Google, Microsoft and Discord are what a team of
+ * up to ten signs in with; an OpenID Connect issuer of the company's own (Okta, a custom Entra
+ * app, Keycloak) is {@link Feature#GENERIC_OIDC}, an Enterprise feature. A Team deployment that
+ * has one configured — from before the license changed, or from the environment — keeps the rows
+ * but is not offered it: {@link #all()} leaves it out, so the sign-in screen has no button for it
+ * and a callback for it finds no provider, while the providers panel still lists it, marked
+ * inactive, so nobody wonders where their registration went. Enterprise and free are unchanged;
+ * free has no way to register a provider at all.
  */
 @Component
 public class OidcRegistry {
@@ -107,6 +119,59 @@ public class OidcRegistry {
         }
     }
 
+    /**
+     * Refuses to write a registration for a provider this license does not cover — a custom
+     * issuer on a Team deployment. Called by {@code SignInProviderController} after {@link
+     * #requireEnterpriseToRegister()}, so the message a Team admin reads names the feature and
+     * the tier that has it, not the generic "SSO is enterprise" a free install gets.
+     */
+    public void requireAllowedToRegister(String presetId) {
+        String refusal = refusalFor(OidcProvider.of(presetId, null, null, null, null));
+        if (refusal != null) throw new IllegalStateException(refusal);
+    }
+
+    /**
+     * Why this provider is not offered under the current license — {@link Feature#GENERIC_OIDC}'s
+     * refusal on a Team deployment for anything but a preset — or null when it is (or would be)
+     * offered. Read by the providers panel to mark a registration inactive, and by {@link #accept}
+     * to leave it out of what the sign-in screen sees; one answer for both, so the panel never
+     * calls inactive something the screen still offers, or the other way round.
+     */
+    public String refusalFor(OidcProvider provider) {
+        if (!licenseService.withheld(Feature.GENERIC_OIDC)) return null;
+        return isPreset(provider) ? null : licenseService.refusal(Feature.GENERIC_OIDC);
+    }
+
+    /**
+     * Whether the provider is one of the presets AS SHIPPED, not merely named after one.
+     *
+     * <p>The id alone is not enough: every endpoint and claim can be restated in configuration,
+     * so a "google" whose token endpoint points at a company's own Keycloak is a custom issuer
+     * wearing a preset's name. The issuer is compared by host rather than verbatim because
+     * Microsoft's carries the tenant, which a preset legitimately changes.
+     */
+    private static boolean isPreset(OidcProvider provider) {
+        if (!PRESETS.contains(provider.id())) return false;
+        OidcProvider shipped = OidcProvider.of(provider.id(), null, null, null, null);
+        return Objects.equals(host(shipped.issuer()), host(provider.issuer()))
+                && Objects.equals(shipped.authorizationUrl(), provider.authorizationUrl())
+                && Objects.equals(shipped.tokenUrl(), provider.tokenUrl())
+                && Objects.equals(shipped.userinfoUrl(), provider.userinfoUrl())
+                && Objects.equals(shipped.subjectClaim(), provider.subjectClaim())
+                && Objects.equals(shipped.emailClaim(), provider.emailClaim());
+    }
+
+    private static String host(String issuer) {
+        if (issuer == null || issuer.isBlank()) return "";
+        try {
+            String host = URI.create(issuer).getHost();
+            return host == null ? issuer : host.toLowerCase(Locale.ROOT);
+        } catch (IllegalArgumentException e) {
+            // Not a URL at all: compared as written, which can only ever fail to match a preset's.
+            return issuer;
+        }
+    }
+
     /** Everything configured right now. Rebuilt per call — see the note about restarts above. */
     private Map<String, Configured> current() {
         Map<String, Configured> byId = new LinkedHashMap<>();
@@ -134,12 +199,19 @@ public class OidcRegistry {
     }
 
     private boolean accept(Configured configured, String key) {
-        if (configured.isUsable()) return true;
-        // At debug, not warn: this is read on every sign-in screen now, and a half-filled provider
-        // somebody is in the middle of configuring would otherwise fill the log.
-        log.debug("Not offering the '{}' sign-in provider: it needs a client id, a client secret, "
-                + "and either a known preset or an issuer.", key);
-        return false;
+        if (!configured.isUsable()) {
+            // At debug, not warn: this is read on every sign-in screen now, and a half-filled
+            // provider somebody is in the middle of configuring would otherwise fill the log.
+            log.debug("Not offering the '{}' sign-in provider: it needs a client id, a client secret, "
+                    + "and either a known preset or an issuer.", key);
+            return false;
+        }
+        String refusal = refusalFor(configured.provider());
+        if (refusal != null) {
+            log.debug("Not offering the '{}' sign-in provider: {}", key, refusal);
+            return false;
+        }
+        return true;
     }
 
     private List<String> namedProviders() {

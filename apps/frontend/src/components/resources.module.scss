@@ -1435,3 +1435,50 @@
   color: t.$text;
   background: t.$accent-soft;
 }
+
+/**
+ * "What this license unlocks": the same nine lines whatever the tier, a tick or a lock on each.
+ * The locked ones are muted rather than hidden — the point of the list is that a free or Team
+ * install can see what the next tier has.
+ */
+.featureHead {
+  margin: var(--sp-4) 0 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.featureList {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+
+  li {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+}
+
+.featureOn span:first-child {
+  color: t.$ok;
+}
+
+.featureOff {
+  color: t.$muted;
+}
+
+/** Why a field is disabled under this license, with the one link that fixes it. */
+.refusal {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: t.$muted;
+  max-width: 78ch;
+}
+
+/** A registration the license withholds: still here, visibly not in use. */
+.providerInactive {
+  opacity: 0.65;
+}

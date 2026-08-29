@@ -1,10 +1,13 @@
 package com.concentus.web;
 
+import com.concentus.auth.EmailDomainPolicy;
 import com.concentus.auth.OidcProvider;
 import com.concentus.auth.OidcRegistry;
 import com.concentus.auth.OidcSignIn;
 import com.concentus.auth.OrgContext;
 import com.concentus.config.SettingsStore;
+import com.concentus.license.Feature;
+import com.concentus.license.LicenseService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -42,13 +45,18 @@ public class SignInProviderController {
     private final OrgContext orgContext;
     private final OidcSignIn signIn;
     private final OidcRegistry registry;
+    private final EmailDomainPolicy domains;
+    private final LicenseService license;
 
     public SignInProviderController(SettingsStore store, OrgContext orgContext, OidcSignIn signIn,
-                                    OidcRegistry registry) {
+                                    OidcRegistry registry, EmailDomainPolicy domains,
+                                    LicenseService license) {
         this.store = store;
         this.orgContext = orgContext;
         this.signIn = signIn;
         this.registry = registry;
+        this.domains = domains;
+        this.license = license;
     }
 
     /**
@@ -84,14 +92,26 @@ public class SignInProviderController {
             // so the form asks for what this provider actually wants rather than for everything.
             entry.put("wantsTenant", "microsoft".equals(id));
             entry.put("wantsIssuer", "generic".equals(id));
+            // Null unless the license withholds this one — a custom issuer on Team. The row stays,
+            // with its client id, so a registration made under another license is not lost; it
+            // is marked inactive rather than removed, and the screen says which tier has it.
+            entry.put("refusal", registry.refusalFor(OidcProvider.of(id, null, null, null, null)));
             out.add(entry);
         }
-        return Map.of(
-                "providers", out,
-                // The one value every registration needs and every first attempt gets wrong.
-                "redirectUri", baseOf(request) + OidcSignIn.CALLBACK_PATH,
-                "live", signIn.providers().stream()
-                        .map(p -> Map.of("id", p.id(), "name", p.displayName())).toList());
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("providers", out);
+        // The one value every registration needs and every first attempt gets wrong.
+        response.put("redirectUri", baseOf(request) + OidcSignIn.CALLBACK_PATH);
+        response.put("live", signIn.providers().stream()
+                .map(p -> Map.of("id", p.id(), "name", p.displayName())).toList());
+        // The domains whose people get an account on first sign-in — read-only here, because it
+        // is startup configuration (AUTH_ALLOWED_DOMAINS), shown so the screen that offers the
+        // providers also says who they admit. On Team the whole idea is withheld, and the field
+        // says so instead of showing a list nothing acts on.
+        response.put("allowedDomains", String.join(", ", domains.allowedDomains()));
+        response.put("domainJitRefusal", license.withheld(Feature.DOMAIN_JIT)
+                ? license.refusal(Feature.DOMAIN_JIT) : null);
+        return response;
     }
 
     @PutMapping
@@ -106,6 +126,10 @@ public class SignInProviderController {
         if (!PRESETS.contains(id)) {
             throw new IllegalArgumentException("Unknown sign-in provider '" + body.id() + "'.");
         }
+        // A paid license got past the check above; this one asks WHICH paid license. A custom
+        // issuer is refused on Team before anything is written, so a Team admin is never left
+        // with a saved registration that the sign-in screen then declines to show.
+        registry.requireAllowedToRegister(id);
         String who = orgContext.currentUser()
                 .map(com.concentus.auth.ConcentusUserDetails::email).orElse(null);
 

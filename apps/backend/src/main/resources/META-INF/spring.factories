@@ -1,0 +1,3 @@
+# Runs while the environment is assembled, before any bean: the OTLP exporter is built from the
+# export switches, and a Team license has to have turned them off by then (see the class).
+org.springframework.boot.env.EnvironmentPostProcessor=com.concentus.telemetry.TelemetryLicenseGate

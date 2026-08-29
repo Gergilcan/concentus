@@ -1694,5 +1694,22 @@
   "locked — enter it again": "bloquejat — torna a introduir-lo",
   "Exported with credential values in the clear — keep the file like the passwords it holds. Locked credentials travelled as names only.": "Exportat amb els valors de les credencials en clar — guarda el fitxer com les contrasenyes que conté. Les credencials bloquejades han viatjat només com a noms.",
   "Include credential values": "Inclou els valors de les credencials",
-  "Off, the file carries credential names only and is safe to pass around. On, it carries every value this installation can open, in the clear — for restoring after a lost key or moving to a new machine. Keep that file like the passwords it holds.": "Desmarcada, el fitxer només porta els noms de les credencials i es pot compartir sense risc. Marcada, porta tots els valors que aquesta instal·lació pot obrir, en clar — per restaurar després de perdre la clau o passar a una altra màquina. Guarda aquest fitxer com les contrasenyes que conté."
+  "Off, the file carries credential names only and is safe to pass around. On, it carries every value this installation can open, in the clear — for restoring after a lost key or moving to a new machine. Keep that file like the passwords it holds.": "Desmarcada, el fitxer només porta els noms de les credencials i es pot compartir sense risc. Marcada, porta tots els valors que aquesta instal·lació pot obrir, en clar — per restaurar després de perdre la clau o passar a una altra màquina. Guarda aquest fitxer com les contrasenyes que conté.",
+  "What this license unlocks": "Què desbloqueja aquesta llicència",
+  "The locked ones are Enterprise features.": "Les que tenen cadenat són funcions Enterprise.",
+  "Write in": "Escriu-nos",
+  "Enterprise — inactive": "Enterprise — inactiu",
+  "Domains whose people get an account on first sign-in": "Dominis la gent dels quals rep un compte en iniciar sessió per primer cop",
+  "any address a provider vouches for": "qualsevol adreça que un proveïdor avali",
+  "Add people under Members instead; they sign in with the providers below.": "Afegeix la gent a Membres; inicien sessió amb els proveïdors de sota.",
+  "Set at startup with AUTH_ALLOWED_DOMAINS. Blank admits any address a provider vouches for; people you add under Members sign in either way.": "Es fixa en arrencar amb AUTH_ALLOWED_DOMAINS. En blanc admet qualsevol adreça que un proveïdor avali; la gent que afegeixes a Membres inicia sessió igualment.",
+  "Custom identity providers (any OpenID Connect issuer)": "Proveïdors d'identitat propis (qualsevol emissor OpenID Connect)",
+  "Automatic accounts for an email domain": "Comptes automàtics per a un domini de correu",
+  "OpenTelemetry export to your collector": "Exportació OpenTelemetry al teu col·lector",
+  "Organization policies": "Polítiques d'organització",
+  "Audit trail export": "Exportació del registre d'auditoria",
+  "Unlimited retention of runs and versions": "Retenció il·limitada d'execucions i versions",
+  "Several organizations on one deployment": "Diverses organitzacions en un mateix desplegament",
+  "Unlimited service accounts": "Comptes de servei il·limitats",
+  "Published endpoints without a rate limit": "Endpoints publicats sense límit de peticions"
 }

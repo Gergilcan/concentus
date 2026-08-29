@@ -941,6 +941,19 @@ export interface LicenseStatus {
   problem: string | null
   /** True on the 14-day trial the website issues — a team license the panel counts down instead of naming. */
   trial: boolean
+  /**
+   * Every Enterprise feature, in the backend enum's order, with whether this license has it. The
+   * same list whatever the tier, so the panel can show a free or Team install what the next tier
+   * unlocks rather than a blank where the locks would be.
+   */
+  features: LicenseFeature[]
+}
+
+/** One line of "what this license unlocks": the feature's own label, and a tick or a lock. */
+export interface LicenseFeature {
+  key: string
+  label: string
+  allowed: boolean
 }
 
 // `type` aliases (not interfaces) so they satisfy the CrudPanel `Record<string, unknown>` constraint.
@@ -1103,6 +1116,23 @@ export interface SignInProviderConfig {
   wantsTenant: boolean
   /** Only a provider with no preset needs to be told where it lives. */
   wantsIssuer: boolean
+  /**
+   * Why this license does not offer the provider — a custom issuer on Team — or null. The row is
+   * still here, with its client id, so a registration made under another license is not lost;
+   * the screen shows it inactive and says which tier has it.
+   */
+  refusal: string | null
+}
+
+/** What the providers screen reads: the registrations, the address to register, and who they admit. */
+export interface SignInProvidersList {
+  providers: SignInProviderConfig[]
+  redirectUri: string
+  live: Array<{ id: string; name: string }>
+  /** The domains whose people get an account on first sign-in, comma-joined; blank is any. */
+  allowedDomains: string
+  /** Set on Team, where automatic accounts are withheld: the refusal the field shows instead. */
+  domainJitRefusal: string | null
 }
 
 /**
@@ -1127,6 +1157,11 @@ export interface SettingEntry {
   hasValue: boolean
   /** Secrets only: stored, but sealed under a key this installation does not have. Enter it again. */
   locked?: boolean
+  /**
+   * Why a Team license holds this setting back, or null wherever it works. The row is shown
+   * disabled with the sentence, so flipping "Send traces" does not save a switch nothing reads.
+   */
+  refusal?: string | null
 }
 
 /**

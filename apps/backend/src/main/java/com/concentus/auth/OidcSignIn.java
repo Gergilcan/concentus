@@ -1,5 +1,6 @@
 package com.concentus.auth;
 
+import com.concentus.license.Feature;
 import com.concentus.license.LicenseService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -169,6 +170,17 @@ public class OidcSignIn {
                 "No sign-in provider called '" + providerId + "' is configured here."));
     }
 
+    /**
+     * What an unknown address is told on a Team deployment. Addressed to the person at the
+     * sign-in screen, not to the admin: the feature's refusal sentence is for the panel, and what
+     * this person can do about it is ask to be added.
+     */
+    public static String notInvitedMessage(String email) {
+        return "There is no account for " + email + " here, and on a Team license one is not "
+                + "created at first sign-in. Ask an administrator to add you under Members, then "
+                + "sign in again.";
+    }
+
     /** What the callback produced: an account to sign in as, or a reason it did not. */
     public record Outcome(Accounts.UserAccount account, String error) {
 
@@ -246,6 +258,15 @@ public class OidcSignIn {
      * has nothing to do with whether they may still use the accounts they have. The very first
      * account on an empty installation is never caught by this either, since {@link
      * AccountStore#listUsers} is empty and every license's seat limit is at least one.
+     *
+     * <p>That third case is also where {@link Feature#DOMAIN_JIT} is asked. Creating an account
+     * for whoever the directory vouches for is what an organization with an allowed domain wants;
+     * a team of up to ten adds its members by hand under Members, and on a Team license an
+     * unknown address is told exactly that rather than provisioned. The members an admin added
+     * arrive through the second case — their address already has an account — and are linked as
+     * before. The very first account is still created: on an empty installation there is nobody
+     * yet who could have invited anyone, and refusing it would lock a Team deployment out of its
+     * own setup.
      */
     private Outcome resolveAccount(OidcRegistry.Configured configured,
                                    String subject, String email) {
@@ -259,6 +280,12 @@ public class OidcSignIn {
             identities.link(providerId, subject, byEmail.get().id(),
                     byEmail.get().organizationId(), email);
             return new Outcome(byEmail.get(), null);
+        }
+
+        if (licenseService.withheld(Feature.DOMAIN_JIT) && accounts.countUsers() > 0) {
+            log.info("Sign-in refused for {} — no account, and automatic accounts are not "
+                    + "part of the Team license", email);
+            return Outcome.failed(notInvitedMessage(email));
         }
 
         int limit = licenseService.seatLimit();
