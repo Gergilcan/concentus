@@ -3,7 +3,7 @@ import type { BackendFlow } from '../api/types.ts'
 import { useFlowStore } from './store.ts'
 
 // Exercises the canvas <-> backend flow transform: nodes added on the React Flow
-// canvas (with positions, agent role inference, etc.) must round-trip through
+// canvas (with positions, the coordinator/agent split, etc.) must round-trip through
 // toBackendFlow()/loadBackendFlow() without losing data, since that's the exact
 // path used to save a flow and reopen it (see Toolbar.tsx `save`/`openFlow`).
 describe('useFlowStore canvas <-> backend flow transform', () => {
@@ -14,7 +14,7 @@ describe('useFlowStore canvas <-> backend flow transform', () => {
   it('toBackendFlow serializes nodes/edges and stashes canvas position in data._pos', () => {
     const { addNode, onConnect, setName } = useFlowStore.getState()
     setName('My Flow')
-    addNode('agent')
+    addNode('coordinator')
     addNode('mcp')
 
     const [agentNode, mcpNode] = useFlowStore.getState().nodes
@@ -28,15 +28,18 @@ describe('useFlowStore canvas <-> backend flow transform', () => {
     expect(backendFlow.edges[0]).toMatchObject({ source: mcpNode.id, target: agentNode.id })
 
     const serializedAgent = backendFlow.nodes.find((n) => n.id === agentNode.id)!
+    // On the wire the lead is an agent with the coordinator role — the shape every stored flow,
+    // the MCP flow tools and the generator already speak. The role travels inside the data too,
+    // where the trigger's permission lookup reads it.
     expect(serializedAgent.type).toBe('agent')
-    // the first agent added becomes the coordinator
     expect(serializedAgent.role).toBe('coordinator')
+    expect(serializedAgent.data.role).toBe('coordinator')
     expect(serializedAgent.data._pos).toEqual(agentNode.position)
     // `kind` is a client-side discriminant and must not leak into the persisted data blob
     expect(serializedAgent.data.kind).toBeUndefined()
   })
 
-  it('loadBackendFlow reconstructs canvas nodes (position + role) from a persisted flow', () => {
+  it('loadBackendFlow reconstructs canvas nodes (position, and the lead as a coordinator block) from a persisted flow', () => {
     const flow: BackendFlow = {
       id: 'flow-1',
       name: 'Loaded flow',
@@ -60,19 +63,26 @@ describe('useFlowStore canvas <-> backend flow transform', () => {
     expect(state.mode).toBe('local')
     expect(state.nodes).toHaveLength(1)
     expect(state.nodes[0].position).toEqual({ x: 42, y: 7 })
-    expect(state.nodes[0].data.kind).toBe('agent')
-    expect((state.nodes[0].data as { role: string }).role).toBe('coordinator')
+    expect(state.nodes[0].data.kind).toBe('coordinator')
+    expect(state.nodes[0].type).toBe('coordinator')
+    // The role is a wire fact, not a canvas field: it is derived from the kind on save.
+    expect((state.nodes[0].data as { role?: unknown }).role).toBeUndefined()
     expect((state.nodes[0].data as { name: string }).name).toBe('Lead')
   })
 
-  it('a second agent added after the first defaults to a subagent role', () => {
+  it('a flow takes one coordinator; a second is refused, and agents are agents', () => {
     const { addNode } = useFlowStore.getState()
-    addNode('agent')
+    addNode('coordinator')
+    addNode('coordinator')
     addNode('agent')
 
-    const [first, second] = useFlowStore.getState().nodes
-    expect((first.data as { role: string }).role).toBe('coordinator')
-    expect((second.data as { role: string }).role).toBe('subagent')
+    const nodes = useFlowStore.getState().nodes
+    expect(nodes.map((n) => n.data.kind)).toEqual(['coordinator', 'agent'])
+    const backend = useFlowStore.getState().toBackendFlow()
+    expect(backend.nodes.map((n) => [n.type, n.role])).toEqual([
+      ['agent', 'coordinator'],
+      ['agent', 'subagent'],
+    ])
   })
 })
 
@@ -88,21 +98,23 @@ describe('useFlowStore copy / paste / duplicate', () => {
     useFlowStore.setState({ clipboard: null })
   })
 
-  it('duplicating the coordinator demotes the copy to subagent and renames it', () => {
+  it('duplicating the coordinator makes the copy an agent and renames it', () => {
     const { addNode, duplicateNode } = useFlowStore.getState()
-    addNode('agent')
+    addNode('coordinator')
     const original = useFlowStore.getState().nodes[0]
-    expect(original.data).toMatchObject({ role: 'coordinator', name: 'Coordinator' })
+    expect(original.data).toMatchObject({ kind: 'coordinator', name: 'Coordinator' })
 
     duplicateNode(original.id)
 
     const { nodes } = useFlowStore.getState()
     expect(nodes).toHaveLength(2)
     // the original is untouched...
-    expect(nodes[0].data).toMatchObject({ role: 'coordinator', name: 'Coordinator' })
-    // ...and the copy is a distinct node that can't produce a second coordinator
+    expect(nodes[0].data).toMatchObject({ kind: 'coordinator', name: 'Coordinator' })
+    // ...and the copy is a distinct node that can't produce a second coordinator: the data AND
+    // the canvas node type say agent, so it is drawn and saved as one.
     expect(nodes[1].id).not.toBe(original.id)
-    expect(nodes[1].data).toMatchObject({ role: 'subagent', name: 'Coordinator copy' })
+    expect(nodes[1].type).toBe('agent')
+    expect(nodes[1].data).toMatchObject({ kind: 'agent', name: 'Coordinator copy' })
     expect(nodes[1].position).not.toEqual(original.position)
   })
 
@@ -115,7 +127,7 @@ describe('useFlowStore copy / paste / duplicate', () => {
     duplicateNode(id)
 
     const names = useFlowStore.getState().nodes.map((n) => (n.data as { name: string }).name)
-    expect(names).toEqual(['Coordinator', 'Coordinator copy', 'Coordinator copy 2'])
+    expect(names).toEqual(['Agent', 'Agent copy', 'Agent copy 2'])
     expect(new Set(names).size).toBe(names.length)
   })
 

@@ -22,6 +22,7 @@ const ROLES: Record<NodeKind, WiringRole> = {
   api: 'feeds',
   flow: 'both',
   agent: 'both',
+  coordinator: 'both',
   merge: 'both',
   verifier: 'both',
   // Gates sit mid-wire: something feeds them, they feed what comes next. Reading both ways is
@@ -38,7 +39,7 @@ export function wiringRoleOf(kind: NodeKind): WiringRole {
 }
 
 /** The kinds that consume: they read what is wired into them and act on it. */
-const CONSUMERS: NodeKind[] = ['agent', 'merge', 'verifier']
+const CONSUMERS: NodeKind[] = ['agent', 'coordinator', 'merge', 'verifier']
 
 /**
  * Whether a wire from one kind to another means anything.

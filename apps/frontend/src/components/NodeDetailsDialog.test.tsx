@@ -17,7 +17,6 @@ const agent: AppNode = {
   data: {
     kind: 'agent',
     name: 'Redactor',
-    role: 'subagent',
     model: 'claude-sonnet-5',
     systemPrompt: 'Escribe el resumen.',
     maxTokens: 4096,

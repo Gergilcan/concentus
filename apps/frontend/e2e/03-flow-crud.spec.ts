@@ -49,7 +49,8 @@ test('makes a sandbox copy that is paused, tagged, and in plan mode', async ({ p
   await page.getByRole('button', { name: '+ New flow' }).first().click()
   await page.getByLabel('Flow name').fill(SANDBOXED)
   await page.getByRole('button', { name: '▶ Input / trigger' }).click()
-  await page.getByRole('button', { name: '◆ Agent' }).click()
+  // The lead is its own block now; plan mode lands on a coordinator, not on any agent.
+  await page.getByRole('button', { name: '★ Coordinator' }).click()
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await page.getByRole('button', { name: '← Flows' }).click()
 

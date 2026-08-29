@@ -24,9 +24,8 @@ vi.mock('../api/client.ts', () => ({
 
 function coordinatorData(overrides: Partial<AgentNodeData> = {}): AgentNodeData {
   return {
-    kind: 'agent',
+    kind: 'coordinator',
     name: 'Coordinator',
-    role: 'coordinator',
     model: 'claude-opus-4-8',
     description: '',
     systemPrompt: '',
@@ -60,11 +59,11 @@ describe('AgentInspector', () => {
   })
 
   it('only shows the "Delegate when…" routing field for subagents, not coordinators', async () => {
-    render(<AgentInspector data={coordinatorData({ role: 'coordinator' })} set={vi.fn()} />)
+    render(<AgentInspector data={coordinatorData({ kind: 'coordinator' })} set={vi.fn()} />)
     await screen.findByLabelText('Name')
     expect(screen.queryByLabelText(/Delegate when/)).not.toBeInTheDocument()
 
-    render(<AgentInspector data={coordinatorData({ role: 'subagent' })} set={vi.fn()} />)
+    render(<AgentInspector data={coordinatorData({ kind: 'agent' })} set={vi.fn()} />)
     expect(await screen.findByLabelText(/Delegate when/)).toBeInTheDocument()
   })
 
@@ -72,13 +71,13 @@ describe('AgentInspector', () => {
     // Workers are the one path with a verifier, and a verifier rejection is the only signal that
     // says the cheap answer was actually wrong. Offering it on a coordinator would be a control
     // that quietly does nothing.
-    render(<AgentInspector data={coordinatorData({ role: 'coordinator' })} set={vi.fn()} />)
+    render(<AgentInspector data={coordinatorData({ kind: 'coordinator' })} set={vi.fn()} />)
     await screen.findByLabelText('Name')
     fireEvent.click(screen.getByText('Fine-tuning'))
     expect(screen.queryByLabelText(/Escalation model/)).not.toBeInTheDocument()
 
     const set = vi.fn()
-    render(<AgentInspector data={coordinatorData({ role: 'subagent' })} set={set} />)
+    render(<AgentInspector data={coordinatorData({ kind: 'agent' })} set={set} />)
     fireEvent.click(screen.getAllByText('Fine-tuning')[1])
     const field = await screen.findByLabelText(/Escalation model/)
     expect(field).toHaveValue('')

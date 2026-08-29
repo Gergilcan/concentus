@@ -9,6 +9,7 @@ export const NODE_DRAG_TYPE = 'application/concentus-node'
 export function Palette() {
   const { t } = useTranslation()
   const addNode = useFlowStore((s) => s.addNode)
+  const hasCoordinator = useFlowStore((s) => s.nodes.some((n) => n.data.kind === 'coordinator'))
   // Dragging places the node where it is dropped; clicking still adds one, because a drag is not
   // available to keyboard users and losing that would be a regression for them.
   const drag = (kind: string) => ({
@@ -24,7 +25,22 @@ export function Palette() {
       <button className={cx(styles.addBtn, styles.addInput)} title={t('How a run starts: manual, a fixed prompt, cron, webhook, or incoming mail.')} {...drag('input')} onClick={() => addNode('input')}>
         <span>▶</span> {t('Input / trigger')}
       </button>
-      <button className={cx(styles.addBtn, styles.addAgent)} title={t('Mark exactly one agent as coordinator and link it to the sub-agents it may delegate to.')} {...drag('agent')} onClick={() => addNode('agent')}>
+      {/* Two blocks, not one with a dropdown: a flow has exactly one lead, and the palette says so
+          by refusing a second rather than by letting two boxes claim the role. */}
+      <button
+        className={cx(styles.addBtn, styles.addCoordinator)}
+        title={
+          hasCoordinator
+            ? t('A flow has one coordinator, and this one already does.')
+            : t("The agent the trigger addresses: it receives the prompt, delegates to the agents wired to it and writes the run's final answer. Exactly one per flow.")
+        }
+        disabled={hasCoordinator}
+        {...(hasCoordinator ? {} : drag('coordinator'))}
+        onClick={() => addNode('coordinator')}
+      >
+        <span>★</span> {t('Coordinator')}
+      </button>
+      <button className={cx(styles.addBtn, styles.addAgent)} title={t("An agent the coordinator may delegate to. Wire it to the coordinator (or behind another agent, for a chain); its 'Delegate when…' text is what routes work to it.")} {...drag('agent')} onClick={() => addNode('agent')}>
         <span>◆</span> {t('Agent')}
       </button>
       <button className={cx(styles.addBtn, styles.addVerifier)} title={t("For flows running as independent workers: an adversarial judge that runs after every worker and BEFORE the merge. Its objective is inverted — find the reason each output should be REJECTED — and its verdict has teeth: a rejected output never reaches the merge. Reads the workers' files, cannot edit or run commands. Its 'on rejected' output hands a flow the full verification report when anything was rejected. At most one per flow; ignored on subagents execution.")} {...drag('verifier')} onClick={() => addNode('verifier')}>

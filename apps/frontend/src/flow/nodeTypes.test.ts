@@ -20,12 +20,14 @@ import { nodeTypes } from './nodeTypes.ts'
 // 'worker' is deliberately in the registry but NOT in NodeKind: its boxes are synthesized
 // from the run report and must never be addable from the palette or saved with a flow.
 describe('nodeTypes', () => {
-  it('has exactly the thirteen expected node-kind keys, no more, no fewer', () => {
-    expect(Object.keys(nodeTypes).sort()).toEqual(['agent', 'api', 'condition', 'flow', 'foreach', 'input', 'knowledge', 'mcp', 'merge', 'repo', 'sql', 'verifier', 'worker'])
+  it('has exactly the fourteen expected node-kind keys, no more, no fewer', () => {
+    expect(Object.keys(nodeTypes).sort()).toEqual(['agent', 'api', 'condition', 'coordinator', 'flow', 'foreach', 'input', 'knowledge', 'mcp', 'merge', 'repo', 'sql', 'verifier', 'worker'])
   })
 
   it('maps each key to the matching imported component', () => {
     expect(nodeTypes.agent).toBe(AgentNode)
+    // The lead is the same card: one component, two kinds.
+    expect(nodeTypes.coordinator).toBe(AgentNode)
     expect(nodeTypes.input).toBe(InputNode)
     expect(nodeTypes.mcp).toBe(McpNode)
     expect(nodeTypes.repo).toBe(RepoNode)

@@ -64,7 +64,7 @@ describe('canvas undo/redo', () => {
       s().updateNodeData(id, { name: 'Rep' })
 
       s().undo()
-      expect((s().nodes[0].data as { name: string }).name).toBe('Coordinator')
+      expect((s().nodes[0].data as { name: string }).name).toBe('Agent')
     } finally {
       vi.useRealTimers()
     }
@@ -84,7 +84,7 @@ describe('canvas undo/redo', () => {
       s().undo()
       expect((s().nodes[0].data as { name: string }).name).toBe('First')
       s().undo()
-      expect((s().nodes[0].data as { name: string }).name).toBe('Coordinator')
+      expect((s().nodes[0].data as { name: string }).name).toBe('Agent')
     } finally {
       vi.useRealTimers()
     }

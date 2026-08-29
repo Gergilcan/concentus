@@ -68,7 +68,7 @@ concentus/
 
 ## Concepts
 
-- A **flow** is a multi-agent orchestration graph. **Agent** nodes (one marked *coordinator*),
+- A **flow** is a multi-agent orchestration graph. a **Coordinator** node (exactly one — the agent the trigger addresses) and the **Agent** nodes it delegates to,
   plus **MCP**, **Repository**, **SQL**, **Knowledge** and **API (OpenAPI)** capability nodes — an
   API node turns any REST API into typed tools from its OpenAPI spec, with each operation
   allowed explicitly — a **Run another flow** node, which is either a tool an agent may call and
@@ -120,7 +120,7 @@ concentus/
   select several), and `Ctrl/⌘+D` duplicates them in place; the Inspector also has a **Duplicate**
   button. Connections *between* copied blocks are kept, and the clipboard survives switching flows so
   you can lift blocks from one flow into another. Copies get a fresh identity — a duplicated
-  coordinator becomes a sub-agent (a flow may only have one coordinator), names are made unique, and
+  coordinator becomes an agent (a flow may only have one coordinator, and the palette refuses a second), names are made unique, and
   a copied webhook node starts with an empty secret. Flows themselves duplicate from the ⧉ button on
   their dashboard card.
 - **Undo, tidy, guides** — every canvas change is undoable (`Ctrl+Z` / `Ctrl+Y`, or the ↶ ↷

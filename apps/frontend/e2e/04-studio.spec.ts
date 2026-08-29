@@ -21,10 +21,14 @@ test('palette adds nodes to the canvas', async ({ page }) => {
   // exact matching therefore matches nothing.
   await page.getByRole('button', { name: '▶ Input / trigger' }).click()
   await expect(nodes).toHaveCount(1)
-  await page.getByRole('button', { name: '◆ Agent' }).click()
+  await page.getByRole('button', { name: '★ Coordinator' }).click()
   await expect(nodes).toHaveCount(2)
-  await page.getByRole('button', { name: '⚙ MCP server' }).click()
+  // A flow has one lead: the button that added it is now off, and clicking it adds nothing.
+  await expect(page.getByRole('button', { name: '★ Coordinator' })).toBeDisabled()
+  await page.getByRole('button', { name: '◆ Agent' }).click()
   await expect(nodes).toHaveCount(3)
+  await page.getByRole('button', { name: '⚙ MCP server' }).click()
+  await expect(nodes).toHaveCount(4)
 
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await goTo(page, 'Flows')
@@ -35,9 +39,10 @@ test('a click selects a node, a double-click opens it; the canvas survives a rel
   await openApp(page)
   await flowCard(page, NAME).getByRole('button', { name: 'Open' }).click()
 
-  // Saved and reloaded through the API: the three nodes came back.
+  // Saved and reloaded through the API: the four nodes came back — the lead as a lead.
   const nodes = page.locator('.react-flow__node')
-  await expect(nodes).toHaveCount(3)
+  await expect(nodes).toHaveCount(4)
+  await expect(page.getByRole('button', { name: '★ Coordinator' })).toBeDisabled()
 
   // One click selects and nothing more: the properties panel that used to sit beside the canvas
   // is gone, and a single click must not throw a dialog over the flow somebody is reading.

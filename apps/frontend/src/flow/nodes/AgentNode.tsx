@@ -6,7 +6,7 @@ import styles from './nodes.module.scss'
 
 export function AgentNode({ id, data, selected }: NodeProps<AgentRFNode>) {
   const { t } = useTranslation()
-  const isCoordinator = data.role === 'coordinator'
+  const isCoordinator = data.kind === 'coordinator'
   return (
     <NodeShell
       altHandles={[{ id: 'error', label: t('on error'), tone: 'error', optional: { flag: 'errorOutput', enabled: !!data.errorOutput } }]}
@@ -15,8 +15,8 @@ export function AgentNode({ id, data, selected }: NodeProps<AgentRFNode>) {
       selected={selected}
       coordinator={isCoordinator}
       icon={isCoordinator ? '★' : '◆'}
-      title={data.name || t('Agent')}
-      badge={data.role}
+      title={data.name || (isCoordinator ? t('Coordinator') : t('Agent'))}
+      badge={isCoordinator ? t('coordinator') : t('agent')}
       showStatus
     >
       <div className={styles.meta}>{data.model}</div>

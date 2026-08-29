@@ -9,9 +9,8 @@ import { AgentNode } from './AgentNode.tsx'
 
 function agentData(overrides: Partial<AgentNodeData> = {}): AgentNodeData {
   return {
-    kind: 'agent',
+    kind: 'coordinator',
     name: 'Coordinator',
-    role: 'coordinator',
     model: 'claude-opus-4-8',
     description: '',
     systemPrompt: '',
@@ -48,22 +47,24 @@ describe('AgentNode', () => {
   })
 
   it('shows the star icon and purple "coordinator" styling for a coordinator', () => {
-    renderAgentNode({ data: agentData({ role: 'coordinator', name: 'Lead' }) })
+    renderAgentNode({ data: agentData({ kind: 'coordinator', name: 'Lead' }) })
     expect(screen.getByText('★')).toBeInTheDocument()
     expect(screen.getByText('Lead')).toBeInTheDocument()
     expect(screen.getByText('coordinator')).toBeInTheDocument()
   })
 
-  it('shows the diamond icon for a subagent', () => {
-    renderAgentNode({ data: agentData({ role: 'subagent', name: 'Helper' }) })
+  it('shows the diamond icon for an agent', () => {
+    renderAgentNode({ data: agentData({ kind: 'agent', name: 'Helper' }) })
     expect(screen.getByText('◆')).toBeInTheDocument()
     expect(screen.getByText('Helper')).toBeInTheDocument()
-    expect(screen.getByText('subagent')).toBeInTheDocument()
+    expect(screen.getByText('agent')).toBeInTheDocument()
   })
 
-  it('falls back to "Agent" when name is empty', () => {
-    renderAgentNode({ data: agentData({ name: '' }) })
+  it('falls back to "Agent" or "Coordinator" when name is empty', () => {
+    renderAgentNode({ data: agentData({ kind: 'agent', name: '' }) })
     expect(screen.getByText('Agent')).toBeInTheDocument()
+    renderAgentNode({ data: agentData({ kind: 'coordinator', name: '' }) })
+    expect(screen.getByText('Coordinator')).toBeInTheDocument()
   })
 
   it('shows the model and the whole system prompt, leaving the clamp to CSS', () => {

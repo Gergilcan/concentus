@@ -22,7 +22,7 @@ import { ConditionNode } from './nodes/ConditionNode.tsx'
 import { ForEachNode } from './nodes/ForEachNode.tsx'
 import { WorkerNode } from './nodes/WorkerNode.tsx'
 
-export type AgentRFNode = Node<AgentNodeData, 'agent'>
+export type AgentRFNode = Node<AgentNodeData, 'agent' | 'coordinator'>
 export type McpRFNode = Node<McpNodeData, 'mcp'>
 export type RepoRFNode = Node<RepoNodeData, 'repo'>
 export type SqlRFNode = Node<SqlNodeData, 'sql'>
@@ -36,6 +36,9 @@ export type ForEachRFNode = Node<import('../api/types.ts').ForEachNodeData, 'for
 
 export const nodeTypes = {
   agent: AgentNode,
+  // The same card, drawn as the flow's lead: one component, because the two differ in what they
+  // are for and not in what they show.
+  coordinator: AgentNode,
   input: InputNode,
   mcp: McpNode,
   repo: RepoNode,

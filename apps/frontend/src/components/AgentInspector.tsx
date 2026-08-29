@@ -62,12 +62,8 @@ export function AgentInspector({ data, set }: Props) {
       )}
 
       <Field label={t('Name')} value={data.name} onChange={(v) => set({ name: v })} />
-      <SelectField label={t('Role')} value={data.role} onChange={(v) => set({ role: v })}>
-        <option value="coordinator">{t('coordinator')}</option>
-        <option value="subagent">{t('subagent')}</option>
-      </SelectField>
       <ModelField value={data.model} onChange={(v) => set({ model: v })} />
-      {data.role === 'subagent' && (
+      {data.kind === 'agent' && (
         <TextArea
           label={t('Delegate when… (routing)')}
           rows={3}
@@ -106,7 +102,7 @@ export function AgentInspector({ data, set }: Props) {
           value={data.maxTokens}
           onChange={(v) => set({ maxTokens: Number(v) })}
         />
-        {data.role === 'subagent' && (
+        {data.kind === 'agent' && (
           <>
             <Field
               label={
@@ -154,7 +150,7 @@ export function AgentInspector({ data, set }: Props) {
         {/* Coordinator only, and not for tidiness: a local run launches one `claude` process for
             the whole flow and --permission-mode applies to that process. Offering it per sub-agent
             would be a control that silently does nothing, or worse, four controls that contradict. */}
-        {data.role === 'coordinator' && (
+        {data.kind === 'coordinator' && (
           <>
             <SelectField
               label={
@@ -182,7 +178,7 @@ export function AgentInspector({ data, set }: Props) {
               onChange={(v) => set({ execution: v })}
             >
               <option value="">{t('Subagents — one shared session')}</option>
-              <option value="fanout">{t('Independent workers — one process per sub-agent (experimental)')}</option>
+              <option value="fanout">{t('Independent workers — one process per sub-agent')}</option>
             </SelectField>
             {data.execution === 'fanout' && (
               <SelectField

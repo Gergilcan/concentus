@@ -22,6 +22,7 @@ import styles from './panels.module.scss'
 
 function title(data: AppNodeData): string {
   if (data.kind === 'agent') return 'Agent'
+  if (data.kind === 'coordinator') return 'Coordinator'
   if (data.kind === 'input') return 'Input / trigger'
   if (data.kind === 'mcp') return 'MCP server'
   if (data.kind === 'sql') return 'SQL source'
@@ -118,11 +119,11 @@ export function Inspector() {
   // Input/Output tabs only make sense for boxes that execute; only agents produce console
   // output, so Logs is theirs alone.
   const hasExecTabs =
-    data.kind === 'agent' || data.kind === 'sql' || data.kind === 'knowledge' || data.kind === 'api' || data.kind === 'mcp' || data.kind === 'flow' || data.kind === 'input' || data.kind === 'merge' || data.kind === 'verifier'
+    data.kind === 'agent' || data.kind === 'coordinator' || data.kind === 'sql' || data.kind === 'knowledge' || data.kind === 'api' || data.kind === 'mcp' || data.kind === 'flow' || data.kind === 'input' || data.kind === 'merge' || data.kind === 'verifier'
   // The Input node has an Output but no Input of its own: it is where the run's text comes *from*.
   // For a mail trigger that output is the email, which is the first thing anyone wants to read.
   const tabs: Tab[] =
-    data.kind === 'agent' || data.kind === 'merge' || data.kind === 'verifier'
+    data.kind === 'agent' || data.kind === 'coordinator' || data.kind === 'merge' || data.kind === 'verifier'
       ? ['properties', 'input', 'output', 'logs']
       : data.kind === 'input'
         ? ['properties', 'output']
@@ -162,7 +163,7 @@ export function Inspector() {
           {/* Only for agent blocks: a capability node has no instruction to run again, and only
               once there is a recorded input — the offer is to reproduce this block's conditions,
               and with nothing recorded there are none to reproduce. */}
-          {activeRunId && data.kind === 'agent' && exec?.input && (
+          {activeRunId && (data.kind === 'agent' || data.kind === 'coordinator') && exec?.input && (
             <>
               <button className={styles.rerunBlock} onClick={() => setRerun(true)}>
                 {t('Run this block again…')}
@@ -180,7 +181,7 @@ export function Inspector() {
           )}
         </>
       )}
-      {shownTab === 'logs' && (data.kind === 'agent' || data.kind === 'merge' || data.kind === 'verifier') && (
+      {shownTab === 'logs' && (data.kind === 'agent' || data.kind === 'coordinator' || data.kind === 'merge' || data.kind === 'verifier') && (
         <NodeLogView nodeId={id} label={data.name} />
       )}
       {shownTab === 'output' && (
@@ -190,7 +191,7 @@ export function Inspector() {
         </>
       )}
 
-      {shownTab === 'properties' && data.kind === 'agent' && <AgentInspector data={data} set={set} />}
+      {shownTab === 'properties' && (data.kind === 'agent' || data.kind === 'coordinator') && <AgentInspector data={data} set={set} />}
 
       {shownTab === 'properties' && data.kind === 'input' && <InputInspector data={data} set={set} />}
 

@@ -31,7 +31,7 @@ export function FlowRunInspector({ data, set }: Props) {
   const wiring = useFlowStore((s) => {
     const id = s.selectedId
     const consumers = new Set(
-      s.nodes.filter((n) => ['agent', 'merge', 'verifier'].includes(n.data.kind)).map((n) => n.id),
+      s.nodes.filter((n) => ['agent', 'coordinator', 'merge', 'verifier'].includes(n.data.kind)).map((n) => n.id),
     )
     const before = s.edges.some((e) => e.source === id && consumers.has(e.target))
     const after = s.edges.some((e) => consumers.has(e.source) && e.target === id)

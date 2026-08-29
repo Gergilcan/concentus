@@ -216,6 +216,7 @@ export interface ReplayReport {
 
 export type NodeKind =
   | 'agent'
+  | 'coordinator'
   | 'mcp'
   | 'repo'
   | 'sql'
@@ -309,12 +310,17 @@ export interface MailSignInResult {
   label?: string
 }
 
+/**
+ * An agent block. Two kinds share the shape: the `coordinator` (exactly one per flow — the agent
+ * the trigger addresses, that delegates and writes the final answer) and the `agent` it may
+ * delegate to. Saved as `type: 'agent'` plus a `role`, the wire format every stored flow, the MCP
+ * flow tools and the generator already speak — the split is a canvas fact, not a schema change.
+ */
 export type AgentNodeData = {
-  kind: 'agent'
+  kind: 'agent' | 'coordinator'
   /** The author turned the block's `on error` output on. Absent: hidden until a wire leaves it. */
   errorOutput?: boolean
   name: string
-  role: 'coordinator' | 'subagent'
   model: string
   description?: string
   systemPrompt: string

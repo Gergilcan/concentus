@@ -85,7 +85,11 @@ public record TriggerSpec(String mode, String prompt, String cron, String secret
         String fromInput = "";
         for (FlowNode n : flow.nodesOrEmpty()) {
             Map<String, Object> d = n.dataOrEmpty();
-            if ("agent".equalsIgnoreCase(n.type()) && "coordinator".equalsIgnoreCase(str(d, "role", ""))) {
+            // The role is on the node; canvases also write it inside the data, and older flows
+            // only there. Either says lead.
+            boolean lead = "coordinator".equalsIgnoreCase(n.role())
+                    || "coordinator".equalsIgnoreCase(str(d, "role", ""));
+            if ("agent".equalsIgnoreCase(n.type()) && lead) {
                 String mode = permissionModeOf(str(d, "permissionMode", ""));
                 if (!mode.isBlank()) return mode;
             } else if ("input".equalsIgnoreCase(n.type())) {

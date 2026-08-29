@@ -64,7 +64,7 @@ const MAX_RUN_EVENTS = 4000
 
 /** The field each node kind uses as its human-facing identifier, if it has one. */
 function nameKey(kind: NodeKind): 'name' | 'label' | null {
-  if (kind === 'agent' || kind === 'mcp' || kind === 'merge' || kind === 'verifier') return 'name'
+  if (kind === 'agent' || kind === 'coordinator' || kind === 'mcp' || kind === 'merge' || kind === 'verifier') return 'name'
   if (kind === 'sql' || kind === 'knowledge' || kind === 'flow') return 'label'
   return null
 }
@@ -90,7 +90,9 @@ function uniqueName(base: string, taken: Set<string>): string {
  */
 function cloneData(data: AppNodeData, taken: Set<string>): AppNodeData {
   const copy = structuredClone(data)
-  if (copy.kind === 'agent' && copy.role === 'coordinator') copy.role = 'subagent'
+  // A flow has one lead: the copy of a coordinator is an agent, and the canvas node's type
+  // follows the data (insertClones reads it back from here).
+  if (copy.kind === 'coordinator') (copy as { kind: string }).kind = 'agent'
   // The copy is a separate webhook endpoint needing its own provider-issued secret.
   if (copy.kind === 'input') copy.secret = ''
 
@@ -155,12 +157,14 @@ function insertClones(s: FlowState, src: Clipboard, offset: number) {
   const nodes: AppNode[] = src.nodes.map((n) => {
     const id = uid(n.data.kind)
     idMap.set(n.id, id)
+    const data = cloneData(n.data, taken)
     return {
       ...n,
       id,
+      type: data.kind,
       selected: true,
       position: { x: n.position.x + offset, y: n.position.y + offset },
-      data: cloneData(n.data, taken),
+      data,
     }
   })
 
@@ -181,13 +185,13 @@ function insertClones(s: FlowState, src: Clipboard, offset: number) {
   }
 }
 
-function defaultData(kind: NodeKind, isFirstAgent: boolean): AppNodeData {
+function defaultData(kind: NodeKind): AppNodeData {
   switch (kind) {
     case 'agent':
+    case 'coordinator':
       return {
-        kind: 'agent',
-        name: isFirstAgent ? 'Coordinator' : 'Sub-agent',
-        role: isFirstAgent ? 'coordinator' : 'subagent',
+        kind,
+        name: kind === 'coordinator' ? 'Coordinator' : 'Agent',
         model: DEFAULT_MODEL,
         description: '',
         systemPrompt: '',
@@ -535,10 +539,11 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   },
 
   addNode: (kind, at) => {
+    // Exactly one lead per flow. The palette disables its button; this is the same rule for a
+    // drop, a shortcut, or anything else that reaches the store.
+    if (kind === 'coordinator' && get().nodes.some((n) => n.data.kind === 'coordinator')) return
     get().checkpoint()
     set((s) => {
-      const isFirstAgent = kind === 'agent' && !s.nodes.some((n) => n.data.kind === 'agent')
-
       // Who this box would obviously attach to: the most recent one the canvas would let it
       // connect to. Most recent rather than any, because building a flow is building a chain and
       // the last box drawn is the one still in mind. Ambiguity is not a problem to solve here —
@@ -569,7 +574,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         id: uid(kind),
         type: kind,
         position,
-        data: defaultData(kind, isFirstAgent),
+        data: defaultData(kind),
       }
       const edges = partner
         ? addEdge(
@@ -670,12 +675,13 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
   loadBackendFlow: (flow) => {
     const nodes: AppNode[] = flow.nodes.map((bn) => {
-      const kind = bn.type
+      // The lead is a canvas kind of its own; on the wire it is an agent with a role, and older
+      // canvases wrote that role inside the data too. Both readings land on the same block.
+      const role = bn.role ?? (bn.data as { role?: unknown })?.role
+      const kind: NodeKind = bn.type === 'agent' && role === 'coordinator' ? 'coordinator' : bn.type
       const pos = (bn.data?._pos ?? {}) as { x?: number; y?: number }
-      const merged = { ...defaultData(kind, bn.role === 'coordinator'), ...bn.data, kind } as AppNodeData
-      if (kind === 'agent' && bn.role) {
-        ;(merged as { role: string }).role = bn.role
-      }
+      const merged = { ...defaultData(kind), ...bn.data, kind } as AppNodeData
+      delete (merged as { role?: unknown }).role
       return {
         id: bn.id,
         type: kind,
@@ -718,11 +724,14 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     const s = get()
     const nodes: BackendFlowNode[] = s.nodes.map((n) => {
       const { kind, ...rest } = n.data
+      // One wire shape for both agent kinds. The role also travels inside the data, where the
+      // trigger's permission-mode lookup and the sandbox twin read it.
+      const role = kind === 'coordinator' ? 'coordinator' : kind === 'agent' ? 'subagent' : null
       return {
         id: n.id,
-        type: kind,
-        role: kind === 'agent' ? (n.data as { role: string }).role : null,
-        data: { ...rest, _pos: { x: n.position.x, y: n.position.y } },
+        type: kind === 'coordinator' ? 'agent' : kind,
+        role,
+        data: { ...rest, ...(role ? { role } : {}), _pos: { x: n.position.x, y: n.position.y } },
       }
     })
     return {
