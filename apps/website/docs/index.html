@@ -457,7 +457,11 @@ npx concentus</code></pre>
       <h3>Your Claude subscription</h3>
       <p>
         The default, and the cheaper one: flows run through Claude Code on this machine, on the
-        subscription you already pay for. There is no second bill and no key to look after. It
+        subscription you already pay for. There is no key to look after, and no second bill for what
+        fits in your plan's allowance for non-interactive Claude Code use — Anthropic meters that
+        allowance separately from your interactive sessions, the Usage page measures what this
+        machine has consumed, and a flow can fall back to an API key or a local model when it is
+        spent. It
         needs the CLI installed and signed in once, and Concentus does both from the setup screen:
         one button runs Anthropic's official installer, and a terminal opens <em>on the sign-in
         itself</em> — not on a prompt where the next thing to know is that you type
@@ -1000,8 +1004,9 @@ semantic (cosine,      top 50) ─┘</code></pre>
       <div class="note">
         <b>What the dollar figure is</b>
         <p>
-          An estimate at published per-token rates. On a Claude subscription there is no per-token
-          bill, so treat it as equivalent usage; on the API it approximates the real charge.
+          An estimate at published per-token rates. On a Claude subscription it is equivalent usage
+          against your plan's non-interactive allowance rather than a charge; on the API it
+          approximates the real charge.
         </p>
       </div>
     </section>

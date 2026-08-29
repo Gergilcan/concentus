@@ -15,7 +15,8 @@ at all, starts its own database, generates its own encryption key, and asks for 
 ### Why a desktop app and not a web service
 
 Because the interesting half of this product only works on your own machine. Concentus runs flows
-by driving the `claude` CLI against **your Claude subscription** — no API key, no per-token bill.
+by driving the `claude` CLI against **your Claude subscription** — no API key, and no per-token
+bill for what fits in your plan's allowance for non-interactive use (see [Costs](#costs)).
 A hosted deployment cannot do that: the CLI would run in the server's container, which has no
 Claude Code login, no access to your repositories, and no sight of the folders you want agents to
 read. The same goes for pointing an agent at a local model on `localhost`, or at a directory on
@@ -607,9 +608,14 @@ PRICING_MODELS=...,my-model:<inputPerMTok>:<outputPerMTok>
 A cache read is weighted at 0.1× input, which is Anthropic's cache-read rate.
 
 An unlisted model falls back to the flat `pricing.input-usd-per-mtok` / `output-usd-per-mtok` pair,
-and the picker says so rather than showing a figure that isn't real. Runs on a Claude **subscription**
-have no per-token bill at all — there the figure is an equivalent-usage estimate for comparing runs,
-not a charge; on the **API** it approximates the real charge.
+and the picker says so rather than showing a figure that isn't real. On the **API** the figure
+approximates the real charge. On a Claude **subscription** it is an equivalent-usage estimate for
+comparing runs, not a charge — but not "free" either: since mid-2026 Anthropic meters
+non-interactive Claude Code use (which is how Concentus runs the CLI) in its own allowance, separate
+from your interactive sessions, and past it runs stop until the window resets. The exact shape of
+that allowance has changed more than once; the Usage page in the app measures what this machine has
+consumed so you can see it coming, and a flow can fall back to an API key or a self-hosted model
+when the allowance is spent.
 
 ## Persistence (PostgreSQL)
 
@@ -907,7 +913,8 @@ The setup screen asks once, before anything is installed, because the answer dec
 anything needs to be.
 
 **Your Claude subscription** is the default and the cheaper one: flows run through Claude Code on
-this machine, with no second bill and no key to look after. One button runs Anthropic's official
+this machine, with no second bill for what fits in the plan's non-interactive allowance, and no key
+to look after. One button runs Anthropic's official
 installer, puts the binary **on your PATH**, and opens a terminal on `claude auth login` — the
 sign-in itself, not a prompt where the next thing to know is that you type `/login`.
 

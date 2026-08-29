@@ -509,7 +509,7 @@
 
         <div class="facts">
           <div class="fact"><span class="eyebrow">Runtime</span><span>Ships its own Java and PostgreSQL. Nothing to install beside it.</span></div>
-          <div class="fact"><span class="eyebrow">Billing</span><span>Your Claude login. No API key, no per-token bill.</span></div>
+          <div class="fact"><span class="eyebrow">Billing</span><span>Your Claude login. No API key; runs count against your plan's allowance for non-interactive use, and the app shows you how much is left.</span></div>
           <div class="fact"><span class="eyebrow">Setup</span><span>Create an account on first launch. That is the whole of it.</span></div>
         </div>
       </div>
@@ -1019,7 +1019,7 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
 
       <div class="callout" data-reveal>
         <span class="eyebrow" style="color:var(--accent);flex:0 0 auto;padding-top:3px">One-time</span>
-        <p>Sign in to Claude once, on your machine. Concentus runs your flows through the <code>claude</code> CLI that login already belongs to — which is why there is no API key to paste and no per-token bill to watch.</p>
+        <p>Sign in to Claude once, on your machine. Concentus runs your flows through the <code>claude</code> CLI that login already belongs to — which is why there is no API key to paste. Anthropic meters non-interactive Claude Code use in its own allowance, separate from your interactive sessions; the Usage page measures what this machine has consumed, and a flow can fall back to an API key or a local model when it runs out.</p>
       </div>
 
       <p class="note" data-reveal style="text-align:center;margin-top:24px">
@@ -1084,7 +1084,7 @@ cd apps/desktop &amp;&amp; pnpm package</code></pre>
   <section id="start" class="cta">
     <div class="wrap">
       <h2 data-reveal>Build your first flow in minutes.</h2>
-      <p data-reveal>Install the app, sign in to Claude once, and run a multi-agent flow on your own subscription — no API key, no setup tax.</p>
+      <p data-reveal>Install the app, sign in to Claude once, and run a multi-agent flow on your own subscription — no API key, no setup tax, and a usage page that tells you where you stand.</p>
       <div class="row" data-reveal>
         <a class="btn go lg" href="#download">Download Concentus</a>
         <a class="btn lg" href="/docs">Read the docs</a>
