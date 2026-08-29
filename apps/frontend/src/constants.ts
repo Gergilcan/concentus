@@ -53,6 +53,7 @@ export const NODE_COLORS: Record<string, string> = {
   input: '#51cf66',
   merge: '#ffa94d',
   verifier: '#94d82d',
+  mail: '#66d9e8',
   default: '#888',
 }
 

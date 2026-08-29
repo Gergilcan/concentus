@@ -64,6 +64,8 @@ public class RunService {
     private final NotificationService notifier;
     /** Starts the flows a finished run hands off to, and enforces the loop guards. */
     private final SubflowService subflows;
+    /** Sends the mails a finished run is wired to, on the same terms as the flow hand-offs. */
+    private final MailHandOffService mailHandOffs;
     private final RemoteApprovalService remoteApprovals;
     private final com.concentus.store.VariableStore variableStore;
     private final ExecutorService exec;
@@ -82,7 +84,7 @@ public class RunService {
                       RunStore runStore, com.concentus.store.FlowVersionStore flowVersions,
                       com.fasterxml.jackson.databind.ObjectMapper mapper,
                       NotificationService notifier, RemoteApprovalService remoteApprovals,
-                      SubflowService subflows,
+                      SubflowService subflows, MailHandOffService mailHandOffs,
                       com.concentus.store.VariableStore variableStore,
                       com.concentus.config.Settings settings,
                       com.concentus.telemetry.Telemetry telemetry,
@@ -98,6 +100,7 @@ public class RunService {
         this.mapper = mapper;
         this.notifier = notifier;
         this.subflows = subflows;
+        this.mailHandOffs = mailHandOffs;
         this.remoteApprovals = remoteApprovals;
         this.variableStore = variableStore;
         this.telemetry = telemetry;
@@ -591,7 +594,11 @@ public class RunService {
             // and notifying first would page somebody about a failure the flow was drawn to
             // absorb. The graph, not just the compiled specs: the condition and for-each nodes
             // on the way to a hand-off are drawn, not compiled, and this is where they are read.
-            subflows.handOffAfter(run, flowOf(run).orElse(null));
+            FlowGraph graph = flowOf(run).orElse(null);
+            subflows.handOffAfter(run, graph);
+            // Mails second, and it matters: a flow that handled the failure has turned the run
+            // green, and the mail service reads run.failureHandled to keep seeing the failure.
+            mailHandOffs.handOffAfter(run, graph);
             runStore.persist(run);
             if ("ERROR".equals(run.status)) {
                 notifier.runFailed(run);

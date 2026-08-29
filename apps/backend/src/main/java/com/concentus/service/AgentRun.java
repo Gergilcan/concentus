@@ -73,6 +73,18 @@ public class AgentRun {
      * chained flow a second time: the mail sent twice, the invoice raised twice.
      */
     public volatile boolean handOffsFired;
+    /** As {@link #handOffsFired}, for the Send mail nodes: the second turn must not mail twice. */
+    public volatile boolean mailHandOffsFired;
+    /**
+     * Whether a failed run was reported as completed because a branch on a second output ran.
+     *
+     * <p>Two families of hand-off read the same wires one after the other — flows, then mails —
+     * and the first to handle a failure turns {@link #status} green. The second must still see
+     * the failure it was drawn for: without this, a mail on the error output would stay silent
+     * whenever a flow on the same output got there first, and a mail on the main output would
+     * report a success that never happened.
+     */
+    public volatile boolean failureHandled;
     /** Initial input to fire automatically once the run is ready (null = wait for the user). */
     public volatile String pendingPrompt;
     /** The first input this run was given — replayed when the execution is retried. */

@@ -154,7 +154,9 @@ public class SubflowService {
         // THAT block failed — a worker that crashed while the others carried the run to
         // completion still fires its own branch; one on the verifier's rejected output runs when
         // the verifier's final word on any worker was a rejection.
-        boolean failed = !"COMPLETED".equals(run.status);
+        // Or already handled by the other family of hand-off, which turned the status green on
+        // the way past: the run still failed, and the wires here were drawn for that.
+        boolean failed = !"COMPLETED".equals(run.status) || run.failureHandled;
         // A failure nobody pinned on a block — "every worker failed", a budget — belongs to the
         // coordinator, the block that stands for the run.
         boolean unattributed = failed && run.failedNodeLabel() == null;
@@ -184,7 +186,7 @@ public class SubflowService {
         }
 
         if (toRun.isEmpty()) {
-            if (failed) {
+            if (failed && !run.failureHandled) {
                 String where = run.failedNodeLabel();
                 run.emit(com.concentus.model.RunEvent.of("system", (where == null
                         ? "This run did not complete, and nothing is wired to its coordinator's error output"
@@ -231,7 +233,8 @@ public class SubflowService {
         // and put a flow in the drifted column for working as designed. A rejected branch counts:
         // a run that failed because the verifier rejected everything, with a branch drawn for
         // exactly that, did what it was drawn to do.
-        if (failed && recoveryFired) {
+        if (failed && recoveryFired && !"COMPLETED".equals(run.status)) {
+            run.failureHandled = true;
             run.status = "COMPLETED";
             run.emit(com.concentus.model.RunEvent.of("system",
                     "The failure was handled by the branch wired to the failing block's second "

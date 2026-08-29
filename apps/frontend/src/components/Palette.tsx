@@ -64,6 +64,9 @@ export function Palette() {
       <button className={cx(styles.addBtn, styles.addFlow)} title={t('Runs another saved flow. Wired to an agent it is a tool the agent may call and wait on; left unconnected it fires when this flow finishes.')} {...drag('flow')} onClick={() => addNode('flow')}>
         <span>🔗</span> {t('Run another flow')}
       </button>
+      <button className={cx(styles.addBtn, styles.addMail)} title={t("Sends a mail when this flow finishes. Wire it out of a block's output: from the main output it sends the run's final answer; from a block's 'on error' output it sends that block's failure and log; from the verifier's 'on rejected' output it sends the verification report. What arrives on the wire is the body — there is nothing to write.")} {...drag('mail')} onClick={() => addNode('mail')}>
+        <span>✉</span> {t('Send mail')}
+      </button>
       <button className={cx(styles.addBtn, styles.addKnowledge)} title={t("Injects the passages most relevant to the run's prompt from a document base (Resources → Knowledge).")} {...drag('knowledge')} onClick={() => addNode('knowledge')}>
         <span>📚</span> {t('Knowledge base')}
       </button>

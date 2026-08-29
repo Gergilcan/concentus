@@ -109,6 +109,10 @@
 .flow {
   border-left: 3px solid t.$subflow;
 }
+/* Send mail: the one node whose target is a mailbox rather than anything in the app. */
+.mail {
+  border-left: 3px solid t.$mail;
+}
 
 .input {
   border-left: 3px solid t.$ok;

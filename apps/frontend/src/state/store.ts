@@ -65,7 +65,7 @@ const MAX_RUN_EVENTS = 4000
 /** The field each node kind uses as its human-facing identifier, if it has one. */
 function nameKey(kind: NodeKind): 'name' | 'label' | null {
   if (kind === 'agent' || kind === 'coordinator' || kind === 'mcp' || kind === 'merge' || kind === 'verifier') return 'name'
-  if (kind === 'sql' || kind === 'knowledge' || kind === 'flow') return 'label'
+  if (kind === 'sql' || kind === 'knowledge' || kind === 'flow' || kind === 'mail') return 'label'
   return null
 }
 
@@ -212,6 +212,21 @@ function defaultData(kind: NodeKind): AppNodeData {
       // Waits by default, because that is what a caller almost always wants: the child's answer
       // IS the reason for calling it. Where it is wired decides whether it runs before or after.
       return { kind: 'flow', label: 'flow', flowId: '', waitForResult: true }
+    case 'mail':
+      // STARTTLS on 587 is what nearly every provider documents, so it is what an untouched node
+      // does. The subject names the flow and how it went — the two things a subject line is for.
+      return {
+        kind: 'mail',
+        label: 'mail',
+        to: '',
+        subject: '{{flow}}: {{status}}',
+        smtpHost: '',
+        smtpPort: 587,
+        smtpStarttls: true,
+        smtpUsername: '',
+        from: '',
+        credentialId: '',
+      }
     case 'sql':
       return {
         kind: 'sql',

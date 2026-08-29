@@ -91,7 +91,36 @@ public class FlowCompiler {
         AgentSpec verifier = singleAgentNode(flow, "verifier", resources);
 
         requireEveryFlowNodeIsWired(flow);
-        return new CompiledFlow(coordinator, subAgents, merger, verifier, afterFlows(flow));
+        return new CompiledFlow(coordinator, subAgents, merger, verifier, afterFlows(flow), afterMails(flow));
+    }
+
+    /**
+     * Send mail nodes, every one wired out of a block: hand-offs that send when this run finishes.
+     *
+     * <p>Only ever a target — a mailbox has nothing to hand an agent — so there is no direction to
+     * read and no legacy field to honour. Which output the wire left from (main, error, rejected)
+     * is read from the graph when the run ends, exactly as it is for a flow on the same wire.
+     *
+     * <p>A node wired to nothing is refused for the reason {@link #requireEveryFlowNodeIsWired}
+     * gives: it is on the canvas, so somebody believes their run mails them, and the only evidence
+     * otherwise would be an inbox that stays empty.
+     */
+    private static List<com.concentus.mail.MailHandOffSpec> afterMails(FlowGraph flow) {
+        List<com.concentus.mail.MailHandOffSpec> out = new ArrayList<>();
+        Set<String> agentIds = agentIds(flow);
+        for (FlowNode node : byType(flow, "mail")) {
+            boolean fedByAnAgent = flow.edgesOrEmpty().stream()
+                    .anyMatch(e -> agentIds.contains(e.source()) && node.id().equals(e.target()))
+                    || agentIds.contains(String.valueOf(FlowGates.sourceThroughGates(flow, node.id())));
+            if (!fedByAnAgent) {
+                throw new IllegalArgumentException("The mail node '"
+                        + str(node.dataOrEmpty(), "label", node.id())
+                        + "' is not wired to a block, so it would never send. Wire it out of a "
+                        + "block's output — the main one, on error, or on rejected.");
+            }
+            out.add(com.concentus.mail.MailHandOffSpec.from(node));
+        }
+        return out;
     }
 
     /**
