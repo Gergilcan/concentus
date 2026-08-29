@@ -19,9 +19,3 @@ export function PermissionsProvider({
     </PermissionsContext.Provider>
   )
 }
-
-// Kept for the components that still import these from here; new code imports permissionRules.ts
-// directly. Fast refresh wants a provider file to export only components, hence the exception —
-// it goes when the last importer moves.
-// eslint-disable-next-line react-refresh/only-export-components
-export { deniedReason, permissionsFor, usePermissions, type Permissions } from './permissionRules.ts'

@@ -147,7 +147,7 @@ export function FlowsPage({
   const visible = useMemo(
     // No tag filter any more: the pill bar it came from is gone, and what it did — narrowing to
     // one tag — the search box already does, since it matches tags as well as names.
-    () => visibleFlows(flows, runsByFlow, query, sort, null),
+    () => visibleFlows(flows, runsByFlow, query, sort),
     [flows, query, sort, runsByFlow],
   )
   const recent = useMemo(() => recentRuns(runs), [runs])

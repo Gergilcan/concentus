@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_EXCLUDES, buildTree, countUnder, flattenTree, pathSegments } from './KnowledgePanel.tsx'
+import { DEFAULT_EXCLUDES, buildTree, countUnder, flattenTree, pathSegments } from './KnowledgeTree.ts'
 import type { KnowledgeDoc } from '../api/types.ts'
 
 const doc = (name: string): KnowledgeDoc => ({ name, chunks: 1, embedded: true, createdAt: 0 })

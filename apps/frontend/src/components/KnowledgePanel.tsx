@@ -18,9 +18,6 @@ import { RetrievalModelsPanel } from './RetrievalModelsPanel.tsx'
 import panels from './panels.module.scss'
 import styles from './resources.module.scss'
 
-// Still importable from here for knowledgeTree.test.ts; the tree itself lives in KnowledgeTree.ts
-// so this file can export only components and keep fast refresh.
-export { DEFAULT_EXCLUDES, buildTree, countUnder, flattenTree, pathSegments } from './KnowledgeTree.ts'
 
 /** Type buckets for the tabs; extension-derived because that is all a name can tell us. */
 const DOC_TYPES: { key: string; label: string; exts: string[] }[] = [

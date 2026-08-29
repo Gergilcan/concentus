@@ -35,18 +35,15 @@ export function computeStats(flows: BackendFlow[], runs: RunSummary[]): Dashboar
   }
 }
 
-/** Filters flows by name/tag, then sorts with favourites always floated to the top. */
+/** Filters flows by name, then sorts with favourites always floated to the top. */
 export function visibleFlows(
   flows: BackendFlow[],
   runsByFlow: Map<string, RunSummary[]>,
   query: string,
   sort: Sort,
-  tagFilter: string | null,
 ): BackendFlow[] {
   const q = query.trim().toLowerCase()
-  const list = flows.filter(
-    (f) => (!q || f.name.toLowerCase().includes(q)) && (!tagFilter || (f.tags ?? []).includes(tagFilter)),
-  )
+  const list = q ? flows.filter((f) => f.name.toLowerCase().includes(q)) : flows
   const lastRunAt = (f: BackendFlow) => (f.id ? (runsByFlow.get(f.id)?.[0]?.createdAt ?? 0) : 0)
   return [...list].sort((a, b) => {
     if (!!a.favorite !== !!b.favorite) return a.favorite ? -1 : 1

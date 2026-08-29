@@ -7,10 +7,6 @@ import { UpdateBadge } from './UpdateBadge.tsx'
 import { NAV, type View } from './AppNav.ts'
 import styles from './appheader.module.scss'
 
-// Still importable from here for App.tsx and the state hooks; the list itself lives in AppNav.ts
-// so this file exports only a component and keeps fast refresh.
-export type { View } from './AppNav.ts'
-export { NAV } from './AppNav.ts'
 
 interface Props {
   view: View

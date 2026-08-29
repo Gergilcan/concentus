@@ -86,23 +86,18 @@ describe('visibleFlows', () => {
   const emptyRunsByFlow = new Map<string, RunSummary[]>()
 
   it('filters by a case-insensitive name substring', () => {
-    const result = visibleFlows(flows, emptyRunsByFlow, 'nightly', 'recent', null)
+    const result = visibleFlows(flows, emptyRunsByFlow, 'nightly', 'recent')
     expect(result.map((f) => f.id)).toEqual(['f1'])
   })
 
-  it('filters by tag', () => {
-    const result = visibleFlows(flows, emptyRunsByFlow, '', 'recent', 'reports')
-    expect(result.map((f) => f.id)).toEqual(['f2'])
-  })
-
   it('always floats favourites to the top regardless of sort', () => {
-    const result = visibleFlows(flows, emptyRunsByFlow, '', 'name', null)
+    const result = visibleFlows(flows, emptyRunsByFlow, '', 'name')
     expect(result[0].id).toBe('f3')
   })
 
   it('sorts by name (within the same favourite tier)', () => {
     const nonFav = flows.filter((f) => !f.favorite)
-    const result = visibleFlows(nonFav, emptyRunsByFlow, '', 'name', null)
+    const result = visibleFlows(nonFav, emptyRunsByFlow, '', 'name')
     expect(result.map((f) => f.name)).toEqual(['Nightly ETL', 'Weekly report'])
   })
 
@@ -112,7 +107,7 @@ describe('visibleFlows', () => {
       ['f2', [run()]],
     ])
     const nonFav = flows.filter((f) => !f.favorite)
-    const result = visibleFlows(nonFav, runsByFlow, '', 'runs', null)
+    const result = visibleFlows(nonFav, runsByFlow, '', 'runs')
     expect(result.map((f) => f.id)).toEqual(['f1', 'f2'])
   })
 
@@ -122,7 +117,7 @@ describe('visibleFlows', () => {
       ['f2', [run({ createdAt: 5 })]],
     ])
     const nonFav = flows.filter((f) => !f.favorite)
-    const result = visibleFlows(nonFav, runsByFlow, '', 'recent', null)
+    const result = visibleFlows(nonFav, runsByFlow, '', 'recent')
     expect(result.map((f) => f.id)).toEqual(['f2', 'f1'])
   })
 })

@@ -7,6 +7,7 @@ import { timeAgo } from './flowFormat.ts'
 import { SignInProvidersPanel } from './SignInProvidersPanel.tsx'
 import { Spinner } from './Spinner.tsx'
 import styles from './resources.module.scss'
+import { usePanelLoad } from './usePanelLoad.ts'
 import panels from './panels.module.scss'
 
 /** The ladder, least privileged first, with what each rung actually means on screen. */
@@ -68,25 +69,13 @@ function Rungs({ role }: { role: string }) {
  */
 export function MembersPanel({ pushError }: { pushError: (m: string) => void }) {
   const { t } = useTranslation()
-  const [members, setMembers] = useState<Member[] | null>(null)
+  const { value: members, setValue: setMembers, reload: load } = usePanelLoad(() => api.listMembers(), pushError, [])
   const [me, setMe] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('VIEWER')
-
-  const load = () => {
-    api
-      .listMembers()
-      .then(setMembers)
-      .catch((e) => {
-        setMembers([])
-        pushError(errMessage(e))
-      })
-  }
-
-  useEffect(load, [])
 
   // Which row is the person reading it. Marking it is not decoration: demoting yourself out of
   // this very page is the one change on it you cannot undo from here.

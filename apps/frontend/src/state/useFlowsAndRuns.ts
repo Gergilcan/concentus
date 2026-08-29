@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client.ts'
 import type { BackendFlow, RunSummary } from '../api/types.ts'
-import type { View } from '../components/AppHeader.tsx'
+import type { View } from '../components/AppNav.ts'
 import { FLOWS_POLL_INTERVAL_MS } from '../constants.ts'
 import { errMessage } from '../utils/errMessage.ts'
 

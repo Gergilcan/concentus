@@ -10,7 +10,7 @@ import type {
   PublishApprovalView,
 } from '../api/types.ts'
 import { api, publicChatUrl, publicRunUrl, webhookUrl } from '../api/client.ts'
-import { usePermissions } from '../state/permissions.tsx'
+import { usePermissions } from '../state/permissionRules.ts'
 import { useFlowStore } from '../state/store.ts'
 import { aboveCeiling } from '../utils/permissionCeiling.ts'
 import { CronBuilder } from './CronBuilder.tsx'

@@ -4,7 +4,7 @@ import { api } from '../api/client.ts'
 import type { Organization, SwitchableAccount } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { shellBridge } from '../api/shell.ts'
-import { usePermissions } from '../state/permissions.tsx'
+import { usePermissions } from '../state/permissionRules.ts'
 import styles from './appheader.module.scss'
 
 /** Title case for a role that arrives shouting from the API. */

@@ -1,6 +1,6 @@
 import { api } from '../api/client.ts'
 import type { BackendFlow, RunSummary } from '../api/types.ts'
-import type { View } from '../components/AppHeader.tsx'
+import type { View } from '../components/AppNav.ts'
 import {
   referencedProfileIds,
   sandboxFlow,

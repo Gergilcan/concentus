@@ -7,7 +7,8 @@ import {
   type ReactNode,
 } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AppHeader, NAV, type View } from './components/AppHeader.tsx'
+import { AppHeader } from './components/AppHeader.tsx'
+import { NAV, type View } from './components/AppNav.ts'
 import { CommandPalette } from './components/CommandPalette.tsx'
 import { blockCommands, type Command } from './components/commandPalette.ts'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
