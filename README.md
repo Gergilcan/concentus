@@ -981,8 +981,8 @@ What the backend talks to, exactly, so a network team can draw the boundary:
 - **Nothing else by default.** The license is verified offline (an Ed25519 signature against keys
   embedded in the jar; no license server, no phone-home). Traces and metrics stay on the machine
   unless an exporter is configured. The desktop app checks GitHub Releases for updates; a server
-  deployment runs the jar and updates when you replace it. The one file the app fetches at build
-  time, not at run time, is nothing: fonts and assets are inside the jar.
+  deployment runs the jar and updates when you replace it. Fonts and assets are inside the jar;
+  the app fetches nothing to draw itself.
 
 An Enterprise license is the tier for this shape: the offline verification, the retention you
 choose, the audit trail export, and support that knows what "the proxy allows only these hosts"
