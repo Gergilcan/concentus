@@ -109,6 +109,12 @@ public class RemoteApprovalService {
     private final CredentialResolver credentials;
     private final ObjectMapper mapper;
     private final Transport transport;
+    /** Where the Telegram bot lives: installation-wide settings, read per request. */
+    private final com.concentus.config.Settings settings;
+    private final Map<String, TelegramWatch> telegramWatches = new ConcurrentHashMap<>();
+    /** The bot's update cursor: getUpdates is one stream per bot, so one poller serves every watch. */
+    private volatile long telegramOffset;
+    private volatile ScheduledFuture<?> telegramPoll;
     private final Map<String, Watch> watches = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "remote-approvals");
@@ -119,14 +125,21 @@ public class RemoteApprovalService {
     // @Autowired explicitly: with the package-private test constructor alongside, Spring refuses
     // to pick between the two and fails at startup with "No default constructor found".
     @org.springframework.beans.factory.annotation.Autowired
-    public RemoteApprovalService(CredentialResolver credentials, ObjectMapper mapper) {
-        this(credentials, mapper, null);
+    public RemoteApprovalService(CredentialResolver credentials, ObjectMapper mapper,
+                                 com.concentus.config.Settings settings) {
+        this(credentials, mapper, null, settings);
     }
 
     RemoteApprovalService(CredentialResolver credentials, ObjectMapper mapper, Transport transport) {
+        this(credentials, mapper, transport, com.concentus.config.Settings.none());
+    }
+
+    RemoteApprovalService(CredentialResolver credentials, ObjectMapper mapper, Transport transport,
+                          com.concentus.config.Settings settings) {
         this.credentials = credentials;
         this.mapper = mapper;
         this.transport = transport != null ? transport : new HttpTransport();
+        this.settings = settings == null ? com.concentus.config.Settings.none() : settings;
     }
 
     @PreDestroy
@@ -143,6 +156,7 @@ public class RemoteApprovalService {
                 "Approve or reject from Concentus (run " + run.id + ")",
                 ", or react in Slack.", ". This channel cannot carry your reply.");
         watchSlack(run, approve, reject);
+        watchTelegram(run, "approval", approve, reject, null);
     }
 
     /**
@@ -151,6 +165,7 @@ public class RemoteApprovalService {
      * any more. All message updating happens here, whoever decided: one path, one wording.
      */
     public void settled(String runId, String decision) {
+        settleTelegram(runId, decision);
         Watch w = watches.remove(runId);
         if (w == null || w.closed) return;
         w.closed = true;
@@ -237,6 +252,7 @@ public class RemoteApprovalService {
                 "Answer from Concentus (run " + run.id + ")",
                 ", or reply in the Slack thread.", ". This channel cannot carry your reply.");
         watchSlackAnswer(run, answer);
+        watchTelegram(run, "answer", null, null, answer);
     }
 
     private void watchSlackAnswer(AgentRun run, java.util.function.Consumer<String> answer) {
@@ -401,6 +417,228 @@ public class RemoteApprovalService {
 
     private JsonNode slack(String bearer, String method, JsonNode body) throws Exception {
         return transport.call("https://slack.com/api/" + method, bearer, body);
+    }
+
+    // ------------------------------------------------------------------ telegram
+
+    /**
+     * One approval request or one question posted to the Telegram chat, and what decides it.
+     * A message id rather than Slack's channel+ts; the bot token is not kept here because it
+     * is read from the settings at every call, so a rotated token takes effect at once.
+     */
+    private static final class TelegramWatch {
+        final AgentRun run;
+        final String kind;
+        final String chatId;
+        final long messageId;
+        final Runnable approve;
+        final Runnable reject;
+        final java.util.function.Consumer<String> answer;
+        volatile boolean closed;
+        final long deadline = System.currentTimeMillis() + TimeUnit.HOURS.toMillis(WATCH_HOURS);
+
+        TelegramWatch(AgentRun run, String kind, String chatId, long messageId,
+                      Runnable approve, Runnable reject, java.util.function.Consumer<String> answer) {
+            this.run = run;
+            this.kind = kind;
+            this.chatId = chatId;
+            this.messageId = messageId;
+            this.approve = approve;
+            this.reject = reject;
+            this.answer = answer;
+        }
+    }
+
+    private String telegramToken() {
+        return settings.get("approvals.telegram.bot-token", "").trim();
+    }
+
+    private String telegramChat() {
+        return settings.get("approvals.telegram.chat-id", "").trim();
+    }
+
+    /**
+     * Posts the request to Telegram and starts the bot's poller if it is not running.
+     *
+     * <p>Telegram is the channel that can carry the answer back without a public URL: a bot is
+     * polled with getUpdates, the buttons on the message come back as callback queries, and a
+     * reply to the question comes back as a message that names what it replies to. Teams has
+     * no equivalent; Slack has reactions. Nothing here is a webhook.
+     */
+    private void watchTelegram(AgentRun run, String kind, Runnable approve, Runnable reject,
+                               java.util.function.Consumer<String> answer) {
+        String token = telegramToken();
+        String chat = telegramChat();
+        if (token.isEmpty() || chat.isEmpty()) return;
+        boolean answering = "answer".equals(kind);
+
+        ObjectNode body = mapper.createObjectNode();
+        body.put("chat_id", chat);
+        body.put("text", (answering
+                ? "\u2753 Concentus: \"" + flowName(run) + "\" asked you something.\n\n" + finalOutputExcerpt(run)
+                        + "\n\nReply to this message and the run continues with your answer."
+                : "\u23f3 Concentus: \"" + flowName(run) + "\" is waiting for approval.\n\n" + finalOutputExcerpt(run))
+                + " (run " + run.id + ")");
+        if (answering) {
+            body.putObject("reply_markup").put("force_reply", true).put("selective", true);
+        } else {
+            var row = body.putObject("reply_markup").putArray("inline_keyboard").addArray();
+            row.addObject().put("text", "\u2705 Approve").put("callback_data", "approve:" + run.id);
+            row.addObject().put("text", "\u274c Reject").put("callback_data", "reject:" + run.id);
+        }
+        JsonNode res;
+        try {
+            res = telegram(token, "sendMessage", body);
+        } catch (Exception e) {
+            run.emit(RunEvent.of("system", "The Telegram " + (answering ? "question" : "approval request")
+                    + " could not be sent: " + e.getMessage() + " — use the app instead."));
+            return;
+        }
+        if (!res.path("ok").asBoolean(false)) {
+            run.emit(RunEvent.of("system", "Telegram rejected the " + (answering ? "question" : "approval request")
+                    + " (" + res.path("description").asText("unknown error") + ") — use the app instead."));
+            return;
+        }
+        long messageId = res.path("result").path("message_id").asLong(0);
+        telegramWatches.put(run.id, new TelegramWatch(run, kind, chat, messageId, approve, reject, answer));
+        synchronized (this) {
+            if (telegramPoll == null) {
+                telegramPoll = scheduler.scheduleWithFixedDelay(this::pollTelegramOnce, POLL_SECONDS,
+                        POLL_SECONDS, TimeUnit.SECONDS);
+            }
+        }
+        run.emit(RunEvent.of("system", answering
+                ? "Question posted to Telegram — a reply there answers it."
+                : "Approval request posted to Telegram — the buttons there decide."));
+    }
+
+    /** One getUpdates round for every Telegram watch. Package-private so tests drive it without a clock. */
+    void pollTelegramOnce() {
+        // Expire and close first, so a stale watch never consumes a fresh update.
+        for (TelegramWatch w : java.util.List.copyOf(telegramWatches.values())) {
+            boolean answering = "answer".equals(w.kind);
+            if (!(answering ? "AWAITING_ANSWER" : "AWAITING_APPROVAL").equals(w.run.status)) {
+                settleTelegram(w.run.id, "closed");
+            } else if (System.currentTimeMillis() > w.deadline) {
+                w.run.emit(RunEvent.of("system", "The Telegram " + (answering ? "question" : "approval request")
+                        + " expired after " + WATCH_HOURS + "h with no reply — the run still waits in the app."));
+                settleTelegram(w.run.id, "closed");
+            }
+        }
+        if (telegramWatches.isEmpty()) {
+            synchronized (this) {
+                if (telegramPoll != null) {
+                    telegramPoll.cancel(false);
+                    telegramPoll = null;
+                }
+            }
+            return;
+        }
+        String token = telegramToken();
+        if (token.isEmpty()) return;
+        ObjectNode body = mapper.createObjectNode();
+        body.put("offset", telegramOffset);
+        body.put("timeout", 0);
+        body.putArray("allowed_updates").add("callback_query").add("message");
+        JsonNode res;
+        try {
+            res = telegram(token, "getUpdates", body);
+        } catch (Exception e) {
+            log.debug("Telegram poll failed: {}", e.getMessage());
+            return; // transient — the next tick retries
+        }
+        if (!res.path("ok").asBoolean(false)) return;
+        for (JsonNode update : res.path("result")) {
+            long id = update.path("update_id").asLong(-1);
+            if (id >= 0) telegramOffset = Math.max(telegramOffset, id + 1);
+            if (update.has("callback_query")) {
+                handleCallback(token, update.path("callback_query"));
+            } else if (update.has("message")) {
+                handleReply(update.path("message"));
+            }
+        }
+    }
+
+    private void handleCallback(String token, JsonNode query) {
+        String data = query.path("data").asText("");
+        int sep = data.indexOf(':');
+        if (sep <= 0) return;
+        String verb = data.substring(0, sep);
+        String runId = data.substring(sep + 1);
+        TelegramWatch w = telegramWatches.get(runId);
+        ObjectNode ack = mapper.createObjectNode();
+        ack.put("callback_query_id", query.path("id").asText(""));
+        if (w == null || w.closed || !"approval".equals(w.kind)) {
+            ack.put("text", "This request is no longer waiting.");
+            try {
+                telegram(token, "answerCallbackQuery", ack);
+            } catch (Exception ignored) {
+                // the button just stays; nothing to decide
+            }
+            return;
+        }
+        boolean rejected = !"approve".equals(verb);
+        ack.put("text", rejected ? "Rejected." : "Approved.");
+        try {
+            telegram(token, "answerCallbackQuery", ack);
+        } catch (Exception ignored) {
+            // the decision below is what matters; the toast is a courtesy
+        }
+        w.run.emit(RunEvent.of("system", rejected ? "Rejected via Telegram." : "Approved via Telegram."));
+        try {
+            (rejected ? w.reject : w.approve).run(); // RunService flips the run and calls settled()
+        } catch (RuntimeException e) {
+            // The app got there first; the state it chose stands and the watch just closes.
+            settleTelegram(runId, "closed");
+        }
+    }
+
+    private void handleReply(JsonNode message) {
+        long repliedTo = message.path("reply_to_message").path("message_id").asLong(-1);
+        String text = message.path("text").asText("");
+        if (repliedTo < 0 || text.isBlank()) return;
+        for (TelegramWatch w : java.util.List.copyOf(telegramWatches.values())) {
+            if (w.closed || !"answer".equals(w.kind) || w.messageId != repliedTo) continue;
+            w.run.emit(RunEvent.of("system", "Answered via Telegram."));
+            try {
+                w.answer.accept(text); // RunService continues the run and calls settled()
+            } catch (RuntimeException e) {
+                settleTelegram(w.run.id, "closed");
+            }
+            return;
+        }
+    }
+
+    private void settleTelegram(String runId, String decision) {
+        TelegramWatch w = telegramWatches.remove(runId);
+        if (w == null || w.closed) return;
+        w.closed = true;
+        if ("answer".equals(w.kind)) return; // the question stays readable, as in Slack
+        String text = switch (decision) {
+            case "approved" -> "\u2705 Approved — \"" + flowName(w.run) + "\" is carrying out its plan.";
+            case "rejected" -> "\ud83d\udeab Rejected — \"" + flowName(w.run) + "\" changed nothing.";
+            default -> "\u23f9 \"" + flowName(w.run) + "\" is no longer waiting for approval.";
+        };
+        String token = telegramToken();
+        if (token.isEmpty()) return;
+        ObjectNode body = mapper.createObjectNode();
+        body.put("chat_id", w.chatId);
+        body.put("message_id", w.messageId);
+        body.put("text", text + " (run " + w.run.id + ")");
+        // Off this thread, for the reason the Slack update is: the app's own button must not
+        // wait on a round trip to Telegram.
+        scheduler.execute(() -> {
+            try {
+                telegram(token, "editMessageText", body);
+            } catch (Exception e) {
+                log.debug("Telegram message update for run {} failed: {}", runId, e.getMessage());
+            }
+        });
+    }
+
+    private JsonNode telegram(String token, String method, JsonNode body) throws Exception {
+        // The token is part of the URL by Telegram's design; no bearer. Never logged.
+        return transport.call("https://api.telegram.org/bot" + token + "/" + method, null, body);
     }
 
     // ------------------------------------------------------------------ teams

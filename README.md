@@ -207,9 +207,11 @@ concentus/
   reviewer means it cannot edit or run commands, whatever the flow's mode allows).
 - **Remote approvals** — an approval-mode flow can also ask in **Slack**: the request posts to a
   channel and a ✅ / ❌ reaction decides it, no public URL anywhere (the app polls; rejection wins a
-  tie, requests expire after 48h). **Teams** gets notified with an Adaptive Card but cannot answer
-  back — receiving a reply would need a publicly reachable bot. See
-  [docs/remote-approvals.md](docs/remote-approvals.md).
+  tie, requests expire after 48h). **Telegram** goes further: a bot set up once under Settings →
+  Approvals posts every request with ✅ / ❌ buttons and every question as a message you reply to —
+  the app polls the bot, so the answer comes back with no public URL either. **Teams** gets
+  notified with an Adaptive Card but cannot answer back — receiving a reply would need a publicly
+  reachable bot. See [docs/remote-approvals.md](docs/remote-approvals.md).
 - **Shadow mode** — a triggered flow can run in shadow for its first days: it plans what it
   *would* have done but changes nothing, so you can watch a cron or webhook trigger act before
   trusting it. Manual runs stay real — you are present for those.

@@ -39,6 +39,7 @@ public final class SettingsCatalog {
     public static final String GROUP_TELEMETRY = "Traces and metrics";
     public static final String GROUP_KNOWLEDGE = "Knowledge";
     public static final String GROUP_USAGE = "Usage";
+    public static final String GROUP_APPROVALS = "Approvals";
 
     private static final List<SettingDef> ALL = List.of(
             number("runs.max-concurrent", GROUP_RUNS, "Runs at once",
@@ -57,6 +58,16 @@ public final class SettingsCatalog {
                             + "four workers is thirty-two processes — and this is the cap on the "
                             + "product. A worker that does not fit waits, and its run says so. "
                             + "Applies without a restart.", true),
+
+            secret("approvals.telegram.bot-token", GROUP_APPROVALS, "Telegram bot token",
+                    "A bot from @BotFather. With a chat id below, every approval request and every "
+                            + "question a run asks is also posted to that chat, with buttons that decide "
+                            + "and a reply that answers — the one remote channel that carries the answer "
+                            + "back without a public URL, because the app polls the bot. Installation-wide, "
+                            + "unlike the Slack settings on each flow.", false),
+            text("approvals.telegram.chat-id", GROUP_APPROVALS, "Telegram chat id",
+                    "The chat (a person or a group the bot was added to) the requests go to. Send "
+                            + "the bot a message and read the id from getUpdates, or use @userinfobot.", false),
 
             number("usage.weekly-allowance-usd", GROUP_USAGE, "Weekly allowance for runs (API-equivalent $)",
                     "What your Claude plan lets non-interactive Claude Code use spend in a week, as the "

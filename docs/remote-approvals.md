@@ -78,7 +78,23 @@ skipped, `channel_not_found` means the id is wrong, `missing_scope` means step 2
 The card carries the plan or the question and names where to answer (the app, or Slack if
 configured). That is all it can do, by construction — see above.
 
-## Honest limitations
+## Setting up Telegram
+
+The one channel that carries the answer back with no public URL at all. The app polls the bot,
+so nothing has to reach your machine.
+
+1. Talk to **@BotFather** in Telegram, `/newbot`, and copy the token it gives you.
+2. Start a chat with your bot (or add it to a group), send it one message, and read the chat id —
+   `https://api.telegram.org/bot<token>/getUpdates` shows it under `message.chat.id`, or ask
+   @userinfobot.
+3. In Concentus, **Resources → Settings → Approvals**: paste the bot token and the chat id. That is
+   installation-wide, unlike the Slack settings, which live on each flow.
+
+From then on every approval request arrives as a message with two buttons — **✅ Approve** and
+**❌ Reject** — and every question a run asks arrives as a message you *reply to*; the reply is the
+answer. The message is rewritten with the outcome when the request is settled, from Telegram or
+from the app. A request nobody answers in 48 hours expires there; the run keeps waiting in the app.
+
 
 - **A restart drops the watch.** The Slack message stays, but reactions and replies added after a
   Concentus restart are not seen; the run itself still waits in the app (that state survives
