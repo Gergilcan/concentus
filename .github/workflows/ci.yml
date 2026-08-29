@@ -54,7 +54,7 @@ jobs:
       - name: Test
         run: pnpm --filter frontend test
 
-      # Explicit file paths, not directories: node --test on a bare directory is unreliable on
+      # Explicit file patterns, not bare directories: node --test on a bare directory is unreliable on
       # Windows Node. The website's list lives in its package.json (`npm test` there is what a
       # developer runs locally too); the enterprise CLI's test is named here — CI stays honest
       # about what "green" means.
