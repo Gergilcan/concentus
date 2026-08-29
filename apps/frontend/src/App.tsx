@@ -357,6 +357,7 @@ function Workspace({ signedInAs, onSignOut }: WorkspaceProps) {
               onFlowsChanged={refreshFlows}
               onRunStarted={onRunStarted}
               onBackToFlows={() => setView('flows')}
+              onOpenRun={(id) => void openRun(id)}
               pushError={setToast}
             />
             <div

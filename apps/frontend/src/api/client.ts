@@ -18,6 +18,9 @@ import type {
   EmbedderStatus,
   EvalCase,
   EvalRun,
+  FlowEvalCase,
+  FlowEvalCaseInput,
+  FlowEvalResult,
   RerankerStatus,
   FlowMemoryView,
   KnowledgeDef,
@@ -198,6 +201,21 @@ export const api = {
     req<BackendFlow>(`/flows/${id}/versions/${version}`),
   restoreFlowVersion: (id: string, version: number) =>
     req<BackendFlow>(`/flows/${id}/versions/${version}/restore`, { method: 'POST' }),
+  // Evaluations: a flow's dataset of cases, and the scores it produced per version.
+  listEvalCases: (flowId: string) => req<FlowEvalCase[]>(`/flows/${flowId}/evals/cases`),
+  saveEvalCase: (flowId: string, c: FlowEvalCaseInput) =>
+    req<FlowEvalCase>(`/flows/${flowId}/evals/cases`, { method: 'POST', body: JSON.stringify(c) }),
+  deleteEvalCase: (flowId: string, caseId: string) =>
+    req<void>(`/flows/${flowId}/evals/cases/${caseId}`, { method: 'DELETE' }),
+  /**
+   * Starts an evaluation — one real run per case — and returns it at once, still running. The
+   * work takes minutes; poll {@link getEvalResult} until its status is `done`.
+   */
+  runEvaluation: (flowId: string) =>
+    req<FlowEvalResult>(`/flows/${flowId}/evals/run`, { method: 'POST' }),
+  listEvalResults: (flowId: string) => req<FlowEvalResult[]>(`/flows/${flowId}/evals/results`),
+  getEvalResult: (flowId: string, id: string) =>
+    req<FlowEvalResult>(`/flows/${flowId}/evals/results/${id}`),
   // runtimes (what stdio MCP servers need in order to launch)
   listRuntimes: (refresh = false) =>
     req<RuntimeStatus[]>(`/runtimes${refresh ? '?refresh=true' : ''}`),

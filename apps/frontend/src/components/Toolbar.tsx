@@ -7,6 +7,7 @@ import { deniedReason, usePermissions } from '../state/permissions.tsx'
 import { useFlowStore } from '../state/store.ts'
 import { cx } from '../utils/cx.ts'
 import { DoctorModal } from './DoctorModal.tsx'
+import { FlowEvaluationPanel } from './FlowEvaluationPanel.tsx'
 import { FlowVersions } from './FlowVersions.tsx'
 import { Modal } from './Modal.tsx'
 import styles from './toolbar.module.scss'
@@ -15,10 +16,12 @@ interface Props {
   onFlowsChanged: () => void
   onRunStarted: (r: RunSummary) => void
   onBackToFlows: () => void
+  /** Opens an existing execution in the console below — what a failed evaluation case links to. */
+  onOpenRun?: (runId: string) => void
   pushError: (m: string) => void
 }
 
-export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError }: Props) {
+export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, onOpenRun, pushError }: Props) {
   const { t } = useTranslation()
   const name = useFlowStore((s) => s.name)
   const permissions = usePermissions()
@@ -30,6 +33,7 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
   const flowId = useFlowStore((s) => s.flowId)
   const [checking, setChecking] = useState(false)
   const [versions, setVersions] = useState(false)
+  const [evaluations, setEvaluations] = useState(false)
   const undo = useFlowStore((s) => s.undo)
   const redo = useFlowStore((s) => s.redo)
   const canUndo = useFlowStore((s) => s.past.length > 0)
@@ -138,6 +142,21 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
       >
         {t('Versions')}
       </button>
+      {/* Next to Versions because it is the other half of the same question: Versions says what
+          changed, an evaluation says whether it got better. Needs a saved flow for the same
+          reason — the cases belong to a flow id, and the score is stamped with a version. */}
+      <button
+        className={styles.btn}
+        onClick={() => flowId && setEvaluations(true)}
+        disabled={!flowId}
+        title={
+          flowId
+            ? t('Cases with known answers, run against this flow and scored per version — so an edit can be measured rather than felt.')
+            : t('Save the flow first — evaluation cases belong to a saved flow.')
+        }
+      >
+        {t('Evaluations')}
+      </button>
       <button className={styles.btn} onClick={newFlow} disabled={!permissions.canEdit}>
         {t('New')}
       </button>
@@ -170,6 +189,23 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, pushError
       {versions && flowId && (
         <Modal title={t('Versions — {{name}}', { name })} onClose={() => setVersions(false)} wide>
           <FlowVersions flowId={flowId} pushError={pushError} />
+        </Modal>
+      )}
+      {evaluations && flowId && (
+        <Modal title={t('Evaluations — {{name}}', { name })} onClose={() => setEvaluations(false)} wide>
+          <FlowEvaluationPanel
+            flowId={flowId}
+            pushError={pushError}
+            onOpenRun={
+              onOpenRun &&
+              ((id) => {
+                // Opening a run means reading its console, which sits under the canvas this
+                // dialog covers — so the dialog gets out of the way.
+                setEvaluations(false)
+                onOpenRun(id)
+              })
+            }
+          />
         </Modal>
       )}
     </header>

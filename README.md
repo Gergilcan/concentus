@@ -223,6 +223,16 @@ concentus/
   fire, recorded work whose block was deleted. Honest about its one limit, on the banner itself:
   it replays routing, not agents — where a decision needs output that was never recorded, it says
   "cannot be decided" rather than guessing.
+- **Evaluations** — a golden run says whether an edit *changed* the output; it cannot say whether
+  the output is *right*. Each flow can keep a dataset of cases — an input, an expectation, and a
+  judge — under Studio → *Evaluations*, and running it executes the flow once per case (real runs,
+  in the executions list, badged `eval`), judges each answer and stores the score against the flow
+  **version** it ran: `v7 8/10 → v8 10/10` is what an edit did, in a form that can be argued with.
+  Three judges are free string checks — *contains*, *regex*, *exact* — and cover everything that
+  can be written down literally. The fourth, *llm*, asks a model whether the answer satisfies the
+  expectation and to say why in one line; it is the only judge that can grade meaning and it costs
+  **one model call per case** on top of the run itself, so use it for "mentions the risk", not for
+  "contains the invoice number". Every verdict carries its reason and links to its run.
 - **Flow memory** — every saved flow keeps short notes that survive between runs
   (`memory_read` / `memory_append` tools): decisions taken, state reached, approaches that failed.
   Agents are told to read it before starting, so run N+1 stops redoing what run N learned.
@@ -1305,6 +1315,7 @@ onto a valid delivery.
 | GET/PUT | `/api/settings` | everything adjustable, with where each value came from (admin only) |
 | GET | `/api/knowledge/embedder` · `/api/knowledge/reranker` | the two optional retrieval models: state, progress, size · POST `…/download` |
 | GET/POST | `/api/knowledge/{id}/evals` · POST `…/evals/run` | the golden set for a base, and what retrieval scores against it |
+| GET/POST/DELETE | `/api/flows/{id}/evals/cases` · POST `…/evals/run` · GET `…/evals/results`, `…/results/{id}` | a flow's evaluation cases; start an evaluation (returns at once, poll the result); its scores per version |
 | GET/POST | `/api/storage`, `/api/storage/migrate` | where this installation keeps its data, and copying it to another PostgreSQL (admin only) |
 
 Flows persist as JSON under `apps/backend/data/flows` (override with `APP_DATA_DIR`).
