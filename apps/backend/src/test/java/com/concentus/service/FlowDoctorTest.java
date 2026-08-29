@@ -187,6 +187,32 @@ class FlowDoctorTest {
         assertThat(creds.get(0).where()).isEqualTo("m-1");
     }
 
+    /**
+     * A credential that exists but is sealed under a key this installation does not have. The
+     * finding must say "locked" and "enter it again", not "no longer exists": the node points at
+     * the right credential, and sending somebody to create another would leave the locked one
+     * behind and the flow pointing at it.
+     */
+    @Test
+    void aLockedCredentialIsAnErrorThatAsksForTheValueAgainNotForANewCredential() {
+        when(credentials.resolve("cred_locked")).thenReturn(null);
+        when(credentials.isLocked("cred_locked")).thenReturn(true);
+        Map<String, Object> data = new HashMap<>();
+        data.put("name", "Linear");
+        data.put("url", "https://mcp.linear.app/mcp");
+        data.put("credentialId", "cred_locked");
+        FlowGraph withMcp = flow(List.of(input("manual", ""), coordinator(),
+                new FlowNode("m-1", "mcp", null, data)));
+
+        List<DoctorFinding> creds = ofArea(doctor.check(withMcp), "credential");
+
+        assertThat(creds).hasSize(1);
+        assertThat(creds.get(0).level()).isEqualTo("error");
+        assertThat(creds.get(0).message()).contains("locked").doesNotContain("no longer exists");
+        assertThat(creds.get(0).fix()).contains("enter its value again");
+        assertThat(creds.get(0).where()).isEqualTo("m-1");
+    }
+
     @Test
     void aCredentialReferenceInAStdioServersEnvIsCheckedToo() {
         when(credentials.resolve("cred_gone")).thenReturn(null);

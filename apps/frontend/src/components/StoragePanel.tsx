@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { errMessage } from '../utils/errMessage.ts'
 import { api } from '../api/client.ts'
+import { usePermissions } from '../state/permissions.tsx'
 import type { StorageConfig, StorageDraft } from '../api/types.ts'
 import { Field, SelectField } from './fields.tsx'
 import { Spinner } from './Spinner.tsx'
@@ -323,27 +324,36 @@ function MigrateSection({ draft, activeMode }: { draft: StorageDraft; activeMode
  *
  * What travels: flows (with variables), agents, MCP servers, facade profiles, database
  * connections, knowledge base definitions, skills, org variables. What doesn't: knowledge
- * DOCUMENTS (huge, re-upload cleanly), run history, and above all SECRETS — credentials export
- * as metadata only and import as placeholders under the SAME ids, so every reference keeps
- * working and each value is re-entered once.
+ * DOCUMENTS (huge, re-upload cleanly), run history, and — unless an administrator ticks the box —
+ * SECRETS. By default credentials export as metadata only and import as placeholders under the
+ * SAME ids, so every reference keeps working and each value is re-entered once. With the box
+ * ticked the file carries every value this installation can open, in the clear: that is the
+ * recovery path for a lost key, and it is said in the note, the file name and the file itself.
  */
 function BackupSection() {
   const { t } = useTranslation()
+  const { canAdminister } = usePermissions()
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const [reenter, setReenter] = useState<string[]>([])
+  const [withSecrets, setWithSecrets] = useState(false)
 
   const exportAll = async () => {
     setBusy(true)
     setNote(null)
+    const includeSecrets = canAdminister && withSecrets
     try {
-      const blob = await api.exportBackup()
+      const blob = await api.exportBackup(includeSecrets)
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
-      a.download = `concentus-export-${new Date().toISOString().slice(0, 10)}.json`
+      a.download = `concentus-export-${includeSecrets ? 'with-secrets-' : ''}${new Date().toISOString().slice(0, 10)}.json`
       a.click()
       URL.revokeObjectURL(a.href)
-      setNote(t('Exported. Credentials travel as names only — their values never leave this machine.'))
+      setNote(
+        includeSecrets
+          ? t('Exported with credential values in the clear — keep the file like the passwords it holds. Locked credentials travelled as names only.')
+          : t('Exported. Credentials travel as names only — their values never leave this machine.'),
+      )
     } catch (e) {
       setNote(errMessage(e))
     } finally {
@@ -379,11 +389,28 @@ function BackupSection() {
       <h3
         className={styles.h4}
         title={t(
-          'Everything as one .json: flows, agents, MCP servers, facades, databases, knowledge bases, skills and variables — importable on another machine with every cross-reference intact. Secrets never travel: credentials arrive as placeholders under their original ids, and you re-enter each value once. Knowledge documents and run history stay out.',
+          'Everything as one .json: flows, agents, MCP servers, facades, databases, knowledge bases, skills and variables — importable on another machine with every cross-reference intact. Unless you tick the box, secrets never travel: credentials arrive as placeholders under their original ids, and you re-enter each value once. Knowledge documents and run history stay out.',
         )}
       >
         {t('Backup — export / import everything')} ⓘ
       </h3>
+      {canAdminister && (
+        <label
+          className={panels.hint}
+          style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', cursor: 'pointer' }}
+          title={t(
+            'Off, the file carries credential names only and is safe to pass around. On, it carries every value this installation can open, in the clear — for restoring after a lost key or moving to a new machine. Keep that file like the passwords it holds.',
+          )}
+        >
+          <input
+            type="checkbox"
+            checked={withSecrets}
+            disabled={busy}
+            onChange={(e) => setWithSecrets(e.target.checked)}
+          />
+          <span>{t('Include credential values')} ⓘ</span>
+        </label>
+      )}
       <div className={styles.crudActions}>
         <button className={styles.newBtn} disabled={busy} onClick={() => void exportAll()}>
           {t('Export everything (.json)')}

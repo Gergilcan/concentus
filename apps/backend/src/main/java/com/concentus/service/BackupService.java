@@ -39,11 +39,18 @@ import java.util.function.Function;
  * facade profiles, database connections, knowledge base definitions, skills (files included —
  * they are bounded small), and organization variables. What deliberately does not: knowledge
  * DOCUMENTS (embeddings run to hundreds of megabytes and re-upload cleanly), run history (it is
- * history, not configuration), storage settings (machine-specific by definition) — and above all
- * SECRETS. Credentials export as metadata only (id, label, kind); the import re-creates them as
- * placeholders under the SAME ids, which is the part that matters: every flow that referenced
- * {@code cred_x} still points at a credential called by its old name, and the person re-enters
- * each value once. A secret exported in a file is a secret leaked eventually.
+ * history, not configuration), storage settings (machine-specific by definition) — and, unless
+ * asked, SECRETS. By default credentials export as metadata only (id, label, kind); the import
+ * re-creates them as placeholders under the SAME ids, which is the part that matters: every flow
+ * that referenced {@code cred_x} still points at a credential called by its old name, and the
+ * person re-enters each value once. A secret exported in a file is a secret leaked eventually.
+ *
+ * <p>An administrator can ask for the values too, explicitly, and the file then says so in its
+ * name and its header. That export exists for recovery — the key that seals credentials at rest
+ * lives outside the database, and an installation that lost it needs somewhere its values still
+ * are — and it is every password the installation holds, in the clear, which is why it is never
+ * the default. A credential this installation cannot open travels as {@code locked: true} with
+ * no value; the import treats it exactly like the plain export does.
  *
  * <p>Import is an upsert by id, never a wipe: what the file carries overwrites same-id records
  * and adds the rest, and what the file does not mention is left untouched. Ids are preserved on
@@ -85,11 +92,19 @@ public class BackupService {
         this.mapper = mapper;
     }
 
-    /** The whole configuration as one JSON document. */
-    public ObjectNode export() {
+    /**
+     * The whole configuration as one JSON document.
+     *
+     * @param includeSecrets carry each credential's value where this installation can open it;
+     *                       the caller has checked that whoever asked is allowed to
+     */
+    public ObjectNode export(boolean includeSecrets) {
         ObjectNode root = mapper.createObjectNode();
         root.put("concentusExport", FORMAT_VERSION);
         root.put("exportedAt", System.currentTimeMillis());
+        // Stated in the document, not only in the file name: a file gets renamed, and the person
+        // opening it should be able to tell at the top whether it is safe to forward.
+        root.put("includesSecrets", includeSecrets);
         root.set("flows", mapper.valueToTree(flows.list()));
         root.set("agents", mapper.valueToTree(agents.list()));
         root.set("mcpServers", mapper.valueToTree(mcpDefs.list()));
@@ -99,15 +114,22 @@ public class BackupService {
         root.set("skills", mapper.valueToTree(skills.list()));
         root.set("variables", mapper.valueToTree(variables.list()));
 
-        // Metadata only — the secret itself never leaves the machine. The ids are what make the
-        // import able to keep every reference pointing at something re-fillable.
+        // Metadata by default — the secret itself never leaves the machine. The ids are what make
+        // the import able to keep every reference pointing at something re-fillable.
         ArrayNode credentialMeta = root.putArray("credentials");
         if (credentials.isAvailable()) {
-            for (CredentialStore.Credential c : credentials.list(orgContext.defaultOrganizationId())) {
+            String organizationId = orgContext.defaultOrganizationId();
+            for (CredentialStore.Credential c : credentials.list(organizationId)) {
                 ObjectNode meta = credentialMeta.addObject();
                 meta.put("id", c.id());
                 meta.put("label", c.label());
                 meta.put("kind", c.kind());
+                if (!includeSecrets) continue;
+                // Locked is written down rather than silently omitted: the person restoring
+                // this file should know which values it could not carry before they need them.
+                String value = credentials.revealForExport(organizationId, c.id()).orElse(null);
+                if (value == null) meta.put("locked", true);
+                else meta.put("secret", value);
             }
         }
         return root;
@@ -151,12 +173,16 @@ public class BackupService {
     }
 
     /**
-     * Re-creates the file's credentials as placeholders under their original ids, and reports how
-     * many are now waiting for a value.
+     * Re-creates the file's credentials under their original ids — with their values when the
+     * file carries them, as placeholders otherwise — and reports how many are waiting for a value.
      *
      * <p>The id is the whole point: every flow that referenced {@code cred_x} still points at a
      * credential of that name, so the person re-enters each secret once instead of re-wiring every
      * node. {@code reenter} collects the labels to put in front of them.
+     *
+     * <p>A file made with secrets is accepted by the same path as one made without: each entry is
+     * looked at on its own, so a locked credential in a with-secrets export arrives as a
+     * placeholder next to the ones that arrived whole.
      */
     private int importCredentials(JsonNode bundle, List<String> reenter, List<String> warnings) {
         JsonNode metas = bundle.path("credentials");
@@ -169,24 +195,31 @@ public class BackupService {
             return 0;
         }
 
-        int placeholders = 0;
+        int imported = 0;
         for (JsonNode meta : metas) {
             String id = meta.path("id").asText("");
             String label = meta.path("label").asText("");
             if (id.isBlank() || label.isBlank()) continue;
+            String kind = meta.path("kind").asText("api-token");
+            String secret = meta.path("secret").isTextual() ? meta.path("secret").asText() : "";
             try {
+                if (!secret.isBlank()) {
+                    CredentialStore.ImportOutcome outcome = credentials.importSecret(
+                            orgContext.defaultOrganizationId(), id, label, kind, secret);
+                    if (outcome != CredentialStore.ImportOutcome.KEPT) imported++;
+                    continue;
+                }
                 boolean created = credentials.importPlaceholder(
-                        orgContext.defaultOrganizationId(), id, label,
-                        meta.path("kind").asText("api-token"));
+                        orgContext.defaultOrganizationId(), id, label, kind);
                 if (created) {
                     reenter.add(label);
-                    placeholders++;
+                    imported++;
                 }
             } catch (RuntimeException e) {
                 warnings.add("Credential '" + label + "': " + e.getMessage());
             }
         }
-        return placeholders;
+        return imported;
     }
 
     private <T> int importList(JsonNode bundle, String key, Class<T> type,

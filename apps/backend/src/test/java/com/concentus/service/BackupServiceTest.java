@@ -21,6 +21,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -28,6 +29,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
@@ -67,15 +69,17 @@ class BackupServiceTest {
     }
 
     @Test
-    void theExportCarriesEveryCategoryAndNeverASecret() {
+    void theExportCarriesEveryCategoryAndByDefaultNeverASecret() {
         emptyStores();
         when(mcpDefs.list()).thenReturn(List.of(McpDef.http("mcp_1", "Linear", "https://x", "cred_9", null)));
         when(credentials.list("local")).thenReturn(List.of(new CredentialStore.Credential(
-                "cred_9", "local", "Linear token", "api-token", "ab…yz", 1L, 1L, null)));
+                "cred_9", "local", "Linear token", "api-token", "ab…yz", 1L, 1L, null, false)));
+        when(credentials.revealForExport("local", "cred_9")).thenReturn(Optional.of("lin_api_secret"));
 
-        JsonNode doc = service.export();
+        JsonNode doc = service.export(false);
 
         assertThat(doc.path("concentusExport").asInt()).isEqualTo(1);
+        assertThat(doc.path("includesSecrets").asBoolean()).isFalse();
         for (String key : List.of("flows", "agents", "mcpServers", "facadeProfiles", "databases",
                 "knowledgeBases", "skills", "variables", "credentials")) {
             assertThat(doc.has(key)).as(key).isTrue();
@@ -83,8 +87,62 @@ class BackupServiceTest {
         JsonNode cred = doc.path("credentials").get(0);
         assertThat(cred.path("id").asText()).isEqualTo("cred_9");
         assertThat(cred.path("label").asText()).isEqualTo("Linear token");
-        // Metadata only: no secret, not even the hint, appears anywhere in the document.
+        // Metadata only: no secret, not even the hint, appears anywhere in the document — and the
+        // value is never even asked for.
         assertThat(doc.toString()).doesNotContain("ab…yz").doesNotContain("secret");
+        verify(credentials, never()).revealForExport(anyString(), anyString());
+    }
+
+    /**
+     * The export an administrator asked for explicitly: values in the clear for what this
+     * installation can open, and an honest {@code locked} for what it cannot — written down rather
+     * than omitted, so the person restoring the file knows before they need it.
+     */
+    @Test
+    void anExportWithSecretsCarriesValuesAndMarksWhatIsLocked() {
+        emptyStores();
+        when(credentials.list("local")).thenReturn(List.of(
+                new CredentialStore.Credential("cred_9", "local", "Linear token", "api-token",
+                        "ab…yz", 1L, 1L, null, false),
+                new CredentialStore.Credential("cred_locked", "local", "Google Ads", "api-token",
+                        "cd…wx", 1L, 1L, null, true)));
+        when(credentials.revealForExport("local", "cred_9")).thenReturn(Optional.of("lin_api_secret"));
+        when(credentials.revealForExport("local", "cred_locked")).thenReturn(Optional.empty());
+
+        JsonNode doc = service.export(true);
+
+        assertThat(doc.path("includesSecrets").asBoolean()).isTrue();
+        JsonNode open = doc.path("credentials").get(0);
+        assertThat(open.path("secret").asText()).isEqualTo("lin_api_secret");
+        assertThat(open.has("locked")).isFalse();
+        JsonNode locked = doc.path("credentials").get(1);
+        assertThat(locked.path("locked").asBoolean()).isTrue();
+        assertThat(locked.has("secret")).isFalse();
+        // An export is not a use: the path that moves last_used_at is never taken.
+        verify(credentials, never()).reveal(anyString(), anyString());
+    }
+
+    // A with-secrets file restores values under their original ids; its locked entries arrive as
+    // placeholders to re-enter, exactly as the plain export's do.
+    @Test
+    void importingAFileWithSecretsRestoresValuesAndPlaceholdersTheLockedOnes() throws Exception {
+        emptyStores();
+        when(credentials.importSecret(anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(CredentialStore.ImportOutcome.CREATED);
+        when(credentials.importPlaceholder(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(true);
+
+        BackupService.ImportReport report = service.importBundle(mapper.readTree("""
+                {"concentusExport": 1, "includesSecrets": true,
+                 "credentials": [
+                   {"id": "cred_9", "label": "Linear token", "kind": "api-token", "secret": "lin_api_secret"},
+                   {"id": "cred_locked", "label": "Google Ads", "kind": "api-token", "locked": true}]}"""));
+
+        verify(credentials).importSecret("local", "cred_9", "Linear token", "api-token", "lin_api_secret");
+        verify(credentials, never()).importPlaceholder(anyString(), eq("cred_9"), anyString(), anyString());
+        verify(credentials).importPlaceholder("local", "cred_locked", "Google Ads", "api-token");
+        assertThat(report.imported()).containsEntry("credentials", 2);
+        assertThat(report.credentialsToReenter()).containsExactly("Google Ads");
     }
 
     @Test

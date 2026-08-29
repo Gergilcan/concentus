@@ -1,7 +1,7 @@
 package com.concentus.config;
 
 import com.concentus.auth.OrgContext;
-import com.concentus.secrets.LegacySecrets;
+import com.concentus.secrets.SecretCipher;
 import com.concentus.store.SchemaMigrator;
 import com.concentus.store.TestDatabase;
 import org.junit.jupiter.api.Test;
@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.env.MockEnvironment;
 
 import javax.sql.DataSource;
+import java.security.SecureRandom;
 import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,10 +25,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SettingsTest {
 
-    private static LegacySecrets cipher() {
+    /** No key: what a server that never set CONCENTUS_SECRET_KEY runs with. */
+    private static SecretCipher cipher() {
+        return new SecretCipher("");
+    }
+
+    private static SecretCipher keyed() {
         byte[] raw = new byte[32];
-        for (int i = 0; i < raw.length; i++) raw[i] = (byte) i;
-        return new LegacySecrets(Base64.getEncoder().encodeToString(raw));
+        new SecureRandom().nextBytes(raw);
+        return new SecretCipher(Base64.getEncoder().encodeToString(raw));
     }
 
     private record Fixture(Settings settings, SettingsStore store, MockEnvironment environment) {
@@ -86,15 +92,14 @@ class SettingsTest {
     }
 
     /**
-     * A secret setting is stored as it was typed.
+     * A secret setting without a key is stored as it was typed.
      *
-     * <p>It used to be encrypted here, and the assertion below used to say so. The reversal is
-     * deliberate and its cost is the assertion's whole point: what protects this value now is who
-     * can reach the database, and nothing else — so the test states the exposure rather than
-     * leaving somebody to infer it from an absence.
+     * <p>Deliberate, and its cost is the assertion's whole point: what protects this value on an
+     * installation with no CONCENTUS_SECRET_KEY is who can reach the database, and nothing else
+     * — so the test states the exposure rather than leaving somebody to infer it from an absence.
      */
     @Test
-    void a_secret_is_stored_as_typed_and_reads_back_here() {
+    void without_a_key_a_secret_is_stored_as_typed_and_reads_back_here() {
         DataSource ds = TestDatabase.freshDatabase("settings_5");
         assertThat(SchemaMigrator.migrate(ds)).isTrue();
         JdbcTemplate jdbc = new JdbcTemplate(ds);
@@ -112,6 +117,77 @@ class SettingsTest {
         assertThat(jdbc.queryForObject(
                 "select secret from settings where key = 'pricing.input-usd-per-mtok'", Boolean.class))
                 .isTrue();
+    }
+
+    @Test
+    void with_a_key_a_secret_is_sealed_in_the_table_and_reads_back_whole() {
+        DataSource ds = TestDatabase.freshDatabase("settings_9");
+        assertThat(SchemaMigrator.migrate(ds)).isTrue();
+        JdbcTemplate jdbc = new JdbcTemplate(ds);
+        SettingsStore store = new SettingsStore(jdbc, keyed());
+        store.load();
+
+        store.put("default", "approvals.telegram.bot-token", "123:abc", true, null);
+        store.put("default", "runs.max-concurrent", "7", false, null);
+
+        assertThat(store.get("default", "approvals.telegram.bot-token")).contains("123:abc");
+        assertThat(jdbc.queryForObject(
+                "select value from settings where key = 'approvals.telegram.bot-token'", String.class))
+                .startsWith(SecretCipher.PREFIX).doesNotContain("123:abc");
+        // Only secrets: a number sealed in the table would be a number nobody can query.
+        assertThat(jdbc.queryForObject(
+                "select value from settings where key = 'runs.max-concurrent'", String.class))
+                .isEqualTo("7");
+    }
+
+    /**
+     * The row from a machine with another key. Unset rather than ciphertext — handing the sealed
+     * text to a provider would fail far from here as a wrong token — and flagged locked so the
+     * screen can ask for it again. Nothing throws: the settings load, and every other setting is
+     * still there.
+     */
+    @Test
+    void a_secret_sealed_under_another_key_reads_as_unset_and_locked_without_throwing() {
+        DataSource ds = TestDatabase.freshDatabase("settings_10");
+        assertThat(SchemaMigrator.migrate(ds)).isTrue();
+        JdbcTemplate jdbc = new JdbcTemplate(ds);
+        SettingsStore elsewhere = new SettingsStore(jdbc, keyed());
+        elsewhere.load();
+        elsewhere.put("default", "approvals.telegram.bot-token", "123:abc", true, null);
+        elsewhere.put("default", "runs.max-concurrent", "7", false, null);
+
+        SettingsStore here = new SettingsStore(jdbc, cipher());
+        here.load();
+
+        assertThat(here.isAvailable()).isTrue();
+        assertThat(here.get("default", "approvals.telegram.bot-token")).isEmpty();
+        assertThat(here.isLocked("default", "approvals.telegram.bot-token")).isTrue();
+        assertThat(here.get("default", "runs.max-concurrent")).contains("7");
+
+        // Entering it again is the way out, and the new value goes under this installation's key.
+        here.put("default", "approvals.telegram.bot-token", "456:def", true, null);
+        assertThat(here.isLocked("default", "approvals.telegram.bot-token")).isFalse();
+        assertThat(here.get("default", "approvals.telegram.bot-token")).contains("456:def");
+    }
+
+    // A secret written before this installation had a key is sealed the first time it is loaded
+    // with one: the value is in hand, so there is nothing to wait for.
+    @Test
+    void a_clear_secret_is_sealed_on_the_first_load_with_a_key() {
+        DataSource ds = TestDatabase.freshDatabase("settings_11");
+        assertThat(SchemaMigrator.migrate(ds)).isTrue();
+        JdbcTemplate jdbc = new JdbcTemplate(ds);
+        SettingsStore plain = new SettingsStore(jdbc, cipher());
+        plain.load();
+        plain.put("default", "approvals.telegram.bot-token", "123:abc", true, null);
+
+        SettingsStore keyed = new SettingsStore(jdbc, keyed());
+        keyed.load();
+
+        assertThat(jdbc.queryForObject(
+                "select value from settings where key = 'approvals.telegram.bot-token'", String.class))
+                .startsWith(SecretCipher.PREFIX);
+        assertThat(keyed.get("default", "approvals.telegram.bot-token")).contains("123:abc");
     }
 
     @Test

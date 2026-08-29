@@ -1,7 +1,7 @@
 package com.concentus.store;
 
 import com.concentus.model.StorageSettings;
-import com.concentus.secrets.LegacySecrets;
+import com.concentus.secrets.SecretCipher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,9 +20,11 @@ import java.nio.file.Path;
  * DataSource to build, so it has to be readable before any connection exists. Storing it in the
  * database it configures would be circular.
  *
- * <p>The password is sealed with the same key that protects stored credentials, so this file is no
- * more sensitive than the rest of the app-data folder. On the desktop that key lives in the OS
- * keyring, which means copying the folder to another machine does not carry the password with it.
+ * <p>The password in it is <b>not</b> sealed, and that is deliberate where everything in the
+ * database is. This file is what opens the database that holds everything else — a locked
+ * credential inside the database is a re-entry, but a locked password here would be an
+ * installation that cannot reach its own data or the screen that fixes it. The file sits beside
+ * the embedded database in a folder only this account can read, which is the guard it already had.
  */
 @Component
 public class StorageSettingsStore {
@@ -32,13 +34,13 @@ public class StorageSettingsStore {
 
     private final Path file;
     private final ObjectMapper mapper;
-    private final LegacySecrets legacy;
+    private final SecretCipher cipher;
 
     public StorageSettingsStore(@Value("${app.data-dir}") String dataDir, ObjectMapper mapper,
-                                LegacySecrets legacy) {
+                                SecretCipher cipher) {
         this.file = Path.of(dataDir).toAbsolutePath().resolve(FILE);
         this.mapper = mapper;
-        this.legacy = legacy;
+        this.cipher = cipher;
         try {
             Files.createDirectories(this.file.getParent());
         } catch (IOException e) {
@@ -63,23 +65,19 @@ public class StorageSettingsStore {
     /**
      * The password, for building the connection. Never leaves the backend.
      *
-     * <p>Held in the clear in this file, like everything else this installation stores. That is a
-     * real exposure and it is the same one the folder already carried: this file sits beside the
-     * embedded database it configures, so anyone who can read one can read the other.
-     *
-     * <p>A value still carrying the old encryption is opened when the key that sealed it is still
-     * around, and yields blank when it is not — the useful outcome there is a connection error
-     * somebody can act on, not a startup crash.
+     * <p>A value still sealed by the version that encrypted this file is opened when the key that
+     * sealed it is still around, and yields blank when it is not — the useful outcome there is a
+     * connection error somebody can act on from Settings, not a startup crash.
      */
     public String plaintextPassword(StorageSettings settings) {
         if (settings.password() == null || settings.password().isBlank()) return "";
-        String password = legacy.read(settings.password()).orElse(null);
-        if (password == null) {
-            log.error("The stored database password is still encrypted and this installation "
-                    + "cannot open it. Re-enter it in Settings.");
+        SecretCipher.Reading reading = cipher.open(settings.password());
+        if (reading.locked()) {
+            log.error("The stored database password was encrypted with a key this installation "
+                    + "does not have. Re-enter it in Settings.");
             return "";
         }
-        return password;
+        return reading.plaintext();
     }
 
     /**
@@ -93,8 +91,8 @@ public class StorageSettingsStore {
         StorageSettings current = load();
         String password;
         if (plaintextPassword == null) {
-            // Unchanged: whatever is on disk stays exactly as it is, encryption and all. Rewriting
-            // it here would mean decrypting it first, which is not always possible.
+            // Unchanged: whatever is on disk stays exactly as it is, sealed or not. Rewriting it
+            // here would mean opening it first, which is not always possible.
             password = current.password() == null ? "" : current.password();
         } else if (plaintextPassword.isBlank()) {
             password = "";

@@ -1123,12 +1123,13 @@ semantic (cosine,      top 50) ─┘</code></pre>
         embedded data stays where it was until you are satisfied.
       </p>
       <div class="warn">
-        <b>Back up the key with the data</b>
+        <b>Credentials are encrypted with a key kept outside the database</b>
         <p>
-          Credentials are encrypted with a key the installation generates on first start and keeps
-          in <code>secret.key</code> beside its data. A database backup without that file restores
-          rows nobody can decrypt. Set <code>CONCENTUS_SECRET_KEY</code> to hold it elsewhere — a
-          vault, a container secret — instead.
+          The desktop app generates it on first launch and keeps it in your OS keyring; a server
+          sets <code>CONCENTUS_SECRET_KEY</code> — a vault, a container secret. A database restored
+          without that key still opens: the credentials sealed under it show as <em>locked</em>,
+          every flow keeps its references, and you enter each value again. To carry values in a
+          backup file, an administrator can tick <em>Include credential values</em> on the export.
         </p>
       </div>
     </section>
@@ -1384,7 +1385,7 @@ echo $?                                                # 0 completed · 1 failed
             </tr>
             <tr>
               <td><code>CONCENTUS_SECRET_KEY</code></td>
-              <td>Holding the encryption key somewhere other than <code>secret.key</code> beside the data.</td>
+              <td>Sealing stored credentials at rest (AES-256-GCM). Optional: without it they are stored as typed. Installations sharing a database share the key.</td>
             </tr>
             <tr>
               <td><code>CONCENTUS_ADMIN_EMAIL</code><br /><code>CONCENTUS_ADMIN_PASSWORD</code></td>

@@ -5,50 +5,19 @@ import com.concentus.store.TestDatabase;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import javax.crypto.Cipher;
-import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
 import javax.sql.DataSource;
-import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
-import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Turning a database full of encrypted values into one that can simply be read.
+ * The startup pass that brings a database up to what this installation's key can do.
  *
- * <p>The half that matters is the half that fails. Some rows were sealed by this installation and
- * convert; others were sealed by whichever machine filled a shared database, and no key here will
- * ever open them. Those must survive untouched — the value may still be recoverable from the
+ * <p>The half that matters is the half it leaves alone. Some rows were sealed by this installation
+ * and convert; others were sealed by whichever machine filled a shared database, and no key here
+ * will ever open them. Those must survive untouched — the value may still be recoverable from the
  * machine that wrote it, and a migration that tidied them away would destroy the only copy.
  */
 class SecretsMigrationTest {
-
-    private static String randomKey() {
-        byte[] raw = new byte[32];
-        new SecureRandom().nextBytes(raw);
-        return Base64.getEncoder().encodeToString(raw);
-    }
-
-    /** Seals a value the way the version that encrypted did, so the fixture is the real format. */
-    private static String sealWith(String base64Key, String plaintext) {
-        try {
-            byte[] iv = new byte[12];
-            new SecureRandom().nextBytes(iv);
-            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(Cipher.ENCRYPT_MODE,
-                    new SecretKeySpec(Base64.getDecoder().decode(base64Key), "AES"),
-                    new GCMParameterSpec(128, iv));
-            byte[] sealed = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
-            byte[] out = new byte[iv.length + sealed.length];
-            System.arraycopy(iv, 0, out, 0, iv.length);
-            System.arraycopy(sealed, 0, out, iv.length, sealed.length);
-            return LegacySecrets.PREFIX + Base64.getEncoder().encodeToString(out);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
 
     private record Fixture(JdbcTemplate jdbc, String ours, String theirs) {
     }
@@ -56,7 +25,8 @@ class SecretsMigrationTest {
     private static Fixture on(String databaseName) {
         DataSource ds = TestDatabase.freshDatabase(databaseName);
         assertThat(SchemaMigrator.migrate(ds)).isTrue();
-        return new Fixture(new JdbcTemplate(ds), randomKey(), randomKey());
+        return new Fixture(new JdbcTemplate(ds), SecretCipherTest.randomKey(),
+                SecretCipherTest.randomKey());
     }
 
     private static void credential(JdbcTemplate jdbc, String id, String label, String secret) {
@@ -66,18 +36,48 @@ class SecretsMigrationTest {
                 """, id, "local", label, "api_token", secret, "hint", 1L, 1L);
     }
 
+    private static void setting(JdbcTemplate jdbc, String key, String value) {
+        jdbc.update("""
+                insert into settings (organization_id, key, value, secret, updated_at, updated_by)
+                values (?,?,?,?,?,?)
+                """, "local", key, value, true, 1L, null);
+    }
+
     private static String secretOf(JdbcTemplate jdbc, String id) {
         return jdbc.queryForObject("select secret from credentials where id = ?", String.class, id);
     }
 
     @Test
-    void what_this_installation_can_open_is_rewritten_in_the_clear() {
+    void with_a_key_clear_rows_are_sealed_and_still_open() {
+        Fixture f = on("secrets_seal_clear");
+        credential(f.jdbc(), "c1", "Resend", "typed-in-yesterday");
+        setting(f.jdbc(), "approvals.telegram.bot-token", "123:abc");
+        SecretCipher cipher = new SecretCipher(f.ours());
+
+        new SecretsMigration(f.jdbc(), cipher).convert();
+
+        String sealed = secretOf(f.jdbc(), "c1");
+        assertThat(sealed).startsWith(SecretCipher.PREFIX);
+        assertThat(cipher.open(sealed).plaintext()).isEqualTo("typed-in-yesterday");
+        String setting = f.jdbc().queryForObject(
+                "select value from settings where key = 'approvals.telegram.bot-token'", String.class);
+        assertThat(setting).startsWith(SecretCipher.PREFIX);
+        assertThat(cipher.open(setting).plaintext()).isEqualTo("123:abc");
+    }
+
+    // A database sealed before the change, with the key it was sealed with: carried to the
+    // current marker, never written in the clear.
+    @Test
+    void with_a_key_legacy_rows_it_opens_are_rewritten_under_the_current_marker() {
         Fixture f = on("secrets_convert");
-        credential(f.jdbc(), "c1", "Resend", sealWith(f.ours(), "re_live_token"));
+        credential(f.jdbc(), "c1", "Resend", SecretCipherTest.sealLegacy(f.ours(), "re_live_token"));
+        SecretCipher cipher = new SecretCipher(f.ours());
 
-        new SecretsMigration(f.jdbc(), new LegacySecrets(f.ours())).convert();
+        new SecretsMigration(f.jdbc(), cipher).convert();
 
-        assertThat(secretOf(f.jdbc(), "c1")).isEqualTo("re_live_token");
+        String sealed = secretOf(f.jdbc(), "c1");
+        assertThat(sealed).startsWith(SecretCipher.PREFIX).doesNotContain("re_live");
+        assertThat(cipher.open(sealed).plaintext()).isEqualTo("re_live_token");
     }
 
     // The row from the other machine. Untouched is the only safe answer: this installation cannot
@@ -85,10 +85,10 @@ class SecretsMigrationTest {
     @Test
     void what_it_cannot_open_is_left_exactly_as_it_was() {
         Fixture f = on("secrets_stranded");
-        String sealed = sealWith(f.theirs(), "somebody-elses-token");
+        String sealed = new SecretCipher(f.theirs()).wrap("somebody-elses-token");
         credential(f.jdbc(), "c1", "Google Ads", sealed);
 
-        new SecretsMigration(f.jdbc(), new LegacySecrets(f.ours())).convert();
+        new SecretsMigration(f.jdbc(), new SecretCipher(f.ours())).convert();
 
         assertThat(secretOf(f.jdbc(), "c1")).isEqualTo(sealed);
     }
@@ -96,42 +96,48 @@ class SecretsMigrationTest {
     @Test
     void a_mixed_database_converts_the_half_it_can() {
         Fixture f = on("secrets_mixed");
-        credential(f.jdbc(), "c1", "Resend", sealWith(f.ours(), "mine"));
-        credential(f.jdbc(), "c2", "Google Ads", sealWith(f.theirs(), "theirs"));
+        String theirs = new SecretCipher(f.theirs()).wrap("theirs");
+        credential(f.jdbc(), "c1", "Resend", SecretCipherTest.sealLegacy(f.ours(), "mine"));
+        credential(f.jdbc(), "c2", "Google Ads", theirs);
         credential(f.jdbc(), "c3", "Already plain", "typed-in-yesterday");
+        SecretCipher cipher = new SecretCipher(f.ours());
 
-        new SecretsMigration(f.jdbc(), new LegacySecrets(f.ours())).convert();
+        new SecretsMigration(f.jdbc(), cipher).convert();
 
-        assertThat(secretOf(f.jdbc(), "c1")).isEqualTo("mine");
-        assertThat(secretOf(f.jdbc(), "c2")).startsWith(LegacySecrets.PREFIX);
-        assertThat(secretOf(f.jdbc(), "c3")).isEqualTo("typed-in-yesterday");
+        assertThat(cipher.open(secretOf(f.jdbc(), "c1")).plaintext()).isEqualTo("mine");
+        assertThat(secretOf(f.jdbc(), "c2")).isEqualTo(theirs);
+        assertThat(cipher.open(secretOf(f.jdbc(), "c3")).plaintext()).isEqualTo("typed-in-yesterday");
+        assertThat(secretOf(f.jdbc(), "c3")).startsWith(SecretCipher.PREFIX);
     }
 
     // Runs on every start, so the pass over an already-converted database must be a no-op rather
-    // than something that mangles values that merely look unusual.
+    // than something that re-seals every row with a fresh IV on each launch.
     @Test
     void running_again_changes_nothing() {
         Fixture f = on("secrets_idempotent");
-        credential(f.jdbc(), "c1", "Resend", sealWith(f.ours(), "v1:not-really-sealed"));
-        SecretsMigration migration = new SecretsMigration(f.jdbc(), new LegacySecrets(f.ours()));
+        credential(f.jdbc(), "c1", "Resend", "typed");
+        SecretsMigration migration = new SecretsMigration(f.jdbc(), new SecretCipher(f.ours()));
 
         migration.convert();
         String afterFirst = secretOf(f.jdbc(), "c1");
         migration.convert();
 
-        assertThat(afterFirst).isEqualTo("v1:not-really-sealed");
+        assertThat(afterFirst).startsWith(SecretCipher.PREFIX);
         assertThat(secretOf(f.jdbc(), "c1")).isEqualTo(afterFirst);
     }
 
-    // No key at all is the normal state from now on: nothing to convert, and nothing damaged.
+    // No key: a server that never set one. Nothing to seal, nothing damaged, and the sealed rows
+    // stay sealed — they are locked, and the log names them.
     @Test
-    void an_installation_with_no_old_key_leaves_everything_alone() {
+    void an_installation_with_no_key_leaves_everything_alone() {
         Fixture f = on("secrets_nokey");
-        String sealed = sealWith(f.ours(), "unreachable");
+        String sealed = new SecretCipher(f.ours()).wrap("unreachable");
         credential(f.jdbc(), "c1", "Resend", sealed);
+        credential(f.jdbc(), "c2", "Holded", "typed");
 
-        new SecretsMigration(f.jdbc(), new LegacySecrets("")).convert();
+        new SecretsMigration(f.jdbc(), new SecretCipher("")).convert();
 
         assertThat(secretOf(f.jdbc(), "c1")).isEqualTo(sealed);
+        assertThat(secretOf(f.jdbc(), "c2")).isEqualTo("typed");
     }
 }

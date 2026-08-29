@@ -180,8 +180,9 @@ async function bootBackend(jar, log) {
       env: {
         ...process.env,
         APP_DATA_DIR: dataDir,
-        // Credential storage refuses to start without one. A fresh key per run is right for a
-        // throwaway data directory: nothing encrypted here is meant to outlive the process.
+        // Optional for the backend, but a fresh key per run costs nothing and means anything
+        // stored in a throwaway data directory is sealed rather than in the clear: nothing
+        // encrypted here is meant to outlive the process.
         CONCENTUS_SECRET_KEY:
           process.env.CONCENTUS_SECRET_KEY ?? (await import('node:crypto')).randomBytes(32).toString('base64'),
       },

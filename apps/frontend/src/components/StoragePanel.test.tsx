@@ -5,6 +5,7 @@ import { StoragePanel } from './StoragePanel.tsx'
 const storageContents = vi.fn()
 const migrateStorage = vi.fn()
 const getStorage = vi.fn()
+const exportBackup = vi.fn()
 
 vi.mock('../api/client.ts', () => ({
   api: {
@@ -13,7 +14,7 @@ vi.mock('../api/client.ts', () => ({
     testStorage: vi.fn(),
     storageContents: (from: string) => storageContents(from),
     migrateStorage: (body: unknown) => migrateStorage(body),
-    exportBackup: vi.fn(),
+    exportBackup: (includeSecrets?: boolean) => exportBackup(includeSecrets),
     importBackup: vi.fn(),
   },
 }))
@@ -163,5 +164,46 @@ describe('StoragePanel — moving data to another database', () => {
     fireEvent.click(screen.getByRole('button', { name: /Move it now/i }))
 
     expect(await screen.findByText(/restart when you are ready/i)).toBeInTheDocument()
+  })
+})
+
+/**
+ * The export, and the one choice on it that matters: whether credential values go in the file.
+ *
+ * Off is the default and must stay so — the plain file is safe to pass around. On is a deliberate
+ * tick by an administrator, and the note afterwards has to say the file now holds passwords,
+ * because the person downloading it is exactly the person who will forward it a week later.
+ */
+describe('StoragePanel — exporting everything', () => {
+  beforeEach(() => {
+    getStorage.mockResolvedValue({
+      mode: 'embedded', url: '', username: '', hasPassword: false, activeMode: 'embedded',
+    })
+    exportBackup.mockResolvedValue(new Blob(['{}'], { type: 'application/json' }))
+    // jsdom has neither object URLs nor navigation; the download link is not what is under test.
+    URL.createObjectURL = vi.fn(() => 'blob:export')
+    URL.revokeObjectURL = vi.fn()
+    HTMLAnchorElement.prototype.click = vi.fn()
+  })
+
+  it('exports without secrets unless the box is ticked, and says so', async () => {
+    render(<StoragePanel pushError={vi.fn()} />)
+    await screen.findByText(/Export everything/i)
+
+    fireEvent.click(screen.getByRole('button', { name: /Export everything/i }))
+
+    await waitFor(() => expect(exportBackup).toHaveBeenCalledWith(false))
+    expect(await screen.findByText(/values never leave this machine/i)).toBeInTheDocument()
+  })
+
+  it('exports with secrets when an administrator ticks the box, and warns about the file', async () => {
+    render(<StoragePanel pushError={vi.fn()} />)
+    await screen.findByText(/Export everything/i)
+
+    fireEvent.click(screen.getByLabelText(/Include credential values/i))
+    fireEvent.click(screen.getByRole('button', { name: /Export everything/i }))
+
+    await waitFor(() => expect(exportBackup).toHaveBeenCalledWith(true))
+    expect(await screen.findByText(/keep the file like the passwords it holds/i)).toBeInTheDocument()
   })
 })

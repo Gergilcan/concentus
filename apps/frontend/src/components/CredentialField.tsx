@@ -39,7 +39,11 @@ export function CredentialField({ label, value, onChange, what }: Props) {
     }
   }, [])
 
-  const missing = value !== '' && !credentials.some((c) => c.id === value)
+  const selected = credentials.find((c) => c.id === value)
+  const missing = value !== '' && selected === undefined
+  // Locked and missing look identical at run time and need different fixes: a locked one is the
+  // right credential waiting for its value, and picking another would leave it behind.
+  const locked = selected?.locked === true
 
   return (
     <>
@@ -47,20 +51,26 @@ export function CredentialField({ label, value, onChange, what }: Props) {
         <option value="">{t('— none —')}</option>
         {credentials.map((c) => (
           <option key={c.id} value={c.id}>
-            {c.label} ({c.hint ?? '••••'})
+            {c.label} ({c.locked ? t('locked') : (c.hint ?? '••••')})
           </option>
         ))}
       </SelectField>
       <p className={styles.hint}>
         {t('Stored under')} <b>{t('Resources → Credentials')}</b>
         {t(
-          ', encrypted, and never shown again. This node keeps only its id, so the flow can be exported, duplicated or rolled back without carrying the secret for {{what}}.',
+          ', and never shown again. This node keeps only its id, so the flow can be exported, duplicated or rolled back without carrying the secret for {{what}}.',
           { what: what ?? t('this connection') },
         )}
       </p>
       {missing && (
         <p className={styles.hint}>
           <b>{t('The selected credential no longer exists.')}</b> {t('Pick another one.')}
+        </p>
+      )}
+      {locked && (
+        <p className={styles.hint}>
+          <b>{t('The selected credential is locked: it was encrypted with a key this installation does not have.')}</b>{' '}
+          {t('Enter its value again under Resources → Credentials; this node keeps pointing at it.')}
         </p>
       )}
     </>

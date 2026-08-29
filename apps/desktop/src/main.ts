@@ -6,6 +6,7 @@ import { StorageDraft, backendApi } from './backend-api'
 import { resolveClaudeCli } from './claude-cli'
 import { installClaude, installCommand, openLoginTerminal } from './claude-install'
 import { hasApiKey, saveApiKey } from './api-key'
+import { dataKeyState } from './secret'
 import { ensureOnPath } from './path-setup'
 import { failurePage } from './failure-page'
 import { licensePage } from './license-page'
@@ -505,7 +506,7 @@ function showOnboardingWindow(): void {
     } catch (err) {
       log.warn(`Could not read the storage settings: ${err instanceof Error ? err.message : String(err)}`)
     }
-    const html = onboardingPage(claude, storage, hasApiKey())
+    const html = onboardingPage(claude, storage, hasApiKey(), dataKeyState())
     try {
       await onboardingWindow?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
     } finally {

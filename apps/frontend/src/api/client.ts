@@ -473,9 +473,12 @@ export const api = {
   saveMcpDef: (d: McpDef) => req<McpDef>('/mcp-defs', { method: 'POST', body: JSON.stringify(d) }),
   deleteMcpDef: (id: string) => req<void>(`/mcp-defs/${id}`, { method: 'DELETE' }),
   // The whole configuration as one file, and back. Export returns the raw blob so the caller
-  // can hand it to a download link; import takes the parsed document.
-  exportBackup: async (): Promise<Blob> => {
-    const res = await fetch('/api/backup', { credentials: 'same-origin' })
+  // can hand it to a download link; import takes the parsed document. `includeSecrets` asks for
+  // credential values in the clear — admin only, and the file's name and header say so.
+  exportBackup: async (includeSecrets = false): Promise<Blob> => {
+    const res = await fetch(`/api/backup${includeSecrets ? '?includeSecrets=true' : ''}`, {
+      credentials: 'same-origin',
+    })
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
     return res.blob()
   },

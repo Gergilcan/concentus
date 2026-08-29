@@ -146,3 +146,53 @@ describe('CredentialsPanel — OAuth credentials', () => {
     expect(await screen.findByText(/no refresh token/i)).toBeTruthy()
   })
 })
+
+/**
+ * The credential this installation cannot open: sealed under a key it does not have.
+ *
+ * The screen has one job here — say "locked, enter it again" and take the value — and one thing
+ * it must not do: present the row as missing or "not configured", which is how it used to look
+ * and what sent people to create a duplicate while the flow kept pointing at the old id.
+ */
+describe('CredentialsPanel — locked credentials', () => {
+  beforeEach(() => {
+    listCredentials.mockResolvedValue([
+      { id: 'cred_1', label: 'Google Ads', kind: 'api-token', hint: '••••wxyz', createdAt: 0, updatedAt: 0, lastUsedAt: null, locked: true },
+      { id: 'cred_2', label: 'Resend', kind: 'api-token', hint: '••••abcd', createdAt: 0, updatedAt: 0, lastUsedAt: null, locked: false },
+    ])
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('badges the locked credential in the list, and only that one', async () => {
+    render(<CredentialsPanel pushError={() => {}} />)
+
+    await screen.findByText('Google Ads')
+    expect(screen.getAllByText('Locked — enter the value again')).toHaveLength(1)
+  })
+
+  it('asks for the value again when editing it, and will not save without one', async () => {
+    render(<CredentialsPanel pushError={() => {}} />)
+    fireEvent.click(await screen.findByText('Google Ads'))
+
+    expect(screen.getByLabelText('New value (locked — enter it again)')).toBeTruthy()
+    expect(screen.getByText(/This value is locked/)).toBeTruthy()
+    // Leaving the box blank would "keep the current one", and there is nothing usable to keep.
+    expect((screen.getByText('Save') as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.change(screen.getByLabelText('New value (locked — enter it again)'), {
+      target: { value: 'typed-again' },
+    })
+    expect((screen.getByText('Save') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('keeps the blank-means-unchanged rule for a credential that is not locked', async () => {
+    render(<CredentialsPanel pushError={() => {}} />)
+    fireEvent.click(await screen.findByText('Resend'))
+
+    expect(screen.getByLabelText('New value (leave blank to keep the current one)')).toBeTruthy()
+    expect((screen.getByText('Save') as HTMLButtonElement).disabled).toBe(false)
+  })
+})

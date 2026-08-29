@@ -52,14 +52,18 @@ public class CredentialController {
     public record UpdateCredential(String label, String value) {
     }
 
-    /** Whether credentials can be stored at all, so the UI can explain why the form is disabled. */
+    /**
+     * Whether credentials can be stored at all, and whether they are sealed when they are — so
+     * the screen says what is true of this installation instead of what the code could do.
+     */
     @GetMapping("/status")
     public Map<String, Object> status() {
         return Map.of(
                 "available", credentials.isAvailable(),
+                "encrypted", credentials.isAvailable() && credentials.isEncrypting(),
                 "hint", credentials.isAvailable() ? ""
-                        : "Set CONCENTUS_SECRET_KEY (generate one with `openssl rand -base64 32`) "
-                          + "and restart the backend.");
+                        : "The database could not be reached; check the storage settings and "
+                          + "restart the backend.");
     }
 
     /** Metadata only: label, kind, a masked hint, and when it was last used. */

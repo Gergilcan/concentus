@@ -271,11 +271,13 @@ function SettingRow({
             type={entry.type === 'NUMBER' ? 'number' : entry.type === 'SECRET' ? 'password' : 'text'}
             value={value}
             placeholder={
-              entry.type === 'SECRET' && entry.hasValue
-                ? t('•••••••• (unchanged)')
-                : entry.type === 'LIST'
-                  ? t('comma, separated')
-                  : ''
+              entry.type === 'SECRET' && entry.locked
+                ? t('locked — enter it again')
+                : entry.type === 'SECRET' && entry.hasValue
+                  ? t('•••••••• (unchanged)')
+                  : entry.type === 'LIST'
+                    ? t('comma, separated')
+                    : ''
             }
             onChange={(e) => onChange(e.target.value)}
           />

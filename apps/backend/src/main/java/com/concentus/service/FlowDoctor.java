@@ -207,9 +207,25 @@ public class FlowDoctor {
         }
     }
 
-    /** A credential id that names nothing: the classic after a machine change or an import. */
+    /**
+     * A credential id that names nothing, or names something this installation cannot open.
+     *
+     * <p>Two findings rather than one, because the fixes differ and so does the mood. A missing
+     * credential is the classic after a machine change or an import: create one and pick it.
+     * A locked one still exists under its name — it was sealed by a key this installation does
+     * not have — and the node is already pointing at the right thing; the value just has to be
+     * typed in again. Calling that "no longer exists" would send somebody to create a duplicate.
+     */
     private void checkCredential(FlowNode node, String credentialId, List<DoctorFinding> findings) {
         if (credentialId.isBlank() || credentials.resolve(credentialId) != null) return;
+        if (credentials.isLocked(credentialId)) {
+            findings.add(DoctorFinding.error("credential",
+                    "\"" + label(node) + "\" uses a credential that is locked (" + credentialId
+                            + "): it was encrypted with a key this installation does not have.",
+                    "Open it under Resources → Credentials and enter its value again. The node "
+                            + "keeps pointing at it.", node.id()));
+            return;
+        }
         findings.add(DoctorFinding.error("credential",
                 "\"" + label(node) + "\" points at a credential that no longer exists (" + credentialId + ").",
                 "Create it under Resources → Credentials and pick it on the node.", node.id()));
@@ -255,6 +271,15 @@ public class FlowDoctor {
                 if (!value.startsWith("credential:")) continue;
                 String id = value.substring("credential:".length());
                 if (credentials.resolve(id) != null) continue;
+                if (credentials.isLocked(id)) {
+                    findings.add(DoctorFinding.error("credential",
+                            "\"" + label(node) + "\" reads " + entry.getKey()
+                                    + " from a credential that is locked (" + id + "): it was "
+                                    + "encrypted with a key this installation does not have.",
+                            "Open it under Resources → Credentials and enter its value again.",
+                            node.id()));
+                    continue;
+                }
                 findings.add(DoctorFinding.error("credential",
                         "\"" + label(node) + "\" reads " + entry.getKey()
                                 + " from a credential that no longer exists (" + id + ").",
