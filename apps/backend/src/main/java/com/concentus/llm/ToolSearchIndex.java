@@ -1,5 +1,6 @@
 package com.concentus.llm;
 
+import com.concentus.store.PgVectorInstaller;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +15,7 @@ import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Supplier;
 
 /**
  * Finds the few tools relevant to a task, out of a server's hundreds.
@@ -35,10 +37,25 @@ import java.util.Locale;
  * pgvector, and queried by cosine distance. That is what makes "who are my customers" find
  * {@code list_contacts}, a phrase sharing not one word with the tool's name.
  *
+ * <p>The embedder is whichever one the knowledge bases use, in the same order of preference: the
+ * built-in model when it has been downloaded, otherwise the model server's. It used to be the
+ * server's alone, which on a desktop install — pgvector present, no Ollama, the built-in model
+ * downloaded for the knowledge panel — meant ranking by word overlap while telling the user to
+ * pull bge-m3. The two features share one embedding story now; see {@link BuiltInEmbedder}.
+ *
  * <p><b>It degrades rather than failing.</b> No pgvector, no embedding model, or a database that
  * is simply down, and it falls back to lexical matching over names and descriptions. Worse
  * ranking, still useful, and the run says which one it used — a search feature that takes the
  * whole flow down with it when an extension is missing would be a poor trade.
+ *
+ * <p><b>Where pgvector comes from.</b> This is the only consumer of the extension in the
+ * application — knowledge retrieval scans its vectors in memory ({@code KnowledgeRetriever}) and
+ * never touches it. The release workflow compiles pgvector per platform into the jar, and
+ * {@link PgVectorInstaller} lays it into the embedded PostgreSQL on every start, so a desktop
+ * install HAS the extension and {@code create extension} below succeeds. What lacks it is a jar
+ * built locally, an architecture nobody builds for, or an external PostgreSQL whose administrator
+ * has not installed it — and {@link #health} says which, from the installer's own record, rather
+ * than blaming the embedded database for something it stopped being guilty of.
  */
 @Component
 public class ToolSearchIndex {
@@ -47,18 +64,36 @@ public class ToolSearchIndex {
 
     private final JdbcTemplate jdbc;
     private final LocalModelClient client;
+    /** Null only when constructed by a test that is not about embedding. */
+    private final BuiltInEmbedder builtIn;
+    /** How the extension got into the embedded database, or why it did not. */
+    private final Supplier<PgVectorInstaller.Outcome> extensionInstall;
     private final String embeddingModel;
     private final boolean enabled;
 
     /** Null until the first successful index; also the flag for "vectors are usable". */
     private volatile Integer dimensions;
     private volatile boolean vectorReady;
+    /** PostgreSQL's own words when {@code create extension} was refused; null while it worked. */
+    private volatile String extensionError;
 
-    public ToolSearchIndex(JdbcTemplate jdbc, LocalModelClient client,
+    // Explicit, because a second constructor exists for tests and Spring will not choose between
+    // two candidates on its own — it looks for a no-arg one and fails.
+    @org.springframework.beans.factory.annotation.Autowired
+    public ToolSearchIndex(JdbcTemplate jdbc, LocalModelClient client, BuiltInEmbedder builtIn,
                            @Value("${local-model.embedding-model:bge-m3}") String embeddingModel,
                            @Value("${local-model.tool-search-enabled:true}") boolean enabled) {
+        this(jdbc, client, builtIn, PgVectorInstaller::outcome, embeddingModel, enabled);
+    }
+
+    /** Test seam: the installer's record is a value here, not a fact about the test machine. */
+    ToolSearchIndex(JdbcTemplate jdbc, LocalModelClient client, BuiltInEmbedder builtIn,
+                    Supplier<PgVectorInstaller.Outcome> extensionInstall, String embeddingModel,
+                    boolean enabled) {
         this.jdbc = jdbc;
         this.client = client;
+        this.builtIn = builtIn;
+        this.extensionInstall = extensionInstall;
         this.embeddingModel = embeddingModel;
         this.enabled = enabled;
     }
@@ -70,13 +105,16 @@ public class ToolSearchIndex {
     /**
      * Whether semantic ranking is actually going to happen, and if not, which half is missing.
      *
-     * <p>Reported because the two halves — the pgvector extension and an embedding model on the
-     * server — are configured in completely different places, and when either is absent the system
-     * quietly does something worse instead. "It fell back" is only useful with "because of this".
+     * <p>Reported because the two halves — the pgvector extension and an embedding model — are
+     * configured in completely different places, and when either is absent the system quietly
+     * does something worse instead. "It fell back" is only useful with "because of this".
      *
-     * @param modelPresent whether the server reports serving {@link #embeddingModel()}. Checked
-     *                     against its own list rather than by trying an embed, so asking is cheap
-     *                     and does not load a model into VRAM to answer a status question
+     * @param embeddingModel the embedder that would rank: the built-in model's name when it is
+     *                       loaded, else the configured server model
+     * @param modelPresent   whether that embedder can answer — the built-in model is loaded, or the
+     *                       server reports serving the configured one. Checked against the server's
+     *                       own list rather than by trying an embed, so asking is cheap and does not
+     *                       load a model into VRAM to answer a status question
      */
     public record Health(boolean enabled, String embeddingModel, boolean modelPresent,
                          boolean vectorReady, String detail) {
@@ -87,28 +125,53 @@ public class ToolSearchIndex {
     }
 
     public Health health(java.util.Set<String> servedModels) {
-        boolean present = servedModels.stream()
+        boolean served = servedModels.stream()
                 .anyMatch(m -> m.equalsIgnoreCase(embeddingModel)
                         // Ollama reports `bge-m3:latest` for what you pulled as `bge-m3`.
                         || m.toLowerCase(Locale.ROOT).startsWith(embeddingModel.toLowerCase(Locale.ROOT) + ":"));
+        boolean present = builtInReady() || served;
+        String embedder = builtInReady() ? "built-in " + BuiltInEmbedder.MODEL_NAME : embeddingModel;
         String detail;
         if (!enabled) {
             detail = "Tool search is off (local-model.tool-search-enabled=false).";
-        } else if (!vectorReady && !present) {
-            detail = "Ranking by word overlap: pgvector is missing and '" + embeddingModel
-                    + "' is not on the model server.";
         } else if (!vectorReady) {
-            detail = "Ranking by word overlap: the database has no pgvector extension. "
-                    + "The embedded PostgreSQL does not ship it, so semantic ranking is "
-                    + "unavailable in the desktop app.";
+            detail = "Ranking by word overlap: " + missingExtensionReason()
+                    + (present ? "" : " " + missingEmbedderHint());
         } else if (!present) {
-            detail = "Ranking by word overlap: the model server does not serve '" + embeddingModel
-                    + "'. Pull it — `ollama pull " + embeddingModel + "` — it is the same server "
-                    + "that runs your chat model, on the same URL.";
+            detail = "Ranking by word overlap: " + missingEmbedderHint();
         } else {
-            detail = "Semantic ranking, using '" + embeddingModel + "'.";
+            detail = "Semantic ranking, using " + embedder + ".";
         }
-        return new Health(enabled, embeddingModel, present, vectorReady, detail);
+        return new Health(enabled, embedder, present, vectorReady, detail);
+    }
+
+    /**
+     * Why {@code create extension vector} did not succeed, from the record of whoever was
+     * responsible for making it possible.
+     *
+     * <p>On the embedded database that is {@link PgVectorInstaller}, which knows whether this jar
+     * carries the extension at all. On an external database nothing here installs anything, and
+     * the honest answer is the server's own error plus who can fix it.
+     */
+    private String missingExtensionReason() {
+        PgVectorInstaller.Outcome install = extensionInstall.get();
+        String said = extensionError == null ? "" : " PostgreSQL said: " + extensionError + ".";
+        return switch (install.state()) {
+            case NOT_ATTEMPTED -> "the PostgreSQL this installation uses has no pgvector "
+                    + "extension." + said + " Install it on that server — the "
+                    + "postgresql-17-pgvector package, or https://github.com/pgvector/pgvector — "
+                    + "and restart; CREATE EXTENSION runs on start.";
+            case INSTALLED -> "pgvector was copied into the embedded PostgreSQL but the server "
+                    + "refused it." + said + " A library built for another PostgreSQL major "
+                    + "version does this; the startup log has the details.";
+            case NO_BUILD_FOR_PLATFORM, NOT_IN_JAR, FAILED -> install.detail() + said;
+        };
+    }
+
+    private String missingEmbedderHint() {
+        return "No embedding model can answer: download the built-in one under Knowledge "
+                + "(no server needed), or serve '" + embeddingModel + "' from the model server — "
+                + "`ollama pull " + embeddingModel + "` — on the same URL as your chat model.";
     }
 
     /** How a result set was ranked, so the run can say which and nobody has to guess. */
@@ -124,23 +187,28 @@ public class ToolSearchIndex {
             return;
         }
         try {
-            // The extension is the thing most likely to be absent: the stock postgres image does
-            // not carry it. Asked for rather than assumed, and a failure here is not fatal.
+            // Asked for rather than assumed, and a failure here is not fatal. On the embedded
+            // database the files were laid down by PgVectorInstaller a moment ago; on an external
+            // one they are whatever the administrator installed.
             jdbc.execute("create extension if not exists vector");
             vectorReady = true;
+            extensionError = null;
         } catch (RuntimeException e) {
-            log.warn("pgvector is not available ({}), so MCP tool search will rank lexically. "
-                    + "The extension is built per platform and shipped with the installer; a "
-                    + "locally built jar carries none.", e.getMessage());
+            extensionError = e.getMessage();
+            log.warn("pgvector is not available, so MCP tool search will rank lexically: {}",
+                    missingExtensionReason());
         }
     }
 
     /**
      * Creates the table once the embedding width is known.
      *
-     * <p>The width comes from the model — 1024 for bge-m3, 768 for nomic-embed-text — and pgvector
-     * needs it in the column type. A stored index built at another width is unusable, so it is
-     * rebuilt rather than migrated: these are a cache of something we can always recompute.
+     * <p>The width comes from the model — 384 for the built-in model, 1024 for bge-m3, 768 for
+     * nomic-embed-text — and pgvector needs it in the column type. A stored index built at another
+     * width is unusable, so it is rebuilt rather than migrated: these are a cache of something we
+     * can always recompute. Every server's rows go, not only the one being indexed: the others
+     * were embedded at the old width too, and a row whose vector column was dropped and re-added
+     * would otherwise pass the "already indexed" check with nothing in it.
      */
     private void ensureTable(int dims) {
         if (dimensions != null && dimensions == dims) return;
@@ -160,6 +228,7 @@ public class ToolSearchIndex {
                 log.warn("The tool index was built with {}-dimensional vectors and the embedding "
                         + "model now returns {}. Rebuilding it.", existing, dims);
                 jdbc.execute("alter table mcp_tool_index drop column embedding");
+                jdbc.update("delete from mcp_tool_index");
                 existing = null;
             }
             if (existing == null) {
@@ -184,13 +253,14 @@ public class ToolSearchIndex {
     /**
      * Makes sure this server's tools are indexed, and returns whether vectors are usable.
      *
-     * <p>Keyed on a hash of the tool list, so re-indexing happens when the server's tools change
-     * and never merely because a run started. Embedding 338 strings takes seconds on a local GPU;
-     * doing it per run would add that to every single turn.
+     * <p>Keyed on a hash of the tool list and of the embedder, so re-indexing happens when the
+     * server's tools change or a different model would now embed the query — never merely because
+     * a run started. Embedding 338 strings takes seconds on a local GPU; doing it per run would
+     * add that to every single turn.
      */
     public boolean ensureIndexed(String serverUrl, List<ChatTypes.ToolSpec> tools) {
         if (!enabled || !vectorReady || tools.isEmpty()) return false;
-        String hash = corpusHash(tools);
+        String hash = corpusHash(tools, embedderId());
         try {
             Integer indexed = jdbc.queryForObject(
                     "select count(*) from mcp_tool_index where server_url = ? and corpus_hash = ?",
@@ -203,7 +273,7 @@ public class ToolSearchIndex {
 
         try {
             List<String> corpus = tools.stream().map(ToolSearchIndex::textFor).toList();
-            List<float[]> vectors = client.embed(embeddingModel, corpus);
+            List<float[]> vectors = embed(corpus, false);
             ensureTable(vectors.getFirst().length);
 
             jdbc.update("delete from mcp_tool_index where server_url = ?", serverUrl);
@@ -230,7 +300,8 @@ public class ToolSearchIndex {
                             return tools.size();
                         }
                     });
-            log.info("Indexed {} tools from {} for semantic search.", tools.size(), serverUrl);
+            log.info("Indexed {} tools from {} for semantic search with {}.", tools.size(),
+                    serverUrl, embedderId());
             return true;
         } catch (RuntimeException e) {
             log.warn("Could not build the tool index for {} ({}); falling back to lexical search.",
@@ -251,13 +322,14 @@ public class ToolSearchIndex {
         }
         return new Results(lexicalSearch(tools, query, wanted), Ranking.LEXICAL,
                 enabled && vectorReady
-                        ? "Ranked by word overlap — the embedding index is unavailable."
+                        ? "Ranked by word overlap — no embedding model answered, so the index "
+                          + "could not be used."
                         : "Ranked by word overlap — semantic search needs pgvector and an "
                           + "embedding model.");
     }
 
     private List<Hit> vectorSearch(String serverUrl, String query, int limit) {
-        float[] q = client.embed(embeddingModel, List.of(query)).getFirst();
+        float[] q = embed(List.of(query), true).getFirst();
         return jdbc.query("""
                 select tool_name, description, schema_json, embedding <=> ?::vector as distance
                   from mcp_tool_index
@@ -267,6 +339,38 @@ public class ToolSearchIndex {
                 (rs, i) -> new Hit(rs.getString("tool_name"), rs.getString("description"),
                         rs.getString("schema_json"), 1.0 - rs.getDouble("distance")),
                 literal(q), serverUrl, limit);
+    }
+
+    // ------------------------------------------------------------------ embedding
+
+    private boolean builtInReady() {
+        return builtIn != null && builtIn.isReady();
+    }
+
+    /**
+     * Which model embeds right now, as a string that changes when the answer does — it is part of
+     * the corpus hash, so a switch (the built-in model finishing its download mid-session, say)
+     * rebuilds the index at the new width instead of comparing a 384-wide query against 1024-wide
+     * rows and failing over to word overlap for no visible reason.
+     */
+    private String embedderId() {
+        return builtInReady() ? "built-in:" + BuiltInEmbedder.MODEL_NAME : "server:" + embeddingModel;
+    }
+
+    /**
+     * Same preference as {@code KnowledgeRetriever}: the built-in model when loaded, then the
+     * server. The E5 role prefixes are the built-in model's concern; the server's models take the
+     * text as it is.
+     */
+    private List<float[]> embed(List<String> texts, boolean queries) {
+        if (builtInReady()) {
+            try {
+                return builtIn.embed(texts, queries);
+            } catch (RuntimeException e) {
+                log.warn("Built-in embedding failed ({}); trying the model server.", e.getMessage());
+            }
+        }
+        return client.embed(embeddingModel, texts);
     }
 
     /**
@@ -311,10 +415,15 @@ public class ToolSearchIndex {
         return readable + ". " + (tool.description() == null ? "" : tool.description());
     }
 
-    /** Identifies a tool set, so re-indexing tracks the server rather than the calendar. */
-    private static String corpusHash(List<ChatTypes.ToolSpec> tools) {
+    /**
+     * Identifies a tool set as embedded by one model, so re-indexing tracks the server and the
+     * embedder rather than the calendar.
+     */
+    static String corpusHash(List<ChatTypes.ToolSpec> tools, String embedderId) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            digest.update(embedderId.getBytes(StandardCharsets.UTF_8));
+            digest.update((byte) 0);
             for (ChatTypes.ToolSpec tool : tools) {
                 digest.update(tool.name().getBytes(StandardCharsets.UTF_8));
                 digest.update((byte) 0);

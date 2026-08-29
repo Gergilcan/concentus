@@ -34,7 +34,7 @@ class RuntimeInstallerTest {
     void everyManagedRuntimeHasAPlanThatEitherRunsSomethingOrSaysWhyNot() {
         RuntimeInstaller installer = installer(0, "");
 
-        for (String id : List.of("node", "npm", "pnpm", "python", "pipx", "uv")) {
+        for (String id : List.of("node", "npm", "pnpm", "python", "pipx", "uv", "tesseract")) {
             RuntimeInstallPlan plan = installer.plan(id);
             assertThat(plan.runtime()).isEqualTo(id);
             // Exactly one of the two: a command to run, or a reason there is none. Never both

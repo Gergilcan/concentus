@@ -172,5 +172,8 @@ it. Filing failures never fail the run, because the run has already started and 
 wrong folder is far less bad than processing it twice.
 
 **Attachments aren't read.** PDF, DOCX and XLSX are parsed in pure Java. Images and scanned PDFs
-need the native `tesseract-ocr` package, which the backend `Dockerfile` installs; without it the
-extractor reports itself unavailable and images are skipped.
+need the Tesseract program on the machine — `winget install UB-Mannheim.TesseractOCR`,
+`brew install tesseract`, or `apt install tesseract-ocr` — found on the PATH or where those
+installers put it, no restart needed. Without it the extractor reports itself unavailable, images
+are skipped, and the extraction report names the install command. Languages and the page cap are
+under Resources → Settings → Knowledge.

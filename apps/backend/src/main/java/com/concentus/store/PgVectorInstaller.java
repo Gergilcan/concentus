@@ -31,10 +31,49 @@ import java.util.Locale;
  * platform nobody has compiled for — logs and moves on. {@code ToolSearchIndex} already treats a
  * missing extension as "rank lexically instead", so the only consequence is worse ordering of MCP
  * tool search results, which it reports in the UI.
+ *
+ * <p><b>What happened here is remembered</b>, in {@link #outcome()}, because the UI's "ranking by
+ * word overlap" notice used to guess at the reason — and guessed wrong, telling every desktop
+ * user the embedded PostgreSQL could not carry the extension when the installers have carried it
+ * since the release workflow started compiling it. The four ways this can end (nothing built for
+ * the platform, a jar without the files, copied, copy failed) are distinct facts about the
+ * installation, and only this class knows which one occurred.
  */
-final class PgVectorInstaller {
+public final class PgVectorInstaller {
 
     private static final Logger log = LoggerFactory.getLogger(PgVectorInstaller.class);
+
+    /** How the last attempt to lay the extension down ended. */
+    public enum State {
+        /** Never tried: the application runs on an external PostgreSQL, or has not started one yet. */
+        NOT_ATTEMPTED,
+        /** No release builds pgvector for this OS and CPU architecture. */
+        NO_BUILD_FOR_PLATFORM,
+        /** This jar was packaged without the binaries — a local {@code mvn package}, not an installer. */
+        NOT_IN_JAR,
+        /** The files are in place; PostgreSQL can {@code CREATE EXTENSION vector}. */
+        INSTALLED,
+        /** The files could not be copied; {@link Outcome#detail()} carries the error. */
+        FAILED
+    }
+
+    /**
+     * @param platform the build directory this machine maps to, or null when none does
+     * @param detail   one sentence for a person, saying what happened and what would change it
+     */
+    public record Outcome(State state, String platform, String detail) {
+        public boolean installed() {
+            return state == State.INSTALLED;
+        }
+    }
+
+    private static volatile Outcome outcome = new Outcome(State.NOT_ATTEMPTED, null,
+            "pgvector is not installed by this application on an external PostgreSQL.");
+
+    /** What the last {@link #installInto} did, for anything that needs to explain a missing extension. */
+    public static Outcome outcome() {
+        return outcome;
+    }
 
     /**
      * Where the binaries live in the jar: {@code /pgvector/<os>-<arch>/}. Populated by the build;
@@ -57,6 +96,10 @@ final class PgVectorInstaller {
     static void installInto(Path pgHome) {
         String platform = platform();
         if (platform == null) {
+            String detail = "No release builds pgvector for " + System.getProperty("os.name") + " on "
+                    + System.getProperty("os.arch") + "; the installers cover Windows, Linux and "
+                    + "macOS on x86-64, and macOS on Apple Silicon.";
+            outcome = new Outcome(State.NO_BUILD_FOR_PLATFORM, null, detail);
             log.debug("No pgvector build for this platform; MCP tool search will rank lexically.");
             return;
         }
@@ -65,6 +108,11 @@ final class PgVectorInstaller {
         // The control file is the one PostgreSQL looks for to decide the extension exists at all,
         // so its presence in the jar is the test for "was this build given pgvector".
         if (PgVectorInstaller.class.getResource(RESOURCE_ROOT + platform + "/" + CONTROL) == null) {
+            outcome = new Outcome(State.NOT_IN_JAR, platform, "This jar was packaged without "
+                    + "pgvector for " + platform + ". The installers from the release workflow "
+                    + "carry it; a jar built locally with `mvn package` does not, unless the "
+                    + "extension was staged under src/main/resources/pgvector/" + platform
+                    + " first.");
             log.info("This build carries no pgvector for {}, so MCP tool search will rank by word "
                     + "overlap rather than meaning.", platform);
             return;
@@ -81,10 +129,15 @@ final class PgVectorInstaller {
             for (String sql : sqlFiles(platform)) {
                 copy(platform, sql, extension.resolve(sql));
             }
+            outcome = new Outcome(State.INSTALLED, platform, "pgvector for " + platform
+                    + " is installed in " + pgHome + ".");
             log.info("Installed pgvector into {} — MCP tool search can rank semantically.", pgHome);
         } catch (IOException | RuntimeException e) {
             // Never fatal: the database is far more important than the ranking quality of one
             // feature, and that feature already has a working fallback.
+            outcome = new Outcome(State.FAILED, platform, "pgvector for " + platform
+                    + " is in this build but could not be copied into " + pgHome + ": "
+                    + e.getMessage());
             log.warn("Could not install pgvector ({}); MCP tool search will rank lexically.",
                     e.getMessage());
         }

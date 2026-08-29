@@ -1168,7 +1168,6 @@
   "Select specific repositories": "Seleccionar repositorios concretos",
   "Select these {{count}}": "Seleccionar estos {{count}}",
   "Select these {{n}}": "Seleccionar estas {{n}}",
-  "Semantic ranking via {{model}}, served by the same model server as your chat model.": "Ranking semántico con {{model}}, servido por el mismo servidor de modelos que tu modelo de chat.",
   "Semantic search is on via your model server.": "La búsqueda semántica está activa a través de tu servidor de modelos.",
   "Send": "Enviar",
   "Send a command to the running agents…": "Envía un comando a los agentes en marcha…",

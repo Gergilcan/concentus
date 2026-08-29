@@ -66,13 +66,29 @@ public final class SettingsCatalog {
                             + "how far this machine's runs are from it, and a run that starts past 80% "
                             + "says so in its log. 0 or blank turns the meter off.", true),
 
-            number("knowledge.context-chars", GROUP_KNOWLEDGE, "Retrieved text per source",
-                    "How much of a knowledge base may reach an agent in one run, in characters "
-                            + "(roughly four per token). Retrieval finds more than this; the most "
-                            + "relevant passages are kept and the agent is told some were left "
-                            + "out. Raise it when answers miss context that was clearly in the "
-                            + "documents; lower it when three knowledge sources crowd out the "
-                            + "agent's own instructions.", false),
+            number("knowledge.context-tokens", GROUP_KNOWLEDGE, "Retrieved text per source (tokens)",
+                    "How much of a knowledge base may reach an agent in one run, in tokens — the "
+                            + "unit a context window is measured in. Estimated, not counted: "
+                            + "there is no tokeniser for every model an agent may run on, so the "
+                            + "figure is within about a fifth of the truth. Retrieval finds more "
+                            + "than this; the most relevant passages are kept and the agent is "
+                            + "told some were left out. Raise it when answers miss context that "
+                            + "was clearly in the documents; lower it when three knowledge "
+                            + "sources crowd out the agent's own instructions. 0 leaves the "
+                            + "character ceiling below in charge.", false),
+            number("knowledge.context-chars", GROUP_KNOWLEDGE, "Retrieved text per source (characters)",
+                    "The same ceiling in characters (roughly four per token), used only while "
+                            + "the token budget above is 0 — which is how every installation "
+                            + "started, so nothing changes until somebody sets tokens.", false),
+            text("knowledge.ocr-languages", GROUP_KNOWLEDGE, "OCR languages",
+                    "Which languages Tesseract reads scanned PDFs and images in, joined with +, "
+                            + "as its language codes: eng, spa, cat, fra, deu… Only the packs "
+                            + "installed with Tesseract are used; the log names any that are "
+                            + "missing and where to get them.", false),
+            number("knowledge.ocr-max-pages", GROUP_KNOWLEDGE, "OCR pages per PDF",
+                    "How many pages of a scanned PDF are read before the ingest stops and says "
+                            + "so. Each page is a few seconds of OCR, so a three-hundred-page scan "
+                            + "would otherwise hold an ingest for minutes.", false),
 
             text("pricing.input-usd-per-mtok", GROUP_PRICING, "Default input price",
                     "What a model with no price of its own is assumed to cost, in dollars per "
