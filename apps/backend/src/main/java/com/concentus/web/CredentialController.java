@@ -1,5 +1,7 @@
 package com.concentus.web;
 
+import com.concentus.audit.AuditKinds;
+import com.concentus.audit.AuditService;
 import com.concentus.auth.OrgContext;
 import com.concentus.secrets.CredentialStore;
 import org.springframework.http.HttpStatus;
@@ -34,10 +36,13 @@ public class CredentialController {
 
     private final CredentialStore credentials;
     private final OrgContext orgContext;
+    /** Records that a credential came, changed or went — by label and kind, never by value. */
+    private final AuditService audit;
 
-    public CredentialController(CredentialStore credentials, OrgContext orgContext) {
+    public CredentialController(CredentialStore credentials, OrgContext orgContext, AuditService audit) {
         this.credentials = credentials;
         this.orgContext = orgContext;
+        this.audit = audit;
     }
 
     /**
@@ -76,8 +81,11 @@ public class CredentialController {
     public CredentialStore.Credential create(@RequestBody NewCredential body) {
         orgContext.requireAdmin();
         if (body == null) throw new IllegalArgumentException("A credential is required.");
-        return credentials.create(orgContext.requireOrganizationId(), body.label(),
-                kindOrDefault(body.kind()), body.value());
+        CredentialStore.Credential created = credentials.create(orgContext.requireOrganizationId(),
+                body.label(), kindOrDefault(body.kind()), body.value());
+        audit.record(AuditKinds.CREDENTIAL_CREATED, "credential", created.id(), created.label(),
+                Map.of("kind", created.kind()));
+        return created;
     }
 
     /**
@@ -94,22 +102,33 @@ public class CredentialController {
         credentials.find(organizationId, id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such credential."));
 
-        if (body != null && body.label() != null && !body.label().isBlank()) {
+        boolean renamed = body != null && body.label() != null && !body.label().isBlank();
+        boolean replaced = body != null && body.value() != null && !body.value().isBlank();
+        if (renamed) {
             credentials.rename(organizationId, id, body.label());
         }
-        if (body != null && body.value() != null && !body.value().isBlank()) {
+        if (replaced) {
             credentials.updateSecret(organizationId, id, body.value());
         }
-        return credentials.find(organizationId, id).orElseThrow();
+        CredentialStore.Credential updated = credentials.find(organizationId, id).orElseThrow();
+        // Which halves changed, never what they changed to: the label is the row's own subject
+        // and the value is the one thing this API never returns to anyone.
+        audit.record(AuditKinds.CREDENTIAL_UPDATED, "credential", updated.id(), updated.label(),
+                Map.of("renamed", renamed, "valueReplaced", replaced));
+        return updated;
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable String id) {
         orgContext.requireAdmin();
-        if (!credentials.delete(orgContext.requireOrganizationId(), id)) {
+        String organizationId = orgContext.requireOrganizationId();
+        // Read before the delete: afterwards the label is gone with the row.
+        String label = credentials.find(organizationId, id).map(CredentialStore.Credential::label).orElse(null);
+        if (!credentials.delete(organizationId, id)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such credential.");
         }
+        audit.record(AuditKinds.CREDENTIAL_DELETED, "credential", id, label, null);
     }
 
     private static String kindOrDefault(String kind) {

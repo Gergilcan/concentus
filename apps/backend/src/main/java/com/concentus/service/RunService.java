@@ -79,6 +79,8 @@ public class RunService {
     private final ToolCallLoopGuard loops;
     /** The subscription's allowance meter, so a run that starts near the edge says so. */
     private final ClaudeUsageService usage;
+    /** The trail: every start, stop, decision and golden mark lands there, credited to whoever did it. */
+    private final com.concentus.audit.AuditService audit;
 
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
                       ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
@@ -91,9 +93,11 @@ public class RunService {
                       com.concentus.config.Settings settings,
                       com.concentus.telemetry.Telemetry telemetry,
                       ToolCallLoopGuard loops,
-                      ClaudeUsageService usage) {
+                      ClaudeUsageService usage,
+                      com.concentus.audit.AuditService audit) {
         this.clientProvider = clientProvider;
         this.usage = usage;
+        this.audit = audit;
         this.compiler = compiler;
         this.launcher = launcher;
         this.backends = backends;
@@ -433,17 +437,14 @@ public class RunService {
      * @param chain the flows already running above this one, oldest first
      */
     public RunSummary startSubflow(FlowGraph flow, String prompt, List<String> chain) {
-        RunSummary summary = start(flow, prompt);
-        AgentRun run = runs.get(summary.id());
-        if (run != null) {
-            run.flowChain = chain == null ? List.of() : List.copyOf(chain);
-            run.trigger = "subflow";
-            run.emit(RunEvent.of("system", "Started by another flow. Chain: "
-                    + String.join(" → ", run.flowChain) + "."));
-            runStore.persist(run);
-            return run.toSummary();
-        }
-        return summary;
+        AgentRun run = launch(flow, prompt, null, null);
+        run.flowChain = chain == null ? List.of() : List.copyOf(chain);
+        run.trigger = "subflow";
+        run.emit(RunEvent.of("system", "Started by another flow. Chain: "
+                + String.join(" → ", run.flowChain) + "."));
+        runStore.persist(run);
+        auditStarted(run, com.concentus.audit.AuditKinds.RUN_STARTED, Map.of("chain", run.flowChain));
+        return run.toSummary();
     }
 
     /**
@@ -456,11 +457,10 @@ public class RunService {
      * shadow one is the one that matters more.
      */
     public RunSummary startTriggered(FlowGraph flow, String prompt, String triggerLabel) {
-        RunSummary summary = start(flow, prompt);
-        AgentRun run = runs.get(summary.id());
-        if (run == null) return summary;
+        AgentRun run = launch(flow, prompt, null, null);
         run.trigger = run.shadow ? triggerLabel + " (shadow)" : triggerLabel;
         runStore.persist(run);
+        auditStarted(run, com.concentus.audit.AuditKinds.RUN_STARTED, null);
         return run.toSummary();
     }
 
@@ -481,6 +481,34 @@ public class RunService {
      * needs, because the boxes it reuses must be on the run before the executor looks.
      */
     public RunSummary start(FlowGraph flow, String initialPromptOverride, String forcedFallback,
+                            java.util.function.Consumer<AgentRun> prepare) {
+        AgentRun run = launch(flow, initialPromptOverride, forcedFallback, prepare);
+        auditStarted(run, com.concentus.audit.AuditKinds.RUN_STARTED, null);
+        return run.toSummary();
+    }
+
+    /**
+     * Writes the run's start to the trail, with the trigger as it FINALLY reads.
+     *
+     * <p>Kept apart from {@link #launch} on purpose: the callers that relabel a run — the
+     * published endpoint, a sub-flow, a golden check, a block re-run — set the trigger after the
+     * launch, and a row written inside it would credit a webhook's run to "cron". Each of those
+     * callers records once it has said what the run is. When nobody is signed in, the row is
+     * credited to {@code system:<trigger>} — the schedule, the delivery, the mailbox that fired it.
+     */
+    private void auditStarted(AgentRun run, String kind, Map<String, ?> extra) {
+        Map<String, Object> detail = new java.util.LinkedHashMap<>();
+        detail.put("trigger", run.trigger);
+        detail.put("flowId", run.flowId);
+        detail.put("flowVersion", run.flowVersion);
+        detail.put("backend", run.backend);
+        if (extra != null) detail.putAll(extra);
+        String trigger = run.trigger == null ? "manual" : run.trigger.replace(" (shadow)", "");
+        audit.recordSystem(trigger, kind, "run", run.id, run.flowName, detail);
+    }
+
+    /** Every start, before it is written to the trail: the run, in the registry, dispatched. */
+    private AgentRun launch(FlowGraph flow, String initialPromptOverride, String forcedFallback,
                             java.util.function.Consumer<AgentRun> prepare) {
         // Variables resolve at start time, not at save time: the flow's prompts keep their
         // {{NAME}} placeholders on disk, and each run stamps in whatever the organization and the
@@ -580,7 +608,7 @@ public class RunService {
                     + (compiled.subAgents().size() + 1) + " agents)…"));
             submitOrFail(run, () -> execute(run, compiled));
         }
-        return run.toSummary();
+        return run;
     }
 
     /**
@@ -846,6 +874,9 @@ public class RunService {
         }
         run.golden = golden;
         runStore.persist(run);
+        audit.record(golden ? com.concentus.audit.AuditKinds.RUN_GOLDEN_SET
+                : com.concentus.audit.AuditKinds.RUN_GOLDEN_UNSET, "run", run.id, run.flowName,
+                Map.of("flowId", run.flowId == null ? "" : run.flowId, "flowVersion", run.flowVersion));
         return run.toSummary();
     }
 
@@ -865,18 +896,15 @@ public class RunService {
         if (golden.initialPrompt == null || golden.initialPrompt.isBlank()) {
             throw new IllegalStateException("The golden run recorded no initial input to replay.");
         }
-        RunSummary started = start(currentFlow, golden.initialPrompt);
-        AgentRun run = runs.get(started.id());
-        if (run != null) {
-            // Labelled for what it is, in every list and in the history: a comparison run, not
-            // the trigger the flow normally fires on. Shadow stays visible — a flow whose trigger
-            // is shadowed plans without acting, and its golden check inherits that, so the
-            // comparison reads plan-vs-run unless the shadow is lifted first.
-            run.trigger = run.shadow ? "golden (shadow)" : "golden";
-            runStore.persist(run);
-            return run.toSummary();
-        }
-        return started;
+        AgentRun run = launch(currentFlow, golden.initialPrompt, null, null);
+        // Labelled for what it is, in every list and in the history: a comparison run, not
+        // the trigger the flow normally fires on. Shadow stays visible — a flow whose trigger
+        // is shadowed plans without acting, and its golden check inherits that, so the
+        // comparison reads plan-vs-run unless the shadow is lifted first.
+        run.trigger = run.shadow ? "golden (shadow)" : "golden";
+        runStore.persist(run);
+        auditStarted(run, com.concentus.audit.AuditKinds.RUN_STARTED, Map.of("goldenRunId", golden.id));
+        return run.toSummary();
     }
 
     /**
@@ -893,14 +921,13 @@ public class RunService {
         } catch (Exception e) {
             throw new IllegalStateException("Stored flow for this execution could not be read: " + e.getMessage());
         }
-        RunSummary started = start(flow, old.initialPrompt);
-        AgentRun run = runs.get(started.id());
-        if (run == null) return started;
+        AgentRun run = launch(flow, old.initialPrompt, null, null);
         // A retry replays the ORIGINAL revision, so it carries the original's version number.
-        // start() stamped the flow's current version, which for an edited flow would label this
+        // launch() stamped the flow's current version, which for an edited flow would label this
         // run with a revision it never executed.
         run.flowVersion = old.flowVersion;
         runStore.persist(run);
+        auditStarted(run, com.concentus.audit.AuditKinds.RUN_RETRIED, Map.of("of", old.id));
         return run.toSummary();
     }
 
@@ -930,18 +957,18 @@ public class RunService {
         List<NodeExec> boxes = old.nodeExecList();
         boolean fanout = old.compiled != null && old.compiled.coordinator() != null
                 && "fanout".equals(old.compiled.coordinator().execution);
-        RunSummary started = start(flow, old.initialPrompt, null, run -> {
-            run.resumeOf = old.id;
-            run.priorExecs = fanout ? boxes : null;
-            run.flowVersion = old.flowVersion;
-            run.emit(RunEvent.of("system", fanout
+        AgentRun run = launch(flow, old.initialPrompt, null, r -> {
+            r.resumeOf = old.id;
+            r.priorExecs = fanout ? boxes : null;
+            r.flowVersion = old.flowVersion;
+            r.emit(RunEvent.of("system", fanout
                     ? "Resumes run " + old.id + ": workers that passed there are reused, the rest run."
                     : "Resumes run " + old.id + ". A shared session has no boxes to reuse, so this "
                             + "starts the flow again from the beginning."));
         });
-        AgentRun run = runs.get(started.id());
-        if (run != null) runStore.persist(run);
-        return run == null ? started : run.toSummary();
+        runStore.persist(run);
+        auditStarted(run, com.concentus.audit.AuditKinds.RUN_RESUMED, Map.of("of", old.id));
+        return run.toSummary();
     }
 
     /**
@@ -983,9 +1010,7 @@ public class RunService {
         }
 
         FlowGraph slice = BlockSlice.of(flow, nodeId, downstream, model);
-        RunSummary started = start(slice, input);
-        AgentRun run = runs.get(started.id());
-        if (run == null) return started;
+        AgentRun run = launch(slice, input, null, null);
         // Named for what it is wherever runs are listed, and pointed back at the execution it was
         // cut from — a block re-run that looked like an ordinary manual run would quietly pollute
         // a flow's history and its success rate with fragments of other runs.
@@ -999,6 +1024,8 @@ public class RunService {
                         : " with an edited input.")
                 + (model == null || model.isBlank() ? "" : " On " + model.trim() + ".")));
         runStore.persist(run);
+        auditStarted(run, com.concentus.audit.AuditKinds.RUN_STARTED,
+                Map.of("parentRunId", old.id, "block", nodeId));
         return run.toSummary();
     }
 
@@ -1068,6 +1095,7 @@ public class RunService {
         run.approved = true;
         run.emit(RunEvent.of("system", "Approved — carrying out the plan."));
         runStore.persist(run);
+        audit.record(com.concentus.audit.AuditKinds.RUN_APPROVED, "run", run.id, run.flowName, null);
         // Whoever decided — app button or Slack reaction — the remote message shows the outcome.
         remoteApprovals.settled(run.id, "approved");
         exec.submit(() -> runLocalTurn(run,
@@ -1084,6 +1112,7 @@ public class RunService {
         run.emit(RunEvent.of("system", "Rejected — the plan was not carried out."));
         run.emit(RunEvent.of("status", "terminated"));
         runStore.persist(run);
+        audit.record(com.concentus.audit.AuditKinds.RUN_REJECTED, "run", run.id, run.flowName, null);
         remoteApprovals.settled(run.id, "rejected");
     }
 
@@ -1108,8 +1137,27 @@ public class RunService {
         }
         run.emit(RunEvent.of("status", "terminated"));
         runStore.persist(run);
+        audit.record(com.concentus.audit.AuditKinds.RUN_STOPPED, "run", run.id, run.flowName, null);
         // A stopped run is no longer asking anyone anything.
         remoteApprovals.settled(runId, "closed");
+    }
+
+    /**
+     * Drops from the registry every finished, non-golden run created before {@code cutoffMillis}
+     * — retention's half of a purge. The database rows are the retention job's to delete; this
+     * keeps memory from disagreeing with it, because the store's write is an upsert and a run
+     * still held here would be written back on its next persist.
+     */
+    public int forgetOlderThan(long cutoffMillis) {
+        List<String> gone = runs.values().stream()
+                .filter(r -> r.createdAt < cutoffMillis && isTerminal(r.status) && !r.golden)
+                .map(r -> r.id)
+                .toList();
+        gone.forEach(id -> {
+            runs.remove(id);
+            loops.forget(id);
+        });
+        return gone.size();
     }
 
     /** Reload persisted runs on startup so they survive restarts and can be continued. */

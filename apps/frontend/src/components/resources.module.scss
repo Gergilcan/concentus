@@ -1531,3 +1531,132 @@
   white-space: pre;
   max-width: 72ch;
 }
+
+/* ---- audit trail ---- */
+
+/** The two export buttons, side by side with the heading they belong to. */
+.auditExport {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/**
+ * The tier gate, in the backend's own sentence. A grey button is not an explanation, and the
+ * sentence names both the feature and the tier that has it.
+ */
+.auditGate {
+  margin: 0 0 var(--sp-4);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: t.$muted;
+  max-width: 78ch;
+}
+
+/** The window in force, stated next to the trail it applies to; the purge button reads as part of it. */
+.auditRetention {
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
+  padding: 10px 14px;
+  margin-bottom: var(--sp-4);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: t.$muted;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+
+  b {
+    color: t.$text;
+  }
+}
+
+/** Actor, kind, two dates and Apply on one line; stacked where one line is not there. */
+.auditFilters {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
+
+  @media (max-width: 960px) {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .field {
+    margin-bottom: 0;
+    max-width: none;
+  }
+}
+
+/** The table scrolls sideways inside its own box; the page never does. */
+.auditTableWrap {
+  border: 1px solid t.$border;
+  border-radius: t.$radius;
+  overflow: auto;
+}
+
+.auditTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+
+  th,
+  td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid t.$border;
+    vertical-align: top;
+    white-space: nowrap;
+  }
+
+  th {
+    font-weight: 600;
+    color: t.$muted;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: t.$panel-2;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  tbody tr:hover {
+    background: t.$panel-2;
+  }
+}
+
+/** The role the actor held at the time — a fact about then, not a lookup of now. */
+.auditRole {
+  margin-left: 6px;
+  font-size: 10.5px;
+  color: t.$muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/** Machine vocabulary on purpose: the same string the export carries, so a grep finds both. */
+.auditKind {
+  font-size: 11.5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: t.$panel-2;
+  border: 1px solid t.$border;
+}
+
+/** The one column allowed to wrap: it is prose-shaped, and truncating it hides the point. */
+.auditDetail {
+  white-space: normal !important;
+  color: t.$muted;
+  max-width: 40ch;
+}
+
+.auditFoot {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--sp-4);
+}

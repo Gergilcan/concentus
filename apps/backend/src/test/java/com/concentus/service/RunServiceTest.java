@@ -54,6 +54,8 @@ class RunServiceTest {
      */
     private final com.concentus.store.FlowVersionStore flowVersions =
             mock(com.concentus.store.FlowVersionStore.class);
+    /** The trail, mocked: the tests below assert on WHAT was recorded, not on where it went. */
+    private final com.concentus.audit.AuditService audit = mock(com.concentus.audit.AuditService.class);
     private final ObjectMapper mapper = new ObjectMapper();
 
     private final List<RunService> created = new ArrayList<>();
@@ -85,7 +87,7 @@ class RunServiceTest {
                         "runs.queue-capacity", String.valueOf(queueCapacity),
                         "runs.max-retained", String.valueOf(maxRetainedRuns))),
                 com.concentus.telemetry.Telemetry.none(), new ToolCallLoopGuard(),
-                mock(ClaudeUsageService.class));
+                mock(ClaudeUsageService.class), audit);
         created.add(s);
         return s;
     }
@@ -993,7 +995,7 @@ class RunServiceTest {
                         "runs.queue-capacity", "8",
                         "runs.max-retained", "10")),
                 com.concentus.telemetry.Telemetry.none(), new ToolCallLoopGuard(),
-                mock(ClaudeUsageService.class));
+                mock(ClaudeUsageService.class), audit);
         created.add(s);
         return s;
     }
@@ -1141,5 +1143,62 @@ class RunServiceTest {
         AgentRun run = created.get(created.size() - 1).get(summary.id()).orElseThrow();
         org.assertj.core.api.Assertions.assertThat(run.shadow).isFalse();
         org.assertj.core.api.Assertions.assertThat(run.trigger).isEqualTo("webhook");
+    }
+
+    // ---------------------------------------------------------------- audit trail
+
+    // Nobody is signed in on these threads, so the row's fallback actor is the trigger: a run
+    // a schedule fired must read "system:cron", and a run a person pressed reads their name.
+    @Test
+    void startingStoppingAndMarkingGoldenAreWrittenToTheTrail() {
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        RunService svc = newService(4, 8, 10);
+
+        RunSummary s = svc.start(flow("f1"));
+        verify(audit).recordSystem(eq("manual"), eq(com.concentus.audit.AuditKinds.RUN_STARTED),
+                eq("run"), eq(s.id()), eq("Flow"), any());
+
+        svc.stop(s.id());
+        verify(audit).record(eq(com.concentus.audit.AuditKinds.RUN_STOPPED), eq("run"), eq(s.id()),
+                eq("Flow"), any());
+
+        svc.setGolden(s.id(), true);
+        verify(audit).record(eq(com.concentus.audit.AuditKinds.RUN_GOLDEN_SET), eq("run"), eq(s.id()),
+                eq("Flow"), any());
+        svc.setGolden(s.id(), false);
+        verify(audit).record(eq(com.concentus.audit.AuditKinds.RUN_GOLDEN_UNSET), eq("run"), eq(s.id()),
+                eq("Flow"), any());
+    }
+
+    // A relabelled run is recorded once, under the label it ends up with: the published endpoint's
+    // run must not appear in the trail as "manual" with a second row correcting it.
+    @Test
+    void aTriggeredRunIsRecordedOnceUnderItsFinalTrigger() {
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        RunService svc = newService(4, 8, 10);
+
+        RunSummary s = svc.startTriggered(flow("f1"), "go", "api");
+
+        verify(audit).recordSystem(eq("api"), eq(com.concentus.audit.AuditKinds.RUN_STARTED),
+                eq("run"), eq(s.id()), eq("Flow"), any());
+        verify(audit, org.mockito.Mockito.times(1)).recordSystem(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void aRetryIsRecordedAsARetryOfTheOriginalRatherThanAsAFreshStart() {
+        when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
+        when(clientProvider.backend()).thenReturn("local");
+        RunService svc = newService(4, 8, 10);
+        RunSummary original = svc.start(flow("f1"));
+
+        RunSummary retried = svc.retry(original.id());
+
+        verify(audit).recordSystem(eq("manual"), eq(com.concentus.audit.AuditKinds.RUN_RETRIED),
+                eq("run"), eq(retried.id()), eq("Flow"),
+                org.mockito.ArgumentMatchers.argThat(d -> original.id().equals(d.get("of"))));
+        verify(audit, org.mockito.Mockito.times(1)).recordSystem(any(),
+                eq(com.concentus.audit.AuditKinds.RUN_STARTED), any(), any(), any(), any());
     }
 }

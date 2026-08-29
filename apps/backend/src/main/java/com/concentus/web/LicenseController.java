@@ -28,10 +28,14 @@ public class LicenseController {
 
     private final LicenseService license;
     private final OrgContext orgContext;
+    /** A new license changes what everyone here may do; who installed which one is on record. */
+    private final com.concentus.audit.AuditService audit;
 
-    public LicenseController(LicenseService license, OrgContext orgContext) {
+    public LicenseController(LicenseService license, OrgContext orgContext,
+                             com.concentus.audit.AuditService audit) {
         this.license = license;
         this.orgContext = orgContext;
+        this.audit = audit;
     }
 
     @GetMapping
@@ -50,7 +54,16 @@ public class LicenseController {
         orgContext.requireAdmin();
         try {
             license.install(body.token());
-            return ResponseEntity.ok(license.status());
+            LicenseStatus installed = license.status();
+            // The token itself is the one thing NOT written: it is the key, and the trail is
+            // readable by every admin. Tier, licensee, seats and expiry say what was installed.
+            Map<String, Object> detail = new java.util.LinkedHashMap<>();
+            detail.put("tier", installed.tier());
+            detail.put("seats", installed.seats());
+            detail.put("expires", installed.expires());
+            audit.record(com.concentus.audit.AuditKinds.LICENSE_INSTALLED, "license", null,
+                    installed.licensee(), detail);
+            return ResponseEntity.ok(installed);
         } catch (InvalidLicenseException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

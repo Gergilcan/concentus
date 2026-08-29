@@ -1596,3 +1596,57 @@ export interface UsageSummary {
   /** The last seven days, oldest first — what turns three totals into a shape. */
   days?: UsageDay[]
 }
+
+/** One row of the audit trail — who did what to which subject, and when. */
+export interface AuditEvent {
+  /** The paging cursor: newest largest. */
+  id: number
+  /** Epoch milliseconds. */
+  at: number
+  /** A signed-in address, or `system:<trigger>` for an action nobody was signed in for. */
+  actorEmail: string | null
+  /** The role the actor held at the time; null for the system. */
+  actorRole: string | null
+  /** `subject.verb`, past tense: "flow.saved", "member.role_changed". */
+  kind: string
+  subjectType: string | null
+  subjectId: string | null
+  /** The subject's name as a person knows it; survives the subject's deletion. */
+  subjectLabel: string | null
+  /** A JSON object with whatever else the action kept — never a secret value. */
+  detail: string | null
+}
+
+export interface AuditPage {
+  events: AuditEvent[]
+  /** A full page may have a next one; the client asks with `before` and finds out. */
+  hasMore: boolean
+  nextBefore: number | null
+}
+
+/** What the Audit panel needs before it draws: filters, the export gate, the retention in force. */
+export interface AuditStatus {
+  available: boolean
+  kinds: string[]
+  /** Null when export is allowed; otherwise the sentence to print on the disabled button. */
+  exportRefusal: string | null
+  /** Null means kept without limit. */
+  retentionDays: number | null
+  retentionReason: string
+}
+
+export interface AuditFilters {
+  actor?: string
+  kind?: string
+  /** yyyy-mm-dd, inclusive. */
+  from?: string
+  to?: string
+}
+
+/** What one retention purge removed. */
+export interface RetentionReport {
+  days: number | null
+  runs: number
+  versions: number
+  auditEvents: number
+}

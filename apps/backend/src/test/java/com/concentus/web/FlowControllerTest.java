@@ -1,5 +1,7 @@
 package com.concentus.web;
 
+import com.concentus.audit.AuditKinds;
+import com.concentus.audit.AuditService;
 import com.concentus.auth.OrgContext;
 import com.concentus.mail.MailTriggerService;
 import com.concentus.model.FlowGraph;
@@ -42,13 +44,14 @@ class FlowControllerTest {
 
     private final com.concentus.service.GoldenStatusService goldenStatus =
             mock(com.concentus.service.GoldenStatusService.class);
+    private final AuditService audit = mock(AuditService.class);
 
     private FlowController controller() {
         return new FlowController(store, runService, scheduler, mailTriggers, versions, memory,
                 new OrgContext("default"),
                 mock(com.concentus.service.FlowGenerator.class), goldenStatus,
                 mock(com.concentus.service.FlowDoctor.class),
-                mock(com.concentus.service.FolderWatchService.class));
+                mock(com.concentus.service.FolderWatchService.class), audit);
     }
 
     // A wrong name on a revision is worse than no name: it is the field people read to work out
@@ -147,5 +150,66 @@ class FlowControllerTest {
         controller().save(flow("f1", "After"));
 
         verify(runService, never()).startGoldenCheck(any(), any());
+    }
+
+    // ---------------------------------------------------------------- audit trail
+
+    private static FlowGraph published(String id, boolean published, String token) {
+        return new FlowGraph(id, "Endpoint flow", "managed",
+                List.of(new com.concentus.model.FlowNode("in", "input", null,
+                        java.util.Map.of("mode", "manual", "published", published, "publishToken", token))),
+                List.of(), null, List.of(), null, null);
+    }
+
+    @Test
+    void aFirstSaveIsRecordedAsCreatedAndALaterOneAsSavedWithItsVersion() {
+        when(store.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(versions.currentVersion("f1")).thenReturn(4);
+
+        controller().save(flow(null, "Brand new"));
+        verify(audit).record(eq(AuditKinds.FLOW_CREATED), eq("flow"), org.mockito.ArgumentMatchers.isNull(),
+                eq("Brand new"), any());
+
+        when(store.get("f1")).thenReturn(Optional.of(flow("f1", "Before")));
+        controller().save(flow("f1", "After"));
+        verify(audit).record(eq(AuditKinds.FLOW_SAVED), eq("flow"), eq("f1"), eq("After"),
+                eq(java.util.Map.of("version", 4)));
+    }
+
+    // Publishing is a toggle on the input node saved with the rest of the graph; the only place
+    // that can tell "published" from "renamed" is the save, with before and after side by side.
+    @Test
+    void publishingUnpublishingAndRegeneratingTheTokenAreTheirOwnRows() {
+        when(store.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        when(store.get("f1")).thenReturn(Optional.of(published("f1", false, "")));
+        controller().save(published("f1", true, "tok-1"));
+        verify(audit).record(eq(AuditKinds.FLOW_PUBLISHED), eq("flow"), eq("f1"), any(), any());
+
+        when(store.get("f1")).thenReturn(Optional.of(published("f1", true, "tok-1")));
+        controller().save(published("f1", true, "tok-2"));
+        verify(audit).record(eq(AuditKinds.FLOW_TOKEN_REGENERATED), eq("flow"), eq("f1"), any(), any());
+
+        when(store.get("f1")).thenReturn(Optional.of(published("f1", true, "tok-2")));
+        controller().save(published("f1", false, "tok-2"));
+        verify(audit).record(eq(AuditKinds.FLOW_UNPUBLISHED), eq("flow"), eq("f1"), any(), any());
+
+        // An ordinary save of a published flow — same token, same toggle — adds no publish row.
+        when(store.get("f1")).thenReturn(Optional.of(published("f1", true, "tok-2")));
+        controller().save(published("f1", true, "tok-2"));
+        verify(audit, org.mockito.Mockito.times(1)).record(eq(AuditKinds.FLOW_PUBLISHED), any(), any(), any(), any());
+        verify(audit, org.mockito.Mockito.times(1)).record(eq(AuditKinds.FLOW_TOKEN_REGENERATED), any(), any(), any(), any());
+        // The token itself never reaches the trail.
+        verify(audit, never()).record(any(), any(), any(), eq("tok-1"), any());
+        verify(audit, never()).record(any(), any(), any(), eq("tok-2"), any());
+    }
+
+    @Test
+    void deletingRecordsTheNameTheFlowHadBeforeItWasGone() {
+        when(store.get("f1")).thenReturn(Optional.of(flow("f1", "Doomed")));
+
+        controller().delete("f1");
+
+        verify(audit).record(eq(AuditKinds.FLOW_DELETED), eq("flow"), eq("f1"), eq("Doomed"), any());
     }
 }

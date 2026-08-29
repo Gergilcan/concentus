@@ -1,5 +1,7 @@
 package com.concentus.web;
 
+import com.concentus.audit.AuditKinds;
+import com.concentus.audit.AuditService;
 import com.concentus.auth.OrgContext;
 import com.concentus.config.SettingDef;
 import com.concentus.config.Settings;
@@ -36,13 +38,16 @@ public class SettingsController {
     private final Settings settings;
     private final Environment environment;
     private final OrgContext orgContext;
+    /** Which key changed and by whom; the value stays out of the trail, secret or not. */
+    private final AuditService audit;
 
     public SettingsController(SettingsStore store, Settings settings, Environment environment,
-                              OrgContext orgContext) {
+                              OrgContext orgContext, AuditService audit) {
         this.store = store;
         this.settings = settings;
         this.environment = environment;
         this.orgContext = orgContext;
+        this.audit = audit;
     }
 
     /** Where a value came from, which decides what the screen says next to it. */
@@ -115,6 +120,12 @@ public class SettingsController {
                     new IllegalArgumentException("Unknown setting '" + change.getKey() + "'."));
             store.put(organizationId, def.key(), change.getValue(),
                     def.type() == SettingDef.Type.SECRET, who);
+            // The key and whether it was cleared or set — never the value. A secret's value is a
+            // credential, and a plain one's is a number nobody needs the trail to remember when
+            // the settings screen shows it.
+            boolean cleared = change.getValue() == null || change.getValue().isBlank();
+            audit.record(AuditKinds.SETTING_CHANGED, "setting", def.key(), def.label(),
+                    Map.of("key", def.key(), "cleared", cleared));
         }
         return list();
     }

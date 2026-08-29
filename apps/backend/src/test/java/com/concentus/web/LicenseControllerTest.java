@@ -12,6 +12,7 @@ import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 /**
  * The license screen's write side. Reading — {@code GET /api/license} — is open to every signed-in
@@ -43,7 +44,7 @@ class LicenseControllerTest {
     @Test
     void a_non_admin_post_is_refused(@TempDir Path dir) throws Exception {
         LicenseService license = TestLicenses.serviceOn(dir);
-        LicenseController controller = new LicenseController(license, nonAdminContext());
+        LicenseController controller = new LicenseController(license, nonAdminContext(), mock(com.concentus.audit.AuditService.class));
 
         assertThatThrownBy(() -> controller.install(
                 new LicenseController.InstallRequest(TestLicenses.token("individual-test.license"))))
@@ -55,7 +56,7 @@ class LicenseControllerTest {
     @Test
     void an_admin_post_installs_the_license(@TempDir Path dir) throws Exception {
         LicenseService license = TestLicenses.serviceOn(dir);
-        LicenseController controller = new LicenseController(license, adminContext());
+        LicenseController controller = new LicenseController(license, adminContext(), mock(com.concentus.audit.AuditService.class));
 
         ResponseEntity<?> response = controller.install(
                 new LicenseController.InstallRequest(TestLicenses.token("individual-test.license")));
@@ -72,7 +73,7 @@ class LicenseControllerTest {
     void the_admin_gate_does_not_get_in_the_way_of_a_desktop_installs_own_admin(@TempDir Path dir)
             throws Exception {
         LicenseService license = TestLicenses.serviceOn(dir);
-        LicenseController controller = new LicenseController(license, adminContext());
+        LicenseController controller = new LicenseController(license, adminContext(), mock(com.concentus.audit.AuditService.class));
 
         ResponseEntity<?> response = controller.install(
                 new LicenseController.InstallRequest(TestLicenses.token("enterprise-test.license")));
@@ -84,7 +85,7 @@ class LicenseControllerTest {
     @Test
     void reading_the_status_needs_no_admin(@TempDir Path dir) throws Exception {
         LicenseService license = TestLicenses.serviceOn(dir);
-        LicenseController controller = new LicenseController(license, nonAdminContext());
+        LicenseController controller = new LicenseController(license, nonAdminContext(), mock(com.concentus.audit.AuditService.class));
 
         assertThat(controller.status()).isNotNull(); // does not throw for a non-admin caller
     }

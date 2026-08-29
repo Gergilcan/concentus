@@ -4,6 +4,7 @@ import { api } from '../api/client.ts'
 import type { DatabaseDef, FacadeProfile, LibraryAgent, McpDef } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, EFFORT_OPTIONS } from '../constants.ts'
 import { AddMcpServerModal } from './AddMcpServerModal.tsx'
+import { AuditPanel } from './AuditPanel.tsx'
 import { CredentialsPanel } from './CredentialsPanel.tsx'
 import { CrudPanel } from './CrudPanel.tsx'
 import { KnowledgePanel } from './KnowledgePanel.tsx'
@@ -22,7 +23,7 @@ import { shellBridge } from '../api/shell.ts'
 import { usePermissions } from '../state/permissions.tsx'
 import styles from './resources.module.scss'
 
-type Tab = 'settings' | 'members' | 'serviceAccounts' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
+type Tab = 'settings' | 'members' | 'serviceAccounts' | 'audit' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
 
 /**
  * The tab strip, in display order. `desktopOnly` keeps Updates out of a browser tab, which has no
@@ -78,6 +79,12 @@ const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolea
       'Tokens for machines — a CI job, a cron entry, another system. Each acts as its role on every request and takes no seat.',
   },
   {
+    id: 'audit',
+    label: 'Audit',
+    title:
+      'Who did what, and when. Readable by administrators on every tier; exporting it as a file is an Enterprise feature.',
+  },
+  {
     id: 'settings',
     label: 'Settings',
     title:
@@ -124,6 +131,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
       <div className={styles.tabBody}>
         {tab === 'members' && <MembersPanel pushError={pushError} />}
         {tab === 'serviceAccounts' && canAdminister && <ServiceAccountsPanel pushError={pushError} />}
+        {tab === 'audit' && <AuditPanel pushError={pushError} />}
 
         {tab === 'agents' && (
           <CrudPanel<LibraryAgent>

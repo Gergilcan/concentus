@@ -177,6 +177,27 @@ the team key, emailed through Resend, recorded in the ledger as `kind: trial`.
 | What the app shows | `LicenseStatus.trial`; the Settings panel leads with "Trial — N days left", counted from `expires`. The expired-beyond-grace messages say "trial" and point at buying, not renewing. |
 | Not configured | No `TEAM_SIGNING_KEY` (or Resend pair) → 503 "trials are not open yet", honest rather than generic: with no key there is nothing on its way. |
 
+## 12. Audit trail and retention (added 2026-08-29)
+
+Item 4 of the Enterprise line: the record of who did what, its export, and what a deployment
+keeps. Everything here reads the one gate in `Feature` / `LicenseService.allows(...)`; no tier
+question is asked anywhere else.
+
+| Question | Decision |
+| --- | --- |
+| Where it lives | `audit_events(id bigserial, at, organization_id, actor_email, actor_role, kind, subject_type, subject_id, subject_label, detail_json)` — migration `V16__audit_events.sql`. Append-only by convention; the only delete is retention's. A serial id because the trail is paged by `before=<id>`, and a monotonic integer is that cursor. |
+| What is written | `AuditService.record(kind, subjectType, subjectId, label, detail)`. The actor is read from `OrgContext` **inside** the service, never passed by the caller; with no principal the row says `system`, or `system:<trigger>` via `recordSystem(trigger, …)` — cron, webhook, mail, watch, api, subflow, retention. The role is copied at the time, not joined later. |
+| Kinds | `AuditKinds`: `run.{started,stopped,approved,rejected,retried,resumed,golden_set,golden_unset}`, `flow.{created,saved,deleted,published,unpublished,token_regenerated}`, `member.{invited,role_changed}`, `credential.{created,updated,deleted}`, `setting.changed`, `license.installed`, `backup.exported`, `retention.purged`. Publish/unpublish/token changes are detected in `FlowController.save` by comparing the input node before and after — no endpoint of their own exists. |
+| Never written | A credential's value, a secret setting's value, a license token, an endpoint token. Labels, keys, ids, counts and flags only — enforced at every recording site, stated in the migration. |
+| Failure | Never blocks the action. `record` catches, logs a warning naming the kind and subject, and returns. A trail with a hole in it has the hole in the log. |
+| Run relabelling | `RunService.start` became `launch` (registry + dispatch) plus the audit row. Callers that relabel a run — the published endpoint, a sub-flow, a golden check, a block re-run, retry, resume — record **once**, after the label is final, so a webhook's run is never on record as "cron". Retry and resume are their own kinds with `of: <original>`; a fresh `run.started` is not also written for them. |
+| Reading | `GET /api/audit?actor=&kind=&from=&to=&before=&limit=` (ADMIN, every tier), newest first; `actor` is a case-blind substring, dates are inclusive UTC days or epoch millis; `GET /api/audit/status` carries the kinds, the export refusal and the retention in force. *Resources → Audit*: filters, table, Load more. |
+| Export | `GET /api/audit/export?format=csv\|json&…` is `Feature.AUDIT_EXPORT`: refused with `refusal(...)` as a 403 whose body is the feature's own sentence; the panel shows the buttons disabled with that sentence. Streamed oldest-first, so a year of trail never sits in memory. |
+| Retention | `RetentionService`, `@Scheduled` nightly at 03:17 (`@EnableScheduling` on the application class), `POST /api/retention/run-now` for ADMIN. Team (`license.teamTier()`): runs older than `TEAM_RETENTION_DAYS` except golden ones; flow versions older than that except the current and any a golden run executed; audit events older than that. Enterprise (`allows(UNLIMITED_RETENTION)`): nothing — unless `retention.enterprise-days` (Settings → Retention, 0 = forever) names a window; the setting is read on that tier alone. Free: nothing. The purge writes its own `retention.purged` row as `system:retention`, and evicts what it deleted from `RunService`'s in-memory registry so an upsert cannot resurrect it. |
+| What the panel says | The window in force and the reason, in the backend's words (`RetentionService.Policy.reason`): "Team license: … 90 days …", "Enterprise license: … without limit", or the administrator's chosen number. |
+| Tests | `AuditServiceTest` (actor, system actor, a failing store never throws), `AuditControllerTest` and `RetentionServiceTest` against the embedded PostgreSQL with the fixture licenses (team purges and spares the golden pair; enterprise and free keep all; the enterprise setting is ignored on team), the recording sites in `RunServiceTest` / `FlowControllerTest`, and `AuditPanel.test.tsx` (rows, filters, paging, the disabled export with its refusal). |
+| Not done | Member removal and license removal have no endpoint today, so there is no row for them; `PolicyStore` does not exist on this branch, so no policy row either — the site is `AuditService.record` when it arrives. |
+
 ## 14. Service accounts, and the endpoint rate by tier (added 2026-08-29)
 
 Item 7 of the Enterprise line: the two caps in `Feature` that were constants without a consumer
