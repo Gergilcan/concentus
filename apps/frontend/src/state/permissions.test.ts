@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deniedReason, permissionsFor } from './permissions.tsx'
+import { deniedReason, permissionsFor } from './permissionRules.ts'
 
 /**
  * What the interface is allowed to offer.

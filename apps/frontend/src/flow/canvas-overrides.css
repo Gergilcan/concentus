@@ -4,7 +4,7 @@
  * 'input' is one of React Flow's BUILT-IN node type names (input/default/output/group), so even
  * though the app registers its own component for it, the wrapper still gets the library's
  * .react-flow__node-input styling: a 150px-wide box with its own background, border and padding.
- * Our node card is 190px, so it overflowed a narrower painted box behind it — the Input node was
+ * Our node card is wider, so it overflowed a narrower painted box behind it — the Input node was
  * the only one on the canvas wearing two backgrounds. None of the other node type names collide,
  * which is why only this one needed the reset.
  */

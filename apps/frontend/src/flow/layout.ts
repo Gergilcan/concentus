@@ -32,9 +32,12 @@ export interface LayoutEdge {
   target: string
 }
 
-/** Must match the card width in nodes.module.scss; measured sizes win when the canvas has them. */
-const NODE_W = 214
-const NODE_H = 110
+/**
+ * A card's size until the canvas has measured it — must match nodes.module.scss. Measured sizes
+ * win wherever the canvas has them; the store and the helper lines fall back to these too.
+ */
+export const NODE_W = 214
+export const NODE_H = 110
 
 export function tidyLayout(
   nodes: LayoutNode[],

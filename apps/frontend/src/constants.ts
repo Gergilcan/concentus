@@ -41,8 +41,9 @@ export const EFFORT_OPTIONS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 /** Default max-output-tokens for a freshly-created agent node. */
 export const DEFAULT_MAX_TOKENS = 16000
 
-/** Poll intervals (ms) used by the run console / auth badge. */
+/** Poll intervals (ms): the inspected run's node state, the flow/run lists, the auth badge. */
 export const RUN_POLL_INTERVAL_MS = 1500
 export const FLOWS_POLL_INTERVAL_MS = 4000
 export const AUTH_POLL_INTERVAL_MS = 15000
+/** How long a toast stays on screen (ms). */
 export const TOAST_DURATION_MS = 5000

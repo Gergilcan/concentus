@@ -160,12 +160,9 @@ interface SidePanelProps {
  *
  * The palette is the only one of these left — the node properties moved into a dialog opened by
  * double-clicking a block, because a 300px column is the wrong shape for writing a prompt in.
- * `side` is kept rather than hardcoded: the mirroring is what the component IS, and a second
- * panel on the right is a layout decision, not a rewrite.
- *
- * `side` decides which way the
- * chevrons point, which edge the handle sits on, and which direction a drag grows the panel —
- * rather than each caller spelling out its own half of the mirror.
+ * `side` is kept rather than hardcoded: it decides which way the chevrons point, which edge the
+ * handle sits on, and which direction a drag grows the panel. The mirroring is what the
+ * component IS, and a second panel on the right is a layout decision, not a rewrite.
  */
 function SidePanel({ side, label, railLabel, open, onToggle, startDrag, children }: SidePanelProps) {
   const { t } = useTranslation()

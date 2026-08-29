@@ -41,7 +41,6 @@ import type {
   RemoteRepoList,
   RuntimeCheck,
   RuntimeInstallPlan,
-  RuntimeStatus,
   RunComparison,
   RunDiff,
   ReplayReport,
@@ -55,6 +54,24 @@ import type {
   SignInProvidersList,
   SwitchableAccount,
   SqlPreview,
+  ApiOperationView,
+  AuditFilters,
+  AuditPage,
+  AuditStatus,
+  AvailablePlugin,
+  CreatedServiceAccount,
+  FacadeProfile,
+  Member,
+  Organization,
+  PluginsView,
+  RetentionReport,
+  ServiceAccount,
+  ServiceAccountListing,
+  SkillCatalogSkill,
+  SkillInfo,
+  SkillRepo,
+  UsageSummary,
+  Variable,
 } from './types.ts'
 
 export interface SqlSourceInput {
@@ -113,6 +130,18 @@ function query(params: Record<string, string | undefined>): string {
   return pairs.length ? `?${pairs.join('&')}` : ''
 }
 
+/** The error a refused response becomes: the backend's own sentence when the body carries one. */
+async function refusal(res: Response): Promise<ApiError> {
+  let message = `${res.status} ${res.statusText}`
+  try {
+    const body = (await res.json()) as { error?: string }
+    if (body?.error) message = body.error
+  } catch {
+    /* non-JSON error body */
+  }
+  return new ApiError(message, res.status)
+}
+
 async function req<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -145,19 +174,22 @@ async function req<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIME
   } finally {
     clearTimeout(timer)
   }
-  if (!res.ok) {
-    let message = `${res.status} ${res.statusText}`
-    try {
-      const body = (await res.json()) as { error?: string }
-      if (body?.error) message = body.error
-    } catch {
-      /* non-JSON error body */
-    }
-    throw new ApiError(message, res.status)
-  }
+  if (!res.ok) throw await refusal(res)
   if (res.status === 204) return undefined as T
   const text = await res.text()
   return (text ? JSON.parse(text) : undefined) as T
+}
+
+/**
+ * A file rather than JSON — a patch, a backup, an audit export — as a Blob for a download link.
+ * No timeout, because these can be large. A refusal is surfaced exactly as req() surfaces one, so
+ * a sentence worth reading (a tier gate, "nothing changed in this checkout") reaches the button
+ * instead of a bare "403 Forbidden".
+ */
+async function blob(path: string): Promise<Blob> {
+  const res = await fetch(`/api${path}`, { credentials: 'same-origin' })
+  if (!res.ok) throw await refusal(res)
+  return res.blob()
 }
 
 /**
@@ -231,8 +263,6 @@ export const api = {
   getEvalResult: (flowId: string, id: string) =>
     req<FlowEvalResult>(`/flows/${flowId}/evals/results/${id}`),
   // runtimes (what stdio MCP servers need in order to launch)
-  listRuntimes: (refresh = false) =>
-    req<RuntimeStatus[]>(`/runtimes${refresh ? '?refresh=true' : ''}`),
   /** What a configured MCP command needs, and whether this machine has it. */
   checkRuntime: (command: string, refresh = false) =>
     req<RuntimeCheck>(
@@ -260,28 +290,9 @@ export const api = {
   getRunNodes: (id: string) => req<NodeExecReport>(`/runs/${id}/nodes`),
   /** What the agents did to the repositories: one diff per checkout, read from disk now. */
   getRunDiffs: (id: string) => req<RunDiff[]>(`/runs/${id}/diffs`),
-  /**
-   * One checkout's diff as a file. Straight through fetch rather than req(): the answer is the
-   * patch text, not JSON, and it is meant for saving, not for parsing.
-   */
-  fetchRunPatch: async (runId: string, nodeId: string, folder: string): Promise<Blob> => {
-    const res = await fetch(
-      `/api/runs/${runId}/diffs/${encodeURIComponent(nodeId)}/${encodeURIComponent(folder)}.patch`,
-      { credentials: 'same-origin' },
-    )
-    if (!res.ok) {
-      let message = `${res.status} ${res.statusText}`
-      try {
-        const body = (await res.json()) as { error?: string; message?: string }
-        if (body?.message) message = body.message
-        else if (body?.error) message = body.error
-      } catch {
-        /* non-JSON error body */
-      }
-      throw new ApiError(message, res.status)
-    }
-    return res.blob()
-  },
+  /** One checkout's diff as a file: the patch text, meant for saving, not for parsing. */
+  fetchRunPatch: (runId: string, nodeId: string, folder: string) =>
+    blob(`/runs/${runId}/diffs/${encodeURIComponent(nodeId)}/${encodeURIComponent(folder)}.patch`),
   /** The flow snapshot this run executed (works for ad-hoc runs and edited/deleted flows). */
   getRunFlow: (id: string) => req<BackendFlow>(`/runs/${id}/flow`),
   startRun: (flow: BackendFlow) =>
@@ -321,7 +332,6 @@ export const api = {
     req<LibraryAgent>('/agents', { method: 'POST', body: JSON.stringify(a) }),
   deleteAgent: (id: string) => req<void>(`/agents/${id}`, { method: 'DELETE' }),
 
-  // database definitions
   // Where the app keeps its own data — not to be confused with /databases below, which is the
   // databases an agent reads as RAG context.
   getStorage: () => req<StorageConfig>('/storage'),
@@ -352,8 +362,7 @@ export const api = {
       totalRows: number
     }>('/storage/migrate', { method: 'POST', body: JSON.stringify(s) }, 15 * 60_000),
 
-  // Knowledge bases: document collections agents retrieve from. The upload is multipart, so it
-  // bypasses req()'s JSON defaults.
+  // Knowledge bases: document collections agents retrieve from.
   listKnowledge: () => req<KnowledgeDef[]>('/knowledge'),
   saveKnowledge: (k: KnowledgeDef) =>
     req<KnowledgeDef>('/knowledge', { method: 'POST', body: JSON.stringify(k) }),
@@ -427,32 +436,32 @@ export const api = {
 
   /** Parses an OpenAPI spec (by URL or pasted) into the operations an API node could allow. */
   previewApiSpec: (specUrl: string, specText?: string) =>
-    req<{ baseUrl: string; operations: import('./types.ts').ApiOperationView[] }>(
+    req<{ baseUrl: string; operations: ApiOperationView[] }>(
       '/api-nodes/preview',
       { method: 'POST', body: JSON.stringify({ specUrl, specText }) },
       60_000,
     ),
   // Agent Skills: the upload is multipart (a zipped skill folder).
-  listSkills: () => req<import('./types.ts').SkillInfo[]>('/skills'),
+  listSkills: () => req<SkillInfo[]>('/skills'),
   uploadSkill: (file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return req<import('./types.ts').SkillInfo>('/skills', { method: 'POST', body: form }, 120_000)
+    return req<SkillInfo>('/skills', { method: 'POST', body: form }, 120_000)
   },
   deleteSkill: (id: string) => req<void>(`/skills/${id}`, { method: 'DELETE' }),
   // The GitHub skill catalog. Long timeouts: listing a repo's skills downloads its archive.
-  skillCatalog: () => req<import('./types.ts').SkillRepo[]>('/skills/catalog', {}, 30_000),
+  skillCatalog: () => req<SkillRepo[]>('/skills/catalog', {}, 30_000),
   skillCatalogRepo: (owner: string, repo: string) =>
-    req<import('./types.ts').SkillCatalogSkill[]>(
+    req<SkillCatalogSkill[]>(
       `/skills/catalog/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {}, 60_000),
   installCatalogSkill: (owner: string, repo: string, path: string) =>
-    req<import('./types.ts').SkillInfo>('/skills/catalog/install',
+    req<SkillInfo>('/skills/catalog/install',
       { method: 'POST', body: JSON.stringify({ owner, repo, path }) }, 120_000),
   // Claude Code plugins, via the `claude plugin` CLI. Installing clones a marketplace repo,
   // hence the long timeouts.
-  listPlugins: () => req<import('./types.ts').PluginsView>('/plugins'),
+  listPlugins: () => req<PluginsView>('/plugins'),
   /** The whole marketplace catalog; the panel filters it client-side. Heavier read, cached 30s server-side. */
-  listAvailablePlugins: () => req<import('./types.ts').AvailablePlugin[]>('/plugins/available', {}, 60_000),
+  listAvailablePlugins: () => req<AvailablePlugin[]>('/plugins/available', {}, 60_000),
   installPlugin: (id: string) =>
     req<{ status: string }>('/plugins/install', { method: 'POST', body: JSON.stringify({ id }) }, 120_000),
   uninstallPlugin: (id: string) =>
@@ -465,7 +474,9 @@ export const api = {
   removePluginMarketplace: (name: string) =>
     req<{ status: string }>('/plugins/marketplaces/remove', { method: 'POST', body: JSON.stringify({ name }) }, 60_000),
   /** Measured Claude consumption on this machine (CLI transcripts). Cached 30s server-side. */
-  usageSummary: () => req<import('./types.ts').UsageSummary>('/usage'),
+  usageSummary: () => req<UsageSummary>('/usage'),
+
+  // database definitions (what an agent queries for context; the app's own storage is above)
   listDatabases: () => req<DatabaseDef[]>('/databases'),
   saveDatabase: (d: DatabaseDef) =>
     req<DatabaseDef>('/databases', { method: 'POST', body: JSON.stringify(d) }),
@@ -478,27 +489,22 @@ export const api = {
   // The whole configuration as one file, and back. Export returns the raw blob so the caller
   // can hand it to a download link; import takes the parsed document. `includeSecrets` asks for
   // credential values in the clear — admin only, and the file's name and header say so.
-  exportBackup: async (includeSecrets = false): Promise<Blob> => {
-    const res = await fetch(`/api/backup${includeSecrets ? '?includeSecrets=true' : ''}`, {
-      credentials: 'same-origin',
-    })
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-    return res.blob()
-  },
+  exportBackup: (includeSecrets = false) =>
+    blob(`/backup${includeSecrets ? '?includeSecrets=true' : ''}`),
   importBackup: (bundle: unknown) =>
     req<{ imported: Record<string, number>; credentialsToReenter: string[]; warnings: string[] }>(
       '/backup', { method: 'POST', body: JSON.stringify(bundle) }, 120_000),
 
   // Organization-level prompt variables ({{NAME}} in prompts). Flow overrides live on the flow.
-  listVariables: () => req<import('./types.ts').Variable[]>('/variables'),
-  saveVariable: (v: import('./types.ts').Variable) =>
-    req<import('./types.ts').Variable>('/variables', { method: 'POST', body: JSON.stringify(v) }),
+  listVariables: () => req<Variable[]>('/variables'),
+  saveVariable: (v: Variable) =>
+    req<Variable>('/variables', { method: 'POST', body: JSON.stringify(v) }),
   deleteVariable: (id: string) => req<void>(`/variables/${id}`, { method: 'DELETE' }),
 
   // facade profiles (what an independent worker may reach through its MCP facade)
-  listFacadeProfiles: () => req<import('./types.ts').FacadeProfile[]>('/facade-profiles'),
-  saveFacadeProfile: (p: import('./types.ts').FacadeProfile) =>
-    req<import('./types.ts').FacadeProfile>('/facade-profiles', {
+  listFacadeProfiles: () => req<FacadeProfile[]>('/facade-profiles'),
+  saveFacadeProfile: (p: FacadeProfile) =>
+    req<FacadeProfile>('/facade-profiles', {
       method: 'POST',
       body: JSON.stringify(p),
     }),
@@ -527,9 +533,9 @@ export const api = {
   authStatus: () => req<AuthStatus>('/auth/status'),
 
   // the audit trail (admin only; export is an Enterprise feature and 403s below it)
-  auditStatus: () => req<import('./types.ts').AuditStatus>('/audit/status'),
-  listAudit: (filters: import('./types.ts').AuditFilters, before?: number, limit = 100) =>
-    req<import('./types.ts').AuditPage>(
+  auditStatus: () => req<AuditStatus>('/audit/status'),
+  listAudit: (filters: AuditFilters, before?: number, limit = 100) =>
+    req<AuditPage>(
       `/audit${query({
         actor: filters.actor || undefined,
         kind: filters.kind || undefined,
@@ -539,37 +545,20 @@ export const api = {
         limit: String(limit),
       })}`,
     ),
-  /**
-   * The trail as a file. Same shape as exportBackup — a blob for a download link — but a refusal
-   * here carries a sentence worth reading (the tier gate), so the JSON error body is surfaced the
-   * way req() surfaces it rather than flattened into "403 Forbidden".
-   */
-  exportAudit: async (format: 'csv' | 'json', filters: import('./types.ts').AuditFilters): Promise<Blob> => {
-    const res = await fetch(
-      `/api/audit/export${query({
+  /** The trail as a file. A refusal here is the tier gate's sentence, which blob() keeps. */
+  exportAudit: (format: 'csv' | 'json', filters: AuditFilters) =>
+    blob(
+      `/audit/export${query({
         format,
         actor: filters.actor || undefined,
         kind: filters.kind || undefined,
         from: filters.from || undefined,
         to: filters.to || undefined,
       })}`,
-      { credentials: 'same-origin' },
-    )
-    if (!res.ok) {
-      let message = `${res.status} ${res.statusText}`
-      try {
-        const body = (await res.json()) as { error?: string }
-        if (body?.error) message = body.error
-      } catch {
-        /* non-JSON error body */
-      }
-      throw new ApiError(message, res.status)
-    }
-    return res.blob()
-  },
+    ),
   /** Applies the retention policy now instead of at three in the morning. Admin only. */
   runRetentionNow: () =>
-    req<import('./types.ts').RetentionReport>('/retention/run-now', { method: 'POST' }, 120_000),
+    req<RetentionReport>('/retention/run-now', { method: 'POST' }, 120_000),
 
   // license (what this installation is running under)
   getLicense: () => req<LicenseStatus>('/license'),
@@ -635,7 +624,7 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ values }),
     }),
-/**
+  /**
    * Creates the first account on an installation that has none, and signs it in.
    *
    * Refused the moment one exists, which is what makes it safe to reach without a session — and
@@ -651,55 +640,56 @@ export const api = {
     req<SignedInUser>(`/account/accounts/${userId}/use`, { method: 'POST' }),
   /** Drops an account from this browser. Signing into it again brings it back. */
   forgetAccount: (userId: string) => req<void>(`/account/accounts/${userId}`, { method: 'DELETE' }),
-  /** Everyone in the caller's own organization. Password hashes never leave the backend. */
+
   // Tokens for machines. Admin only; the token is in the create answer and nowhere else.
-  listServiceAccounts: () => req<import('./types.ts').ServiceAccountListing>('/service-accounts'),
+  listServiceAccounts: () => req<ServiceAccountListing>('/service-accounts'),
   createServiceAccount: (name: string, role: string) =>
-    req<import('./types.ts').CreatedServiceAccount>('/service-accounts', {
+    req<CreatedServiceAccount>('/service-accounts', {
       method: 'POST',
       body: JSON.stringify({ name, role }),
     }),
   renameServiceAccount: (id: string, name: string) =>
-    req<import('./types.ts').ServiceAccount>(`/service-accounts/${id}`, {
+    req<ServiceAccount>(`/service-accounts/${id}`, {
       method: 'PUT',
       body: JSON.stringify({ name }),
     }),
   revokeServiceAccount: (id: string) =>
-    req<import('./types.ts').ServiceAccount>(`/service-accounts/${id}/revoke`, { method: 'POST' }),
+    req<ServiceAccount>(`/service-accounts/${id}/revoke`, { method: 'POST' }),
 
-  listMembers: () => req<import('./types.ts').Member[]>('/account/members'),
+  /** Everyone in the caller's own organization. Password hashes never leave the backend. */
+  listMembers: () => req<Member[]>('/account/members'),
   addMember: (email: string, password: string, role: string) =>
-    req<import('./types.ts').Member>('/account/members', {
+    req<Member>('/account/members', {
       method: 'POST',
       body: JSON.stringify({ email, password, role }),
     }),
   /** Changes what one member may do. Admin only; the backend refuses the last admin's demotion. */
   changeMemberRole: (userId: string, role: string) =>
-    req<import('./types.ts').Member>(`/account/members/${userId}/role`, {
+    req<Member>(`/account/members/${userId}/role`, {
       method: 'POST',
       body: JSON.stringify({ role }),
     }),
 
   // organizations (several on one deployment — creating a second one is Enterprise)
   /** The organizations this account is in, every role: a Viewer in two of them switches too. */
-  listOrganizations: () => req<import('./types.ts').Organization[]>('/organizations'),
+  listOrganizations: () => req<Organization[]>('/organizations'),
   /** Refused with the Enterprise sentence on any other tier; the panel shows it as it arrives. */
   createOrganization: (name: string) =>
-    req<import('./types.ts').Organization>('/organizations', {
+    req<Organization>('/organizations', {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),
   renameOrganization: (id: string, name: string) =>
-    req<import('./types.ts').Organization>(`/organizations/${id}`, {
+    req<Organization>(`/organizations/${id}`, {
       method: 'PUT',
       body: JSON.stringify({ name }),
     }),
   /** Everyone in one organization the caller administers, with the role each holds there. */
   listOrganizationMembers: (id: string) =>
-    req<import('./types.ts').Member[]>(`/organizations/${id}/members`),
+    req<Member[]>(`/organizations/${id}/members`),
   /** An existing address joins as is; a new one needs a temporary password and takes a seat. */
   inviteToOrganization: (id: string, email: string, password: string, role: string) =>
-    req<import('./types.ts').Member>(`/organizations/${id}/members`, {
+    req<Member>(`/organizations/${id}/members`, {
       method: 'POST',
       body: JSON.stringify({ email, password, role }),
     }),
