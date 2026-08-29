@@ -193,6 +193,78 @@
   border-left: 3px solid t.$gate;
 }
 
+/* ---- annotations: written for the people reading the canvas; the run never sees them ---- */
+
+/* The four grounds. A custom property rather than four background rules each for the note and
+   the frame: the colour is one fact about the node, and the two shapes read it differently —
+   paper is opaque, a frame lets the wires and the dots show through. */
+.tint_yellow {
+  --tint: #{t.$sticky-yellow};
+}
+.tint_blue {
+  --tint: #{t.$sticky-blue};
+}
+.tint_green {
+  --tint: #{t.$sticky-green};
+}
+.tint_pink {
+  --tint: #{t.$sticky-pink};
+}
+
+.note {
+  width: 214px;
+  min-height: 56px;
+  padding: 10px 12px;
+  border-radius: t.$radius;
+  background: var(--tint);
+  border: 1px solid color-mix(in srgb, t.$text 18%, transparent);
+  color: t.$text;
+  font-size: 12px;
+  line-height: 1.5;
+  /* The author's line breaks are the author's paragraphs. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.noteEmpty {
+  color: t.$muted;
+  font-style: italic;
+}
+
+/* Fills the node, whose size is the frame's size. */
+.group {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tint) 55%, transparent);
+  border: 1.5px dashed color-mix(in srgb, t.$text 30%, transparent);
+}
+.groupLabel {
+  position: absolute;
+  top: 6px;
+  left: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: t.$muted;
+  max-width: calc(100% - 20px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* React Flow paints the resizer from its own stylesheet, so these override rather than define. */
+.resizeLine {
+  border-color: t.$accent !important;
+}
+.resizeHandle {
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 2px !important;
+  background: t.$accent !important;
+  border-color: t.$panel !important;
+}
+
 /* ---- the second output: what happens when things do not go the main way ---- */
 
 .handle_error,

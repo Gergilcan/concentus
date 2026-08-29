@@ -382,7 +382,7 @@ public class LocalClaudeExecutor {
             claudeMd.append(coord.systemPrompt).append('\n');
         }
         appendContextFolderNote(coord, claudeMd);
-        appendRepositoryNote(run, claudeMd);
+        appendRepositoryNote(run.checkouts, claudeMd, true);
         appendMemoryNote(run, claudeMd);
         appendDelegationRoster(coord, claudeMd);
         if (!claudeMd.isEmpty()) {

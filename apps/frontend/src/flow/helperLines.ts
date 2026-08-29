@@ -30,6 +30,8 @@ interface Placed {
   measured?: { width?: number; height?: number }
   width?: number
   height?: number
+  /** Set on a node inside a frame, whose position is relative to the frame rather than the canvas. */
+  parentId?: string
 }
 
 function sizeOf(n: Placed): { w: number; h: number } {
@@ -48,7 +50,9 @@ export function applyHelperLines(changes: NodeChange[], nodes: Placed[]): Helper
   if (change.type !== 'position' || !change.dragging || !change.position) return NO_LINES
 
   const moving = nodes.find((n) => n.id === change.id)
-  if (!moving) return NO_LINES
+  // Inside a frame the positions are in the frame's coordinates, and a guide computed in the
+  // canvas's would be drawn where nothing is aligned. No guides there rather than wrong ones.
+  if (!moving || moving.parentId) return NO_LINES
   const { w, h } = sizeOf(moving)
 
   const x = change.position.x

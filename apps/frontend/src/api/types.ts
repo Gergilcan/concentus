@@ -229,6 +229,32 @@ export type NodeKind =
   | 'condition'
   | 'foreach'
   | 'mail'
+  | 'note'
+  | 'group'
+
+/** The four grounds a note or a frame can wear. Few on purpose: a colour is a category, not a palette. */
+export type AnnotationColor = 'yellow' | 'blue' | 'green' | 'pink'
+
+/**
+ * A sticky note: what the author wanted the next reader to know, on the canvas where they will
+ * read it. Never compiled, never run — the backend looks past it entirely.
+ */
+export type NoteNodeData = {
+  kind: 'note'
+  text: string
+  color: AnnotationColor
+}
+
+/**
+ * A labelled frame that blocks are dropped into and move with. Its size lives on the canvas node
+ * (`width`/`height`), and its members carry its id as their React Flow `parentId`; on the wire
+ * that becomes `_size` and `_parent` next to `_pos`. Purely visual, like the note.
+ */
+export type GroupNodeData = {
+  kind: 'group'
+  label: string
+  color: AnnotationColor
+}
 
 export type InputNodeData = {
   kind: 'input'
@@ -646,6 +672,8 @@ export type AppNodeData =
   | ConditionNodeData
   | ForEachNodeData
   | MailNodeData
+  | NoteNodeData
+  | GroupNodeData
 
 export interface SqlPreview {
   columns: string[]

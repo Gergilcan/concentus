@@ -38,6 +38,17 @@ public final class RunReplay {
     /** Kinds that hang under an agent as capabilities rather than standing on the run's path. */
     private static final Set<String> CAPABILITY_TYPES = Set.of("mcp", "sql", "knowledge", "api", "repo");
 
+    /**
+     * Kinds drawn for the people reading the canvas — a sticky note, a frame around blocks. The
+     * run never touches them, so a replay has nothing to say about them; listed, a note would
+     * read as "skipped then, would run now" and count as a divergence in a flow nobody changed.
+     */
+    private static final Set<String> ANNOTATION_TYPES = Set.of("note", "group");
+
+    private static boolean annotation(FlowNode node) {
+        return node.type() != null && ANNOTATION_TYPES.contains(node.type().toLowerCase());
+    }
+
     /** What happened / would happen to one block. States are a closed vocabulary the UI paints. */
     public record ReplayNode(String nodeId, String label, String type,
                              String then, String now, boolean divergent, String reason) {
@@ -58,6 +69,7 @@ public final class RunReplay {
         int divergences = 0;
 
         for (FlowNode node : now.nodesOrEmpty()) {
+            if (annotation(node)) continue;
             String thenState = thenState(node.id(), thenById, execs);
             String nowState = walk.state(node.id());
             String reason = walk.reason(node.id());
@@ -70,7 +82,7 @@ public final class RunReplay {
         // Blocks the run executed that the current flow no longer has. Recorded work with nowhere
         // to go is the loudest divergence there is.
         for (FlowNode node : then.nodesOrEmpty()) {
-            if (nowById.containsKey(node.id())) continue;
+            if (nowById.containsKey(node.id()) || annotation(node)) continue;
             String thenState = thenState(node.id(), thenById, execs);
             boolean divergent = "ran".equals(thenState) || "failed".equals(thenState);
             if (divergent) divergences++;

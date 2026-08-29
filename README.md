@@ -124,7 +124,10 @@ concentus/
   you can lift blocks from one flow into another. Copies get a fresh identity — a duplicated
   coordinator becomes an agent (a flow may only have one coordinator, and the palette refuses a second), names are made unique, and
   a copied webhook node starts with an empty secret. Flows themselves duplicate from the ⧉ button on
-  their dashboard card.
+  their dashboard card. **✎ Notes** and **▭ Groups** annotate the drawing for the next reader — a
+  sticky note in one of four colours, and a resizable labelled frame that blocks are dropped into
+  and move with; both are saved with the flow, duplicated with their contents, and ignored by the
+  run, the pre-run check and the replay alike.
 - **Undo, tidy, guides** — every canvas change is undoable (`Ctrl+Z` / `Ctrl+Y`, or the ↶ ↷
   buttons), including deleting a block, which used to be irreversible short of reloading without
   saving. **⌗ Tidy** lays a hand-grown flow out automatically — the chain left to right,
@@ -132,7 +135,10 @@ concentus/
   snaps it to its neighbours' edges and centres with Figma-style alignment guides. Wires are
   tinted by the output they leave from — the on-error path is red and dashed, the else path amber —
   so the failure path reads at a distance, not only at the handle. A focused block opens with
-  `Enter`.
+  `Enter`. `Ctrl/⌘+K` lists every block of the open flow as **Go to block: name (kind)** and
+  centres the canvas on the one you pick; a theme-coloured **minimap** sits in the corner, toggled
+  from the ▦ button next to the zoom controls (on by default on windows 900px and wider, and your
+  choice is remembered).
 - **Run** — how a flow executes depends on your credential:
   - **Local (subscription):** the `claude` CLI runs the coordinator + sub-agents (mapped to Claude
     Code subagents via `--agents`/`.claude/agents`) on your machine. Each command is a turn in the

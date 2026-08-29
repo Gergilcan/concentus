@@ -25,6 +25,29 @@
 }
 
 /*
+ * 'group' is the other built-in name this app uses, and gets the same treatment for the same
+ * reason: the library's group styling is a 150px grey box with padding, and the frame draws its
+ * own. The width and height stay — they are the node's own size, set inline, which the resizer
+ * changes and the frame fills.
+ */
+.react-flow__node-group {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  text-align: initial;
+  color: inherit;
+  box-shadow: none;
+}
+
+.react-flow__node-group.selectable:hover,
+.react-flow__node-group.selectable.selected,
+.react-flow__node-group.selectable:focus,
+.react-flow__node-group.selectable:focus-visible {
+  box-shadow: none;
+}
+
+/*
  * What the selected block is wired to.
  *
  * Selecting a box already outlines it in the accent colour; these two say which way its wires
@@ -138,6 +161,25 @@
   border-radius: 6px;
   padding: 2px 10px;
   cursor: pointer;
+}
+
+/*
+ * The minimap in the app's own theme. React Flow's colorMode switch only knows its two greys;
+ * the panel token, the border and a mask cut from the page's ground make it part of the chrome
+ * in all three themes rather than a grey card floating over them.
+ */
+.react-flow__minimap {
+  --xy-minimap-background-color: var(--panel);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--bg) 60%, transparent);
+  --xy-minimap-mask-stroke-color: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* The map toggle: on, it wears the accent so the button says which state it is in. */
+.react-flow__controls-button[aria-pressed='true'] {
+  color: var(--accent);
 }
 
 /* Alignment guides while dragging. 100000px long and centred by the -50000px translate, so the

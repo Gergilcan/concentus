@@ -96,6 +96,19 @@ class FlowDoctorTest {
         assertThat(doctor.check(healthy())).isEmpty();
     }
 
+    @Test
+    void aNoteAndAFrameOnTheCanvasAreNothingToReport() {
+        // Annotations carry no credential, no URL, no schedule — nothing any check could find
+        // wanting. A doctor that flagged "unknown node type" here would nag on every flow
+        // somebody bothered to document.
+        FlowGraph annotated = flow(List.of(input("manual", ""), coordinator(),
+                new FlowNode("n1", "note", null, Map.of("text", "Ask ops before changing", "color", "pink")),
+                new FlowNode("g1", "group", null, Map.of("label", "Triage", "color", "green",
+                        "_size", Map.of("w", 480, "h", 260)))));
+
+        assertThat(doctor.check(annotated)).isEmpty();
+    }
+
     // ---------------------------------------------------------------- the machine
 
     @Test

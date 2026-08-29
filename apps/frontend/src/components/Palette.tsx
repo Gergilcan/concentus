@@ -76,6 +76,14 @@ export function Palette() {
       <button className={cx(styles.addBtn, styles.addForEach)} title={t("Runs the branch behind it once per item of the agent's answer — one item per line, or a JSON array. Put a condition after it to filter the items.")} {...drag('foreach')} onClick={() => addNode('foreach')}>
         <span>⟳</span> {t('For each')}
       </button>
+      {/* Annotations. Last, and greyed: they are for the person reading the canvas, and the
+          run never sees them. */}
+      <button className={cx(styles.addBtn, styles.addNote)} title={t('A sticky note for whoever reads this flow next. Four colours, no wires — the run never sees it.')} {...drag('note')} onClick={() => addNode('note')}>
+        <span>✎</span> {t('Note')}
+      </button>
+      <button className={cx(styles.addBtn, styles.addGroup)} title={t('A labelled frame. Drop blocks inside and they move with it; drag its corners to resize. Decoration only — the run ignores it.')} {...drag('group')} onClick={() => addNode('group')}>
+        <span>▭</span> {t('Group')}
+      </button>
 
       <p
         className={styles.hint}

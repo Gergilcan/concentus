@@ -29,6 +29,13 @@ $merge: var(--merge);
 $verifier: var(--verifier);
 $gate: var(--gate);
 
+// The grounds a sticky note or a frame can wear: soft tints, one per theme, so paper reads as
+// paper on a dark canvas and on a white one.
+$sticky-yellow: var(--sticky-yellow);
+$sticky-blue: var(--sticky-blue);
+$sticky-green: var(--sticky-green);
+$sticky-pink: var(--sticky-pink);
+
 $danger: var(--danger);
 $ok: var(--ok);
 // Semantic amber for "needs a person's attention", distinct from the node-type colours above.

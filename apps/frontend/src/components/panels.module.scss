@@ -654,3 +654,9 @@
 .addForEach span {
   color: t.$gate;
 }
+
+/* Annotations have no colour of their own on the canvas — they wear the author's pick. */
+.addNote span,
+.addGroup span {
+  color: t.$muted;
+}

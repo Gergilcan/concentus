@@ -9,6 +9,9 @@
  * palette that finds the right thing but puts it fourth is a palette people stop using.
  */
 
+import type { AppNodeData } from '../api/types.ts'
+import { blockNameOf, KIND_LABEL } from '../flow/kindNames.ts'
+
 export interface Command {
   id: string
   /** What the row says. Matched against. */
@@ -18,6 +21,30 @@ export interface Command {
   /** Extra context on the right of the row (a status, a time). Not matched. */
   hint?: string
   run: () => void
+}
+
+/** The shape of react-i18next's `t` this module needs: a key and its placeholders. */
+type Translate = (key: string, values?: Record<string, unknown>) => string
+
+/**
+ * One "Go to block" row per block of the flow open in the Studio. Choosing one hands the id to
+ * `focus`, which is the store's focus request — the palette never needs a React Flow instance,
+ * and the canvas answers the request when it is on screen.
+ */
+export function blockCommands(
+  nodes: { id: string; data: AppNodeData }[],
+  t: Translate,
+  focus: (id: string) => void,
+): Command[] {
+  return nodes.map((n) => {
+    const kind = t(KIND_LABEL[n.data.kind])
+    return {
+      id: `block:${n.id}`,
+      group: t('Blocks'),
+      label: t('Go to block: {{name}} ({{kind}})', { name: blockNameOf(n.data) || kind, kind }),
+      run: () => focus(n.id),
+    }
+  })
 }
 
 interface Scored {

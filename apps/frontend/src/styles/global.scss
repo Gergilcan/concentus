@@ -38,6 +38,13 @@
   --ok: #51cf66;
   --warn: #ffd43b;
 
+  /* Sticky notes and frames: deep, desaturated tints, so the text stays readable and the
+     canvas stays dark. */
+  --sticky-yellow: #4a4020;
+  --sticky-blue: #22344f;
+  --sticky-green: #1f3a2a;
+  --sticky-pink: #48273a;
+
   /*
    * Which way the wires run, for the block you have selected: --kin-in rings whatever FEEDS it,
    * --kin-out whatever it feeds. Two hues rather than one, because the question people actually
@@ -107,6 +114,11 @@
   --ok: #1a7f37;
   --warn: #9a6700;
 
+  --sticky-yellow: #fff3bf;
+  --sticky-blue: #d0ebff;
+  --sticky-green: #d3f9d8;
+  --sticky-pink: #ffdeeb;
+
   --kin-in: #b35309;
   --kin-out: #0b7285;
 
@@ -144,6 +156,11 @@
   --danger: #ff8383;
   --ok: #6ee787;
   --warn: #ffd75e;
+
+  --sticky-yellow: #5a4d12;
+  --sticky-blue: #1f3d66;
+  --sticky-green: #1b4a2e;
+  --sticky-pink: #5c2547;
 
   --kin-in: #ffb865;
   --kin-out: #5ceee6;

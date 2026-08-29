@@ -22,6 +22,8 @@ import { VerifierNode } from './nodes/VerifierNode.tsx'
 import { ConditionNode } from './nodes/ConditionNode.tsx'
 import { ForEachNode } from './nodes/ForEachNode.tsx'
 import { WorkerNode } from './nodes/WorkerNode.tsx'
+import { NoteNode } from './nodes/NoteNode.tsx'
+import { GroupNode } from './nodes/GroupNode.tsx'
 
 export type AgentRFNode = Node<AgentNodeData, 'agent' | 'coordinator'>
 export type McpRFNode = Node<McpNodeData, 'mcp'>
@@ -35,6 +37,8 @@ export type VerifierRFNode = Node<VerifierNodeData, 'verifier'>
 export type ConditionRFNode = Node<import('../api/types.ts').ConditionNodeData, 'condition'>
 export type ForEachRFNode = Node<import('../api/types.ts').ForEachNodeData, 'foreach'>
 export type MailRFNode = Node<import('../api/types.ts').MailNodeData, 'mail'>
+export type NoteRFNode = Node<import('../api/types.ts').NoteNodeData, 'note'>
+export type GroupRFNode = Node<import('../api/types.ts').GroupNodeData, 'group'>
 
 export const nodeTypes = {
   agent: AgentNode,
@@ -53,6 +57,9 @@ export const nodeTypes = {
   condition: ConditionNode,
   foreach: ForEachNode,
   mail: MailNode,
+  // Annotations: drawn for the people reading the canvas, invisible to the run.
+  note: NoteNode,
+  group: GroupNode,
   // Not a palette kind: worker boxes are synthesized from the run report (plan-born workers).
   worker: WorkerNode,
 }

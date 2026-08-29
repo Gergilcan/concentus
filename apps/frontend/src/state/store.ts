@@ -21,7 +21,7 @@ import type {
 } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL } from '../constants.ts'
 import { tidyLayout } from '../flow/layout.ts'
-import { canConnect, wiringRoleOf } from '../flow/wiring.ts'
+import { canConnect, isAnnotation, wiringRoleOf } from '../flow/wiring.ts'
 import type { ReplayReport } from '../api/types.ts'
 
 export type AppNode = Node<AppNodeData>
@@ -58,6 +58,85 @@ function attached(
 }
 
 const PASTE_OFFSET = 40
+
+/** A fresh frame: room for a short chain of cards, before the author drags a corner. */
+const GROUP_W = 480
+const GROUP_H = 260
+
+/** The card's own size when the canvas has not measured it yet — nodes.module.scss again. */
+const NODE_H = 110
+
+function sizeOf(n: AppNode): { w: number; h: number } {
+  return {
+    w: n.width ?? n.measured?.width ?? NODE_W,
+    h: n.height ?? n.measured?.height ?? NODE_H,
+  }
+}
+
+/**
+ * Where a node sits on the canvas, whatever it is nested in. React Flow keeps a framed node's
+ * position RELATIVE to its frame, so that the frame drags its contents along; everything that
+ * reasons about the drawing as a whole — a drop, a save, a copy — wants the absolute one.
+ */
+function absolutePosition(n: AppNode, all: AppNode[]): { x: number; y: number } {
+  const parent = n.parentId ? all.find((p) => p.id === n.parentId) : undefined
+  return parent ? { x: parent.position.x + n.position.x, y: parent.position.y + n.position.y } : n.position
+}
+
+/**
+ * Frames ahead of everything else. React Flow resolves a child's place from its parent's and
+ * insists the parent be listed first; frames never nest, so "frames first" is the whole order.
+ */
+function parentsFirst(nodes: AppNode[]): AppNode[] {
+  const groups = nodes.filter((n) => n.data.kind === 'group')
+  return groups.length ? [...groups, ...nodes.filter((n) => n.data.kind !== 'group')] : nodes
+}
+
+/**
+ * Re-homes the nodes `ids` after they landed: a node dropped inside a frame becomes its member
+ * (position made relative), one dropped outside stops being one (position made absolute). The
+ * centre decides, not the corner — a card half over the frame's edge is where the hand meant it.
+ * Frames themselves never nest.
+ */
+function settle(nodes: AppNode[], ids: string[]): AppNode[] {
+  const groups = nodes.filter((n) => n.data.kind === 'group')
+  let changed = false
+  const out = nodes.map((n) => {
+    if (!ids.includes(n.id) || n.data.kind === 'group') return n
+    const abs = absolutePosition(n, nodes)
+    const { w, h } = sizeOf(n)
+    const centre = { x: abs.x + w / 2, y: abs.y + h / 2 }
+    const host = groups.find((g) => {
+      const size = sizeOf(g)
+      return (
+        centre.x >= g.position.x &&
+        centre.x <= g.position.x + size.w &&
+        centre.y >= g.position.y &&
+        centre.y <= g.position.y + size.h
+      )
+    })
+    if ((n.parentId ?? undefined) === host?.id) return n
+    changed = true
+    const position = host ? { x: abs.x - host.position.x, y: abs.y - host.position.y } : abs
+    const { parentId: _dropped, ...rest } = n
+    return host ? { ...rest, parentId: host.id, position } : { ...rest, position }
+  })
+  return changed ? parentsFirst(out) : nodes
+}
+
+/**
+ * Sets free the members of frames about to go. Deleting a frame deletes the frame — not the
+ * blocks somebody drew inside it — and a member whose parent is gone would be positioned
+ * relative to nothing, so it takes its absolute place before the parent disappears.
+ */
+function orphan(nodes: AppNode[], removed: Set<string>): AppNode[] {
+  if (!nodes.some((n) => n.parentId && removed.has(n.parentId) && !removed.has(n.id))) return nodes
+  return nodes.map((n) => {
+    if (!n.parentId || !removed.has(n.parentId) || removed.has(n.id)) return n
+    const { parentId: _gone, ...rest } = n
+    return { ...rest, position: absolutePosition(n, nodes) }
+  })
+}
 
 /** Cap on retained console events; the backend keeps the authoritative buffer. */
 const MAX_RUN_EVENTS = 4000
@@ -133,11 +212,25 @@ function targetNodes(s: FlowState): AppNode[] {
 }
 
 /**
- * The self-contained block `nodes` form: the nodes plus only the edges with BOTH endpoints inside
+ * The self-contained block `picked` forms: the nodes plus only the edges with BOTH endpoints inside
  * the set, since an edge reaching outside it would dangle once the block is cloned.
+ *
+ * A frame brings its members: duplicating an empty rectangle is never what picking a frame
+ * meant. A member picked without its frame leaves it, and is written down at its absolute place
+ * so the clipboard stands on its own — it may be pasted into a flow where that frame never existed.
  */
-function blockOf(nodes: AppNode[], edges: Edge[]): Clipboard {
-  const ids = new Set(nodes.map((n) => n.id))
+function blockOf(picked: AppNode[], all: AppNode[], edges: Edge[]): Clipboard {
+  const pickedIds = new Set(picked.map((n) => n.id))
+  const members = parentsFirst([
+    ...picked,
+    ...all.filter((n) => n.parentId && pickedIds.has(n.parentId) && !pickedIds.has(n.id)),
+  ])
+  const ids = new Set(members.map((n) => n.id))
+  const nodes = members.map((n) => {
+    if (!n.parentId || ids.has(n.parentId)) return n
+    const { parentId: _left, ...rest } = n
+    return { ...rest, position: absolutePosition(n, all) }
+  })
   return { nodes, edges: edges.filter((e) => ids.has(e.source) && ids.has(e.target)) }
 }
 
@@ -154,16 +247,19 @@ function insertClones(s: FlowState, src: Clipboard, offset: number) {
   }
 
   const idMap = new Map<string, string>()
+  for (const n of src.nodes) idMap.set(n.id, uid(n.data.kind))
   const nodes: AppNode[] = src.nodes.map((n) => {
-    const id = uid(n.data.kind)
-    idMap.set(n.id, id)
     const data = cloneData(n.data, taken)
+    // A member of a copied frame keeps its place INSIDE the copy: its position is relative to
+    // the frame, and the frame is the one that moves by the offset.
+    const parentId = n.parentId ? idMap.get(n.parentId) : undefined
     return {
       ...n,
-      id,
+      id: idMap.get(n.id) as string,
       type: data.kind,
       selected: true,
-      position: { x: n.position.x + offset, y: n.position.y + offset },
+      parentId,
+      position: parentId ? n.position : { x: n.position.x + offset, y: n.position.y + offset },
       data,
     }
   })
@@ -274,6 +370,10 @@ function defaultData(kind: NodeKind): AppNodeData {
         secret: '',
         authParam: 'Linear-Signature',
       }
+    case 'note':
+      return { kind: 'note', text: '', color: 'yellow' }
+    case 'group':
+      return { kind: 'group', label: 'Group', color: 'blue' }
   }
 }
 
@@ -356,11 +456,26 @@ interface FlowState {
   deleteEdge: (id: string) => void
   /** `at` is a flow-space position, from a palette drag; omitted, the node cascades. */
   addNode: (kind: NodeKind, at?: { x: number; y: number }) => void
+  /**
+   * Called when a drag ends, with the nodes that moved: the ones now inside a frame join it,
+   * the ones dragged out leave it. Part of the drag's own undo step — the checkpoint was taken
+   * when the drag began, and nobody wants "undo" to first un-frame and only then un-move.
+   */
+  settleDrop: (ids: string[]) => void
   updateNodeData: (id: string, patch: Record<string, unknown>) => void
   deleteNode: (id: string) => void
   selectNode: (id: string | null) => void
   openNodeDetails: () => void
   closeNodeDetails: () => void
+  /**
+   * A block the canvas should bring into view. Set by the command palette, which has no React
+   * Flow instance and should not need one; the canvas answers it — centring the viewport on the
+   * block — and clears it. Held here so a request made while the Studio is not on screen is
+   * answered the moment it is.
+   */
+  focusNodeId: string | null
+  requestFocus: (id: string) => void
+  clearFocus: () => void
 
   // Copy / paste / duplicate of canvas blocks.
   clipboard: Clipboard | null
@@ -512,7 +627,13 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   autoLayout: () => {
     const s = get()
     if (s.nodes.length < 2) return
-    const placed = tidyLayout(s.nodes, s.edges)
+    // Annotations stay put, and so does whatever is framed. A frame is a grouping the author
+    // drew on purpose; a tidy-up that scattered its members across dagre's ranks would undo the
+    // one thing it was drawn for, and a note has no wires for dagre to rank it by anyway.
+    const placed = tidyLayout(
+      s.nodes.filter((n) => !isAnnotation(n.data.kind) && !n.parentId),
+      s.edges,
+    )
     if (placed.size === 0) return
     s.checkpoint()
     set({
@@ -534,7 +655,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     // deleteNode — without a checkpoint the most destructive gesture would be the one
     // that cannot be undone. Node and edge removals of one Delete coalesce into one step.
     if (changes.some((c) => c.type === 'remove')) get().checkpoint('remove')
-    set((s) => ({ nodes: applyNodeChanges(changes, s.nodes) }))
+    set((s) => {
+      const removed = new Set(changes.filter((c) => c.type === 'remove').map((c) => c.id))
+      return { nodes: applyNodeChanges(changes, removed.size ? orphan(s.nodes, removed) : s.nodes) }
+    })
   },
   onEdgesChange: (changes) => {
     if (changes.some((c) => c.type === 'remove')) get().checkpoint('remove')
@@ -593,6 +717,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         type: kind,
         position,
         data: defaultData(kind),
+        // A frame is sized from birth (the resizer only changes a size that exists) and drawn
+        // behind everything: it is a background for blocks, and a background in front of the
+        // block it frames is a lid.
+        ...(kind === 'group' ? { width: GROUP_W, height: GROUP_H, zIndex: -1 } : {}),
       }
       const edges = partner
         ? addEdge(
@@ -602,9 +730,17 @@ export const useFlowStore = create<FlowState>((set, get) => ({
             s.edges,
           )
         : s.edges
-      return { nodes: [...s.nodes, node], edges, selectedId: node.id }
+      // A block dropped from the palette onto a frame is inside it from the start, the same as
+      // one dragged there afterwards.
+      return { nodes: settle(parentsFirst([...s.nodes, node]), [node.id]), edges, selectedId: node.id }
     })
   },
+
+  settleDrop: (ids) =>
+    set((s) => {
+      const nodes = settle(s.nodes, ids)
+      return nodes === s.nodes ? {} : { nodes }
+    }),
 
   updateNodeData: (id, patch) => {
     // Coalesced per node: a burst of keystrokes in one inspector field is one undo step.
@@ -619,7 +755,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   deleteNode: (id) => {
     get().checkpoint()
     set((s) => ({
-      nodes: s.nodes.filter((n) => n.id !== id),
+      nodes: orphan(s.nodes, new Set([id])).filter((n) => n.id !== id),
       edges: s.edges.filter((e) => e.source !== id && e.target !== id),
       selectedId: s.selectedId === id ? null : s.selectedId,
     }))
@@ -631,7 +767,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     const s = get()
     const picked = targetNodes(s)
     if (!picked.length) return 0
-    set({ clipboard: blockOf(picked, s.edges) })
+    set({ clipboard: blockOf(picked, s.nodes, s.edges) })
     pasteCount = 0
     return picked.length
   },
@@ -653,7 +789,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     set((s) => {
       const picked = targetNodes(s)
       if (!picked.length) return {}
-      return insertClones(s, blockOf(picked, s.edges), PASTE_OFFSET)
+      return insertClones(s, blockOf(picked, s.nodes, s.edges), PASTE_OFFSET)
     })
   },
 
@@ -662,11 +798,22 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     get().checkpoint()
     set((s) => {
       const node = s.nodes.find((n) => n.id === id)
-      return node ? insertClones(s, { nodes: [node], edges: [] }, PASTE_OFFSET) : {}
+      // Through blockOf rather than as a lone node: a frame's copy has to bring the members.
+      return node ? insertClones(s, blockOf([node], s.nodes, s.edges), PASTE_OFFSET) : {}
     })
   },
 
   selectNode: (id) => set({ selectedId: id }),
+  focusNodeId: null,
+  requestFocus: (id) =>
+    set((s) => ({
+      focusNodeId: id,
+      selectedId: id,
+      // Selected on the canvas too, not only inspected: the ring is how the eye finds the block
+      // the viewport just travelled to.
+      nodes: s.nodes.map((n) => (n.selected !== (n.id === id) ? { ...n, selected: n.id === id } : n)),
+    })),
+  clearFocus: () => set({ focusNodeId: null }),
   openNodeDetails: () => set({ detailsOpen: true }),
   closeNodeDetails: () => set({ detailsOpen: false }),
   setName: (name) => set({ name }),
@@ -684,6 +831,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       nodes: [],
       edges: [],
       selectedId: null,
+      focusNodeId: null,
       previewVersion: null,
       // A new drawing starts a new history: undoing across flows would resurrect the wrong one.
       past: [],
@@ -692,21 +840,48 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     }),
 
   loadBackendFlow: (flow) => {
-    const nodes: AppNode[] = flow.nodes.map((bn) => {
+    const placed = flow.nodes.map((bn) => {
       // The lead is a canvas kind of its own; on the wire it is an agent with a role, and older
       // canvases wrote that role inside the data too. Both readings land on the same block.
       const role = bn.role ?? (bn.data as { role?: unknown })?.role
       const kind: NodeKind = bn.type === 'agent' && role === 'coordinator' ? 'coordinator' : bn.type
       const pos = (bn.data?._pos ?? {}) as { x?: number; y?: number }
+      const size = (bn.data?._size ?? null) as { w?: number; h?: number } | null
+      const parent = typeof bn.data?._parent === 'string' ? bn.data._parent : null
       const merged = { ...defaultData(kind), ...bn.data, kind } as AppNodeData
       delete (merged as { role?: unknown }).role
-      return {
+      // Frame facts live on the canvas node, never in the data: left there, a member dragged out
+      // of its frame would still be saved as inside it.
+      delete (merged as { _parent?: unknown })._parent
+      delete (merged as { _size?: unknown })._size
+      const node: AppNode = {
         id: bn.id,
         type: kind,
         position: { x: pos.x ?? 120, y: pos.y ?? 120 },
         data: merged,
+        ...(kind === 'group'
+          ? { width: size?.w ?? GROUP_W, height: size?.h ?? GROUP_H, zIndex: -1 }
+          : {}),
       }
+      return { node, parent }
     })
+    // `_pos` is absolute on the wire (see toBackendFlow); inside a frame the canvas wants it
+    // relative. A `_parent` naming nothing — the frame was deleted by a client that never knew
+    // about frames — is dropped rather than trusted.
+    const groups = new Map(
+      placed.filter((p) => p.node.data.kind === 'group').map((p) => [p.node.id, p.node]),
+    )
+    const nodes: AppNode[] = parentsFirst(
+      placed.map(({ node, parent }) => {
+        const frame = parent ? groups.get(parent) : undefined
+        if (!frame || node.data.kind === 'group') return node
+        return {
+          ...node,
+          parentId: frame.id,
+          position: { x: node.position.x - frame.position.x, y: node.position.y - frame.position.y },
+        }
+      }),
+    )
     set({
       flowId: flow.id ?? null,
       name: flow.name,
@@ -728,6 +903,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         sourceHandle: e.sourceHandle ?? null,
       })),
       selectedId: null,
+      focusNodeId: null,
       // Any load lands on the saved flow unless the caller says otherwise; Preview re-sets this
       // right after. Clearing it here means no path can leave the banner claiming a revision the
       // canvas no longer shows.
@@ -745,11 +921,22 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       // One wire shape for both agent kinds. The role also travels inside the data, where the
       // trigger's permission-mode lookup and the sandbox twin read it.
       const role = kind === 'coordinator' ? 'coordinator' : kind === 'agent' ? 'subagent' : null
+      // `_pos` is ABSOLUTE even for a framed node. The backend, the MCP flow tools and every
+      // client older than frames read `_pos` and nothing else; a relative one would land those
+      // nodes in a heap at the frame's origin. `_parent` and `_size` are extra facts for a
+      // client that knows them, not a change to the one everybody reads.
+      const { x, y } = absolutePosition(n, s.nodes)
       return {
         id: n.id,
         type: kind === 'coordinator' ? 'agent' : kind,
         role,
-        data: { ...rest, ...(role ? { role } : {}), _pos: { x: n.position.x, y: n.position.y } },
+        data: {
+          ...rest,
+          ...(role ? { role } : {}),
+          _pos: { x, y },
+          ...(n.parentId ? { _parent: n.parentId } : {}),
+          ...(n.width && n.height ? { _size: { w: n.width, h: n.height } } : {}),
+        },
       }
     })
     return {
