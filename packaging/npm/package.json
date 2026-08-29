@@ -1,6 +1,6 @@
 {
   "name": "concentus",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "description": "Visual multi-agent AI orchestration that runs on your Claude subscription. This package downloads the desktop app's installer for your platform from GitHub Releases and launches it — the app itself is not inside the package.",
   "bin": {
     "concentus": "bin/concentus.mjs"

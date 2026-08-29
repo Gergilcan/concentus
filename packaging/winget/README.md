@@ -19,10 +19,10 @@ pero quita el muro de hoy.
 
 3. Desde la raíz de este repo, envía los manifests ya escritos:
 
-       wingetcreate submit --token TU_TOKEN packaging/winget/manifests/g/Gergilcan/Concentus/0.1.4
+       wingetcreate submit --token TU_TOKEN packaging/winget/manifests/g/Gergilcan/Concentus/0.1.8
 
    (Alternativa sin instalar nada: abre un PR a `microsoft/winget-pkgs` copiando el directorio
-   `packaging/winget/manifests/g/Gergilcan/Concentus/0.1.4` a la misma ruta de su repo.)
+   `packaging/winget/manifests/g/Gergilcan/Concentus/0.1.8` a la misma ruta de su repo.)
 
 4. El bot de winget-pkgs valida (hash, URL, instalación silenciosa en una VM) y un moderador
    humano lo aprueba. Suele tardar de horas a pocos días. Cuando se mergea:
@@ -37,5 +37,5 @@ manifests de la versión anterior, cambia URL/hash/versión y abre el PR solo. S
 
 ## Verificación local antes de enviar
 
-    winget validate packaging/winget/manifests/g/Gergilcan/Concentus/0.1.4
-    winget install --manifest packaging/winget/manifests/g/Gergilcan/Concentus/0.1.4
+    winget validate packaging/winget/manifests/g/Gergilcan/Concentus/0.1.8
+    winget install --manifest packaging/winget/manifests/g/Gergilcan/Concentus/0.1.8
