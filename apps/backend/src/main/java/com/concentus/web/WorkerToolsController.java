@@ -53,11 +53,15 @@ public class WorkerToolsController {
     private final McpOAuthStore mcpOAuth;
     private final OrgContext orgContext;
     private final com.concentus.service.ToolCallLoopGuard loops;
+    /** Answers a worker's question about a sibling, with a short look at the sibling's workspace. */
+    private final com.concentus.service.FanoutExecutor fanout;
 
     public WorkerToolsController(RunService runs, ObjectMapper mapper,
                                  McpOAuthStore mcpOAuth, OrgContext orgContext,
-                                 com.concentus.service.ToolCallLoopGuard loops) {
+                                 com.concentus.service.ToolCallLoopGuard loops,
+                                 com.concentus.service.FanoutExecutor fanout) {
         this.runs = runs;
+        this.fanout = fanout;
         this.mapper = mapper;
         this.mcpOAuth = mcpOAuth;
         this.orgContext = orgContext;
@@ -172,6 +176,10 @@ public class WorkerToolsController {
     /** The name a worker calls to tell its siblings something, and the one to hear them. */
     static final String SHARE_TOOL = "share_finding";
     static final String READ_TOOL = "read_findings";
+    /** The name a worker calls to put a question to one sibling. */
+    static final String ASK_TOOL = "ask_worker";
+    /** Questions per worker per run. A worker that asks instead of working is a loop with extra steps. */
+    static final int MAX_QUESTIONS = 5;
 
     /**
      * Two tools every worker gets, wired to nothing on the canvas.
@@ -206,6 +214,57 @@ public class WorkerToolsController {
         ObjectNode readSchema = read.putObject("inputSchema");
         readSchema.put("type", "object");
         readSchema.putObject("properties");
+
+        ObjectNode ask = tools.addObject();
+        ask.put("name", ASK_TOOL);
+        ask.put("description", "Put one question to a named sibling worker. It is answered from "
+                + "that worker's workspace and what it has reported so far — the sibling is not "
+                + "interrupted — so ask about facts its work would contain, not for opinions. Use it "
+                + "instead of redoing work a sibling is doing. At most " + MAX_QUESTIONS
+                + " questions per task.");
+        ObjectNode askSchema = ask.putObject("inputSchema");
+        askSchema.put("type", "object");
+        ObjectNode askProps = askSchema.putObject("properties");
+        askProps.putObject("worker").put("type", "string")
+                .put("description", "The sibling's name, as listed in your instructions.");
+        askProps.putObject("question").put("type", "string")
+                .put("description", "One concrete question.");
+        askSchema.putArray("required").add("worker").add("question");
+    }
+
+    private ObjectNode askWorker(AgentRun run, AgentSpec asker, JsonNode arguments) {
+        String name = arguments.path("worker").asText("").trim();
+        String question = arguments.path("question").asText("").trim();
+        if (question.isEmpty()) return callResult(true, "Ask something: the question is empty.");
+        java.util.List<AgentSpec> siblings = siblingsOf(run, asker);
+        AgentSpec target = siblings.stream()
+                .filter(s -> s.name != null && s.name.equalsIgnoreCase(name)).findFirst().orElse(null);
+        if (target == null) {
+            return callResult(true, siblings.isEmpty()
+                    ? "You have no siblings on this task."
+                    : "No worker named '" + name + "'. The others are: " + siblings.stream()
+                            .map(s -> s.name).collect(java.util.stream.Collectors.joining(", ")) + ".");
+        }
+        int asked = run.questionsAsked.merge(asker.nodeId, 1, Integer::sum);
+        if (asked > MAX_QUESTIONS) {
+            return callResult(true, "You have asked " + MAX_QUESTIONS + " questions on this task already — "
+                    + "that is the limit. Decide with what you have.");
+        }
+        run.emit(RunEvent.of("tool_use", "Asked " + target.name + ": " + question, asker.name, asker.nodeId));
+        String answer = fanout.askAbout(run, asker, target, question);
+        run.emit(RunEvent.of("system", target.name + " answered " + asker.name + ": "
+                + (answer.length() > 300 ? answer.substring(0, 300) + "…" : answer), target.name, target.nodeId));
+        return callResult(false, answer);
+    }
+
+    /** The other workers of this run — drawn and plan-born — never the asker itself. */
+    private static java.util.List<AgentSpec> siblingsOf(AgentRun run, AgentSpec asker) {
+        java.util.List<AgentSpec> out = new java.util.ArrayList<>();
+        if (run.compiled != null) {
+            for (AgentSpec s : run.compiled.subAgents()) if (!s.nodeId.equals(asker.nodeId)) out.add(s);
+        }
+        for (AgentSpec s : run.syntheticWorkers.values()) if (!s.nodeId.equals(asker.nodeId)) out.add(s);
+        return out;
     }
 
     private ObjectNode shareFinding(AgentRun run, AgentSpec worker, JsonNode arguments) {
@@ -241,6 +300,7 @@ public class WorkerToolsController {
         // a worker may do to the world, and a note to a sibling does nothing to the world.
         if (SHARE_TOOL.equals(fullName)) return shareFinding(run, worker, params.path("arguments"));
         if (READ_TOOL.equals(fullName)) return readFindings(run, worker);
+        if (ASK_TOOL.equals(fullName)) return askWorker(run, worker, params.path("arguments"));
 
         int sep = fullName.indexOf("__");
         if (sep <= 0) {

@@ -462,6 +462,63 @@ public class FanoutExecutor {
         return out;
     }
 
+    // ---------------------------------------------------------------- a sibling's answer
+
+    /** How long the answering process gets. Short: the asker is mid-task and waiting. */
+    static final int ASK_TIMEOUT_SECONDS = 120;
+
+    /**
+     * A sibling's answer about its own work, without interrupting it.
+     *
+     * <p>A worker is a process on its own task and cannot be tapped on the shoulder — it would
+     * have to poll for questions, and a model does not poll. What CAN answer is a short
+     * read-only process over the sibling's workspace and whatever it has reported so far: the
+     * files it wrote are the facts a question is usually about. Its own scratch directory, no
+     * MCP servers and no shell, so answering can change nothing; the sibling's folder is
+     * granted read-only through --add-dir rather than by running inside it, so the answerer
+     * never inherits the sibling's tool tokens.
+     */
+    public String askAbout(AgentRun run, AgentSpec asker, AgentSpec sibling, String question) {
+        String cmd = support.command().orElse(null);
+        if (cmd == null) return "The claude CLI was not found, so nobody can answer.";
+        Path siblingDir = runWorkspace(run, "workers", workerFolder(sibling));
+        if (!Files.isDirectory(siblingDir)) {
+            return "'" + sibling.name + "' has not started yet — there is nothing to ask about.";
+        }
+        Path workdir = runWorkspace(run, "asks", LocalClaudeExecutor.sanitize(asker.name) + "-"
+                + UUID.randomUUID().toString().substring(0, 8));
+        AgentSpec helper = new AgentSpec();
+        helper.nodeId = "ask:" + sibling.nodeId + ":" + workdir.getFileName();
+        helper.name = sibling.name + " (answering " + asker.name + ")";
+        helper.cliName = LocalClaudeExecutor.sanitize("ask-" + sibling.name);
+        helper.model = sibling.model;
+        helper.mcpServers = List.of();
+        try {
+            Files.createDirectories(workdir);
+            NodeExec siblingExec = run.nodeExecOrNull(sibling.nodeId);
+            String soFar = siblingExec == null || siblingExec.output == null ? "" : siblingExec.output;
+            if (soFar.length() > 6000) soFar = "…" + soFar.substring(soFar.length() - 6000);
+            StringBuilder md = new StringBuilder();
+            md.append("You answer, on behalf of the worker '").append(sibling.name)
+                    .append("', a question from a sibling worker in the same flow. Answer ONLY from that ")
+                    .append("worker's workspace — the folder ").append(siblingDir)
+                    .append(", which you can read — and from what it has reported so far, below. If the ")
+                    .append("answer is not there, say so in one line; do not guess, and do not do the work ")
+                    .append("yourself. Be short: the asker is mid-task and waiting.\n");
+            if (!soFar.isBlank()) {
+                md.append("\n## What '").append(sibling.name).append("' has said so far\n\n").append(soFar).append('\n');
+            }
+            Files.writeString(workdir.resolve("CLAUDE.md"), md.toString());
+            writeWorkerMcpConfig(run, helper, workdir, false);
+        } catch (IOException e) {
+            return "Could not prepare the question: " + e.getMessage();
+        }
+        Attempt result = attempt(run, helper, null, cmd, "Question from '" + asker.name + "': " + question,
+                workdir, List.of(siblingDir), PLANNER_READ_ONLY, ASK_TIMEOUT_SECONDS);
+        if (!result.ok()) return "No answer: " + result.error();
+        return result.finalText() == null || result.finalText().isBlank() ? "(no answer)" : result.finalText().trim();
+    }
+
     // ---------------------------------------------------------------- the schedule
 
     /**
@@ -694,6 +751,12 @@ public class FanoutExecutor {
 
     private Attempt attempt(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
                             String userText, Path workdir, List<Path> dirs, String disallowedTools) {
+        return attempt(run, spec, exec, cmd, userText, workdir, dirs, disallowedTools, timeoutSeconds);
+    }
+
+    private Attempt attempt(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
+                            String userText, Path workdir, List<Path> dirs, String disallowedTools,
+                            int timeout) {
         // The machine-wide ceiling, taken before the process exists and held until it has exited.
         // Waiting here parks a fanout-pool thread, which is the point: the alternative is a
         // process the machine cannot carry. The run says what it is waiting for.
@@ -709,14 +772,15 @@ public class FanoutExecutor {
             return new Attempt(false, false, null, "run was stopped");
         }
         try {
-            return attemptWithSlot(run, spec, exec, cmd, userText, workdir, dirs, disallowedTools);
+            return attemptWithSlot(run, spec, exec, cmd, userText, workdir, dirs, disallowedTools, timeout);
         } finally {
             slot.close();
         }
     }
 
     private Attempt attemptWithSlot(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
-                            String userText, Path workdir, List<Path> dirs, String disallowedTools) {
+                            String userText, Path workdir, List<Path> dirs, String disallowedTools,
+                            int timeout) {
         boolean promptOnStdin = userText.length() > LocalClaudeExecutor.MAX_INLINE_PROMPT_CHARS;
         // Written next to the worker's own MCP config, and passed as a path — inline JSON does not
         // survive ProcessBuilder on Windows. See LocalClaudeExecutor.writePluginSettings.
@@ -759,10 +823,10 @@ public class FanoutExecutor {
         ScheduledFuture<?> soft = watchdogs.schedule(() -> {
             timedOut.set(true);
             proc.destroy();
-        }, timeoutSeconds, TimeUnit.SECONDS);
+        }, timeout, TimeUnit.SECONDS);
         ScheduledFuture<?> hard = watchdogs.schedule(() -> {
             if (proc.isAlive()) proc.destroyForcibly();
-        }, timeoutSeconds + FORCE_KILL_AFTER_SECONDS, TimeUnit.SECONDS);
+        }, timeout + FORCE_KILL_AFTER_SECONDS, TimeUnit.SECONDS);
 
         String finalText = null;
         boolean resultError = false;
@@ -792,7 +856,7 @@ public class FanoutExecutor {
 
         if (timedOut.get()) {
             return new Attempt(false, true, null,
-                    "timed out after " + timeoutSeconds + "s and was stopped");
+                    "timed out after " + timeout + "s and was stopped");
         }
         int exit = proc.exitValue();
         if (exit != 0) {
@@ -869,7 +933,11 @@ public class FanoutExecutor {
                     have been done, and again whenever you are stuck. Call share_finding when you
                     establish something the others would otherwise spend time establishing
                     themselves — a fact, a dead end, a source that turned out to be wrong. A
-                    sentence or two. Not progress updates, and not your report.
+                    sentence or two. Not progress updates, and not your report. A third tool,
+                    ask_worker, puts a question to one named sibling and returns an answer drawn
+                    from that worker's workspace and what it has reported so far — use it instead
+                    of redoing work a sibling is doing; it costs a small model call, and you may
+                    ask a few times per task, not many.
                     """);
         }
         // Only when something is actually withheld. Telling a worker its writes might be

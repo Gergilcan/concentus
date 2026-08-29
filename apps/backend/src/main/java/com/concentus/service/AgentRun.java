@@ -122,6 +122,8 @@ public class AgentRun {
      */
     public final Map<String, java.util.List<com.concentus.git.GitWorkspace.Checkout>> workerCheckouts =
             new ConcurrentHashMap<>();
+    /** Questions each worker has asked its siblings this run, by node id — capped, see the tool. */
+    public final Map<String, Integer> questionsAsked = new ConcurrentHashMap<>();
     /** What each worker changed in each of its clones, as patches: worker node id → folder → patch. */
     public final Map<String, Map<String, String>> workerPatches = new ConcurrentHashMap<>();
     /**

@@ -54,6 +54,8 @@ class WorkerToolsControllerTest {
     }
 
     private AgentRun run;
+    private final com.concentus.service.FanoutExecutor fanout =
+            mock(com.concentus.service.FanoutExecutor.class);
     private FakeMcpClient mcp;
 
     private WorkerToolsController controller(FacadeProfile profile) {
@@ -80,7 +82,7 @@ class WorkerToolsControllerTest {
         OrgContext org = mock(OrgContext.class);
         when(org.defaultOrganizationId()).thenReturn("default");
         return new WorkerToolsController(runs, MAPPER, oauth, org,
-                new com.concentus.service.ToolCallLoopGuard());
+                new com.concentus.service.ToolCallLoopGuard(), fanout);
     }
 
     private static JsonNode rpc(String method, String params) {
@@ -239,5 +241,72 @@ class WorkerToolsControllerTest {
 
         assertThat(result.path("isError").asBoolean()).isFalse();
         assertThat(mcp.called.get()).isEqualTo("create_contact");
+    }
+
+    // ------------------------------------------------------------------ ask_worker
+
+    /** A second worker beside n1, so there is somebody to ask. */
+    private AgentSpec sibling(String nodeId, String name) {
+        AgentSpec other = new AgentSpec();
+        other.nodeId = nodeId;
+        other.name = name;
+        run.compiled = new CompiledFlow(run.compiled.coordinator(),
+                List.of(run.compiled.subAgents().get(0), other));
+        return other;
+    }
+
+    private JsonNode ask(WorkerToolsController c, String worker, String question) {
+        return c.rpc("run-1", "n1", "tok-worker", rpc("tools/call",
+                "{\"name\":\"ask_worker\",\"arguments\":{\"worker\":\"" + worker
+                        + "\",\"question\":\"" + question + "\"}}")).getBody().path("result");
+    }
+
+    @Test
+    void aQuestionToASiblingIsAnsweredFromItsWorkspaceAndSaidInTheLog() {
+        WorkerToolsController c = controller(profile(List.of(), true, null));
+        AgentSpec scout = sibling("n2", "Scout");
+        when(fanout.askAbout(org.mockito.ArgumentMatchers.eq(run), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(scout), org.mockito.ArgumentMatchers.eq("where is the config?")))
+                .thenReturn("In src/config.yaml, line 12.");
+
+        JsonNode result = ask(c, "scout", "where is the config?");
+
+        assertThat(result.path("isError").asBoolean()).isFalse();
+        assertThat(result.path("content").get(0).path("text").asText()).isEqualTo("In src/config.yaml, line 12.");
+        assertThat(run.bufferedEvents()).anySatisfy(e -> assertThat(e.text()).contains("Asked Scout: where is the config?"));
+        assertThat(run.bufferedEvents()).anySatisfy(e -> assertThat(e.text()).contains("Scout answered"));
+    }
+
+    @Test
+    void anUnknownWorkerIsRefusedWithTheNamesThatExist() {
+        WorkerToolsController c = controller(profile(List.of(), true, null));
+        sibling("n2", "Scout");
+
+        JsonNode result = ask(c, "Nobody", "anything?");
+
+        assertThat(result.path("isError").asBoolean()).isTrue();
+        assertThat(result.path("content").get(0).path("text").asText()).contains("No worker named 'Nobody'").contains("Scout");
+        org.mockito.Mockito.verifyNoInteractions(fanout);
+    }
+
+    @Test
+    void questionsAreCappedPerWorker() {
+        WorkerToolsController c = controller(profile(List.of(), true, null));
+        sibling("n2", "Scout");
+        when(fanout.askAbout(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString())).thenReturn("yes");
+
+        for (int i = 0; i < WorkerToolsController.MAX_QUESTIONS; i++) {
+            assertThat(ask(c, "Scout", "q" + i).path("isError").asBoolean()).isFalse();
+        }
+        JsonNode sixth = ask(c, "Scout", "one more");
+
+        // A worker that asks instead of working is a loop with extra steps; the sixth is refused
+        // with the reason, and never reaches the answering process.
+        assertThat(sixth.path("isError").asBoolean()).isTrue();
+        assertThat(sixth.path("content").get(0).path("text").asText()).contains("that is the limit");
+        org.mockito.Mockito.verify(fanout, org.mockito.Mockito.times(WorkerToolsController.MAX_QUESTIONS))
+                .askAbout(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
     }
 }
