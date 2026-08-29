@@ -10,8 +10,11 @@ import type { NodeKind } from '../api/types.ts'
  * an exception: wired into an agent it runs first and its answer becomes context, wired out of one
  * it runs when the flow finishes. That is what let a "when does this run" dropdown disappear — the
  * drawing already said it.
+ *
+ * `none` — annotations. A note and a frame are for the people reading the canvas; a wire to one
+ * would claim the run reads it, and the run never does.
  */
-export type WiringRole = 'feeds' | 'both'
+export type WiringRole = 'feeds' | 'both' | 'none'
 
 const ROLES: Record<NodeKind, WiringRole> = {
   input: 'feeds',
@@ -29,6 +32,13 @@ const ROLES: Record<NodeKind, WiringRole> = {
   // what they are for.
   condition: 'both',
   foreach: 'both',
+  note: 'none',
+  group: 'none',
+}
+
+/** Drawn for people, ignored by the run: no handles, no wires, nothing to compile. */
+export function isAnnotation(kind: NodeKind): boolean {
+  return ROLES[kind] === 'none'
 }
 
 /** Decision and iteration: they stand between a consumer and the branch they gate. */
@@ -53,6 +63,7 @@ const CONSUMERS: NodeKind[] = ['agent', 'coordinator', 'merge', 'verifier']
  * would be a picture of nothing.
  */
 export function canConnect(source: NodeKind, target: NodeKind): boolean {
+  if (isAnnotation(source) || isAnnotation(target)) return false
   if (CONSUMERS.includes(target)) return true
   // A gate takes the place of the wire it stands in, so whatever could point at the branch may
   // point at the gate, and the gate may point wherever that wire was going. Gates chain: "for

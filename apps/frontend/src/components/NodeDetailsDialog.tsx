@@ -38,8 +38,10 @@ const KIND_NAMES: Record<string, string> = {
   api: 'API endpoint',
   flow: 'Sub-flow',
   knowledge: 'Knowledge base',
-  gate: 'Condition',
+  condition: 'Condition',
   foreach: 'For each',
+  note: 'Note',
+  group: 'Group',
 }
 
 function blockName(data: AppNodeData, t: (key: string) => string): string {

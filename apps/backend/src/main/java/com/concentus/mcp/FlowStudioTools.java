@@ -284,6 +284,15 @@ public class FlowStudioTools implements StudioToolset {
                   verifier  Fan-out only. Judges each worker's output before the merge; a rejected
                             output is withheld. data: as merge.
 
+                  note      A sticky note for the people reading the canvas. data: text, color
+                            ("yellow" | "blue" | "green" | "pink"). Never compiled, never run,
+                            never wired.
+
+                  group     A labelled frame around related nodes, purely visual. data: label,
+                            color (as note), _size {"w", "h"}; a node inside the frame carries
+                            data._parent = the frame's id, and its _pos stays absolute. Never
+                            compiled, never run, never wired.
+
                 EDGES
 
                   Connect a capability node (mcp, repo, sql, knowledge, api) to an agent to grant it.

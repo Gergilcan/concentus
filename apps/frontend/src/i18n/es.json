@@ -1532,5 +1532,18 @@
   "Your edited input is not saved to the flow.": "Tu entrada editada no se guarda en el flow.",
   "Your license has expired. Paste a new token in Resources → Settings before the grace window runs out.": "Tu licencia ha caducado. Pega un token nuevo en Recursos → Ajustes antes de que se agote el periodo de gracia.",
   "Your provider’s IMAP host. Gmail: imap.gmail.com · Microsoft 365: outlook.office365.com": "El host IMAP de tu proveedor. Gmail: imap.gmail.com · Microsoft 365: outlook.office365.com",
-  "Σ execution tokens · in {{in}} · out {{out}}": "Σ tokens de la ejecución · entrada {{in}} · salida {{out}}"
+  "Σ execution tokens · in {{in}} · out {{out}}": "Σ tokens de la ejecución · entrada {{in}} · salida {{out}}",
+  "Note": "Nota",
+  "Group": "Grupo",
+  "A sticky note for whoever reads this flow next. Four colours, no wires — the run never sees it.": "Una nota adhesiva para quien lea este flow después. Cuatro colores, sin cables: la ejecución nunca la ve.",
+  "A labelled frame. Drop blocks inside and they move with it; drag its corners to resize. Decoration only — the run ignores it.": "Un marco con etiqueta. Suelta bloques dentro y se mueven con él; arrastra sus esquinas para cambiar el tamaño. Solo decoración: la ejecución lo ignora.",
+  "Double-click to write": "Doble clic para escribir",
+  "Colour": "Color",
+  "Yellow": "Amarillo",
+  "Blue": "Azul",
+  "Green": "Verde",
+  "Pink": "Rosa",
+  "What the next person reading this flow should know.": "Lo que debería saber la próxima persona que lea este flow.",
+  "Notes are for people. The run never reads them, and the pre-run check never mentions them.": "Las notas son para personas. La ejecución nunca las lee y la revisión previa nunca las menciona.",
+  "Drop blocks inside the frame and they move with it; drag a block out to release it. Select the frame to resize it from its corners. Deleting the frame keeps the blocks.": "Suelta bloques dentro del marco y se mueven con él; arrastra un bloque fuera para soltarlo. Selecciona el marco para cambiar su tamaño desde las esquinas. Borrar el marco conserva los bloques."
 }

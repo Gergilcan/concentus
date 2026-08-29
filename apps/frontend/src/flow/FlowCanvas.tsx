@@ -155,6 +155,7 @@ export function FlowCanvas() {
   const copySelection = useFlowStore((s) => s.copySelection)
   const paste = useFlowStore((s) => s.paste)
   const duplicateSelection = useFlowStore((s) => s.duplicateSelection)
+  const settleDrop = useFlowStore((s) => s.settleDrop)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -236,7 +237,26 @@ export function FlowCanvas() {
         selectNode(node.id)
       }}
       onSelectionDragStart={() => checkpoint()}
-      onNodeDragStop={() => setHelperLines(NO_LINES)}
+      // Where the nodes landed decides which frame they belong to now. Both stop handlers,
+      // because a drag of several selected nodes reports through the other one.
+      onNodeDragStop={(_, __, dragged) => {
+        setHelperLines(NO_LINES)
+        settleDrop(dragged.map((n) => n.id))
+      }}
+      onSelectionDragStop={(_, dragged) => settleDrop(dragged.map((n) => n.id))}
+      // Deleting a frame deletes the frame. React Flow would take its members down with it —
+      // sensible for a node that owns its children, wrong for a rectangle somebody drew around
+      // blocks they still want. Members the user selected themselves still go; the wires that
+      // stay are the ones touching nothing that is leaving.
+      onBeforeDelete={async ({ nodes: doomed, edges: cut }) => {
+        const frames = new Set(doomed.filter((n) => n.type === 'group').map((n) => n.id))
+        const nodes = doomed.filter((n) => n.selected || !(n.parentId && frames.has(n.parentId)))
+        const leaving = new Set(nodes.map((n) => n.id))
+        return {
+          nodes,
+          edges: cut.filter((e) => e.selected || leaving.has(e.source) || leaving.has(e.target)),
+        }
+      }}
       // Two distinct knobs, both needed for "clicking with a slightly unsteady hand selects":
       // the drag THRESHOLD keeps the node from micro-moving under a jittery press, and the click
       // DISTANCE keeps d3's click suppression (default 0px — any movement kills the click) from

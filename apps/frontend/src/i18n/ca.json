@@ -1532,5 +1532,18 @@
   "Your edited input is not saved to the flow.": "La teva entrada editada no es desa al flow.",
   "Your license has expired. Paste a new token in Resources → Settings before the grace window runs out.": "La teva llicència ha caducat. Enganxa un token nou a Recursos → Configuració abans que s’esgoti el període de gràcia.",
   "Your provider’s IMAP host. Gmail: imap.gmail.com · Microsoft 365: outlook.office365.com": "El host IMAP del teu proveïdor. Gmail: imap.gmail.com · Microsoft 365: outlook.office365.com",
-  "Σ execution tokens · in {{in}} · out {{out}}": "Σ tokens de l'execució · entrada {{in}} · sortida {{out}}"
+  "Σ execution tokens · in {{in}} · out {{out}}": "Σ tokens de l'execució · entrada {{in}} · sortida {{out}}",
+  "Note": "Nota",
+  "Group": "Grup",
+  "A sticky note for whoever reads this flow next. Four colours, no wires — the run never sees it.": "Una nota adhesiva per a qui llegeixi aquest flow després. Quatre colors, sense cables: l'execució no la veu mai.",
+  "A labelled frame. Drop blocks inside and they move with it; drag its corners to resize. Decoration only — the run ignores it.": "Un marc amb etiqueta. Deixa-hi blocs a dins i es mouen amb ell; arrossega'n les cantonades per canviar-ne la mida. Només decoració: l'execució l'ignora.",
+  "Double-click to write": "Doble clic per escriure",
+  "Colour": "Color",
+  "Yellow": "Groc",
+  "Blue": "Blau",
+  "Green": "Verd",
+  "Pink": "Rosa",
+  "What the next person reading this flow should know.": "El que hauria de saber la propera persona que llegeixi aquest flow.",
+  "Notes are for people. The run never reads them, and the pre-run check never mentions them.": "Les notes són per a persones. L'execució no les llegeix mai i la revisió prèvia no les esmenta mai.",
+  "Drop blocks inside the frame and they move with it; drag a block out to release it. Select the frame to resize it from its corners. Deleting the frame keeps the blocks.": "Deixa blocs dins del marc i es mouen amb ell; arrossega un bloc a fora per alliberar-lo. Selecciona el marc per canviar-ne la mida des de les cantonades. Esborrar el marc conserva els blocs."
 }

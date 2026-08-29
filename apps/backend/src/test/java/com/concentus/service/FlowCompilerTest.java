@@ -45,6 +45,27 @@ class FlowCompilerTest {
     }
 
     @Test
+    void notesAndFramesAreNotBlocksAndTheCompilerLooksPastThem() {
+        // What the author drew for the next reader: a sticky note, a frame with the agent inside
+        // it. Neither is a block; a compiler that tripped over them would refuse a flow that ran
+        // yesterday because somebody annotated it today.
+        FlowNode a = new FlowNode("a1", "agent", "coordinator", Map.of("name", "Solo",
+                "systemPrompt", "do stuff", "_pos", Map.of("x", 150, "y", 160), "_parent", "g1"));
+        FlowNode note = new FlowNode("n1", "note", null, Map.of("text", "Runs nightly", "color", "yellow"));
+        FlowNode frame = new FlowNode("g1", "group", null, Map.of("label", "Ingest", "color", "blue",
+                "_size", Map.of("w", 480, "h", 260)));
+        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(frame, a, note), List.<FlowEdge>of(),
+                null, List.<String>of(), null, null);
+
+        CompiledFlow compiled = compiler.compile(flow);
+
+        assertThat(compiled.coordinator().name).isEqualTo("Solo");
+        assertThat(compiled.subAgents()).isEmpty();
+        assertThat(compiled.merger()).isNull();
+        assertThat(compiled.afterFlows()).isEmpty();
+    }
+
+    @Test
     void singleAgentWithNoRoleIsTreatedAsCoordinator() {
         // No agent is explicitly marked "coordinator", but since there's only one agent it's used as such.
         FlowNode a = agent("a1", null, "Solo");

@@ -3,7 +3,9 @@ import { AgentNode } from './nodes/AgentNode.tsx'
 import { ApiNode } from './nodes/ApiNode.tsx'
 import { ConditionNode } from './nodes/ConditionNode.tsx'
 import { ForEachNode } from './nodes/ForEachNode.tsx'
+import { GroupNode } from './nodes/GroupNode.tsx'
 import { InputNode } from './nodes/InputNode.tsx'
+import { NoteNode } from './nodes/NoteNode.tsx'
 import { McpNode } from './nodes/McpNode.tsx'
 import { KnowledgeNode } from './nodes/KnowledgeNode.tsx'
 import { FlowRunNode } from './nodes/FlowRunNode.tsx'
@@ -19,9 +21,10 @@ import { nodeTypes } from './nodeTypes.ts'
 // default renderer instead of erroring), so pin the exact key set and each mapping.
 // 'worker' is deliberately in the registry but NOT in NodeKind: its boxes are synthesized
 // from the run report and must never be addable from the palette or saved with a flow.
+// 'note' and 'group' are the annotations: saved with the flow, never compiled.
 describe('nodeTypes', () => {
-  it('has exactly the fourteen expected node-kind keys, no more, no fewer', () => {
-    expect(Object.keys(nodeTypes).sort()).toEqual(['agent', 'api', 'condition', 'coordinator', 'flow', 'foreach', 'input', 'knowledge', 'mcp', 'merge', 'repo', 'sql', 'verifier', 'worker'])
+  it('has exactly the sixteen expected node-kind keys, no more, no fewer', () => {
+    expect(Object.keys(nodeTypes).sort()).toEqual(['agent', 'api', 'condition', 'coordinator', 'flow', 'foreach', 'group', 'input', 'knowledge', 'mcp', 'merge', 'note', 'repo', 'sql', 'verifier', 'worker'])
   })
 
   it('maps each key to the matching imported component', () => {
@@ -39,6 +42,8 @@ describe('nodeTypes', () => {
     expect(nodeTypes.verifier).toBe(VerifierNode)
     expect(nodeTypes.condition).toBe(ConditionNode)
     expect(nodeTypes.foreach).toBe(ForEachNode)
+    expect(nodeTypes.note).toBe(NoteNode)
+    expect(nodeTypes.group).toBe(GroupNode)
     expect(nodeTypes.worker).toBe(WorkerNode)
   })
 })

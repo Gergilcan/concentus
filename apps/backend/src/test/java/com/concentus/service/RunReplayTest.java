@@ -74,6 +74,28 @@ class RunReplayTest {
     }
 
     @Test
+    void a_note_added_since_the_run_is_not_a_divergence_and_not_a_block() {
+        // The flow was documented after the run: a note and a frame appeared. Nothing about what
+        // the run would do changed, so the replay must say nothing — listed, a note with no exec
+        // would read as "skipped then, would run now" and be counted.
+        FlowGraph then = gated("contains", "ok");
+        FlowGraph now = graph(
+                List.of(agent("a1", "Reporter"), condition("c1", "contains", "ok"), handOff("f1"),
+                        new FlowNode("n1", "note", null, Map.of("text", "Nightly", "color", "yellow")),
+                        new FlowNode("g1", "group", null, Map.of("label", "Report", "color", "blue"))),
+                List.of(new FlowEdge("e1", "a1", "c1"), new FlowEdge("e2", "c1", "f1")));
+
+        RunReplay.ReplayReport report = RunReplay.compare(runWhere("all ok", "passed"), then, now);
+
+        assertThat(report.divergences()).isZero();
+        assertThat(report.nodes()).extracting(RunReplay.ReplayNode::nodeId)
+                .containsExactlyInAnyOrder("a1", "c1", "f1");
+
+        // And a note removed since the run is not "a block that ran and is gone" either.
+        assertThat(RunReplay.compare(runWhere("all ok", "passed"), now, then).divergences()).isZero();
+    }
+
+    @Test
     void an_edited_condition_that_flips_the_branch_is_the_divergence() {
         // The run went through when the gate looked for "ok"; today it looks for "ERROR".
         RunReplay.ReplayReport report = RunReplay.compare(

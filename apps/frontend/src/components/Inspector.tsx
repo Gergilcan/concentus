@@ -4,6 +4,7 @@ import type { AppNodeData } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
 import { useFlowStore } from '../state/store.ts'
 import { AgentInspector } from './AgentInspector.tsx'
+import { GroupInspector, NoteInspector } from './AnnotationInspectors.tsx'
 import { ApiInspector } from './ApiInspector.tsx'
 import { ConditionInspector, ForEachInspector } from './GateInspectors.tsx'
 import { FlowVersions } from './FlowVersions.tsx'
@@ -33,6 +34,8 @@ function title(data: AppNodeData): string {
   if (data.kind === 'verifier') return 'Verifier'
   if (data.kind === 'condition') return 'Condition'
   if (data.kind === 'foreach') return 'For each'
+  if (data.kind === 'note') return 'Note'
+  if (data.kind === 'group') return 'Group'
   return 'Repository'
 }
 
@@ -209,6 +212,9 @@ export function Inspector() {
       {shownTab === 'properties' && data.kind === 'verifier' && <VerifierInspector data={data} set={set} />}
 
       {shownTab === 'properties' && data.kind === 'repo' && <RepoInspector data={data} set={set} />}
+
+      {shownTab === 'properties' && data.kind === 'note' && <NoteInspector data={data} set={set} />}
+      {shownTab === 'properties' && data.kind === 'group' && <GroupInspector data={data} set={set} />}
     </aside>
   )
 }
