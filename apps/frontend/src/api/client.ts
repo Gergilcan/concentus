@@ -28,6 +28,9 @@ import type {
   KnowledgeHit,
   LibraryAgent,
   LicenseStatus,
+  OrgPolicy,
+  OrgPolicyView,
+  PublishApprovalView,
   FlowVersionInfo,
   GoldenStatus,
   McpDef,
@@ -527,6 +530,17 @@ export const api = {
   getLicense: () => req<LicenseStatus>('/license'),
   installLicense: (token: string) =>
     req<LicenseStatus>('/license', { method: 'POST', body: JSON.stringify({ token }) }),
+
+  // organization policies (Enterprise): the rules over every flow, and publish approvals
+  getOrgPolicy: () => req<OrgPolicyView>('/org-policy'),
+  saveOrgPolicy: (policy: OrgPolicy) =>
+    req<OrgPolicyView>('/org-policy', { method: 'PUT', body: JSON.stringify(policy) }),
+  publishApproval: (flowId: string) =>
+    req<PublishApprovalView>(`/org-policy/publish/${encodeURIComponent(flowId)}`),
+  approvePublish: (flowId: string) =>
+    req<PublishApprovalView>(`/org-policy/publish/${encodeURIComponent(flowId)}/approve`, { method: 'POST' }),
+  revokePublish: (flowId: string) =>
+    req<PublishApprovalView>(`/org-policy/publish/${encodeURIComponent(flowId)}/approve`, { method: 'DELETE' }),
 
   // account / sign-in
   session: () => req<SessionInfo>('/account/session'),

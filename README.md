@@ -932,6 +932,39 @@ Four rungs, each keeping what the one below it has: **Viewer** reads, **Operator
 path in one place in `SecurityConfig`, so "what can a Viewer do?" has an answer that fits on a
 screen. Members and roles are managed under *Resources → Members*.
 
+### Organization policies (Enterprise)
+
+A flow's own settings say what one flow does. *Resources → Policies* is where an admin says what
+**no** flow may exceed — one record per organization, and it only ever narrows:
+
+- **Default facade profile for workers.** An independent worker whose block names no facade
+  profile runs behind this one; the run log says *applied by organization policy*. A profile on
+  the block wins. **Require a facade** goes one step further: a worker with MCP servers wired, no
+  profile and no default does not compile — the doctor names the block, and a run refuses to
+  start rather than run a worker open against a rule that says it must not.
+- **Permission ceiling** (`plan` < `default` < `acceptEdits` < `bypassPermissions`). The mode a
+  run actually gets is clamped to it — after the flow's choice, the deployment default and the
+  approval mapping have all had their say — and the log says so once. The coordinator's picker
+  disables the modes above it.
+- **Organization budget.** Like a flow's monthly ceiling, summed across every flow: at or past
+  it, new runs on an API key are refused, and a run in flight is stopped when it crosses. When a
+  flow's own ceiling and the organization's are both armed, the one with less room trips first
+  and is the one named. Subscription and self-hosted runs are told, not stopped, for the reason
+  the flow ceiling gives.
+- **Published endpoints need an admin's approval.** A published flow answers `404` — exactly as
+  if it were not published — until an admin presses *Approve this endpoint* on the Input node.
+  The approval is of the flow's **saved** token: regenerating it asks for a new approval, and a
+  member sees *waiting for an administrator's approval* where the admin sees the button.
+
+The allowed **context roots** are deliberately not on the panel: they are a deployment setting
+(`local.context-roots`), decided by whoever runs the server, and a second copy that could disagree
+with the one actually enforced would be worse than none.
+
+The doctor reports a flow that would run into any of this before the run. And it is all
+Enterprise: on a Team deployment the panel renders read-only under the license's own sentence
+(what was saved stays visible), and **nothing is enforced** — Team behaves exactly as it did
+before policies existed.
+
 ### Several accounts on one machine
 
 Checking what an operator sees and then going back to being an admin to change it is the loop

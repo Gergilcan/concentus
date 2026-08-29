@@ -133,6 +133,25 @@ public class RunStore {
         }
     }
 
+    /**
+     * What every flow together has cost since a moment — the organization's budget gate. Every
+     * flow rather than one organization's, because runs are not partitioned by organization (see
+     * the README on isolation); on the single-organization deployment this is, the two are the
+     * same sum. Zero when persistence is down, as for the flow's own ceiling.
+     */
+    public double spendUsdSince(long sinceMillis) {
+        if (!isAvailable()) return 0d;
+        try {
+            Double sum = jdbc.queryForObject(
+                    "select coalesce(sum(cost_usd), 0) from runs where created_at >= ?",
+                    Double.class, sinceMillis);
+            return sum == null ? 0d : sum;
+        } catch (Exception e) {
+            log.debug("spend query failed: {}", e.getMessage());
+            return 0d;
+        }
+    }
+
     /** Queue an upsert of the run's current state. Non-blocking; best-effort. */
     public void persist(AgentRun run) {
         if (!isAvailable()) return;

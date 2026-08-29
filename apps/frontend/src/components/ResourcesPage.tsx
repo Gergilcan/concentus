@@ -13,6 +13,7 @@ import { McpServerJson } from './McpServerJson.tsx'
 import { MembersPanel } from './MembersPanel.tsx'
 import { ModelField } from './ModelField.tsx'
 import { PluginsPanel } from './PluginsPanel.tsx'
+import { PoliciesPanel } from './PoliciesPanel.tsx'
 import { SettingsPanel } from './SettingsPanel.tsx'
 import { SkillsPanel } from './SkillsPanel.tsx'
 import { StoragePanel } from './StoragePanel.tsx'
@@ -20,7 +21,7 @@ import { UpdatesPanel } from './UpdatesPanel.tsx'
 import { shellBridge } from '../api/shell.ts'
 import styles from './resources.module.scss'
 
-type Tab = 'settings' | 'members' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
+type Tab = 'settings' | 'members' | 'policies' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
 
 /**
  * The tab strip, in display order. `desktopOnly` keeps Updates out of a browser tab, which has no
@@ -67,6 +68,12 @@ const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolea
       'Who is in this organization and what each of them may do: read, run, edit, or administer. Enforced on every request, not only in the interface.',
   },
   {
+    id: 'policies',
+    label: 'Policies',
+    title:
+      'Rules over every flow in the organization: a default facade for workers, a permission ceiling, an organization-wide budget, approval for published endpoints. Enterprise; read-only elsewhere.',
+  },
+  {
     id: 'settings',
     label: 'Settings',
     title:
@@ -111,6 +118,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
 
       <div className={styles.tabBody}>
         {tab === 'members' && <MembersPanel pushError={pushError} />}
+        {tab === 'policies' && <PoliciesPanel pushError={pushError} />}
 
         {tab === 'agents' && (
           <CrudPanel<LibraryAgent>

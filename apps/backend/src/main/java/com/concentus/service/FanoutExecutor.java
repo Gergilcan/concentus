@@ -103,6 +103,12 @@ public class FanoutExecutor {
      * for the same reason telemetry is not: the constructor tests use runs everything unlimited.
      */
     private ProcessCeiling ceiling = ProcessCeiling.unlimited();
+    /**
+     * The organization's facade rule for workers the canvas never had — the ones a plan creates
+     * at run time, which the compiler could not see. Null means no policy, which is what the
+     * constructor tests build; the same not-final arrangement as telemetry, for the same reason.
+     */
+    private com.concentus.policy.OrgPolicyService policies;
     private final ExecutorService pool;
     private final ScheduledExecutorService watchdogs;
 
@@ -118,7 +124,8 @@ public class FanoutExecutor {
                           com.concentus.config.Settings settings,
                           com.concentus.telemetry.Telemetry telemetry,
                           ProcessCeiling ceiling,
-                          com.concentus.git.GitWorkspace gitWorkspace) {
+                          com.concentus.git.GitWorkspace gitWorkspace,
+                          com.concentus.policy.OrgPolicyService policies) {
         // Through Settings rather than as placeholders, so what somebody set under Resources →
         // Settings is what a fan-out actually runs with. The package-private constructor below
         // still takes plain values — it is what tests build, and they are about what a limit does
@@ -147,6 +154,13 @@ public class FanoutExecutor {
         // and none of them has anything to say about telemetry or the process ceiling.
         this.telemetry = telemetry;
         this.ceiling = ceiling;
+        this.policies = policies;
+    }
+
+    /** For tests: the policy a plan-born worker is resolved against. */
+    FanoutExecutor withPolicies(com.concentus.policy.OrgPolicyService policies) {
+        this.policies = policies;
+        return this;
     }
 
     FanoutExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
@@ -1160,11 +1174,30 @@ public class FanoutExecutor {
      * tools</b>, said out loud: "never the full tool set" is the rule for workers, and a missing
      * profile must fail closed rather than quietly expose everything the flow has.
      */
-    private boolean resolveFacade(AgentRun run, AgentSpec spec) {
+    private boolean resolveFacade(AgentRun run, AgentSpec spec) throws IOException {
         if (spec.mcpServers.isEmpty()) return false;
-        var chosen = spec.facadeProfileId == null || spec.facadeProfileId.isBlank()
+        boolean byPolicy = spec.facadeByPolicy;
+        String profileId = spec.facadeProfileId == null ? "" : spec.facadeProfileId.trim();
+        if (profileId.isEmpty() && policies != null) {
+            // A worker the compiler never saw — born of a plan at run time — gets the same rule
+            // the canvas workers got at compile time: the organization's default fills the blank.
+            String fallback = policies.defaultFacadeProfileId().orElse("");
+            if (!fallback.isEmpty()) {
+                profileId = fallback;
+                byPolicy = true;
+            } else if (policies.requireFacade()) {
+                // Fail closed, before the process exists: an IOException here is what stops a
+                // worker from launching at all, and the run reports it as the workspace that
+                // could not be prepared — which is exactly right, since a workspace with no
+                // facade is one the organization said must not be prepared.
+                throw new IOException("the organization's policy requires a facade profile on every "
+                        + "worker that reaches MCP, and " + subject(run, spec) + " has none. An "
+                        + "admin can set a default under Resources → Policies.");
+            }
+        }
+        var chosen = profileId.isEmpty()
                 ? java.util.Optional.<com.concentus.model.FacadeProfile>empty()
-                : profiles.get(spec.facadeProfileId);
+                : profiles.get(profileId);
 
         com.concentus.model.FacadeProfile profile;
         if (chosen.isEmpty()) {
@@ -1175,9 +1208,10 @@ public class FanoutExecutor {
             // whole feature, not by a safety margin. What it did buy was a run that reads no data,
             // reports the account as unreachable, and bills for the attempt.
             profile = PASS_THROUGH;
-            String missing = spec.facadeProfileId == null || spec.facadeProfileId.isBlank()
+            String missing = profileId.isEmpty()
                     ? "no facade profile"
-                    : "a facade profile that no longer exists";
+                    : byPolicy ? "an organization-default facade profile that no longer exists"
+                            : "a facade profile that no longer exists";
             run.emit(RunEvent.of("system", subject(run, spec) + " has " + missing
                     + ", so it reaches the " + spec.mcpServers.size() + " MCP server(s) wired to "
                     + "it with nothing filtered, writes included. Assign a profile "
@@ -1188,7 +1222,9 @@ public class FanoutExecutor {
             run.emit(RunEvent.of("system", subject(run, spec) + " runs behind facade profile '"
                     + profile.name() + "'" + (profile.readOnly() ? " (read-only)" : "")
                     + (profile.dryRunEnabled() && !profile.readOnly()
-                            ? " (writes are dry-run)" : "") + ".", spec.name, spec.nodeId));
+                            ? " (writes are dry-run)" : "")
+                    + (byPolicy ? ", applied by organization policy" : "") + ".",
+                    spec.name, spec.nodeId));
         }
         run.workerFacadeProfiles.put(spec.nodeId, profile);
         run.workerToolTokens.put(spec.nodeId, UUID.randomUUID().toString());

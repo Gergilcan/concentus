@@ -207,4 +207,62 @@ class LocalClaudeArgsTest {
         normal.permissionMode = "bypassPermissions";
         org.assertj.core.api.Assertions.assertThat(LocalClaudeExecutor.awaitingApproval(normal)).isFalse();
     }
+
+    // ---- the organization's permission ceiling (organization policy) ----
+
+    @org.junit.jupiter.api.Test
+    void theCeilingClampsTheDeploymentDefaultAndSaysSoOnce() {
+        AgentRun run = run();
+        run.maxPermissionMode = "acceptEdits";
+
+        List<String> first = executor().buildArgs("claude", run, Path.of("."), true, "hola", List.of(), false, null);
+        List<String> second = executor().buildArgs("claude", run, Path.of("."), false, "sigue", List.of(), false, null);
+
+        // The deployment says bypassPermissions; the organization says no higher than acceptEdits.
+        org.assertj.core.api.Assertions.assertThat(first.get(first.indexOf("--permission-mode") + 1))
+                .isEqualTo("acceptEdits");
+        org.assertj.core.api.Assertions.assertThat(second.get(second.indexOf("--permission-mode") + 1))
+                .isEqualTo("acceptEdits");
+        // Said once, not once per turn.
+        org.assertj.core.api.Assertions.assertThat(run.bufferedEvents())
+                .filteredOn(e -> e.text().contains("above the organization's ceiling 'acceptEdits'"))
+                .hasSize(1);
+    }
+
+    @org.junit.jupiter.api.Test
+    void aModeUnderTheCeilingIsLeftAloneAndNothingIsSaid() {
+        AgentRun run = run();
+        run.permissionMode = "plan";
+        run.maxPermissionMode = "acceptEdits";
+
+        List<String> a = executor().buildArgs("claude", run, Path.of("."), true, "hola", List.of(), false, null);
+
+        org.assertj.core.api.Assertions.assertThat(a.get(a.indexOf("--permission-mode") + 1)).isEqualTo("plan");
+        org.assertj.core.api.Assertions.assertThat(run.bufferedEvents())
+                .noneMatch(e -> e.text().contains("ceiling"));
+    }
+
+    @org.junit.jupiter.api.Test
+    void anApprovedRunActsNoHigherThanTheCeilingEither() {
+        AgentRun run = run();
+        run.permissionMode = LocalClaudeExecutor.APPROVAL_MODE;
+        run.approved = true;
+        run.maxPermissionMode = "default";
+
+        List<String> a = executor().buildArgs("claude", run, Path.of("."), false, "go", List.of(), false, null);
+
+        // Approval used to mean bypassPermissions; under a ceiling it means "as much as allowed".
+        org.assertj.core.api.Assertions.assertThat(a.get(a.indexOf("--permission-mode") + 1)).isEqualTo("default");
+    }
+
+    @org.junit.jupiter.api.Test
+    void noCeilingMeansExactlyWhatItMeantBefore() {
+        AgentRun run = run();
+        run.maxPermissionMode = "";
+
+        List<String> a = executor().buildArgs("claude", run, Path.of("."), true, "hola", List.of(), false, null);
+
+        org.assertj.core.api.Assertions.assertThat(a.get(a.indexOf("--permission-mode") + 1))
+                .isEqualTo("bypassPermissions");
+    }
 }

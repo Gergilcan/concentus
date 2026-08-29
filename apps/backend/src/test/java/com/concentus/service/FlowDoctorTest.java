@@ -48,6 +48,9 @@ class FlowDoctorTest {
     private final com.concentus.store.FacadeProfileStore facades =
             mock(com.concentus.store.FacadeProfileStore.class);
     private final AgentLibraryStore agentLibrary = mock(AgentLibraryStore.class);
+    /** The organization's rules: a fresh mock has none, which is what a Team deployment sees. */
+    private final com.concentus.policy.OrgPolicyService policies =
+            mock(com.concentus.policy.OrgPolicyService.class);
 
     private final FlowDoctor doctor = doctorWith(new FlowCompiler());
 
@@ -63,7 +66,8 @@ class FlowDoctorTest {
 
     private FlowDoctor doctorWith(FlowCompiler compiler, ContextFolderResolver contextRoots) {
         return new FlowDoctor(claude, compiler, credentials, mcpOAuth, plugins, runtimes, runStore,
-                variables, new OrgContext("default"), facades, agentLibrary, contextRoots);
+                variables, new OrgContext("default"), facades, agentLibrary, contextRoots, policies,
+                com.concentus.config.Settings.of(Map.of()));
     }
 
     @BeforeEach
@@ -612,5 +616,106 @@ class FlowDoctorTest {
         assertThat(library.get(0).level()).isEqualTo("error");
         assertThat(library.get(0).where()).isEqualTo("a-1");
         assertThat(library.get(0).message()).contains("'Coord'").contains("lib-1");
+    }
+
+    // ---------------------------------------------------------------- organization policy
+
+    private static FlowNode remoteMcp(String id, String name) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("name", name);
+        data.put("url", "https://" + name + ".example/mcp");
+        data.put("credentialId", "cred_ok");
+        return new FlowNode(id, "mcp", null, data);
+    }
+
+    /** The doctor over a compiler that applies the given policy — what a licensed deployment runs. */
+    private FlowDoctor doctorUnder(com.concentus.policy.OrgPolicy policy) {
+        return doctorWith(new FlowCompiler(id -> Optional.empty(), () -> policy), new ContextFolderResolver(""));
+    }
+
+    @Test
+    void aWorkerRefusedByTheFacadeRuleIsAPolicyErrorOnTheBlock() {
+        when(credentials.resolve("cred_ok")).thenReturn("token");
+        FlowDoctor doctor = doctorUnder(new com.concentus.policy.OrgPolicy("default", "", true, "", null, false));
+        FlowGraph flow = fanoutFlow(
+                List.of(worker("w-1", "Analista", null), remoteMcp("m-1", "linear")),
+                List.of(new FlowEdge("e2", "a-1", "w-1"), new FlowEdge("e3", "m-1", "w-1")));
+
+        List<DoctorFinding> findings = doctor.check(flow);
+
+        // On the block, not a generic "does not compile" on the whole flow.
+        assertThat(ofArea(findings, "graph")).isEmpty();
+        assertThat(ofArea(findings, "policy")).singleElement().satisfies(f -> {
+            assertThat(f.level()).isEqualTo("error");
+            assertThat(f.where()).isEqualTo("w-1");
+            assertThat(f.message()).contains("organization's policy").contains("Analista");
+            assertThat(f.fix()).contains("Resources → Policies");
+        });
+    }
+
+    @Test
+    void aWorkerFilledByTheOrganizationsDefaultProfileIsNothingToReport() {
+        when(credentials.resolve("cred_ok")).thenReturn("token");
+        when(facades.get("fprof_default")).thenReturn(Optional.of(new com.concentus.model.FacadeProfile(
+                "fprof_default", "reader", "", List.of(), true, Boolean.FALSE)));
+        FlowDoctor doctor = doctorUnder(new com.concentus.policy.OrgPolicy("default", "fprof_default", true, "", null, false));
+        FlowGraph flow = fanoutFlow(
+                List.of(worker("w-1", "Analista", null), remoteMcp("m-1", "linear")),
+                List.of(new FlowEdge("e2", "a-1", "w-1"), new FlowEdge("e3", "m-1", "w-1")));
+
+        assertThat(ofArea(doctor.check(flow), "policy")).isEmpty();
+        assertThat(ofArea(doctor.check(flow), "graph")).isEmpty();
+    }
+
+    @Test
+    void aFlowAskingForMoreThanTheCeilingIsWarnedItWillGetTheCeiling() {
+        when(policies.maxPermissionMode()).thenReturn("acceptEdits");
+        Map<String, Object> coord = new HashMap<>(coordinator().dataOrEmpty());
+        coord.put("permissionMode", "bypassPermissions");
+        FlowGraph flow = flow(List.of(input("manual", ""), new FlowNode("a-1", "agent", "coordinator", coord)));
+
+        assertThat(ofArea(doctor.check(flow), "policy")).singleElement().satisfies(f -> {
+            assertThat(f.level()).isEqualTo("warn");
+            assertThat(f.message()).contains("'bypassPermissions'").contains("ceiling 'acceptEdits'");
+        });
+    }
+
+    @Test
+    void aFlowNamingNoModeIsMeasuredByTheDeploymentsDefaultWhichIsBypass() {
+        when(policies.maxPermissionMode()).thenReturn("plan");
+
+        assertThat(ofArea(doctor.check(healthy()), "policy")).singleElement().satisfies(f ->
+                assertThat(f.message()).contains("names no permission mode").contains("'bypassPermissions'"));
+    }
+
+    @Test
+    void aPublishedFlowWaitingForApprovalIsAPolicyErrorBecauseItsEndpointIsShut() {
+        when(policies.publishBlocked("f1", "tok-1")).thenReturn(true);
+        Map<String, Object> in = new HashMap<>();
+        in.put("mode", "manual");
+        in.put("published", true);
+        in.put("publishToken", "tok-1");
+        FlowGraph flow = flow(List.of(new FlowNode("in-1", "input", null, in), coordinator()));
+
+        assertThat(ofArea(doctor.check(flow), "policy")).singleElement().satisfies(f -> {
+            assertThat(f.level()).isEqualTo("error");
+            assertThat(f.message()).contains("admin's approval").contains("404");
+        });
+    }
+
+    // The gate, from the doctor's side: a Team deployment's service has no ceiling and blocks no
+    // endpoint, so the same flows say nothing about policy.
+    @Test
+    void withNoPolicyInForceNoneOfThisIsSaid() {
+        Map<String, Object> coord = new HashMap<>(coordinator().dataOrEmpty());
+        coord.put("permissionMode", "bypassPermissions");
+        Map<String, Object> in = new HashMap<>();
+        in.put("mode", "manual");
+        in.put("published", true);
+        in.put("publishToken", "tok-1");
+        FlowGraph flow = flow(List.of(new FlowNode("in-1", "input", null, in),
+                new FlowNode("a-1", "agent", "coordinator", coord)));
+
+        assertThat(ofArea(doctor.check(flow), "policy")).isEmpty();
     }
 }

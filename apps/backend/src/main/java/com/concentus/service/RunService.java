@@ -79,6 +79,8 @@ public class RunService {
     private final ToolCallLoopGuard loops;
     /** The subscription's allowance meter, so a run that starts near the edge says so. */
     private final ClaudeUsageService usage;
+    /** The organization's rules: its budget beside the flow's, and the permission ceiling. */
+    private final com.concentus.policy.OrgPolicyService policies;
 
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
                       ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
@@ -91,9 +93,11 @@ public class RunService {
                       com.concentus.config.Settings settings,
                       com.concentus.telemetry.Telemetry telemetry,
                       ToolCallLoopGuard loops,
-                      ClaudeUsageService usage) {
+                      ClaudeUsageService usage,
+                      com.concentus.policy.OrgPolicyService policies) {
         this.clientProvider = clientProvider;
         this.usage = usage;
+        this.policies = policies;
         this.compiler = compiler;
         this.launcher = launcher;
         this.backends = backends;
@@ -175,16 +179,30 @@ public class RunService {
      * messages arrives first, and a compile error names the box to fix.
      */
     private void enforceBudget(FlowGraph flow, String backend) {
-        if (flow.id() == null || flow.budgetUsd() == null || flow.budgetUsd() <= 0) return;
         // An unregistered backend is the hosted API path, which bills. Unknown means billed on
         // purpose: forgetting to declare a new backend must not quietly disable everyone's ceiling.
         if (!billsPerToken(backend)) return;
-        double spent = runStore.spendUsdSince(flow.id(), monthStart());
-        if (spent >= flow.budgetUsd()) {
-            throw new IllegalStateException(String.format(java.util.Locale.ROOT,
-                    "Budget reached: '%s' has spent $%.2f of its $%.2f monthly ceiling. "
-                            + "Raise the budget in the flow's settings, or wait for next month.",
-                    flow.name(), spent, flow.budgetUsd()));
+        if (flow.id() != null && flow.budgetUsd() != null && flow.budgetUsd() > 0) {
+            double spent = runStore.spendUsdSince(flow.id(), monthStart());
+            if (spent >= flow.budgetUsd()) {
+                throw new IllegalStateException(String.format(java.util.Locale.ROOT,
+                        "Budget reached: '%s' has spent $%.2f of its $%.2f monthly ceiling. "
+                                + "Raise the budget in the flow's settings, or wait for next month.",
+                        flow.name(), spent, flow.budgetUsd()));
+            }
+        }
+        // The organization's ceiling, summed over every flow: the same gate, one level up. Checked
+        // for an unsaved canvas too — its own spend is nothing, but the organization's is not.
+        Double orgCeiling = orgCeiling();
+        if (orgCeiling != null) {
+            double spent = runStore.spendUsdSince(monthStart());
+            if (spent >= orgCeiling) {
+                throw new IllegalStateException(String.format(java.util.Locale.ROOT,
+                        "Budget reached: the organization has spent $%.2f of its $%.2f monthly "
+                                + "ceiling (organization policy). An admin can raise it under "
+                                + "Resources → Policies, or wait for next month.",
+                        spent, orgCeiling));
+            }
         }
     }
 
@@ -315,11 +333,25 @@ public class RunService {
      * Arms the ceiling on a run that is about to execute. The month's spend so far is read
      * once, here: reading it on every usage report would be a database query per token count.
      */
+    /** The organization's monthly ceiling, or null: zero and absent both mean "none". */
+    private Double orgCeiling() {
+        Double ceiling = policies == null ? null : policies.monthlyBudgetUsd();
+        return ceiling != null && ceiling > 0 ? ceiling : null;
+    }
+
     private void armBudget(AgentRun run, FlowGraph flow) {
-        if (flow.id() == null || flow.budgetUsd() == null || flow.budgetUsd() <= 0) return;
-        run.budgetUsd = flow.budgetUsd();
+        boolean flowCeiling = flow.id() != null && flow.budgetUsd() != null && flow.budgetUsd() > 0;
+        Double orgCeiling = orgCeiling();
+        if (!flowCeiling && orgCeiling == null) return;
+        if (flowCeiling) {
+            run.budgetUsd = flow.budgetUsd();
+            run.spentBeforeUsd = runStore.spendUsdSince(flow.id(), monthStart());
+        }
+        if (orgCeiling != null) {
+            run.orgBudgetUsd = orgCeiling;
+            run.orgSpentBeforeUsd = runStore.spendUsdSince(monthStart());
+        }
         run.billsPerToken = billsPerToken(run.backend);
-        run.spentBeforeUsd = runStore.spendUsdSince(flow.id(), monthStart());
         run.onBudgetExceeded = () -> stop(run.id);
     }
 
@@ -528,6 +560,10 @@ public class RunService {
         // context, so this stays null there and the trigger already says what they were.
         run.startedBy = signedInEmail();
         run.permissionMode = trigger.permissionMode();
+        // The organization's ceiling, stamped at launch like the mode it clamps: the executors
+        // apply it on every turn, and a policy edited mid-run must not move a running agent.
+        String ceiling = policies == null ? null : policies.maxPermissionMode();
+        run.maxPermissionMode = ceiling == null ? "" : ceiling;
         // Shadow mode: a triggered run plans but never acts, so you can watch what a trigger
         // WOULD have done for a few days before trusting it. Manual runs stay real — you are
         // present for those, and shadowing them would just be a confusing plan mode. The override
