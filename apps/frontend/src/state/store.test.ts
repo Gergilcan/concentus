@@ -238,6 +238,21 @@ describe('useFlowStore node/edge mutations', () => {
     expect((state.nodes[1].data as { name: string }).name).toBe(secondNameBefore)
   })
 
+  // A Save answers whenever the server gets round to it; if the person has meanwhile opened a
+  // block's inspector, the reload must not pull the selection out from under it.
+  it('loadBackendFlow keeps the selection when the same block is in the loaded flow, and clears it otherwise', () => {
+    const { addNode, selectNode, toBackendFlow, loadBackendFlow } = useFlowStore.getState()
+    addNode('agent')
+    const agent = useFlowStore.getState().nodes[0]
+    selectNode(agent.id)
+
+    loadBackendFlow({ ...toBackendFlow(), id: 'f1' })
+    expect(useFlowStore.getState().selectedId).toBe(agent.id)
+
+    loadBackendFlow({ id: 'f2', name: 'Other', mode: 'managed', nodes: [], edges: [] })
+    expect(useFlowStore.getState().selectedId).toBeNull()
+  })
+
   it('deleteNode removes the node, any edges touching it, and clears selection if it was selected', () => {
     const { addNode, onConnect, selectNode, deleteNode } = useFlowStore.getState()
     addNode('agent')

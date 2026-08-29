@@ -922,7 +922,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         target: e.target,
         sourceHandle: e.sourceHandle ?? null,
       })),
-      selectedId: null,
+      // The selection survives a reload of the flow it points into — a Save answering after
+      // the person has already double-clicked a block must not close the inspector under
+      // them — and clears when the canvas moves to a flow that has no such block.
+      selectedId: nodes.some((n) => n.id === get().selectedId) ? get().selectedId : null,
       focusNodeId: null,
       // Any load lands on the saved flow unless the caller says otherwise; Preview re-sets this
       // right after. Clearing it here means no path can leave the banner claiming a revision the
