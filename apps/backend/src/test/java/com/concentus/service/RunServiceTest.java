@@ -43,6 +43,8 @@ class RunServiceTest {
     private final FlowCompiler compiler = mock(FlowCompiler.class);
     private final ManagedFlowLauncher launcher = mock(ManagedFlowLauncher.class);
     private final LocalClaudeExecutor localExecutor = mock(LocalClaudeExecutor.class);
+    /** The fan-out executor behind the same adapter: a flow whose coordinator says so lands here. */
+    private final FanoutExecutor fanout = mock(FanoutExecutor.class);
     private final RunStore runStore = mock(RunStore.class);
     private final NotificationService notifier = mock(NotificationService.class);
     private final RemoteApprovalService remoteApprovals = mock(RemoteApprovalService.class);
@@ -65,7 +67,7 @@ class RunServiceTest {
         when(support.command()).thenReturn(java.util.Optional.of("claude"));
         return new com.concentus.execution.ExecutionBackends(List.of(
                 new com.concentus.execution.ClaudeCliExecutionBackend(localExecutor,
-                        mock(FanoutExecutor.class), support)));
+                        fanout, support)));
     }
 
     @AfterEach
@@ -241,6 +243,40 @@ class RunServiceTest {
         assertThat(next.trigger).isEqualTo("fallback");
         assertThat(next.compiled.coordinator().model.id).isEqualTo("ollama:llama3");
         assertThat(next.status).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void resumeStartsANewRunThatCarriesThePreviousRunsBoxes() throws Exception {
+        CompiledFlow compiled = compiledFlow();
+        compiled.coordinator().execution = "fanout";
+        when(compiler.compile(any(), any(), any())).thenReturn(compiled);
+        when(clientProvider.backend()).thenReturn("local");
+        java.util.List<java.util.List<com.concentus.model.NodeExec>> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
+        doAnswer(inv -> {
+            AgentRun run = inv.getArgument(0);
+            // The executor must find the boxes already on the run when its first turn starts.
+            seen.add(run.priorExecs);
+            com.concentus.model.NodeExec box = run.nodeExec("n1", "agent", "Coordinator");
+            box.status = "passed";
+            box.output = "the report";
+            run.status = "IDLE";
+            return null;
+        }).when(fanout).runTurn(any(), any(), any());
+        RunService svc = newService(4, 8, 10);
+
+        RunSummary first = svc.start(flowWithPrompt("f1", "cron", "daily briefing"));
+        verify(fanout, timeout(2000)).runTurn(any(), any(), eq("daily briefing"));
+        long deadline = System.currentTimeMillis() + 2000;
+        while (System.currentTimeMillis() < deadline && svc.hasActiveRun("f1")) Thread.sleep(20);
+
+        RunSummary resumed = svc.resume(first.id());
+        verify(fanout, timeout(2000).times(2)).runTurn(any(), any(), eq("daily briefing"));
+
+        AgentRun next = svc.get(resumed.id()).orElseThrow();
+        assertThat(next.resumeOf).isEqualTo(first.id());
+        assertThat(seen).hasSize(2);
+        assertThat(seen.get(0)).isNull();
+        assertThat(seen.get(1)).extracting(n -> n.nodeId).contains("n1");
     }
 
     @Test

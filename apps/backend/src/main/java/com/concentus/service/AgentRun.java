@@ -134,6 +134,14 @@ public class AgentRun {
      */
     public final Map<String, java.util.List<com.concentus.git.GitWorkspace.Checkout>> workerCheckouts =
             new ConcurrentHashMap<>();
+    /**
+     * The run this one resumes, and that run's boxes. A resumed fan-out reuses every worker
+     * whose output passed (and was not rejected) instead of launching it again, and runs only
+     * the rest — the failed workers, the verifier, the merge. Null on a run that starts fresh.
+     */
+    public volatile String resumeOf;
+    public volatile List<NodeExec> priorExecs;
+
     /** Questions each worker has asked its siblings this run, by node id — capped, see the tool. */
     public final Map<String, Integer> questionsAsked = new ConcurrentHashMap<>();
     /** What each worker changed in each of its clones, as patches: worker node id → folder → patch. */

@@ -237,6 +237,38 @@ class FanoutExecutorTest {
     }
 
     @Test
+    void aResumedRunReusesTheWorkersThatPassedAndLaunchesOnlyTheRest() {
+        AgentRun run = run(spec("n1", "Worker A", "worker-a", ""), spec("n2", "Worker B", "worker-b", ""));
+        run.resumeOf = "run-0";
+        NodeExec passed = new NodeExec();
+        passed.nodeId = "n1";
+        passed.label = "Worker A";
+        passed.status = "passed";
+        passed.output = "A's report, from last time";
+        NodeExec failed = new NodeExec();
+        failed.nodeId = "n2";
+        failed.label = "Worker B";
+        failed.status = "failed";
+        failed.error = "timed out";
+        run.priorExecs = List.of(passed, failed);
+        List<String> launched = new CopyOnWriteArrayList<>();
+        FanoutExecutor.ProcessStarter starter = (args, workdir) -> {
+            launched.add(workdir.getFileName().toString());
+            return new FakeProcess("{\"type\":\"result\",\"is_error\":false,\"result\":\"B's report, this time\"}", 0);
+        };
+
+        executor(starter, 900, 0).runTurn(run, run.compiled, "go");
+
+        // A passed only, and A was not launched: its box carries last time's report, said so.
+        assertThat(launched).containsExactly("worker-b");
+        assertThat(exec(run, "n1").status).isEqualTo("passed");
+        assertThat(exec(run, "n1").output).contains("A's report, from last time");
+        assertThat(exec(run, "n2").status).isEqualTo("passed");
+        assertThat(run.bufferedEvents()).anySatisfy(e -> assertThat(e.text()).contains("Reused 'Worker A' from run run-0"));
+        assertThat(run.status).isNotEqualTo("ERROR");
+    }
+
+    @Test
     void aRefusalForTheAllowanceIsNotRetriedAndMarksTheRun() {
         AgentRun run = run(spec("n1", "Worker A", "worker-a", ""));
         AtomicInteger attempts = new AtomicInteger();

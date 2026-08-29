@@ -131,6 +131,12 @@ public class RunController {
         return runService.retry(id);
     }
 
+    /** Starts this execution again keeping what passed: reused workers, the rest run. */
+    @PostMapping("/{id}/resume")
+    public RunSummary resume(@PathVariable String id) {
+        return runService.resume(id);
+    }
+
     /**
      * Runs ONE block of this execution again, as a new execution, with the input it received —
      * editable first, and optionally carrying the agents it delegates to.

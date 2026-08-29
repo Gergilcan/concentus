@@ -455,6 +455,15 @@ public class RunService {
      * that hit the allowance is being continued elsewhere, null to let the meter decide.
      */
     public RunSummary start(FlowGraph flow, String initialPromptOverride, String forcedFallback) {
+        return start(flow, initialPromptOverride, forcedFallback, null);
+    }
+
+    /**
+     * As above, with a hand on the run before its first turn is dispatched — what a resume
+     * needs, because the boxes it reuses must be on the run before the executor looks.
+     */
+    public RunSummary start(FlowGraph flow, String initialPromptOverride, String forcedFallback,
+                            java.util.function.Consumer<AgentRun> prepare) {
         // Variables resolve at start time, not at save time: the flow's prompts keep their
         // {{NAME}} placeholders on disk, and each run stamps in whatever the organization and the
         // flow say TODAY — which is also what makes the values editable without touching prompts.
@@ -474,6 +483,7 @@ public class RunService {
         run.compiled = compiled;
         run.flowJson = toJson(flow);
         armBudget(run, flow);
+        if (prepare != null) prepare.accept(run);
         if (fallback != null && fallbackNote == null) {
             run.fallbackKind = fallback;
             run.emit(RunEvent.of("system", "Weekly allowance for runs: spent — running on "
@@ -877,6 +887,46 @@ public class RunService {
     }
 
     /**
+     * Starts this execution again, keeping what already passed.
+     *
+     * <p>The backend restarted, a worker timed out, the merge failed: retry did the whole thing
+     * over, forty minutes of workers included. A resume is a new run — its own log, its own
+     * branches — that carries the previous run's boxes: a fan-out reuses every worker whose
+     * output passed and was not rejected, and launches only the rest. A shared-session run has
+     * no boxes to reuse that way, and says so: there this is a retry.
+     */
+    public RunSummary resume(String runId) {
+        AgentRun old = require(runId);
+        if (isInFlight(old.status)) {
+            throw new IllegalStateException("This execution is still running. Stop it first, or wait for it.");
+        }
+        if (old.flowJson == null) {
+            throw new IllegalStateException("This execution has no stored flow to resume.");
+        }
+        FlowGraph flow;
+        try {
+            flow = mapper.readValue(old.flowJson, FlowGraph.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Stored flow for this execution could not be read: " + e.getMessage());
+        }
+        List<NodeExec> boxes = old.nodeExecList();
+        boolean fanout = old.compiled != null && old.compiled.coordinator() != null
+                && "fanout".equals(old.compiled.coordinator().execution);
+        RunSummary started = start(flow, old.initialPrompt, null, run -> {
+            run.resumeOf = old.id;
+            run.priorExecs = fanout ? boxes : null;
+            run.flowVersion = old.flowVersion;
+            run.emit(RunEvent.of("system", fanout
+                    ? "Resumes run " + old.id + ": workers that passed there are reused, the rest run."
+                    : "Resumes run " + old.id + ". A shared session has no boxes to reuse, so this "
+                            + "starts the flow again from the beginning."));
+        });
+        AgentRun run = runs.get(started.id());
+        if (run != null) runStore.persist(run);
+        return run == null ? started : run.toSummary();
+    }
+
+    /**
      * Runs one block of a finished execution again, on its own, with an input you can edit first.
      *
      * <p>The input defaults to the one the block actually received — that is the whole point.
@@ -1052,10 +1102,11 @@ public class RunService {
                 AgentRun run = new AgentRun(row.id(), row.flowId(), row.flowName(), row.mode());
                 run.createdAt = row.createdAt();
                 run.backend = row.backend();
-                // A run that was mid-flight when the server stopped can be continued, not resumed
-                // in place — surface it as IDLE so the user can send the next command.
-                run.status = "RUNNING".equals(row.status()) || "STARTING".equals(row.status())
-                        ? "IDLE" : row.status();
+                // A run that was mid-flight when the server stopped cannot be continued in place
+                // — the process is gone — so it lands as IDLE, and is told: Resume starts it
+                // again keeping what passed, and a shared session takes the next command.
+                boolean interrupted = "RUNNING".equals(row.status()) || "STARTING".equals(row.status());
+                run.status = interrupted ? "IDLE" : row.status();
                 run.trigger = row.trigger();
                 run.startedBy = row.startedBy();
                 run.sessionId = row.sessionId();
@@ -1074,6 +1125,10 @@ public class RunService {
                 run.outputUsdPerMTok = outputUsdPerMTok;
                 run.restoreEvents(row.events());
                 run.restoreNodeExecs(row.nodeExecs());
+                if (interrupted) {
+                    run.emit(RunEvent.of("system", "The backend restarted while this run was in "
+                            + "flight. Resume starts it again keeping every block that had passed."));
+                }
                 if (row.flowJson() != null) {
                     // With variables substituted, same as when the run first compiled: a continued
                     // turn built from this spec must not send {{NAME}} placeholders the original

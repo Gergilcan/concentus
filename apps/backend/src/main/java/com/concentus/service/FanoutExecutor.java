@@ -213,24 +213,32 @@ public class FanoutExecutor {
         for (AgentSpec spec : flow.subAgents()) {
             jobs.add(new WorkerJob(spec, userText));
         }
-        if (jobs.isEmpty()) {
-            WorkPlan plan = planPhase(run, flow, cmd, userText, coordExec);
-            if (plan == null) return; // planPhase already reported why
-            List<AgentSpec> specs = syntheticWorkers(run, flow, plan);
-            List<WorkPlan.WorkItem> items = plan.itemsOrEmpty();
-            for (int i = 0; i < specs.size(); i++) {
-                WorkPlan.WorkItem item = items.get(i);
-                jobs.add(new WorkerJob(specs.get(i), item.prompt(), item.id().trim(), item.dependsOnOrEmpty()));
+        List<Outcome> outcomes;
+        if (jobs.isEmpty() && reusablePlan(run)) {
+            // A resumed plan-born fan-out whose workers all passed: the plan's prompts are not
+            // kept, so a plan cannot be partly rerun — but a plan that finished needs no rerun at
+            // all, only the verifier and the merge that came after it.
+            outcomes = reusePlan(run, flow, coordExec);
+        } else {
+            if (jobs.isEmpty()) {
+                WorkPlan plan = planPhase(run, flow, cmd, userText, coordExec);
+                if (plan == null) return; // planPhase already reported why
+                List<AgentSpec> specs = syntheticWorkers(run, flow, plan);
+                List<WorkPlan.WorkItem> items = plan.itemsOrEmpty();
+                for (int i = 0; i < specs.size(); i++) {
+                    WorkPlan.WorkItem item = items.get(i);
+                    jobs.add(new WorkerJob(specs.get(i), item.prompt(), item.id().trim(), item.dependsOnOrEmpty()));
+                }
             }
+
+            long waiting = jobs.stream().filter(j -> !j.dependsOn().isEmpty()).count();
+            run.emit(RunEvent.of("system", "Fan-out: " + jobs.size() + " independent worker "
+                    + "process(es), up to " + timeoutSeconds + "s each. Each has its own workspace, "
+                    + "instructions and model; none can delegate further."
+                    + (waiting == 0 ? "" : " " + waiting + " of them wait for other items' reports first.")));
+
+            outcomes = runJobs(run, jobs, cmd);
         }
-
-        long waiting = jobs.stream().filter(j -> !j.dependsOn().isEmpty()).count();
-        run.emit(RunEvent.of("system", "Fan-out: " + jobs.size() + " independent worker "
-                + "process(es), up to " + timeoutSeconds + "s each. Each has its own workspace, "
-                + "instructions and model; none can delegate further."
-                + (waiting == 0 ? "" : " " + waiting + " of them wait for other items' reports first.")));
-
-        List<Outcome> outcomes = runJobs(run, jobs, cmd);
 
         long failed = outcomes.stream().filter(o -> !o.ok()).count();
         writeCombinedReport(run, coordExec, outcomes, failed);
@@ -465,6 +473,81 @@ public class FanoutExecutor {
         return out;
     }
 
+    // ---------------------------------------------------------------- resuming
+
+    /**
+     * The outcome a worker had in the run this one resumes, when it is worth keeping: passed,
+     * not rejected by the verifier, and with a report to keep. Copied onto this run's box so
+     * the report, the verdict and the merge read it exactly as they would a fresh one; said in
+     * the log, because a box that passed in three seconds is otherwise a box that lies.
+     */
+    private static Outcome priorOutcome(AgentRun run, AgentSpec spec) {
+        List<NodeExec> prior = run.priorExecs;
+        if (prior == null) return null;
+        for (NodeExec p : prior) {
+            if (!spec.nodeId.equals(p.nodeId)) continue;
+            if (!"passed".equals(p.status) || "rejected".equals(p.verdict) || p.output == null || p.output.isBlank()) {
+                return null;
+            }
+            NodeExec exec = run.nodeExec(spec.nodeId, spec.nodeId.startsWith("worker:") ? "worker" : "agent", spec.name);
+            if (exec != null) {
+                exec.appendInput("(reused from run " + run.resumeOf + ")");
+                exec.appendOutput(p.output);
+                exec.format = p.format;
+                exec.inputTokens = p.inputTokens;
+                exec.outputTokens = p.outputTokens;
+                exec.cacheReadTokens = p.cacheReadTokens;
+                exec.cacheWriteTokens = p.cacheWriteTokens;
+                exec.model = p.model;
+                exec.startedAt = p.startedAt;
+                exec.endedAt = p.endedAt;
+                exec.status = "passed";
+            }
+            run.emit(RunEvent.of("system", "Reused '" + spec.name + "' from run " + run.resumeOf
+                    + ": it had passed, so it is not launched again.", spec.name, spec.nodeId));
+            return new Outcome(spec, true, p.output, null);
+        }
+        return null;
+    }
+
+    /** Whether the resumed run's plan-born workers all passed — the one case a plan can be kept. */
+    private static boolean reusablePlan(AgentRun run) {
+        List<NodeExec> prior = run.priorExecs;
+        if (prior == null) return false;
+        boolean any = false;
+        for (NodeExec p : prior) {
+            if (p.nodeId == null || !p.nodeId.startsWith("worker:")) continue;
+            any = true;
+            if (!"passed".equals(p.status) || "rejected".equals(p.verdict) || p.output == null || p.output.isBlank()) return false;
+        }
+        return any;
+    }
+
+    private List<Outcome> reusePlan(AgentRun run, CompiledFlow flow, NodeExec coordExec) {
+        AgentSpec coord = flow.coordinator();
+        List<Outcome> outcomes = new ArrayList<>();
+        for (NodeExec p : run.priorExecs) {
+            if (p.nodeId == null || !p.nodeId.startsWith("worker:")) continue;
+            AgentSpec s = new AgentSpec();
+            s.nodeId = p.nodeId;
+            s.name = p.label == null || p.label.isBlank() ? p.nodeId : p.label;
+            s.cliName = LocalClaudeExecutor.sanitize("w-" + p.nodeId.substring("worker:".length()));
+            s.model.id = p.model == null || p.model.isBlank() ? coord.model.id : p.model;
+            s.model.maxTokens = coord.model.maxTokens;
+            s.mcpServers = coord.mcpServers;
+            s.repositories = coord.repositories;
+            run.syntheticWorkers.put(s.nodeId, s);
+            outcomes.add(priorOutcome(run, s));
+        }
+        if (coordExec != null) {
+            coordExec.appendOutput("Plan reused from run " + run.resumeOf + ": " + outcomes.size()
+                    + " worker(s) had passed.\n");
+        }
+        run.emit(RunEvent.of("system", "Resumed from run " + run.resumeOf + ": its " + outcomes.size()
+                + " plan-born worker(s) had all passed, so only what came after them runs."));
+        return outcomes;
+    }
+
     // ---------------------------------------------------------------- a sibling's answer
 
     /** How long the answering process gets. Short: the asker is mid-task and waiting. */
@@ -554,6 +637,14 @@ public class FanoutExecutor {
             for (int i = 0; i < n; i++) {
                 if (started[i]) continue;
                 WorkerJob job = jobs.get(i);
+                Outcome kept = priorOutcome(run, job.spec());
+                if (kept != null) {
+                    started[i] = true;
+                    finished[i] = true;
+                    outcomes[i] = kept;
+                    remaining--;
+                    continue;
+                }
                 List<Integer> deps = new ArrayList<>();
                 for (String id : job.dependsOn()) {
                     Integer at = indexById.get(id);

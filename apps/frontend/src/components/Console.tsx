@@ -134,6 +134,15 @@ export function Console({
     }
   }
 
+  const resume = async () => {
+    setErr(null)
+    try {
+      await api.resumeRun(runId)
+    } catch (e) {
+      setErr(errMessage(e))
+    }
+  }
+
   // The map keeps its English; the wrap happens here, at the render side of the lookup.
   const connNoticeKey = CONN_NOTICE[connStatus] ?? null
   const connNotice = connNoticeKey ? t(connNoticeKey) : null
@@ -340,6 +349,13 @@ export function Console({
           onClick={() => void retry()}
         >
           {t('⟳ Retry')}
+        </button>
+        <button
+          className={styles.retryBtn}
+          title={t('Start this execution again keeping what already passed: workers whose output was accepted are reused, and only the rest — the failed ones, the verifier, the merge — run. On a shared session this is the same as Retry.')}
+          onClick={() => void resume()}
+        >
+          {t('⟲ Resume')}
         </button>
       </div>
     </div>

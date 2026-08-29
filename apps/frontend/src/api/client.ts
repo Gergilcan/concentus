@@ -236,6 +236,7 @@ export const api = {
   rejectRun: (runId: string) => req<void>(`/runs/${runId}/reject`, { method: 'POST' }),
   stopRun: (runId: string) => req<void>(`/runs/${runId}/stop`, { method: 'POST' }),
   retryRun: (runId: string) => req<RunSummary>(`/runs/${runId}/retry`, { method: 'POST' }),
+  resumeRun: (runId: string) => req<RunSummary>(`/runs/${runId}/resume`, { method: 'POST' }),
   /**
    * Runs ONE block of a finished run again, as a new run. An empty `input` means the input that
    * block actually received; `downstream` also carries the agents it delegates to, which is what
