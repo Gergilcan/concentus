@@ -40,6 +40,7 @@ public final class SettingsCatalog {
     public static final String GROUP_KNOWLEDGE = "Knowledge";
     public static final String GROUP_USAGE = "Usage";
     public static final String GROUP_APPROVALS = "Approvals";
+    public static final String GROUP_RETENTION = "Retention";
 
     private static final List<SettingDef> ALL = List.of(
             number("runs.max-concurrent", GROUP_RUNS, "Runs at once",
@@ -153,7 +154,16 @@ public final class SettingsCatalog {
                             + "underneath it.", true),
             flag("management.otlp.metrics.export.enabled", GROUP_TELEMETRY, "Send metrics too",
                     "Counters and timers — runs by outcome, workers, tool calls — alongside the "
-                            + "traces.", true)
+                            + "traces.", true),
+
+            number("retention.enterprise-days", GROUP_RETENTION, "Keep runs and history for (days)",
+                    "How long runs, flow versions and the audit trail are kept before the nightly "
+                            + "purge removes them. 0 keeps everything, which is what an Enterprise "
+                            + "license buys — set a number only when a data-protection policy asks "
+                            + "for one. Read on the Enterprise tier alone: a Team deployment keeps "
+                            + "ninety days whatever is typed here, and a free installation is never "
+                            + "purged. A golden run, the current version of every flow and the "
+                            + "version the golden run executed are always kept.", false)
     );
 
     public static List<SettingDef> all() {

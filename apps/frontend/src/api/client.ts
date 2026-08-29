@@ -523,6 +523,51 @@ export const api = {
   // auth (which Claude credentials the backend runs on — unrelated to signing in)
   authStatus: () => req<AuthStatus>('/auth/status'),
 
+  // the audit trail (admin only; export is an Enterprise feature and 403s below it)
+  auditStatus: () => req<import('./types.ts').AuditStatus>('/audit/status'),
+  listAudit: (filters: import('./types.ts').AuditFilters, before?: number, limit = 100) =>
+    req<import('./types.ts').AuditPage>(
+      `/audit${query({
+        actor: filters.actor || undefined,
+        kind: filters.kind || undefined,
+        from: filters.from || undefined,
+        to: filters.to || undefined,
+        before: before === undefined ? undefined : String(before),
+        limit: String(limit),
+      })}`,
+    ),
+  /**
+   * The trail as a file. Same shape as exportBackup — a blob for a download link — but a refusal
+   * here carries a sentence worth reading (the tier gate), so the JSON error body is surfaced the
+   * way req() surfaces it rather than flattened into "403 Forbidden".
+   */
+  exportAudit: async (format: 'csv' | 'json', filters: import('./types.ts').AuditFilters): Promise<Blob> => {
+    const res = await fetch(
+      `/api/audit/export${query({
+        format,
+        actor: filters.actor || undefined,
+        kind: filters.kind || undefined,
+        from: filters.from || undefined,
+        to: filters.to || undefined,
+      })}`,
+      { credentials: 'same-origin' },
+    )
+    if (!res.ok) {
+      let message = `${res.status} ${res.statusText}`
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body?.error) message = body.error
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new ApiError(message, res.status)
+    }
+    return res.blob()
+  },
+  /** Applies the retention policy now instead of at three in the morning. Admin only. */
+  runRetentionNow: () =>
+    req<import('./types.ts').RetentionReport>('/retention/run-now', { method: 'POST' }, 120_000),
+
   // license (what this installation is running under)
   getLicense: () => req<LicenseStatus>('/license'),
   installLicense: (token: string) =>

@@ -4,6 +4,7 @@ import { api } from '../api/client.ts'
 import type { DatabaseDef, FacadeProfile, LibraryAgent, McpDef } from '../api/types.ts'
 import { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, EFFORT_OPTIONS } from '../constants.ts'
 import { AddMcpServerModal } from './AddMcpServerModal.tsx'
+import { AuditPanel } from './AuditPanel.tsx'
 import { CredentialsPanel } from './CredentialsPanel.tsx'
 import { CrudPanel } from './CrudPanel.tsx'
 import { KnowledgePanel } from './KnowledgePanel.tsx'
@@ -20,7 +21,7 @@ import { UpdatesPanel } from './UpdatesPanel.tsx'
 import { shellBridge } from '../api/shell.ts'
 import styles from './resources.module.scss'
 
-type Tab = 'settings' | 'members' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
+type Tab = 'settings' | 'members' | 'audit' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
 
 /**
  * The tab strip, in display order. `desktopOnly` keeps Updates out of a browser tab, which has no
@@ -67,6 +68,12 @@ const TABS: Array<{ id: Tab; label: string; title?: string; desktopOnly?: boolea
       'Who is in this organization and what each of them may do: read, run, edit, or administer. Enforced on every request, not only in the interface.',
   },
   {
+    id: 'audit',
+    label: 'Audit',
+    title:
+      'Who did what, and when. Readable by administrators on every tier; exporting it as a file is an Enterprise feature.',
+  },
+  {
     id: 'settings',
     label: 'Settings',
     title:
@@ -111,6 +118,7 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
 
       <div className={styles.tabBody}>
         {tab === 'members' && <MembersPanel pushError={pushError} />}
+        {tab === 'audit' && <AuditPanel pushError={pushError} />}
 
         {tab === 'agents' && (
           <CrudPanel<LibraryAgent>

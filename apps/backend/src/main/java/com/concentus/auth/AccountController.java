@@ -59,6 +59,8 @@ public class AccountController {
     private final DeviceAccountStore devices;
     /** How many members this organization's license allows — {@link #createMember} enforces it. */
     private final LicenseService licenseService;
+    /** Who was let in and who was promoted — the two membership facts an audit asks about. */
+    private final com.concentus.audit.AuditService audit;
     private final int rememberMeDays;
     /** What the organization is called, for the row the first account is created under. */
     private final String organizationName;
@@ -70,6 +72,7 @@ public class AccountController {
                              org.springframework.security.web.authentication.rememberme.PersistentTokenBasedRememberMeServices rememberMe,
                              DeviceAccountStore devices,
                              LicenseService licenseService,
+                             com.concentus.audit.AuditService audit,
                              @org.springframework.beans.factory.annotation.Value(
                                      "${app.auth.remember-me-days:30}") int rememberMeDays,
                              @org.springframework.beans.factory.annotation.Value(
@@ -82,6 +85,7 @@ public class AccountController {
         this.rememberMe = rememberMe;
         this.devices = devices;
         this.licenseService = licenseService;
+        this.audit = audit;
         this.rememberMeDays = rememberMeDays;
         this.organizationName = organizationName;
     }
@@ -355,8 +359,11 @@ public class AccountController {
             throw new IllegalArgumentException("Unknown role '" + body.role() + "'. Use one of: "
                     + String.join(", ", Accounts.ROLES) + ".");
         }
-        return accounts.createUser(organizationId, body.email(),
-                encoder.encode(body.password()), role).redacted();
+        Accounts.UserAccount created = accounts.createUser(organizationId, body.email(),
+                encoder.encode(body.password()), role);
+        audit.record(com.concentus.audit.AuditKinds.MEMBER_INVITED, "member", created.id(),
+                created.email(), java.util.Map.of("role", role));
+        return created.redacted();
     }
 
     /**
@@ -389,6 +396,8 @@ public class AccountController {
                     "This is the organization's only admin. Promote someone else first.");
         }
         accounts.updateRole(userId, organizationId, role);
+        audit.record(com.concentus.audit.AuditKinds.MEMBER_ROLE_CHANGED, "member", target.id(),
+                target.email(), java.util.Map.of("from", target.role(), "to", role));
         return accounts.findById(userId).orElseThrow().redacted();
     }
 

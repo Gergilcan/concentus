@@ -65,7 +65,8 @@ class FirstAccountSetupTest {
         AccountController controller = new AccountController(
                 mock(org.springframework.security.authentication.AuthenticationManager.class),
                 accounts, ENCODER, orgContext, mock(OidcSignIn.class), rememberMe,
-                new DeviceAccountStore(jdbc, 30), licenseService, 30, "Concentus");
+                new DeviceAccountStore(jdbc, 30), licenseService,
+                mock(com.concentus.audit.AuditService.class), 30, "Concentus");
         return new Fixture(controller, accounts);
     }
 

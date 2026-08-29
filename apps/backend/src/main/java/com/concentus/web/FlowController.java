@@ -1,5 +1,7 @@
 package com.concentus.web;
 
+import com.concentus.audit.AuditKinds;
+import com.concentus.audit.AuditService;
 import com.concentus.auth.ConcentusUserDetails;
 import com.concentus.auth.OrgContext;
 import com.concentus.model.DoctorFinding;
@@ -10,6 +12,7 @@ import com.concentus.model.GoldenStatus;
 import com.concentus.service.AgentRun;
 import com.concentus.service.GoldenStatusService;
 import com.concentus.model.RunSummary;
+import com.concentus.model.TriggerSpec;
 import com.concentus.service.RunService;
 import com.concentus.mail.MailTriggerService;
 import com.concentus.service.ScheduleService;
@@ -27,7 +30,10 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /** CRUD for saved flows, plus launching a saved flow. */
 @RestController
@@ -50,6 +56,7 @@ public class FlowController {
     private final GoldenStatusService goldenStatus;
     private final com.concentus.service.FlowDoctor flowDoctor;
     private final com.concentus.service.FolderWatchService folderWatch;
+    private final AuditService audit;
 
     public FlowController(FlowStore store, RunService runService, ScheduleService scheduler,
                           MailTriggerService mailTriggers, FlowVersionStore versions,
@@ -57,7 +64,8 @@ public class FlowController {
                           com.concentus.service.FlowGenerator generator,
                           GoldenStatusService goldenStatus,
                           com.concentus.service.FlowDoctor flowDoctor,
-                          com.concentus.service.FolderWatchService folderWatch) {
+                          com.concentus.service.FolderWatchService folderWatch,
+                          AuditService audit) {
         this.store = store;
         this.runService = runService;
         this.scheduler = scheduler;
@@ -69,6 +77,7 @@ public class FlowController {
         this.goldenStatus = goldenStatus;
         this.flowDoctor = flowDoctor;
         this.folderWatch = folderWatch;
+        this.audit = audit;
     }
 
     @GetMapping
@@ -91,7 +100,37 @@ public class FlowController {
         versions.snapshot(saved, currentAuthor());  // keep a restorable revision of every save
         rescheduleTriggers();
         autoRunGoldenCheck(before, saved);
+        auditSave(before, saved, null);
         return saved;
+    }
+
+    /**
+     * The save, in the trail — and a second row when it changed whether the flow answers its
+     * public endpoint.
+     *
+     * <p>Publishing is a toggle and a token on the input node, saved with the rest of the graph;
+     * no endpoint of its own ever sees it happen. So the only place that can tell "published" from
+     * "renamed" is here, with the flow before and the flow after side by side. Which token it is
+     * never goes in the row — a regenerated token is a credential — only that it changed.
+     */
+    private void auditSave(FlowGraph before, FlowGraph saved, Map<String, ?> extra) {
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("version", versions.currentVersion(saved.id()));
+        if (extra != null) detail.putAll(extra);
+        audit.record(before == null ? AuditKinds.FLOW_CREATED : AuditKinds.FLOW_SAVED, "flow",
+                saved.id(), saved.name(), detail);
+
+        TriggerSpec was = before == null ? null : TriggerSpec.from(before);
+        TriggerSpec now = TriggerSpec.from(saved);
+        boolean wasPublished = was != null && was.publishedWithToken();
+        boolean isPublished = now.publishedWithToken();
+        if (!wasPublished && isPublished) {
+            audit.record(AuditKinds.FLOW_PUBLISHED, "flow", saved.id(), saved.name(), null);
+        } else if (wasPublished && !isPublished) {
+            audit.record(AuditKinds.FLOW_UNPUBLISHED, "flow", saved.id(), saved.name(), null);
+        } else if (isPublished && !Objects.equals(was.publishToken(), now.publishToken())) {
+            audit.record(AuditKinds.FLOW_TOKEN_REGENERATED, "flow", saved.id(), saved.name(), null);
+        }
     }
 
     /**
@@ -111,6 +150,7 @@ public class FlowController {
                 .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
         FlowGraph saved = store.save(com.concentus.service.FlowDuplicator.copyOf(source, names));
         versions.snapshot(saved, currentAuthor());
+        auditSave(null, saved, Map.of("copyOf", id));
         return saved;
     }
 
@@ -191,12 +231,14 @@ public class FlowController {
     public FlowGraph restore(@PathVariable String id, @PathVariable int version) {
         FlowGraph old = versions.get(id, version)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such version"));
+        FlowGraph before = store.get(id).orElse(null);
         FlowGraph saved = store.save(old.withId(id));
         // Credited to whoever pressed Restore, not to whoever authored the revision being
         // restored: this row records a save that just happened, and the original stays in history
         // with its own author.
         versions.snapshot(saved, currentAuthor());
         rescheduleTriggers();
+        auditSave(before, saved, Map.of("restoredFrom", version));
         return saved;
     }
 
@@ -215,8 +257,12 @@ public class FlowController {
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable String id) {
+        // The name is read before the delete because afterwards there is nowhere to read it from,
+        // and a row that says only "flow_8b6c… was deleted" is the row nobody can act on.
+        String name = store.get(id).map(FlowGraph::name).orElse(null);
         store.delete(id);
         rescheduleTriggers();
+        audit.record(AuditKinds.FLOW_DELETED, "flow", id, name, null);
     }
 
     /** The notes this flow's agents have left for their future runs, newest first. */

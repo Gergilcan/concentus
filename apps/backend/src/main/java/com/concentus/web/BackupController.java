@@ -22,10 +22,14 @@ public class BackupController {
 
     private final BackupService backup;
     private final OrgContext orgContext;
+    /** An export with secrets is every password leaving the building; the trail says who took it. */
+    private final com.concentus.audit.AuditService audit;
 
-    public BackupController(BackupService backup, OrgContext orgContext) {
+    public BackupController(BackupService backup, OrgContext orgContext,
+                            com.concentus.audit.AuditService audit) {
         this.backup = backup;
         this.orgContext = orgContext;
+        this.audit = audit;
     }
 
     /**
@@ -41,6 +45,8 @@ public class BackupController {
         // The date in the name is for the human sorting a Downloads folder, nothing else.
         String filename = "concentus-export-" + (includeSecrets ? "with-secrets-" : "")
                 + LocalDate.now() + ".json";
+        audit.record(com.concentus.audit.AuditKinds.BACKUP_EXPORTED, "backup", null, filename,
+                java.util.Map.of("includeSecrets", includeSecrets));
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                 .contentType(MediaType.APPLICATION_JSON)

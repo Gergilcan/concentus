@@ -1004,6 +1004,55 @@ Building from source and want the team tier to verify? It is off until a key exi
 `apps/backend/src/main/resources/application.properties`, and the private line into Vercel as
 `TEAM_SIGNING_KEY`. The script writes nothing; no key is ever in the repository.
 
+### Audit trail
+
+Runs say who started them and versions say who saved them, which answers "who changed this
+flow" one record at a time. The audit trail answers the other question — what did this person do
+last Tuesday, who touched the credentials this quarter — from one table every action appends to
+(`audit_events`). One row per action: who (the signed-in address and the role they held *at the
+time*, copied rather than joined, so the row still reads after the account is gone), what
+(`flow.saved`, `member.role_changed`, `run.approved`…), to which subject (by id and by name, so a
+deleted flow's rows still name it), and a detail object with whatever else was worth keeping.
+
+What is recorded: every run start (with its trigger), stop, approval, rejection, retry, resume and
+golden mark; every flow save (with the version number), delete, publish, unpublish and endpoint
+token regeneration; members invited and roles changed; credentials created, renamed, replaced and
+deleted; settings changed; licenses installed; backups exported (and whether they carried
+secrets); and the nightly purge itself. What is never recorded: a value. A credential's label,
+yes; the credential, never. A setting's key, yes; a secret setting's value, never. The endpoint
+token that changed — that it changed, not what it became.
+
+Actions nobody was signed in for — a cron tick, a webhook delivery, a mail trigger, the retention
+job — are credited to `system:<trigger>`, so the trail never has a blank where a name should be.
+And recording never gets in the way: a run whose row could not be written still starts, with a
+warning in the log naming the gap.
+
+*Resources → Audit* reads it — filter by actor (a substring; `system:` finds every unattended
+action), by kind, by date — newest first, paged by cursor so a trail that grows while you scroll
+never repeats or skips a row. Readable by an administrator on **every** tier: reading what your
+own people did is half the reason to have members. Taking it out as a file (`GET
+/api/audit/export?format=csv|json`) is the Enterprise half; below it the button is disabled with
+the same sentence the API answers 403 with.
+
+### Retention
+
+What a deployment keeps, for how long, is decided by the license and nothing else:
+
+| Tier | Runs, flow versions, audit trail |
+| --- | --- |
+| Free (one person, own machine) | Kept forever. Nothing in the license gates reaches somebody's own disk. |
+| Team | **90 days.** Purged nightly. |
+| Enterprise | Kept forever — unless an administrator chooses a shorter window under *Settings → Retention* (`retention.enterprise-days`, 0 = forever), which a data-protection policy sometimes asks for. The setting is read on Enterprise alone: a Team deployment cannot type its way past ninety days, and a free one has nothing to purge. |
+
+The purge runs at 03:17 every night (`RetentionService`; `POST /api/retention/run-now` applies it
+on demand, admin only) and spares three things however old they are: a **golden run** (it is the
+reference the flow is compared against), the **current version** of every flow (it *is* the
+flow), and the **version a golden run executed** (the comparison needs both halves). A run's
+events and node executions live on its row, so deleting the run deletes them. What was deleted is
+itself an audit event, credited to `system:retention` — a trail that lost ninety days overnight
+and did not say so would look like tampering to exactly the person it exists for. The Audit
+panel states the window in force and why.
+
 ## Updates
 
 The desktop app checks every four hours, downloads in the background, and installs when you quit.
