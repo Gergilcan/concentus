@@ -79,7 +79,14 @@ public class RuntimeInstaller {
             "uv", Map.of(
                     "windows", "powershell -ExecutionPolicy ByPass -c \"irm https://astral.sh/uv/install.ps1 | iex\"",
                     "mac", "curl -LsSf https://astral.sh/uv/install.sh | sh",
-                    "linux", "curl -LsSf https://astral.sh/uv/install.sh | sh"));
+                    "linux", "curl -LsSf https://astral.sh/uv/install.sh | sh"),
+            // Tesseract, for OCR. UB Mannheim's build is the one the Tesseract project itself
+            // points Windows users at; it installs under Program Files without touching the
+            // PATH, which is why the probe looks there. Homebrew's formula carries English only —
+            // `tesseract-lang` adds the rest, and the ingest log says so when a language is missing.
+            "tesseract", Map.of(
+                    "windows", "winget install -e --id UB-Mannheim.TesseractOCR",
+                    "mac", "brew install tesseract"));
 
     private static final Map<String, String> NO_COMMAND_REASON = Map.of(
             "node", "On Linux, Node comes from your distribution's package manager (or nvm), which "
@@ -87,7 +94,10 @@ public class RuntimeInstaller {
             "npm", "npm ships with Node. On Linux, Node comes from your distribution's package "
                     + "manager (or nvm).",
             "python", "On Linux, Python is part of the system and is managed by your "
-                    + "distribution's package manager.");
+                    + "distribution's package manager.",
+            "tesseract", "On Linux, Tesseract comes from your distribution's package manager: "
+                    + "apt install tesseract-ocr on Debian and Ubuntu, plus tesseract-ocr-spa and "
+                    + "tesseract-ocr-cat for Spanish and Catalan.");
 
     /** Test seam: (argv, timeout) -> exit code and merged output. Nothing else touches the host. */
     private final BiFunction<List<String>, Integer, CliProcess.Result> runner;

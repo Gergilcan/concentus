@@ -1,6 +1,6 @@
 package com.concentus.integration.content;
 
-import net.sourceforge.tess4j.Tesseract;
+import com.concentus.config.Settings;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
@@ -11,46 +11,95 @@ import org.springframework.stereotype.Component;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
-import java.nio.file.Files;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.file.Path;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Supplier;
 
 /**
- * OCR for image attachments and scanned PDFs, via Tesseract.
+ * OCR for image attachments and scanned PDFs, by running the Tesseract program.
  *
- * <p>The one component here that depends on something outside the JVM. tess4j is a JNA binding to
- * the native {@code libtesseract} library and its language data, neither of which ships in the jar
- * — so this class is written to be <b>absent-safe</b>: the engine is created lazily, any failure to
- * load is recorded once, and {@link #isAvailable()} then reports false forever after. A deployment
- * without Tesseract installed starts normally and simply produces no OCR text, rather than failing
- * at boot or throwing on the first scanned invoice.
+ * <p>The one extractor that depends on something outside the JVM, and deliberately not bundled:
+ * the previous binding (tess4j) put nine megabytes of Windows DLLs and an English model in every
+ * installer for a feature most flows never reach, and still needed the native library installed
+ * on macOS and Linux. Now the app looks for the {@code tesseract} program the way {@code winget},
+ * {@code brew} and {@code apt} install it — {@link TesseractLocator} — and runs it per image. A
+ * machine without it starts normally, reads no images, and says exactly what to install.
  *
- * <p>Tesseract is a native library and is not bundled with the app, so OCR is available only on a
- * machine where it has been installed separately. {@code integration.attachments.ocr-enabled}
- * switches it off.
+ * <p><b>Languages</b> come from {@code knowledge.ocr-languages} ({@code eng+spa+cat} by default,
+ * which is the user base). Tesseract refuses the whole run when one requested pack is missing —
+ * and the Windows installer ships English alone unless the others were ticked — so the request
+ * is intersected with what {@code --list-langs} reports, the missing ones are logged once with
+ * where to get them, and the page is still read in the languages that are there.
+ *
+ * <p><b>Pages</b> of a scanned PDF are rendered by PDFBox and capped by {@code knowledge.ocr-max-pages}
+ * (20): a three-hundred-page scan at 300 DPI is minutes of OCR, and the ingest says when it
+ * stopped rather than silently reading a prefix. Both settings are read per call, through
+ * {@link Settings}, so a change lands on the next attachment.
  */
 @Component
 public class ImageOcrExtractor implements AttachmentTextExtractor {
 
     private static final Logger log = LoggerFactory.getLogger(ImageOcrExtractor.class);
 
+    public static final String LANGUAGES_KEY = "knowledge.ocr-languages";
+    public static final String MAX_PAGES_KEY = "knowledge.ocr-max-pages";
+    public static final String DEFAULT_LANGUAGES = "eng+spa+cat";
+    public static final int DEFAULT_MAX_PAGES = 20;
+
     /** Scans are usually 200–300 DPI; rendering PDF pages at this reads reliably without ballooning. */
     private static final int RENDER_DPI = 300;
     private static final int MAX_CHARS = 100_000;
+    /** A page at 300 DPI takes Tesseract a few seconds; a minute means something is wrong. */
+    private static final int OCR_TIMEOUT_SECONDS = 90;
+    private static final int LIST_LANGS_TIMEOUT_SECONDS = 15;
+    /** How long a located binary and its language list are trusted before looking again. */
+    private static final long CACHE_MS = 30_000;
 
+    private final Settings settings;
     private final boolean enabled;
     private final String dataPath;
-    private final String languages;
-    private final AtomicReference<Tesseract> engine = new AtomicReference<>();
-    private volatile boolean unavailable;
+    private final Supplier<Optional<Path>> locator;
+    private final TesseractProcess.Runner runner;
 
-    public ImageOcrExtractor(@Value("${integration.attachments.ocr-enabled:true}") boolean enabled,
-                             @Value("${integration.attachments.ocr-data-path:}") String dataPath,
-                             @Value("${integration.attachments.ocr-languages:spa+eng}") String languages) {
+    private volatile Located located;
+    /** Requested-but-missing languages already complained about, so the log says it once. */
+    private final Set<String> reportedMissing = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    // Explicit, because a second constructor exists for tests and Spring will not choose between
+    // two candidates on its own — it looks for a no-arg one and fails.
+    @org.springframework.beans.factory.annotation.Autowired
+    public ImageOcrExtractor(Settings settings,
+                             @Value("${integration.attachments.ocr-enabled:true}") boolean enabled,
+                             @Value("${integration.attachments.ocr-data-path:}") String dataPath) {
+        this(settings, enabled, dataPath, TesseractLocator::locate, TesseractProcess::run);
+    }
+
+    /**
+     * The seam: where the binary is and what running it returns are both supplied, so a test
+     * describes a machine instead of needing Tesseract on it.
+     */
+    public ImageOcrExtractor(Settings settings, boolean enabled, String dataPath,
+                             Supplier<Optional<Path>> locator, TesseractProcess.Runner runner) {
+        this.settings = settings;
         this.enabled = enabled;
         this.dataPath = dataPath == null ? "" : dataPath.trim();
-        this.languages = languages == null || languages.isBlank() ? "eng" : languages.trim();
+        this.locator = locator;
+        this.runner = runner;
+    }
+
+    /** An extractor that is switched off — for fixtures that are not about OCR. */
+    public static ImageOcrExtractor off() {
+        return new ImageOcrExtractor(Settings.none(), false, "", Optional::empty,
+                (argv, stdin, timeout) -> {
+                    throw new IOException("OCR is off in this fixture");
+                });
     }
 
     @Override
@@ -65,114 +114,161 @@ public class ImageOcrExtractor implements AttachmentTextExtractor {
 
     @Override
     public boolean isAvailable() {
-        return enabled && !unavailable && engine() != null;
+        return enabled && binary().isPresent();
+    }
+
+    /**
+     * Why nothing will be read, with the command that changes that. The platform's own installer
+     * is named because "install Tesseract" sends a person to a search engine and this does not.
+     */
+    @Override
+    public String unavailableReason() {
+        if (isAvailable()) return null;
+        if (!enabled) return "OCR is switched off (integration.attachments.ocr-enabled=false).";
+        return "OCR needs the Tesseract program, which is not installed on this machine. Install it "
+                + "with `" + TesseractLocator.installCommand() + "` — it is picked up on the next "
+                + "attachment, no restart needed.";
     }
 
     @Override
     public String extract(byte[] bytes, String filename) throws Exception {
-        Tesseract tesseract = engine();
-        if (tesseract == null) return "";
-        BufferedImage image = ImageIO.read(new ByteArrayInputStream(bytes));
-        if (image == null) {
-            log.debug("Could not decode '{}' as an image.", filename);
-            return "";
-        }
-        return truncate(runOcr(tesseract, image));
+        Optional<Path> binary = binary();
+        if (binary.isEmpty()) return "";
+        return truncate(ocr(binary.get(), bytes, filename));
     }
 
-    /** Renders and reads a scanned PDF's pages. Called by {@link PdfTextExtractor}. */
-    public String extractFromPdf(PDDocument document, int maxPages) {
-        Tesseract tesseract = engine();
-        if (tesseract == null) return "";
+    /**
+     * Renders and reads a scanned PDF's pages, up to the configured cap. Called by
+     * {@link PdfTextExtractor} once it has found no text layer.
+     */
+    public String extractFromPdf(PDDocument document, String filename) throws IOException {
+        Optional<Path> binary = binary();
+        if (binary.isEmpty()) return "";
+        int maxPages = Math.max(1, settings.number(MAX_PAGES_KEY, DEFAULT_MAX_PAGES));
         PDFRenderer renderer = new PDFRenderer(document);
         StringBuilder out = new StringBuilder();
-        int pages = Math.min(document.getNumberOfPages(), Math.max(1, maxPages));
+        int pages = Math.min(document.getNumberOfPages(), maxPages);
         for (int page = 0; page < pages; page++) {
             try {
                 BufferedImage image = renderer.renderImageWithDPI(page, RENDER_DPI, ImageType.GRAY);
-                String text = runOcr(tesseract, image);
+                String text = ocr(binary.get(), png(image), filename + " page " + (page + 1));
                 if (!text.isBlank()) {
                     out.append("--- page ").append(page + 1).append(" ---\n").append(text).append('\n');
                 }
-            } catch (Exception e) {
+            } catch (IOException e) {
                 // One unreadable page must not lose the pages that did read.
-                log.debug("OCR of page {} failed: {}", page + 1, e.getMessage());
+                log.info("OCR of '{}' page {} failed: {}", filename, page + 1, e.getMessage());
             }
         }
         if (document.getNumberOfPages() > pages) {
             out.append("…(OCR stopped after ").append(pages).append(" of ")
-               .append(document.getNumberOfPages()).append(" pages)\n");
+               .append(document.getNumberOfPages()).append(" pages — raise ").append(MAX_PAGES_KEY)
+               .append(" to read more)\n");
         }
         return out.toString();
     }
 
-    private String runOcr(Tesseract tesseract, BufferedImage image) {
-        try {
-            // Tesseract's native handle is not thread-safe, and several job workers can be
-            // extracting at once; serialising on the instance is cheaper than a pool of engines.
-            synchronized (this) {
-                return tesseract.doOCR(image);
-            }
-        } catch (Throwable t) {
-            // Throwable, not Exception: a missing native library surfaces as UnsatisfiedLinkError.
-            markUnavailable(t);
-            return "";
+    /** One image through the program: {@code tesseract stdin stdout -l <langs>}. */
+    private String ocr(Path binary, byte[] image, String what) throws IOException {
+        List<String> argv = new ArrayList<>(List.of(binary.toString(), "stdin", "stdout",
+                "-l", languages(binary)));
+        if (!dataPath.isBlank()) argv.addAll(List.of("--tessdata-dir", dataPath));
+        TesseractProcess.Result result = runner.run(argv, image, OCR_TIMEOUT_SECONDS);
+        if (!result.ok()) {
+            throw new IOException("tesseract exited with " + result.exit() + " on " + what + ": "
+                    + lastLine(result.stderr()));
         }
+        return result.stdout().strip();
     }
 
     /**
-     * The engine, built on first use.
+     * The languages to ask for: what was configured, minus what this install cannot serve.
      *
-     * <p>Lazily, because constructing it loads the native library — doing that in the constructor
-     * would make an optional feature's missing dependency into a startup failure.
+     * <p>Falls back to the configured string untouched when the list cannot be read (an old
+     * build, a broken install) — Tesseract then reports its own complaint on the first image,
+     * which is more informative than guessing here.
      */
-    private Tesseract engine() {
-        if (!enabled || unavailable) return null;
-        Tesseract existing = engine.get();
-        if (existing != null) return existing;
-        synchronized (this) {
-            if (unavailable) return null;
-            existing = engine.get();
-            if (existing != null) return existing;
-            try {
-                Tesseract tesseract = new Tesseract();
-                String resolved = resolveDataPath();
-                if (resolved != null) tesseract.setDatapath(resolved);
-                tesseract.setLanguage(languages);
-                // Page segmentation 3 (fully automatic) and LSTM-only, which reads invoice
-                // layouts markedly better than the legacy engine.
-                tesseract.setPageSegMode(3);
-                tesseract.setOcrEngineMode(1);
-                engine.set(tesseract);
-                log.info("OCR enabled (languages: {}).", languages);
-                return tesseract;
-            } catch (Throwable t) {
-                markUnavailable(t);
-                return null;
+    private String languages(Path binary) {
+        String configured = settings.get(LANGUAGES_KEY, DEFAULT_LANGUAGES).trim();
+        if (configured.isEmpty()) configured = DEFAULT_LANGUAGES;
+        Set<String> available = availableLanguages(binary);
+        if (available.isEmpty()) return configured;
+
+        List<String> wanted = new ArrayList<>();
+        List<String> missing = new ArrayList<>();
+        for (String lang : configured.split("\\+")) {
+            String l = lang.trim().toLowerCase(Locale.ROOT);
+            if (l.isEmpty()) continue;
+            (available.contains(l) ? wanted : missing).add(l);
+        }
+        if (!missing.isEmpty() && reportedMissing.addAll(missing)) {
+            log.warn("Tesseract at {} has no language data for {} (it has {}). Reading in {} "
+                    + "instead; to add the rest: {}.", binary, missing, available,
+                    wanted.isEmpty() ? "whatever it defaults to" : String.join("+", wanted),
+                    TesseractLocator.languagePackHint());
+        }
+        return wanted.isEmpty() ? configured : String.join("+", wanted);
+    }
+
+    /**
+     * What {@code --list-langs} reports, cached with the binary. The header line names the
+     * tessdata directory and is skipped; the rest is one language code per line. Older builds
+     * printed the list on stderr, so both streams are read.
+     */
+    private Set<String> availableLanguages(Path binary) {
+        Located cached = located;
+        if (cached != null && cached.path().equals(binary) && cached.languages() != null) {
+            return cached.languages();
+        }
+        Set<String> langs = new LinkedHashSet<>();
+        try {
+            List<String> argv = new ArrayList<>(List.of(binary.toString(), "--list-langs"));
+            if (!dataPath.isBlank()) argv.addAll(List.of("--tessdata-dir", dataPath));
+            TesseractProcess.Result result = runner.run(argv, null, LIST_LANGS_TIMEOUT_SECONDS);
+            for (String line : (result.stdout() + "\n" + result.stderr()).split("\\R")) {
+                String l = line.strip().toLowerCase(Locale.ROOT);
+                if (l.matches("[a-z_]{2,16}")) langs.add(l);
             }
+        } catch (IOException e) {
+            log.debug("Could not list Tesseract's languages: {}", e.getMessage());
         }
+        located = new Located(binary, System.currentTimeMillis(), langs);
+        return langs;
     }
 
-    private String resolveDataPath() {
-        if (!dataPath.isBlank()) return dataPath;
-        // The usual install locations. Left unset when none exists, so Tesseract falls back to
-        // its own TESSDATA_PREFIX handling rather than being pointed at a directory that isn't there.
-        for (String candidate : new String[]{"/usr/share/tesseract-ocr/5/tessdata",
-                "/usr/share/tesseract-ocr/4.00/tessdata", "/usr/share/tessdata",
-                "/opt/homebrew/share/tessdata"}) {
-            if (Files.isDirectory(Path.of(candidate))) return candidate;
+    /**
+     * The program, looked up again every {@link #CACHE_MS}: a lookup is a handful of file checks,
+     * and a person who has just installed Tesseract should not have to restart to be believed.
+     */
+    private Optional<Path> binary() {
+        if (!enabled) return Optional.empty();
+        Located cached = located;
+        long now = System.currentTimeMillis();
+        if (cached != null && now - cached.at() < CACHE_MS) return Optional.ofNullable(cached.path());
+        Optional<Path> found = locator.get();
+        // A relocated binary invalidates the language list too; the same install keeps it.
+        Set<String> languages = cached != null && found.isPresent()
+                && found.get().equals(cached.path()) ? cached.languages() : null;
+        located = new Located(found.orElse(null), now, languages);
+        if (found.isPresent() && (cached == null || cached.path() == null)) {
+            log.info("OCR available: {}", found.get());
         }
-        return null;
+        return found;
     }
 
-    private void markUnavailable(Throwable t) {
-        if (!unavailable) {
-            unavailable = true;
-            engine.set(null);
-            log.warn("OCR is unavailable, so image attachments and scanned PDFs will not be read: {}. "
-                    + "Install tesseract-ocr and its language data, or set "
-                    + "integration.attachments.ocr-enabled=false to silence this.", t.toString());
-        }
+    private record Located(Path path, long at, Set<String> languages) {
+    }
+
+    private static byte[] png(BufferedImage image) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(image, "png", out);
+        return out.toByteArray();
+    }
+
+    private static String lastLine(String s) {
+        if (s == null || s.isBlank()) return "no error output";
+        String[] lines = s.strip().split("\\R");
+        return lines[lines.length - 1];
     }
 
     private static String truncate(String text) {

@@ -1,5 +1,6 @@
 package com.concentus.service;
 
+import com.concentus.integration.content.TesseractLocator;
 import com.concentus.model.RuntimeCheck;
 import com.concentus.model.RuntimeStatus;
 import org.slf4j.Logger;
@@ -16,6 +17,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Which runtimes stdio MCP servers need, and whether this machine has them.
@@ -24,9 +26,12 @@ import java.util.function.Function;
  * on the first run, from inside the CLI, as a process that could not start. This probe moves that
  * discovery to the moment the server is configured, where it can still be acted on.
  *
- * <p>Detection only. Installing is the desktop shell's job (see {@code apps/desktop/src/
- * runtime-install.ts}): the backend deliberately does not install software, because the same code
- * runs on a server where an authenticated request must not be able to change what is on the host.
+ * <p>One entry is not a launcher: Tesseract, the OCR program the knowledge ingest runs for
+ * scanned PDFs and images. It sits in the same list because the question is the same — is this
+ * installed, and if not, what installs it — and the panel that answers it already exists.
+ *
+ * <p>Detection only. Installing is {@link RuntimeInstaller}'s job, and only on a desktop: the
+ * backend running on a server must not let an authenticated request change what is on the host.
  */
 @Service
 public class RuntimeProbe {
@@ -40,18 +45,23 @@ public class RuntimeProbe {
 
     /** The runtimes this app knows about, in the order the UI lists them. */
     private static final List<Runtime> RUNTIMES = List.of(
-            new Runtime("node", "Node.js", "node", "MCP servers launched with node",
+            new Runtime("node", "Node.js", () -> "node", "MCP servers launched with node",
                     "https://nodejs.org/en/download"),
-            new Runtime("npm", "npm", "npm", "MCP servers launched with npx or npm",
+            new Runtime("npm", "npm", () -> "npm", "MCP servers launched with npx or npm",
                     "https://nodejs.org/en/download"),
-            new Runtime("pnpm", "pnpm", "pnpm", "MCP servers launched with pnpm or pnpm dlx",
+            new Runtime("pnpm", "pnpm", () -> "pnpm", "MCP servers launched with pnpm or pnpm dlx",
                     "https://pnpm.io/installation"),
-            new Runtime("python", "Python", "python", "MCP servers launched with python",
+            new Runtime("python", "Python", () -> "python", "MCP servers launched with python",
                     "https://www.python.org/downloads/"),
-            new Runtime("pipx", "pipx", "pipx", "MCP servers launched with pipx",
+            new Runtime("pipx", "pipx", () -> "pipx", "MCP servers launched with pipx",
                     "https://pipx.pypa.io/stable/installation/"),
-            new Runtime("uv", "uv", "uv", "MCP servers launched with uvx or uv",
-                    "https://docs.astral.sh/uv/getting-started/installation/"));
+            new Runtime("uv", "uv", () -> "uv", "MCP servers launched with uvx or uv",
+                    "https://docs.astral.sh/uv/getting-started/installation/"),
+            // Looked up each time rather than named: the Windows installer does not put it on
+            // the PATH, so the probe has to run the file where it was installed.
+            new Runtime("tesseract", "Tesseract OCR", TesseractLocator::probeCommand,
+                    "Reading scanned PDFs and image attachments into knowledge bases (OCR)",
+                    "https://tesseract-ocr.github.io/tessdoc/Installation.html"));
 
     /**
      * First word of a command -> the runtime that provides it.
@@ -154,7 +164,7 @@ public class RuntimeProbe {
             Cached hit = cache.get(runtime.id());
             if (!refresh && hit != null && now - hit.at() < CACHE_MS) return hit.status();
         }
-        String version = versionOf.apply(runtime.probeCommand());
+        String version = versionOf.apply(runtime.probeCommand().get());
         boolean found = version != null && !version.isBlank();
         RuntimeStatus status = new RuntimeStatus(runtime.id(), runtime.label(), found,
                 found ? version.trim() : "", runtime.neededFor(), runtime.docsUrl());
@@ -204,7 +214,8 @@ public class RuntimeProbe {
         }
     }
 
-    private record Runtime(String id, String label, String probeCommand, String neededFor,
+    /** @param probeCommand what to ask for {@code --version}; supplied per probe, see the OCR entry */
+    private record Runtime(String id, String label, Supplier<String> probeCommand, String neededFor,
                            String docsUrl) {
     }
 

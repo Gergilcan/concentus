@@ -17,11 +17,20 @@ public interface AttachmentTextExtractor {
     boolean supports(DetectedType type);
 
     /**
-     * Whether it can run right now. OCR is the case this exists for: it needs a native library
-     * that a container may not have, and the workflow must degrade rather than fail.
+     * Whether it can run right now. OCR is the case this exists for: it needs a program that a
+     * machine may not have, and the workflow must degrade rather than fail.
      */
     default boolean isAvailable() {
         return true;
+    }
+
+    /**
+     * Why it cannot run, when it cannot, in a sentence that names what would fix it — the install
+     * command, the setting. Null while available. "Skipped: no extractor" told a person that a
+     * scanned invoice was ignored and left them to guess why; this is the why.
+     */
+    default String unavailableReason() {
+        return null;
     }
 
     /**

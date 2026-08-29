@@ -103,7 +103,7 @@ class RuntimeProbeTest {
         List<RuntimeStatus> all = probe.all(false);
 
         assertThat(all).extracting(RuntimeStatus::id)
-                .containsExactly("node", "npm", "pnpm", "python", "pipx", "uv");
+                .containsExactly("node", "npm", "pnpm", "python", "pipx", "uv", "tesseract");
         assertThat(all).filteredOn(RuntimeStatus::found).extracting(RuntimeStatus::id)
                 .containsExactly("node", "npm");
         // Every entry says what needs it, so the UI never shows a bare tool name with no reason.

@@ -110,7 +110,7 @@ public class AttachmentExtractionService {
             AttachmentTextExtractor extractor = extractorFor(type);
             if (extractor == null) {
                 results.add(new ExtractedFile(attachment.filename(), type, size, null, "",
-                        "skipped: no extractor available for " + type));
+                        "skipped: " + whyNoExtractor(type)));
                 skipped++;
                 continue;
             }
@@ -145,6 +145,19 @@ public class AttachmentExtractionService {
                 .filter(e -> e.supports(type) && e.isAvailable())
                 .findFirst()
                 .orElse(null);
+    }
+
+    /**
+     * The note for a file nobody could read: an extractor that handles the type but cannot run
+     * says why in its own words (and what to install); a type nothing handles is said plainly.
+     */
+    private String whyNoExtractor(DetectedType type) {
+        return extractors.stream()
+                .filter(e -> e.supports(type) && !e.isAvailable())
+                .map(AttachmentTextExtractor::unavailableReason)
+                .filter(reason -> reason != null && !reason.isBlank())
+                .findFirst()
+                .orElse("no extractor available for " + type);
     }
 
     /**

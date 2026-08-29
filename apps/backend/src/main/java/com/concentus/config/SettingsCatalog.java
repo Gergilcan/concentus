@@ -71,6 +71,15 @@ public final class SettingsCatalog {
                     "The same ceiling in characters (roughly four per token), used only while "
                             + "the token budget above is 0 — which is how every installation "
                             + "started, so nothing changes until somebody sets tokens.", false),
+            text("knowledge.ocr-languages", GROUP_KNOWLEDGE, "OCR languages",
+                    "Which languages Tesseract reads scanned PDFs and images in, joined with +, "
+                            + "as its language codes: eng, spa, cat, fra, deu… Only the packs "
+                            + "installed with Tesseract are used; the log names any that are "
+                            + "missing and where to get them.", false),
+            number("knowledge.ocr-max-pages", GROUP_KNOWLEDGE, "OCR pages per PDF",
+                    "How many pages of a scanned PDF are read before the ingest stops and says "
+                            + "so. Each page is a few seconds of OCR, so a three-hundred-page scan "
+                            + "would otherwise hold an ingest for minutes.", false),
 
             text("pricing.input-usd-per-mtok", GROUP_PRICING, "Default input price",
                     "What a model with no price of its own is assumed to cost, in dollars per "

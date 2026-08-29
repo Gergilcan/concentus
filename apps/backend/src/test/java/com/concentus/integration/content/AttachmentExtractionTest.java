@@ -29,9 +29,19 @@ class AttachmentExtractionTest {
     private AttachmentExtractionService service() {
         return new AttachmentExtractionService(List.of(
                 new PlainTextExtractor(),
-                new PdfTextExtractor(new ImageOcrExtractor(false, "", "eng"), 5),
+                new PdfTextExtractor(ImageOcrExtractor.off()),
                 new WordTextExtractor(),
                 new SpreadsheetTextExtractor(2000)), policy);
+    }
+
+    /** The same service on a machine without the Tesseract program, OCR switched on. */
+    private AttachmentExtractionService serviceWithoutTesseract() {
+        ImageOcrExtractor ocr = new ImageOcrExtractor(com.concentus.config.Settings.none(), true, "",
+                java.util.Optional::empty, (argv, stdin, timeout) -> {
+                    throw new java.io.IOException("no tesseract here");
+                });
+        return new AttachmentExtractionService(List.of(
+                new PlainTextExtractor(), new PdfTextExtractor(ocr), ocr), policy);
     }
 
     // ---- type detection ----
@@ -195,19 +205,34 @@ class AttachmentExtractionTest {
 
     @Test
     void anUnavailableOcrExtractorIsSkippedRatherThanFailing() {
-        // A deployment without the native Tesseract library must still process the rest of the mail.
+        // A machine without the Tesseract program must still process the rest of the mail — and
+        // the note on the skipped file has to say what installs it, not just that it was skipped.
+        byte[] png = new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+
+        AttachmentExtractionService.Extraction result = serviceWithoutTesseract().extractAll(
+                List.of(new AttachmentExtractionService.RawAttachment("escaneo.png", png)));
+
+        assertThat(result.skipped()).isEqualTo(1);
+        assertThat(result.files().get(0).note())
+                .startsWith("skipped: ")
+                .contains("Tesseract")
+                .contains(TesseractLocator.installCommand());
+    }
+
+    @Test
+    void aTypeNothingHandlesIsSaidPlainly() {
         byte[] png = new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
 
         AttachmentExtractionService.Extraction result = service().extractAll(
                 List.of(new AttachmentExtractionService.RawAttachment("escaneo.png", png)));
 
-        assertThat(result.skipped()).isEqualTo(1);
         assertThat(result.files().get(0).note()).contains("no extractor available");
     }
 
     // ---- fixtures ----
 
-    private static byte[] pdfContaining(String text) throws Exception {
+    /** Package-visible: ImageOcrExtractorTest needs a PDF with a text layer too. */
+    static byte[] pdfContaining(String text) throws Exception {
         try (PDDocument document = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             PDPage page = new PDPage();
             document.addPage(page);

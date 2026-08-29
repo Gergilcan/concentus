@@ -25,7 +25,6 @@
         <pdfbox.version>3.0.5</pdfbox.version>
         <poi.version>5.4.1</poi.version>
         <jsoup.version>1.21.1</jsoup.version>
-        <tess4j.version>5.16.0</tess4j.version>
         <embedded-postgres.version>2.1.0</embedded-postgres.version>
         <!--
             The PostgreSQL the app embeds. 17.5.0 is the newest zonky publishes — there is no 18,
@@ -105,8 +104,12 @@
         </dependency>
 
         <!-- Attachment text extraction. Pure Java, no native binaries: PDF, DOCX and XLSX are
-             parsed in-process so the container image needs nothing extra for them. OCR is the
-             one exception (see tess4j below). -->
+             parsed in-process. OCR is not a dependency at all: ImageOcrExtractor runs the
+             Tesseract PROGRAM when the machine has one (winget/brew/apt) and reports itself
+             unavailable otherwise. tess4j used to be here — a JNA binding whose jar carried nine
+             megabytes of Windows DLLs and an English model into every installer, and still needed
+             libtesseract installed on the other platforms; the program is what people actually
+             have, so that is what the app looks for. -->
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
@@ -131,27 +134,6 @@
             <artifactId>jsoup</artifactId>
             <version>${jsoup.version}</version>
         </dependency>
-        <!-- OCR for image attachments and scanned PDFs. Unlike everything above, this is a JNA
-             binding to the *native* Tesseract library: it is loaded lazily and the extractor
-             reports itself unavailable when libtesseract or its language data is missing, so a
-             deployment without them still starts and simply skips OCR. See apps/backend/Dockerfile. -->
-        <dependency>
-            <groupId>net.sourceforge.tess4j</groupId>
-            <artifactId>tess4j</artifactId>
-            <version>${tess4j.version}</version>
-            <exclusions>
-                <!-- tess4j pulls its own logging bridge; Spring Boot already supplies one. -->
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-log4j12</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>ch.qos.logback</groupId>
-                    <artifactId>logback-classic</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
         <!-- Official Anthropic Java SDK -->
         <dependency>
             <groupId>com.anthropic</groupId>

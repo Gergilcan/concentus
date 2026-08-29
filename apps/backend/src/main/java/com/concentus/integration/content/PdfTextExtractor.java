@@ -5,7 +5,6 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -13,7 +12,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>A PDF that yields almost no text is usually a scan — a photograph of a page wrapped in a PDF
  * container. Those are common for quote requests forwarded from a customer's own printer, so when
- * the text layer is empty and OCR is available, the pages are rendered and read instead.
+ * the text layer is empty and OCR is available, the pages are rendered and read instead. When it
+ * is not, the log says what would make it so; the page cap lives with the OCR itself.
  */
 @Component
 public class PdfTextExtractor implements AttachmentTextExtractor {
@@ -25,12 +25,9 @@ public class PdfTextExtractor implements AttachmentTextExtractor {
     private static final int MAX_CHARS = 150_000;
 
     private final ImageOcrExtractor ocr;
-    private final int maxOcrPages;
 
-    public PdfTextExtractor(ImageOcrExtractor ocr,
-                            @Value("${integration.attachments.max-ocr-pages:10}") int maxOcrPages) {
+    public PdfTextExtractor(ImageOcrExtractor ocr) {
         this.ocr = ocr;
-        this.maxOcrPages = maxOcrPages;
     }
 
     @Override
@@ -61,11 +58,12 @@ public class PdfTextExtractor implements AttachmentTextExtractor {
                 return truncate(text);
             }
             if (!ocr.isAvailable()) {
-                log.info("PDF '{}' has no text layer and OCR is unavailable.", filename);
+                log.info("PDF '{}' has no text layer and will not be read: {}", filename,
+                        ocr.unavailableReason());
                 return text == null ? "" : text;
             }
-            log.info("PDF '{}' has no text layer; running OCR over up to {} page(s).", filename, maxOcrPages);
-            return truncate(ocr.extractFromPdf(document, maxOcrPages));
+            log.info("PDF '{}' has no text layer; running OCR over its pages.", filename);
+            return truncate(ocr.extractFromPdf(document, filename));
         }
     }
 

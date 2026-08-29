@@ -26,7 +26,7 @@ class MailPromptRendererTest {
     private MailPromptRenderer renderer() {
         AttachmentExtractionService attachments = new AttachmentExtractionService(
                 List.of(new PlainTextExtractor(),
-                        new PdfTextExtractor(new ImageOcrExtractor(false, "", "eng"), 5),
+                        new PdfTextExtractor(ImageOcrExtractor.off()),
                         new WordTextExtractor(),
                         new SpreadsheetTextExtractor(2000)),
                 new AttachmentPolicy(1_000_000, 3_000_000, 5));
