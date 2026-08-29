@@ -467,6 +467,8 @@ triggers report themselves unavailable. See [.env.example](.env.example).
 cd apps/backend && mvn -B clean test    # backend (JUnit; store tests start a real embedded PostgreSQL)
 pnpm --filter frontend test             # frontend units (vitest)
 pnpm --filter frontend test:e2e         # UI end-to-end (Playwright, once: pnpm exec playwright install chromium)
+pnpm --filter desktop test              # desktop shell units (vitest; Electron, child processes and the keyring mocked)
+pnpm --filter desktop test:e2e          # desktop shell smoke (Playwright launches the real Electron shell against a stub backend)
 ```
 
 The UI suite drives the real thing, in parallel: each Playwright worker boots its own copy of the
@@ -475,6 +477,15 @@ isolation by construction, so workers can create and delete flows without racing
 specs walk the four views — dashboard, Studio canvas, every Resources tab, Usage — through the
 actual API. It needs the jar built first, frontend included: `pnpm --filter frontend build`, then
 `mvn -B clean package -DskipTests` in `apps/backend`. CI runs it on every push.
+
+The desktop shell has two suites of its own. The units pin the decisions that break on users'
+machines — finding `claude` from a process that never inherited the shell's PATH, the PATH
+registry write on Windows, which leftover processes a launch may kill, port stability, the
+auto-update channel rule, run notifications — with Electron and every child process mocked, so
+they run wherever node runs (`pnpm test` at the root runs them together with the frontend units).
+The smoke test launches the real Electron main process with Playwright and watches it boot: it
+needs no jar, because the shell adopts anything answering the readiness probe on its port and
+the test is that something (a stub http server), but it does need a display.
 
 ## Building the installers
 

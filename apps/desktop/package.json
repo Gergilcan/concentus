@@ -17,8 +17,11 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b --noEmit",
+    "typecheck": "tsc -b --noEmit && tsc -p tsconfig.test.json",
     "start": "pnpm build && electron .",
+    "//test": "Unit tests with Electron, child processes and the keyring mocked — they run anywhere node runs. test:e2e drives the real Electron main process (Playwright) against a stub backend; it needs a display.",
+    "test": "vitest run",
+    "test:e2e": "pnpm build && playwright test",
     "payload": "node scripts/prepare-payload.mjs",
     "package": "pnpm build && pnpm payload && electron-builder --publish never"
   },
@@ -26,9 +29,11 @@
     "electron-updater": "^6.3.9"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/node": "^24.10.1",
     "electron": "^43.3.0",
     "electron-builder": "^26.15.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "4.1.10"
   }
 }

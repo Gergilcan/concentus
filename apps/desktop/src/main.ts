@@ -40,6 +40,11 @@ import { log } from './log'
  * answer, and the logger makes that call as soon as anything is logged.
  */
 app.setName('Concentus')
+// A different data directory for a run that must not touch the real one. The shell's smoke test
+// (e2e/smoke.spec.ts) points this at a scratch folder so its settings, logs and — since Electron
+// keys it by this directory — its single-instance lock stay clear of an installed Concentus that
+// may be running on the same machine. Same moment as setName, for the same reason.
+if (process.env.CONCENTUS_USER_DATA) app.setPath('userData', process.env.CONCENTUS_USER_DATA)
 // Windows identifies a taskbar button by its AppUserModelID, not by the window. Without one set
 // here, Electron derives it from the running executable — electron.exe when unpackaged — so the
 // taskbar shows Electron's icon and name however the window is decorated. It must match the

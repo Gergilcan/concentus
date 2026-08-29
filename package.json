@@ -15,6 +15,8 @@
     "backend": "cd apps/backend && mvn spring-boot:run",
     "backend:build": "cd apps/backend && mvn -q clean package",
     "preview": "pnpm --filter frontend preview",
+    "//test": "The unit suites that need nothing but node: the frontend (vitest, jsdom) and the desktop shell (vitest, Electron mocked). The backend's JUnit suite and both Playwright suites stay separate — they need a JVM, a jar or a display. See README › Tests.",
+    "test": "pnpm --filter frontend test && pnpm --filter desktop test",
     "//desktop:build": "-DskipTests: this is the launch-the-app loop, and paying the full suite on every UI tweak makes people stop launching the app. CI runs the tests on every push; `pnpm backend:build` still runs them for a deliberate pre-release check.",
     "desktop:build": "pnpm --filter frontend build && cd apps/backend && mvn -q clean package -DskipTests",
     "desktop": "pnpm desktop:build && pnpm --filter desktop start",

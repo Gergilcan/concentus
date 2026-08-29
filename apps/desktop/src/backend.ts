@@ -25,7 +25,7 @@ import { log } from './log'
  * Preferred port. Fixed rather than always-random so MCP OAuth redirect URIs registered with an
  * authorization server keep working across launches; see Settings.port.
  */
-const DEFAULT_PORT = 8734
+export const DEFAULT_PORT = 8734
 /** How long to wait for the backend to report itself ready before giving up. */
 const STARTUP_TIMEOUT_MS = 120_000
 // 150 rather than 400: the poll is a loopback GET that costs microseconds, and its interval is
@@ -111,6 +111,15 @@ function ephemeralPort(): Promise<number> {
 }
 
 /**
+ * The two questions {@link choosePort} asks the OS. Injectable so the rule can be exercised
+ * without binding real ports — on a developer's machine 8734 is often legitimately busy.
+ */
+export interface PortProbes {
+  isPortFree: (port: number) => Promise<boolean>
+  ephemeralPort: () => Promise<number>
+}
+
+/**
  * The port to bind, preferring the fixed one and falling back only while it is genuinely taken.
  *
  * The remembered port is a fallback, NOT a new preference — that distinction is the whole bug it
@@ -120,10 +129,10 @@ function ephemeralPort(): Promise<number> {
  * every MCP OAuth redirect from then on pointed at an ephemeral port that looks exactly like the
  * "wrong port" it is. Trying DEFAULT_PORT first means the move lasts only as long as the collision.
  */
-async function choosePort(): Promise<number> {
+export async function choosePort(probes: PortProbes = { isPortFree, ephemeralPort }): Promise<number> {
   const settings = loadSettings()
 
-  if (await isPortFree(DEFAULT_PORT)) {
+  if (await probes.isPortFree(DEFAULT_PORT)) {
     // Drop a stale remembered port, so the next launch does not reconsider a collision that is over.
     if (settings.port !== undefined) {
       log.info(`Port ${DEFAULT_PORT} is free again; forgetting the remembered port ${settings.port}.`)
@@ -136,12 +145,12 @@ async function choosePort(): Promise<number> {
   // Still taken: reuse the port we moved to last time if it is free, so the app at least stays put
   // between launches rather than landing somewhere new on each one.
   const remembered = settings.port
-  if (remembered !== undefined && remembered !== DEFAULT_PORT && await isPortFree(remembered)) {
+  if (remembered !== undefined && remembered !== DEFAULT_PORT && await probes.isPortFree(remembered)) {
     log.warn(`Port ${DEFAULT_PORT} is in use; staying on the remembered port ${remembered}.`)
     return remembered
   }
 
-  const fallback = await ephemeralPort()
+  const fallback = await probes.ephemeralPort()
   // Existing MCP authorizations are NOT affected, despite the OAuth redirect carrying the port:
   // grants are stored per MCP url and renewed with a refresh_token grant, which by RFC 6749 §6
   // carries no redirect_uri. A fresh sign-in re-registers the client with the current port. The
