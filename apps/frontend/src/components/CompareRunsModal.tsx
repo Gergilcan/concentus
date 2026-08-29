@@ -60,9 +60,11 @@ export function CompareRunsModal({
   }, [referenceId, candidateId])
 
   return (
-    <Modal title={cmp && sideLabel(cmp.reference, t).startsWith(GOLD)
-        ? t('Compared with the golden reference')
-        : t('Two executions, side by side')} onClose={onClose} wide>
+    <Modal
+      title={cmp?.reference.run.golden ? t('Compared with the golden reference') : t('Two executions, side by side')}
+      onClose={onClose}
+      wide
+    >
       {err && <div className={styles.err}>{err}</div>}
       {!cmp && !err && <Spinner />}
       {cmp && (

@@ -151,43 +151,38 @@ export function AddMcpServerModal({
           {rows.length === 0 && (
             <p className={panels.hint}>{t('This server declares no environment variables.')}</p>
           )}
-          {rows.map((row, i) => (
-            <div key={i}>
-              {row.secret ? (
-                <CredentialField
-                  label={row.key}
-                  value={row.value}
-                  onChange={(v) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, value: v } : r)))}
-                  what={t('this MCP server')}
-                />
-              ) : (
-                <Field
-                  label={row.key}
-                  value={row.value}
-                  onChange={(v) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, value: v } : r)))}
-                />
-              )}
-              {/* Under its field, and short: the variable's name is already the label above, and
-                  repeating it made every row say the same word twice in a row. The accessible
-                  name still carries it, because several rows each have one of these. */}
-              <label className={panels.hint}>
-                <input
-                  type="checkbox"
-                  aria-label={t('{{key}} — store as a credential', { key: row.key })}
-                  checked={row.secret}
-                  onChange={(e) =>
-                    setRows((prev) =>
-                      // The value is cleared when the kind changes: a literal token left behind
-                      // after ticking "secret" would be saved as a credential id, and a credential
-                      // id left behind after unticking would be sent to the server verbatim.
-                      prev.map((r, j) => (j === i ? { ...r, secret: e.target.checked, value: '' } : r)),
-                    )
-                  }
-                />{' '}
-                {t('Store as a credential')}
-              </label>
-            </div>
-          ))}
+          {rows.map((row, i) => {
+            const setValue = (v: string) =>
+              setRows((prev) => prev.map((r, j) => (j === i ? { ...r, value: v } : r)))
+            return (
+              <div key={i}>
+                {row.secret ? (
+                  <CredentialField label={row.key} value={row.value} onChange={setValue} what={t('this MCP server')} />
+                ) : (
+                  <Field label={row.key} value={row.value} onChange={setValue} />
+                )}
+                {/* Under its field, and short: the variable's name is already the label above, and
+                    repeating it made every row say the same word twice in a row. The accessible
+                    name still carries it, because several rows each have one of these. */}
+                <label className={panels.hint}>
+                  <input
+                    type="checkbox"
+                    aria-label={t('{{key}} — store as a credential', { key: row.key })}
+                    checked={row.secret}
+                    onChange={(e) =>
+                      setRows((prev) =>
+                        // The value is cleared when the kind changes: a literal token left behind
+                        // after ticking "secret" would be saved as a credential id, and a credential
+                        // id left behind after unticking would be sent to the server verbatim.
+                        prev.map((r, j) => (j === i ? { ...r, secret: e.target.checked, value: '' } : r)),
+                      )
+                    }
+                  />{' '}
+                  {t('Store as a credential')}
+                </label>
+              </div>
+            )
+          })}
         </>
       )}
 

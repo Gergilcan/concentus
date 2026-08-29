@@ -217,28 +217,25 @@ export function Inspector() {
       )}
       {shownTab === 'changes' && activeRunId && <DiffList runId={activeRunId} diffs={nodeDiffs} />}
 
-      {shownTab === 'properties' && (data.kind === 'agent' || data.kind === 'coordinator') && <AgentInspector data={data} set={set} />}
-
-      {shownTab === 'properties' && data.kind === 'input' && <InputInspector data={data} set={set} />}
-
-      {shownTab === 'properties' && data.kind === 'mcp' && <McpInspector data={data} set={set} />}
-
-      {shownTab === 'properties' && data.kind === 'sql' && <SqlInspector data={data} set={set} />}
-      {shownTab === 'properties' && data.kind === 'knowledge' && <KnowledgeInspector data={data} set={set} />}
-      {shownTab === 'properties' && data.kind === 'api' && <ApiInspector data={data} set={set} />}
-      {shownTab === 'properties' && data.kind === 'flow' && <FlowRunInspector data={data} set={set} />}
-      {shownTab === 'properties' && data.kind === 'condition' && <ConditionInspector data={data} set={set} />}
-      {shownTab === 'properties' && data.kind === 'foreach' && <ForEachInspector data={data} set={set} />}
-      {shownTab === 'properties' && data.kind === 'mail' && <MailInspector data={data} set={set} />}
-
-      {shownTab === 'properties' && data.kind === 'merge' && <MergeInspector data={data} set={set} />}
-
-      {shownTab === 'properties' && data.kind === 'verifier' && <VerifierInspector data={data} set={set} />}
-
-      {shownTab === 'properties' && data.kind === 'repo' && <RepoInspector data={data} set={set} />}
-
-      {shownTab === 'properties' && data.kind === 'note' && <NoteInspector data={data} set={set} />}
-      {shownTab === 'properties' && data.kind === 'group' && <GroupInspector data={data} set={set} />}
+      {shownTab === 'properties' && (
+        <>
+          {(data.kind === 'agent' || data.kind === 'coordinator') && <AgentInspector data={data} set={set} />}
+          {data.kind === 'input' && <InputInspector data={data} set={set} />}
+          {data.kind === 'mcp' && <McpInspector data={data} set={set} />}
+          {data.kind === 'sql' && <SqlInspector data={data} set={set} />}
+          {data.kind === 'knowledge' && <KnowledgeInspector data={data} set={set} />}
+          {data.kind === 'api' && <ApiInspector data={data} set={set} />}
+          {data.kind === 'flow' && <FlowRunInspector data={data} set={set} />}
+          {data.kind === 'condition' && <ConditionInspector data={data} set={set} />}
+          {data.kind === 'foreach' && <ForEachInspector data={data} set={set} />}
+          {data.kind === 'mail' && <MailInspector data={data} set={set} />}
+          {data.kind === 'merge' && <MergeInspector data={data} set={set} />}
+          {data.kind === 'verifier' && <VerifierInspector data={data} set={set} />}
+          {data.kind === 'repo' && <RepoInspector data={data} set={set} />}
+          {data.kind === 'note' && <NoteInspector data={data} set={set} />}
+          {data.kind === 'group' && <GroupInspector data={data} set={set} />}
+        </>
+      )}
     </aside>
   )
 }

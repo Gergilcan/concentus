@@ -248,7 +248,6 @@ export function FlowsPage({
   const removeDraft = (full: string) =>
     saveDrafts(drafts.filter((d) => d !== full && !d.startsWith(full + '/')))
 
-
   const patch = async (flow: BackendFlow, changes: Partial<BackendFlow>) => {
     try {
       await onSaveFlow({ ...flow, ...changes })
@@ -308,7 +307,7 @@ export function FlowsPage({
       setDoctorFor={setDoctorFor}
       // A tag on a card still narrows the list; it does it through the search box now, which is
       // the one place left that filters and the one somebody can clear without hunting for a bar.
-      setTagFilter={(tag) => setQuery(tag ?? '')}
+      setTagFilter={setQuery}
       onDragStart={(e) => flow.id && e.dataTransfer.setData(FLOW_DND, flow.id)}
       golden={flow.id ? goldenByFlow.get(flow.id) : undefined}
       onGoldenCheck={startGoldenCheck}

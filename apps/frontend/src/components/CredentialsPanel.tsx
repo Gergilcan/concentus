@@ -100,14 +100,21 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
     void load()
   }, [load])
 
+  // Whatever secret the form held goes whenever the selection changes. Empty on purpose: there is
+  // nothing to prefill it with, and an empty box is an honest representation of "the app cannot
+  // read this".
+  const clearSecrets = () => {
+    setValue('')
+    setOauth(BLANK_OAUTH)
+    setOauthStatus(null)
+  }
+
   const startCreate = () => {
     setCreating(true)
     setEditing(null)
     setLabel('')
     setKind(KINDS[0].value)
-    setValue('')
-    setOauth(BLANK_OAUTH)
-    setOauthStatus(null)
+    clearSecrets()
   }
 
   const startEdit = (c: Credential) => {
@@ -115,11 +122,7 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
     setCreating(false)
     setLabel(c.label)
     setKind(c.kind)
-    // Empty on purpose: there is nothing to prefill it with, and an empty box is an honest
-    // representation of "the app cannot read this".
-    setValue('')
-    setOauth(BLANK_OAUTH)
-    setOauthStatus(null)
+    clearSecrets()
     if (c.kind === OAUTH_KIND) void loadOauthStatus(c.id)
   }
 
@@ -167,9 +170,7 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
   const cancel = () => {
     setCreating(false)
     setEditing(null)
-    setValue('')
-    setOauth(BLANK_OAUTH)
-    setOauthStatus(null)
+    clearSecrets()
   }
 
   const submit = async (e: FormEvent) => {

@@ -26,10 +26,10 @@ export function AuthBadge() {
         })
         .catch(() => {})
     load()
-    const t = setInterval(load, AUTH_POLL_INTERVAL_MS)
+    const timer = setInterval(load, AUTH_POLL_INTERVAL_MS)
     return () => {
       alive = false
-      clearInterval(t)
+      clearInterval(timer)
     }
   }, [])
 
