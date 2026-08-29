@@ -1,6 +1,8 @@
 package com.concentus.service;
 
 import com.concentus.config.AgentSpec;
+import com.concentus.model.FlowGraph;
+import com.concentus.model.FlowNode;
 import com.concentus.model.NodeExec;
 
 import java.util.ArrayList;
@@ -120,15 +122,30 @@ final class BranchPayloads {
     private static String specLabel(AgentRun run, String nodeId) {
         CompiledFlow flow = run.compiled;
         if (flow != null && nodeId != null) {
-            List<AgentSpec> all = new ArrayList<>();
-            if (flow.coordinator() != null) all.add(flow.coordinator());
-            all.addAll(flow.subAgents());
-            if (flow.merger() != null) all.add(flow.merger());
-            if (flow.verifier() != null) all.add(flow.verifier());
-            for (AgentSpec s : all) {
-                if (nodeId.equals(s.nodeId) && s.name != null && !s.name.isBlank()) return s.name;
+            for (AgentSpec s : flow.allSpecs()) {
+                if (s != null && nodeId.equals(s.nodeId) && s.name != null && !s.name.isBlank()) {
+                    return s.name;
+                }
             }
         }
         return nodeId == null ? "The run" : nodeId;
+    }
+
+    /**
+     * Whether a block is the run's coordinator — by the compiled spec, or by the role drawn on the
+     * canvas, because a run built by a test or an older path may have compiled without ids. Asked
+     * by both hand-off walks when a failure nobody pinned on a block falls to the coordinator.
+     */
+    static boolean isCoordinator(AgentRun run, FlowGraph graph, String nodeId) {
+        if (nodeId == null) return false;
+        if (run.compiled != null && run.compiled.coordinator() != null
+                && nodeId.equals(run.compiled.coordinator().nodeId)) {
+            return true;
+        }
+        if (graph == null) return false;
+        for (FlowNode n : graph.nodesOrEmpty()) {
+            if (nodeId.equals(n.id())) return "coordinator".equalsIgnoreCase(n.role());
+        }
+        return false;
     }
 }

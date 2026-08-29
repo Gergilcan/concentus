@@ -57,9 +57,7 @@ final class LocalStreamEventHandler {
                     String err = node.path("result").asText("run failed");
                     markNodeExec(coordExec, "failed", err);
                     // Mark the run itself failed so it shows as failed and triggers notifications.
-                    run.status = "ERROR";
-                    run.error = err;
-                    run.emit(RunEvent.of("error", err));
+                    run.fail(err);
                 } else {
                     if (coordExec != null && !"failed".equals(coordExec.status)) {
                         markNodeExec(coordExec, "passed", null);

@@ -127,10 +127,7 @@ public class FlowCompiler {
     public CompiledFlow compile(FlowGraph flow, Map<String, String> variables, Set<String> unresolved) {
         CompiledFlow compiled = compileRaw(flow);
         if (!variables.isEmpty() || unresolved != null) {
-            List<AgentSpec> all = new ArrayList<>(compiled.allAgents());
-            if (compiled.merger() != null) all.add(compiled.merger());
-            if (compiled.verifier() != null) all.add(compiled.verifier());
-            for (AgentSpec spec : all) {
+            for (AgentSpec spec : compiled.allSpecs()) {
                 spec.systemPrompt = Variables.substitute(spec.systemPrompt, variables, unresolved);
                 spec.description = Variables.substitute(spec.description, variables, unresolved);
             }
@@ -230,10 +227,7 @@ public class FlowCompiler {
         List<com.concentus.mail.MailHandOffSpec> out = new ArrayList<>();
         Set<String> agentIds = agentIds(flow);
         for (FlowNode node : byType(flow, "mail")) {
-            boolean fedByAnAgent = flow.edgesOrEmpty().stream()
-                    .anyMatch(e -> agentIds.contains(e.source()) && node.id().equals(e.target()))
-                    || agentIds.contains(String.valueOf(FlowGates.sourceThroughGates(flow, node.id())));
-            if (!fedByAnAgent) {
+            if (!fedByAnAgent(flow, agentIds, node)) {
                 throw new IllegalArgumentException("The mail node '"
                         + str(node.dataOrEmpty(), "label", node.id())
                         + "' is not wired to a block, so it would never send. Wire it out of a "
@@ -258,12 +252,9 @@ public class FlowCompiler {
             // one was legitimately wired to nothing. Refusing those would break flows that ran
             // yesterday — and a cron flow breaks at 07:00, with nobody reading the console.
             if (!legacyMode(node).isBlank()) continue;
-            boolean joined = flow.edgesOrEmpty().stream().anyMatch(e ->
-                    (agentIds.contains(e.source()) && node.id().equals(e.target()))
-                            || (node.id().equals(e.source()) && agentIds.contains(e.target())))
-                    // A condition or for-each drawn in between is part of the same wire, not a
-                    // disconnection — see FlowGates.sourceThroughGates.
-                    || agentIds.contains(String.valueOf(FlowGates.sourceThroughGates(flow, node.id())));
+            boolean joined = fedByAnAgent(flow, agentIds, node)
+                    || flow.edgesOrEmpty().stream().anyMatch(e ->
+                            node.id().equals(e.source()) && agentIds.contains(e.target()));
             if (!joined) {
                 throw new IllegalArgumentException("The flow node '"
                         + str(node.dataOrEmpty(), "label", node.id())
@@ -294,14 +285,20 @@ public class FlowCompiler {
                 if ("after".equalsIgnoreCase(legacy)) out.add(subflowSpec(node, flow));
                 continue;
             }
-            boolean fedByAnAgent = flow.edgesOrEmpty().stream()
-                    .anyMatch(e -> agentIds.contains(e.source()) && node.id().equals(e.target()))
-                    // Through the gates, if any: a hand-off with a condition in front of it is
-                    // still a hand-off, and drawing the rule must not change when it fires.
-                    || agentIds.contains(String.valueOf(FlowGates.sourceThroughGates(flow, node.id())));
-            if (fedByAnAgent) out.add(subflowSpec(node, flow));
+            if (fedByAnAgent(flow, agentIds, node)) out.add(subflowSpec(node, flow));
         }
         return out;
+    }
+
+    /**
+     * Whether an agent's output reaches this node — directly, or through the gates drawn in
+     * between: a hand-off with a condition in front of it is still a hand-off, and drawing the
+     * rule must not change when it fires (see {@link FlowGates#sourceThroughGates}).
+     */
+    private static boolean fedByAnAgent(FlowGraph flow, Set<String> agentIds, FlowNode node) {
+        return flow.edgesOrEmpty().stream()
+                .anyMatch(e -> agentIds.contains(e.source()) && node.id().equals(e.target()))
+                || agentIds.contains(String.valueOf(FlowGates.sourceThroughGates(flow, node.id())));
     }
 
     /**

@@ -61,8 +61,8 @@ public final class RunReplay {
         Map<String, NodeExec> execs = new LinkedHashMap<>();
         for (NodeExec e : run.nodeExecList()) execs.put(e.nodeId, e);
 
-        Map<String, FlowNode> thenById = byId(then);
-        Map<String, FlowNode> nowById = byId(now);
+        Map<String, FlowNode> thenById = FlowGates.byId(then);
+        Map<String, FlowNode> nowById = FlowGates.byId(now);
 
         Walk walk = new Walk(now, nowById, execs);
         List<ReplayNode> out = new ArrayList<>();
@@ -119,12 +119,6 @@ public final class RunReplay {
         if (name != null && !name.isBlank()) return name;
         String label = str(data, "label", null);
         return label != null && !label.isBlank() ? label : node.id();
-    }
-
-    private static Map<String, FlowNode> byId(FlowGraph flow) {
-        Map<String, FlowNode> out = new LinkedHashMap<>();
-        for (FlowNode n : flow.nodesOrEmpty()) out.put(n.id(), n);
-        return out;
     }
 
     /**

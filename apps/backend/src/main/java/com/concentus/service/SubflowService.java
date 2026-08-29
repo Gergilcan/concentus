@@ -197,7 +197,7 @@ public class SubflowService {
                 if (!failed) payload = run.finalOutput() == null ? "" : run.finalOutput();
             } else if (origin.is(com.concentus.model.FlowEdge.ERROR)) {
                 boolean blockFailed = run.nodeFailed(origin.sourceId())
-                        || (unattributed && isCoordinator(run, graph, origin.sourceId()));
+                        || (unattributed && BranchPayloads.isCoordinator(run, graph, origin.sourceId()));
                 if (blockFailed) payload = BranchPayloads.errorOf(run, origin.sourceId());
             } else if (origin.is(com.concentus.model.FlowEdge.REJECTED)) {
                 if (run.anyRejected()) payload = BranchPayloads.verificationReport(run);
@@ -274,23 +274,6 @@ public class SubflowService {
                     "The failure was handled by the branch wired to the failing block's second "
                             + "output, so this run is reported as completed. The failure itself is above."));
         }
-    }
-
-    /**
-     * Whether a block is the run's coordinator — by the compiled spec, or by the role drawn on the
-     * canvas, because a run built by a test or an older path may have compiled without ids.
-     */
-    private static boolean isCoordinator(AgentRun run, com.concentus.model.FlowGraph graph, String nodeId) {
-        if (nodeId == null) return false;
-        if (run.compiled != null && run.compiled.coordinator() != null
-                && nodeId.equals(run.compiled.coordinator().nodeId)) {
-            return true;
-        }
-        if (graph == null) return false;
-        for (com.concentus.model.FlowNode n : graph.nodesOrEmpty()) {
-            if (nodeId.equals(n.id())) return "coordinator".equalsIgnoreCase(n.role());
-        }
-        return false;
     }
 
     /**

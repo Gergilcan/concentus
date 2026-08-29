@@ -41,11 +41,6 @@ public class CliMcpServers {
     }
 
     /**
-     * @param runToolToken the run's tool token, which the proxy route requires; when it is absent
-     *                     an OAuth server is configured the old way rather than pointed at an
-     *                     endpoint that would refuse every call
-     */
-    /**
      * A local server the CLI launches itself, in the {@code command/args/env} shape the server's
      * README says to put in mcp.json.
      *
@@ -69,9 +64,12 @@ public class CliMcpServers {
         return server;
     }
 
+    /**
+     * @param runToolToken the run's tool token, which the proxy route requires; when it is absent
+     *                     an OAuth server is configured the old way rather than pointed at an
+     *                     endpoint that would refuse every call
+     */
     public ObjectNode node(McpServerSpec m, String organizationId, String runId, String runToolToken) {
-        var server = mapper.createObjectNode();
-
         // The stdio transport: the CLI launches the process itself, per run — the same
         // command/args/env shape the server's README says to put in mcp.json. Env values of the
         // form credential:<id> were resolved just now, so tokens live encrypted in the credential
@@ -80,6 +78,7 @@ public class CliMcpServers {
             return stdioNode(mapper, m);
         }
 
+        var server = mapper.createObjectNode();
         server.put("type", "http");
 
         String credential = m.resolveToken();

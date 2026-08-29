@@ -6,7 +6,6 @@ import com.concentus.mail.MailHandOffSpec;
 import com.concentus.mail.MailSender;
 import com.concentus.model.FlowEdge;
 import com.concentus.model.FlowGraph;
-import com.concentus.model.FlowNode;
 import com.concentus.model.RunEvent;
 import com.concentus.secrets.CredentialStore;
 import org.slf4j.Logger;
@@ -76,7 +75,7 @@ public class MailHandOffService {
                 }
             } else if (origin.is(FlowEdge.ERROR)) {
                 boolean blockFailed = run.nodeFailed(origin.sourceId())
-                        || (unattributed && isCoordinator(run, graph, origin.sourceId()));
+                        || (unattributed && BranchPayloads.isCoordinator(run, graph, origin.sourceId()));
                 if (blockFailed) {
                     payload = BranchPayloads.errorOf(run, origin.sourceId());
                     outcome = "failed";
@@ -173,19 +172,5 @@ public class MailHandOffService {
         String subject = drawn.subject().isBlank() ? "{{flow}}: {{status}}" : drawn.subject();
         return subject.replace("{{flow}}", flow == null ? "" : flow)
                 .replace("{{status}}", outcome == null ? "" : outcome);
-    }
-
-    /** As {@link SubflowService}: by the compiled spec, or by the role drawn on the canvas. */
-    private static boolean isCoordinator(AgentRun run, FlowGraph graph, String nodeId) {
-        if (nodeId == null) return false;
-        if (run.compiled != null && run.compiled.coordinator() != null
-                && nodeId.equals(run.compiled.coordinator().nodeId)) {
-            return true;
-        }
-        if (graph == null) return false;
-        for (FlowNode n : graph.nodesOrEmpty()) {
-            if (nodeId.equals(n.id())) return "coordinator".equalsIgnoreCase(n.role());
-        }
-        return false;
     }
 }

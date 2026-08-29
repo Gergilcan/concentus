@@ -11,7 +11,6 @@ import com.concentus.model.SkillDef;
 import com.concentus.store.SkillStore;
 import com.concentus.support.LocalClaudeSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -88,6 +87,22 @@ public class LocalClaudeExecutor {
         return APPROVAL_MODE.equalsIgnoreCase(run.permissionMode) && !run.approved;
     }
 
+    /**
+     * The resting state after a turn that ended without error: idle, or held for a human under
+     * approval mode. Not IDLE for the latter: idle means "waiting for whatever you want next", and
+     * an approval run is waiting for one specific answer — the distinct status is what lets the UI
+     * offer Approve/Reject and the desktop shell raise a notification. Shared with the fan-out
+     * executor so both paths park a run the same way.
+     */
+    static void settleIdle(AgentRun run) {
+        boolean waiting = awaitingApproval(run);
+        run.status = waiting ? "AWAITING_APPROVAL" : "IDLE";
+        if (waiting) {
+            run.emit(RunEvent.of("system",
+                    "Waiting for your approval — nothing has been changed yet."));
+        }
+    }
+
     /** The per-run MCP config file, inside the run's workdir. */
     static final String MCP_CONFIG_FILE = "mcp-config.json";
 
@@ -158,7 +173,7 @@ public class LocalClaudeExecutor {
     public void runTurn(AgentRun run, CompiledFlow flow, String userText) {
         String cmd = support.command().orElse(null);
         if (cmd == null) {
-            fail(run, "The claude CLI was not found. Install Claude Code or set local.claude-command.");
+            run.fail("The claude CLI was not found. Install Claude Code or set local.claude-command.");
             return;
         }
 
@@ -170,7 +185,7 @@ public class LocalClaudeExecutor {
                 prepareWorkspace(run, flow, workdir);
             }
         } catch (IOException e) {
-            fail(run, "Failed to prepare local workspace: " + e.getMessage());
+            run.fail("Failed to prepare local workspace: " + e.getMessage());
             return;
         }
 
@@ -205,7 +220,7 @@ public class LocalClaudeExecutor {
                     msg -> run.emit(RunEvent.of("system", msg)));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            fail(run, "Interrupted while waiting for a process slot.");
+            run.fail("Interrupted while waiting for a process slot.");
             return;
         }
         if (slot == null) {
@@ -218,7 +233,7 @@ public class LocalClaudeExecutor {
             proc = pb.start();
         } catch (IOException e) {
             slot.close();
-            fail(run, "Failed to start claude: " + e.getMessage());
+            run.fail("Failed to start claude: " + e.getMessage());
             return;
         }
         run.localProcess = proc;
@@ -250,15 +265,7 @@ public class LocalClaudeExecutor {
             slot.close();
             run.localProcess = null;
             if (!"TERMINATED".equals(run.status) && !"ERROR".equals(run.status)) {
-                // Not IDLE: idle means "waiting for whatever you want next", and this run is
-                // waiting for one specific answer. The distinct status is what lets the UI offer
-                // Approve/Reject and the desktop shell raise a notification.
-                boolean waiting = awaitingApproval(run);
-                run.status = waiting ? "AWAITING_APPROVAL" : "IDLE";
-                if (waiting) {
-                    run.emit(RunEvent.of("system",
-                            "Waiting for your approval — nothing has been changed yet."));
-                }
+                settleIdle(run);
             }
         }
     }
@@ -367,17 +374,15 @@ public class LocalClaudeExecutor {
         }
 
         // Inject SQL/RAG context into each agent's prompt (once); record per-node for the UI.
-        ragInjector.inject(flow.coordinator(), run, m -> run.emit(RunEvent.of("system", m)));
-        for (AgentSpec sub : flow.subAgents()) {
-            ragInjector.inject(sub, run, m -> run.emit(RunEvent.of("system", m)));
+        for (AgentSpec agent : flow.allAgents()) {
+            ragInjector.inject(agent, run, m -> run.emit(RunEvent.of("system", m)));
         }
 
         // Flows wired into an agent run here, before its first turn, exactly as an input should.
         // After the RAG injection because both append to the same briefing and this is the more
         // expensive one: a failure in it should not cost the cheap context that already succeeded.
-        preRunSubflows.inject(flow.coordinator(), run, m -> run.emit(RunEvent.of("system", m)));
-        for (AgentSpec sub : flow.subAgents()) {
-            preRunSubflows.inject(sub, run, m -> run.emit(RunEvent.of("system", m)));
+        for (AgentSpec agent : flow.allAgents()) {
+            preRunSubflows.inject(agent, run, m -> run.emit(RunEvent.of("system", m)));
         }
 
         // Coordinator instructions -> CLAUDE.md (auto-loaded as project context). A referenced
@@ -508,7 +513,6 @@ public class LocalClaudeExecutor {
         for (AgentSpec agent : run.compiled.allAgents()) apis.addAll(agent.apiSources);
         boolean hasMemory = run.flowId != null && !run.flowId.isBlank();
         if (!apis.isEmpty() || hasMemory) {
-            if (run.toolToken == null) run.toolToken = UUID.randomUUID().toString();
             var server = mapper.createObjectNode();
             server.put("type", "http");
             server.put("url", "http://127.0.0.1:" + serverPort + "/api/runs/" + run.id + "/tools");
@@ -899,12 +903,6 @@ public class LocalClaudeExecutor {
         ne.output = status;
         if (bad) ne.error = status;
         ne.endedAt = System.currentTimeMillis();
-    }
-
-    private void fail(AgentRun run, String message) {
-        run.status = "ERROR";
-        run.error = message;
-        run.emit(RunEvent.of("error", message));
     }
 
     /**

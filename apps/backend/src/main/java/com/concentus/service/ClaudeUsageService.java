@@ -149,8 +149,8 @@ public class ClaudeUsageService {
         out.put("windows", Map.of(
                 "last5h", window(samples, now - 5L * 60 * 60 * 1000),
                 "today", window(samples, startOfToday()),
-                "week", window(samples, now - 7L * 24 * 60 * 60 * 1000)));
-        out.put("models", perModel(samples, now - 7L * 24 * 60 * 60 * 1000));
+                "week", window(samples, now - WEEK_MILLIS)));
+        out.put("models", perModel(samples, now - WEEK_MILLIS));
         out.put("days", perDay(samples));
         cached = out;
         cachedAt = now;

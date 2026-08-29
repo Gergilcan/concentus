@@ -8,7 +8,6 @@ import com.concentus.model.WorkVerdict;
 import com.concentus.support.LocalClaudeSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -23,7 +22,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -53,9 +51,6 @@ import java.util.stream.Collectors;
  */
 @Component
 public class FanoutExecutor {
-
-    /** {@code AgentSpec.execution} value that selects this executor. */
-    public static final String EXECUTION_FANOUT = "fanout";
 
     /** Grace after a soft kill before the process is killed hard; workers get no cleanup ritual. */
     private static final long FORCE_KILL_AFTER_SECONDS = 5;
@@ -157,12 +152,6 @@ public class FanoutExecutor {
         this.policies = policies;
     }
 
-    /** For tests: the policy a plan-born worker is resolved against. */
-    FanoutExecutor withPolicies(com.concentus.policy.OrgPolicyService policies) {
-        this.policies = policies;
-        return this;
-    }
-
     FanoutExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
                    PreRunSubflows preRunSubflows,
                    ContextFolderResolver contextFolders, ObjectMapper mapper,
@@ -208,7 +197,7 @@ public class FanoutExecutor {
     public void runTurn(AgentRun run, CompiledFlow flow, String userText) {
         String cmd = support.command().orElse(null);
         if (cmd == null) {
-            fail(run, "The claude CLI was not found. Install Claude Code or set local.claude-command.");
+            run.fail("The claude CLI was not found. Install Claude Code or set local.claude-command.");
             return;
         }
         AgentSpec coord = flow.coordinator();
@@ -262,7 +251,7 @@ public class FanoutExecutor {
         // ended on purpose.
         if ("TERMINATED".equals(run.status)) return;
         if (failed == outcomes.size()) {
-            fail(run, "Every worker failed. The combined report lists each reason.");
+            run.fail("Every worker failed. The combined report lists each reason.");
             return;
         }
 
@@ -274,15 +263,15 @@ public class FanoutExecutor {
         AgentSpec verifier = flow.verifier();
         if (verifier != null) {
             WorkVerdict verdict = runVerifier(run, verifier, cmd, userText, outcomes);
-            if ("ERROR".equals(run.status) || "TERMINATED".equals(run.status)) return;
+            if (ended(run)) return;
             surviving = applyVerdict(run, verdict, outcomes);
             surviving = escalateRejected(run, verifier, cmd, userText, surviving);
-            if ("ERROR".equals(run.status) || "TERMINATED".equals(run.status)) return;
+            if (ended(run)) return;
             // The verifier's word is final here — after the escalation, never before — so what is
             // wired to its rejected output runs now, not after the merge.
             run.settled(verifier.nodeId);
             if (surviving.stream().noneMatch(Outcome::ok)) {
-                fail(run, "The verifier rejected every worker's output — nothing survived to "
+                run.fail("The verifier rejected every worker's output — nothing survived to "
                         + "merge. Each rejection's reason is on its worker's box.");
                 return;
             }
@@ -291,19 +280,14 @@ public class FanoutExecutor {
         AgentSpec merger = flow.merger();
         if (merger != null) {
             runMerge(run, merger, cmd, userText, surviving);
-            if ("ERROR".equals(run.status) || "TERMINATED".equals(run.status)) return;
+            if (ended(run)) return;
         }
-        settleIdle(run);
+        LocalClaudeExecutor.settleIdle(run);
     }
 
-    /** The turn ended without error: idle, or held for a human under approval mode. */
-    private static void settleIdle(AgentRun run) {
-        boolean waiting = LocalClaudeExecutor.awaitingApproval(run);
-        run.status = waiting ? "AWAITING_APPROVAL" : "IDLE";
-        if (waiting) {
-            run.emit(RunEvent.of("system",
-                    "Waiting for your approval — nothing has been changed yet."));
-        }
+    /** Whether a step ended the run — failed it, or a human stopped it — so nothing after it runs. */
+    private static boolean ended(AgentRun run) {
+        return "ERROR".equals(run.status) || "TERMINATED".equals(run.status);
     }
 
     /** Kills every live worker of this run. The run's status is the caller's to set. */
@@ -374,7 +358,7 @@ public class FanoutExecutor {
         try {
             preparePlanningWorkspace(run, coord, workdir);
         } catch (IOException e) {
-            fail(run, "The planning workspace could not be prepared: " + e.getMessage());
+            run.fail("The planning workspace could not be prepared: " + e.getMessage());
             return null;
         }
 
@@ -385,16 +369,15 @@ public class FanoutExecutor {
         if ("TERMINATED".equals(run.status)) return null;
         if (!outcome.ok()) {
             markFailed(coordExec, outcome.error());
-            fail(run, "The planning step failed: " + outcome.error());
+            run.fail("The planning step failed: " + outcome.error());
             return null;
         }
         WorkPlan plan = run.submittedPlan;
         if (plan == null) {
             markFailed(coordExec, "finished without submitting a plan");
-            fail(run, "The coordinator finished without submitting a plan (plan_submit was never "
+            run.fail("The coordinator finished without submitting a plan (plan_submit was never "
                     + "accepted), so nothing ran."
-                    + (outcome.finalText() == null || outcome.finalText().isBlank()
-                            ? "" : " Its final message: " + outcome.finalText()));
+                    + (outcome.hasText() ? " Its final message: " + outcome.finalText() : ""));
             return null;
         }
         return plan;
@@ -500,10 +483,8 @@ public class FanoutExecutor {
         if (prior == null) return null;
         for (NodeExec p : prior) {
             if (!spec.nodeId.equals(p.nodeId)) continue;
-            if (!"passed".equals(p.status) || "rejected".equals(p.verdict) || p.output == null || p.output.isBlank()) {
-                return null;
-            }
-            NodeExec exec = run.nodeExec(spec.nodeId, spec.nodeId.startsWith("worker:") ? "worker" : "agent", spec.name);
+            if (!reusable(p)) return null;
+            NodeExec exec = workerExec(run, spec);
             if (exec != null) {
                 exec.appendInput("(reused from run " + run.resumeOf + ")");
                 exec.appendOutput(p.output);
@@ -524,6 +505,12 @@ public class FanoutExecutor {
         return null;
     }
 
+    /** Whether a prior run's box is worth keeping: passed, not rejected, and with a report. */
+    private static boolean reusable(NodeExec p) {
+        return "passed".equals(p.status) && !"rejected".equals(p.verdict)
+                && p.output != null && !p.output.isBlank();
+    }
+
     /** Whether the resumed run's plan-born workers all passed — the one case a plan can be kept. */
     private static boolean reusablePlan(AgentRun run) {
         List<NodeExec> prior = run.priorExecs;
@@ -532,7 +519,7 @@ public class FanoutExecutor {
         for (NodeExec p : prior) {
             if (p.nodeId == null || !p.nodeId.startsWith("worker:")) continue;
             any = true;
-            if (!"passed".equals(p.status) || "rejected".equals(p.verdict) || p.output == null || p.output.isBlank()) return false;
+            if (!reusable(p)) return false;
         }
         return any;
     }
@@ -679,9 +666,7 @@ public class FanoutExecutor {
                     AgentSpec dep = jobs.get(failedDep).spec();
                     String why = "'" + dep.name + "', which this step waits for, failed: "
                             + outcomes[failedDep].error() + " — so this step did not run.";
-                    NodeExec exec = run.nodeExec(job.spec().nodeId,
-                            job.spec().nodeId.startsWith("worker:") ? "worker" : "agent", job.spec().name);
-                    markFailed(exec, why);
+                    markFailed(workerExec(run, job.spec()), why);
                     run.emit(RunEvent.of("system", why, job.spec().name, job.spec().nodeId));
                     outcomes[i] = new Outcome(job.spec(), false, null, why);
                     finished[i] = true;
@@ -757,8 +742,9 @@ public class FanoutExecutor {
             WorkerJob dep = jobs.get(d);
             sb.append("\n### ").append(dep.spec().name)
                     .append(dep.itemId() == null ? "" : " (" + dep.itemId() + ")").append("\n");
-            String text = outcomes[d].finalText();
-            sb.append(text == null || text.isBlank() ? "(the step finished without a report)" : text.trim()).append("\n");
+            Outcome report = outcomes[d];
+            sb.append(report.hasText() ? report.finalText().trim() : "(the step finished without a report)")
+                    .append("\n");
         }
         return sb.toString();
     }
@@ -777,6 +763,18 @@ public class FanoutExecutor {
     }
 
     private record Outcome(AgentSpec spec, boolean ok, String finalText, String error) {
+        /** Whether the step said anything at the end — a passed step may still have no report. */
+        boolean hasText() {
+            return finalText != null && !finalText.isBlank();
+        }
+    }
+
+    /**
+     * The box of a worker, plan-born or drawn: the kind tells the UI whether to draw it from the
+     * run report ({@code worker:} ids have no canvas node) or from the canvas.
+     */
+    private static NodeExec workerExec(AgentRun run, AgentSpec spec) {
+        return run.nodeExec(spec.nodeId, spec.nodeId.startsWith("worker:") ? "worker" : "agent", spec.name);
     }
 
     private Outcome runWorker(AgentRun run, AgentSpec spec, String cmd, String userText) {
@@ -794,8 +792,7 @@ public class FanoutExecutor {
     }
 
     private Outcome runWorkerProcess(AgentRun run, AgentSpec spec, String cmd, String userText) {
-        boolean synthetic = spec.nodeId.startsWith("worker:");
-        NodeExec exec = run.nodeExec(spec.nodeId, synthetic ? "worker" : "agent", spec.name);
+        NodeExec exec = workerExec(run, spec);
         if (exec != null) {
             // Plan-born workers have no canvas node, so the model lookup by node id found
             // nothing — priced at the fallback unless attributed here.
@@ -1091,12 +1088,6 @@ public class FanoutExecutor {
      */
     private void writeWorkerMcpConfig(AgentRun run, AgentSpec spec, Path workdir, boolean facade)
             throws IOException {
-        Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
-                mapper.writeValueAsString(mcpConfigFor(run, spec, facade)));
-    }
-
-    /** As above, as a document the caller can still add its own servers to before writing. */
-    private ObjectNode mcpConfigFor(AgentRun run, AgentSpec spec, boolean facade) {
         var root = mapper.createObjectNode();
         var servers = root.putObject("mcpServers");
 
@@ -1133,7 +1124,8 @@ public class FanoutExecutor {
                     spec.name, spec.nodeId));
         }
 
-        return root;
+        Files.writeString(workdir.resolve(LocalClaudeExecutor.MCP_CONFIG_FILE),
+                mapper.writeValueAsString(root));
     }
 
     /**
@@ -1158,7 +1150,7 @@ public class FanoutExecutor {
             skillService.materialise(workdir, defs);
             run.emit(RunEvent.of("system", defs.size() + " skill(s) installed for this worker: "
                     + defs.stream().map(com.concentus.model.SkillDef::name)
-                            .collect(java.util.stream.Collectors.joining(", ")) + ".",
+                            .collect(Collectors.joining(", ")) + ".",
                     spec.name, spec.nodeId));
         } catch (IOException e) {
             run.emit(RunEvent.of("system", "Skills could not be installed: " + e.getMessage(),
@@ -1469,8 +1461,7 @@ public class FanoutExecutor {
             md.append("\n### ").append(o.spec().name)
                     .append(o.ok() ? "" : " — FAILED").append('\n');
             if (o.ok()) {
-                md.append(o.finalText() == null || o.finalText().isBlank()
-                        ? "_(finished without a final message)_" : o.finalText()).append('\n');
+                md.append(o.hasText() ? o.finalText() : "_(finished without a final message)_").append('\n');
             } else {
                 md.append("_").append(o.error()).append("_\n");
             }
@@ -1543,8 +1534,7 @@ public class FanoutExecutor {
         if (verdict == null) {
             markVerifierFailed(run, exec, "finished without submitting a verdict (verdict_submit "
                     + "was never accepted)"
-                    + (outcome.finalText() == null || outcome.finalText().isBlank()
-                            ? "" : ". Its final message: " + outcome.finalText()));
+                    + (outcome.hasText() ? ". Its final message: " + outcome.finalText() : ""));
             return null;
         }
         markPassed(exec);
@@ -1633,7 +1623,7 @@ public class FanoutExecutor {
         List<Outcome> ok = retried.stream().filter(Outcome::ok).toList();
         if (!ok.isEmpty()) {
             WorkVerdict second = runVerifier(run, verifier, cmd, userText, ok);
-            if ("ERROR".equals(run.status) || "TERMINATED".equals(run.status)) return judged;
+            if (ended(run)) return judged;
             retried = applyVerdict(run, second, retried);
         }
         // After the second verdict, never before: an acceptance clears the box's reason, and the
@@ -1668,7 +1658,7 @@ public class FanoutExecutor {
         markFailed(exec, error);
         if (exec != null) run.settled(exec.nodeId);
         if (!"TERMINATED".equals(run.status)) {
-            fail(run, "The verification step failed: " + error + " The workers' combined report "
+            run.fail("The verification step failed: " + error + " The workers' combined report "
                     + "above still stands, but it is UNVERIFIED — the run stops rather than "
                     + "passing it along as judged.");
         }
@@ -1723,8 +1713,7 @@ public class FanoutExecutor {
         for (Outcome o : judged) {
             p.append("\n## ").append(o.spec().name)
                     .append(" (id: ").append(o.spec().nodeId).append(")\n");
-            p.append(o.finalText() == null || o.finalText().isBlank()
-                    ? "(finished without a final message)" : o.finalText()).append('\n');
+            p.append(o.hasText() ? o.finalText() : "(finished without a final message)").append('\n');
         }
         p.append("\nTheir full workspaces (files they wrote, one folder per worker) are under: ")
                 .append(workersRoot).append("\n");
@@ -1784,7 +1773,7 @@ public class FanoutExecutor {
     private void markMergeFailed(AgentRun run, NodeExec exec, String error) {
         markFailed(exec, error);
         if (!"TERMINATED".equals(run.status)) {
-            fail(run, "The merge step failed: " + error
+            run.fail("The merge step failed: " + error
                     + " The workers' combined report above still stands.");
         }
     }
@@ -1872,8 +1861,7 @@ public class FanoutExecutor {
             p.append("\n## ").append(o.spec().name)
                     .append(o.ok() ? "" : " — FAILED").append('\n');
             if (o.ok()) {
-                p.append(o.finalText() == null || o.finalText().isBlank()
-                        ? "(finished without a final message)" : o.finalText()).append('\n');
+                p.append(o.hasText() ? o.finalText() : "(finished without a final message)").append('\n');
             } else {
                 p.append("Failed: ").append(o.error()).append('\n');
             }
@@ -1940,11 +1928,5 @@ public class FanoutExecutor {
                     + " as a patch (" + patch.lines().count() + " lines) for the merge step.",
                     spec.name, spec.nodeId));
         }
-    }
-
-    private static void fail(AgentRun run, String message) {
-        run.status = "ERROR";
-        run.error = message;
-        run.emit(RunEvent.of("error", message));
     }
 }

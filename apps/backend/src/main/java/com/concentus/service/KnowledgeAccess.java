@@ -124,10 +124,4 @@ public class KnowledgeAccess {
             super(message);
         }
     }
-
-    /** For a caller that wants to decide rather than be thrown at. */
-    public Optional<KnowledgeDef> readable(String baseId) {
-        String role = currentRole();
-        return store.get(baseId).filter(base -> mayRead(base, role));
-    }
 }

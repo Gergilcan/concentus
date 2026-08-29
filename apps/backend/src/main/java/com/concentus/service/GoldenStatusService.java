@@ -10,7 +10,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -134,7 +133,6 @@ public class GoldenStatusService {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> sortedAny(Map<?, ?> map) {
-        Map<String, Object> out = new LinkedHashMap<>(new TreeMap<>((Map<String, Object>) map));
-        return out;
+        return new TreeMap<>((Map<String, Object>) map);
     }
 }
