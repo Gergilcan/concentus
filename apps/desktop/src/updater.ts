@@ -43,8 +43,29 @@ export interface UpdateState {
  * `contains(github.ref_name, '-')` in release.yml, and two different definitions of "is this a
  * prerelease" is how a build ends up on a channel its own release page disagrees with.
  */
-function isPrerelease(version: string): boolean {
+export function isPrerelease(version: string): boolean {
   return version.includes('-')
+}
+
+/** Whether a run can update itself at all, and if not, why — in the user's terms. */
+export interface UpdateSupport {
+  supported: boolean
+  reason?: string
+}
+
+/**
+ * The stand-down rule, on its own so it can be read (and tested) without an Electron process
+ * behind it. Only two kinds of install can be updated by us — NSIS on Windows and the AppImage on
+ * Linux — and a development run has no packaged app to replace in the first place.
+ */
+export function updateSupport(run: { packaged: boolean; platform: NodeJS.Platform; appImage: boolean }): UpdateSupport {
+  if (!run.packaged) {
+    return { supported: false, reason: 'Development run — only the installed app can update itself.' }
+  }
+  if (run.platform === 'linux' && !run.appImage) {
+    return { supported: false, reason: 'This install updates through the system package manager, not the app.' }
+  }
+  return { supported: true }
 }
 
 let state: Omit<UpdateState, 'version'> = { supported: false, phase: 'idle' }
@@ -128,30 +149,28 @@ export async function installUpdateNow(): Promise<{ ok: boolean; error?: string 
   return { ok: true }
 }
 
-export function startAutoUpdates(): void {
-  if (!app.isPackaged) {
-    state = {
-      supported: false,
-      phase: 'idle',
-      reason: 'Development run — only the installed app can update itself.',
-    }
-    log.info('Auto-update: skipped (development run).')
-    return
-  }
-  if (process.platform === 'linux' && !process.env.APPIMAGE) {
-    state = {
-      supported: false,
-      phase: 'idle',
-      reason: 'This install updates through the system package manager, not the app.',
-    }
-    log.info('Auto-update: skipped (.deb installs update through the package manager).')
+/** Hands over the updater to drive. Injectable so the tests can pass a fake in place of the real one. */
+export type UpdaterLoader = () => import('electron-updater').AppUpdater
+
+// Required lazily: electron-updater reads app paths at import time, and pulling it in at module
+// scope would also make the dev run pay for it.
+const loadElectronUpdater: UpdaterLoader = () =>
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  (require('electron-updater') as typeof import('electron-updater')).autoUpdater
+
+export function startAutoUpdates(load: UpdaterLoader = loadElectronUpdater): void {
+  const support = updateSupport({
+    packaged: app.isPackaged,
+    platform: process.platform,
+    appImage: !!process.env.APPIMAGE,
+  })
+  if (!support.supported) {
+    state = { supported: false, phase: 'idle', reason: support.reason }
+    log.info(`Auto-update: skipped (${support.reason}).`)
     return
   }
 
-  // Required lazily: electron-updater reads app paths at import time, and pulling it in at module
-  // scope would also make the dev run pay for it.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { autoUpdater } = require('electron-updater') as typeof import('electron-updater')
+  const autoUpdater = load()
   updater = autoUpdater
   state = { supported: true, phase: 'idle' }
 
