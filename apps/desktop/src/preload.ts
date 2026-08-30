@@ -45,4 +45,10 @@ contextBridge.exposeInMainWorld('concentus', {
   // reached must not be accepted, because the next launch would open against nothing.
   testStorage: (draft: unknown) => ipcRenderer.invoke('onboarding:storage-test', draft),
   saveStorage: (draft: unknown) => ipcRenderer.invoke('onboarding:storage-save', draft),
+
+  // The server step. Saving restarts the backend, because the runner is wired at its start; the
+  // status is what the backend says about the connection afterwards, so the page can show it.
+  saveRunner: (draft: unknown) => ipcRenderer.invoke('onboarding:runner-save', draft),
+  clearRunner: () => ipcRenderer.invoke('onboarding:runner-clear'),
+  runnerStatus: () => ipcRenderer.invoke('onboarding:runner-status'),
 })

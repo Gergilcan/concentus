@@ -60,6 +60,11 @@ public class ContextFolderResolver {
         return !roots.isEmpty();
     }
 
+    /** The roots, as configured — what a runner reports about itself in its hello. */
+    public List<String> roots() {
+        return roots.stream().map(Path::toString).toList();
+    }
+
     /** Why this folder may not be used, or null when it is allowed. */
     public String rejectionReason(String raw) {
         String containment = containmentReason(raw);

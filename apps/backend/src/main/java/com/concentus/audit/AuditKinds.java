@@ -61,6 +61,12 @@ public final class AuditKinds {
     /** A resource moved into a group, out of one, or between two — the one write that changes who sees it. */
     public static final String RESOURCE_GROUP_CHANGED = "resource.group.changed";
 
+    /** A machine registered to execute runs, and the token that let it. */
+    public static final String RUNNER_REGISTERED = "runner.registered";
+    public static final String RUNNER_RENAMED = "runner.renamed";
+    public static final String RUNNER_REVOKED = "runner.revoked";
+    public static final String RUNNER_DELETED = "runner.deleted";
+
     /** Every kind, in the order the filter lists them. */
     public static final List<String> ALL = List.of(
             RUN_STARTED, RUN_STOPPED, RUN_APPROVED, RUN_REJECTED, RUN_RETRIED, RUN_RESUMED,
@@ -73,5 +79,6 @@ public final class AuditKinds {
             MARKETPLACE_PUBLISHED, MARKETPLACE_APPROVED, MARKETPLACE_REJECTED, MARKETPLACE_INSTALLED,
             MARKETPLACE_UNINSTALLED,
             GROUP_CREATED, GROUP_UPDATED, GROUP_DELETED, GROUP_MEMBER_ADDED, GROUP_MEMBER_REMOVED,
-            GROUP_SETTINGS_CHANGED, GROUP_POLICY_CHANGED, RESOURCE_GROUP_CHANGED);
+            GROUP_SETTINGS_CHANGED, GROUP_POLICY_CHANGED, RESOURCE_GROUP_CHANGED,
+            RUNNER_REGISTERED, RUNNER_RENAMED, RUNNER_REVOKED, RUNNER_DELETED);
 }

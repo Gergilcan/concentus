@@ -34,6 +34,11 @@ import java.util.Map;
  *                      Echoed on the wire from the row's own column and never stored in the
  *                      JSON: the store strips it on write and stamps it on read, so a save can
  *                      neither scope nor un-scope a flow — only {@code POST /api/groups/assign} does.
+ * @param runner        where this flow's Claude CLI runs: null or blank for automatic (this
+ *                      server when it has a Claude login, else any runner online for the
+ *                      launcher), {@code any} for a runner whichever is least busy, or a
+ *                      runner's id. Only the CLI backend is affected; a self-hosted model runs
+ *                      on the server whatever this says, and naming a runner then is refused.
  */
 // Unknown properties are skipped, not refused. Flows saved before the flow-level "mode"
 // ("managed" | "local") was removed still carry it — in the store, in every flow version and in
@@ -46,7 +51,7 @@ public record FlowGraph(String id, String name,
                         String notifyWebhook, Double budgetUsd,
                         String approvalSlackCredentialId, String approvalSlackChannel,
                         String approvalTeamsWebhook, Map<String, String> variables,
-                        String folder, Boolean goldenAutoRun, String groupId) {
+                        String folder, Boolean goldenAutoRun, String groupId, String runner) {
 
     // Every convenience constructor below carries @JsonIgnore, and it is load-bearing: Jackson's
     // creator detection, faced with several record constructors, can pick a SECONDARY one to
@@ -54,6 +59,20 @@ public record FlowGraph(String id, String name,
     // not hypothetical: reading flows back from the store lost `folder` on arrival, and had been
     // losing `variables` the same way. @JsonIgnore takes the shortcuts out of the running; only
     // the canonical constructor deserialises.
+
+    /** The pre-runners shape, kept so the many existing constructions stay valid. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public FlowGraph(String id, String name,
+                     List<FlowNode> nodes, List<FlowEdge> edges,
+                     Boolean enabled, List<String> tags, Boolean favorite,
+                     String notifyWebhook, Double budgetUsd,
+                     String approvalSlackCredentialId, String approvalSlackChannel,
+                     String approvalTeamsWebhook, Map<String, String> variables,
+                     String folder, Boolean goldenAutoRun, String groupId) {
+        this(id, name, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
+                approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, variables,
+                folder, goldenAutoRun, groupId, null);
+    }
 
     /** The pre-groups shape: a flow the whole organization sees. */
     @com.fasterxml.jackson.annotation.JsonIgnore
@@ -66,7 +85,7 @@ public record FlowGraph(String id, String name,
                      String folder, Boolean goldenAutoRun) {
         this(id, name, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
                 approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, variables,
-                folder, goldenAutoRun, null);
+                folder, goldenAutoRun, null, null);
     }
 
     /** The pre-golden-auto-run shape, kept so the many existing constructions stay valid. */
@@ -80,7 +99,7 @@ public record FlowGraph(String id, String name,
                      String folder) {
         this(id, name, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
                 approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, variables,
-                folder, null, null);
+                folder, null, null, null);
     }
 
     /** The pre-variables shape, kept so the many existing constructions stay valid. */
@@ -93,7 +112,7 @@ public record FlowGraph(String id, String name,
                      String approvalTeamsWebhook) {
         this(id, name, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
                 approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, null, null,
-                null, null);
+                null, null, null);
     }
 
     /**
@@ -103,7 +122,7 @@ public record FlowGraph(String id, String name,
     public FlowGraph withFolder(String newFolder) {
         return new FlowGraph(id, name, nodes, edges, enabled, tags, favorite, notifyWebhook,
                 budgetUsd, approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook,
-                variables, newFolder, goldenAutoRun, groupId);
+                variables, newFolder, goldenAutoRun, groupId, runner);
     }
 
     /** The pre-remote-approval shape, kept so the many existing constructions stay valid. */
@@ -156,7 +175,7 @@ public record FlowGraph(String id, String name,
     public FlowGraph withId(String newId) {
         return new FlowGraph(newId, name, nodes, edges, enabled, tags, favorite,
                 notifyWebhook, budgetUsd, approvalSlackCredentialId, approvalSlackChannel,
-                approvalTeamsWebhook, variables, folder, goldenAutoRun, groupId);
+                approvalTeamsWebhook, variables, folder, goldenAutoRun, groupId, runner);
     }
 
     /** Whether saving this flow should immediately re-run its golden reference. Off by default. */

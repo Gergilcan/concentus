@@ -111,7 +111,21 @@ public class GitWorkspace {
     }
 
     private Checkout clone(RepoSpec repo, Path workdir, String envVar) {
-        String token = repo.resolveToken();
+        return clone(repo, repo.resolveToken(), workdir, envVar);
+    }
+
+    /**
+     * One clone with the token already in hand — what a runner does, given the URL, the branch
+     * and the token by the hub, which resolved the credential where the credential store is.
+     */
+    public Checkout cloneResolved(String url, String branch, String token, Path workdir, String envVar) {
+        RepoSpec spec = new RepoSpec();
+        spec.url = url;
+        spec.branch = branch;
+        return clone(spec, token, workdir, envVar);
+    }
+
+    private Checkout clone(RepoSpec repo, String token, Path workdir, String envVar) {
         Path target = workdir.resolve(slug(repo.url));
         try {
             if (Files.exists(target)) {
@@ -291,7 +305,7 @@ public class GitWorkspace {
      * <p>Sanitised because the URL is editable over HTTP — a name containing {@code ..} or a
      * separator would otherwise place the checkout outside the run's workdir.
      */
-    static String slug(String url) {
+    public static String slug(String url) {
         String s = url.trim();
         int q = s.indexOf('?');
         if (q >= 0) s = s.substring(0, q);

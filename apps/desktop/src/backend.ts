@@ -10,8 +10,9 @@ import { backendJar, backendLogFile, dataDir, isPackaged, javaBinary } from './p
 import { loadApiKey } from './api-key'
 import { resolveClaudeCli } from './claude-cli'
 import { killOrphans } from './orphans'
+import { loadRunnerToken } from './runner-token'
 import { dataKey } from './secret'
-import { loadSettings, saveSettings } from './settings'
+import { Settings, loadSettings, saveSettings } from './settings'
 import { log } from './log'
 
 /**
@@ -306,6 +307,7 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
     // A stored key beats an inherited one: somebody who typed it into this app expects the app to
     // use it, and would not think to look for a variable their shell had set years ago.
     ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}),
+    ...runnerEnvironment(settings),
     // What the header's version chip shows. Packaged only: a dev run's package.json version is
     // a placeholder, and showing it would label every dev build as some unrelated release.
     CONCENTUS_APP_VERSION: isPackaged() ? app.getVersion() : '',
@@ -365,6 +367,30 @@ export async function startBackend(onProgress?: StartupProgress): Promise<Runnin
   // application start of its own, and it must never sit between the click and the window.
   if (packagedRun && !fs.existsSync(archive)) trainCdsArchive(java, backendDir, archive, env)
   return { port, process: child, shellToken }
+}
+
+/**
+ * What tells the backend to also dial a Concentus server as a runner — see Settings.runner.
+ *
+ * <p>All or nothing. A URL whose token cannot be read (a keyring that stopped answering, a file
+ * somebody deleted) sends no variable at all rather than a URL with an empty token: the backend
+ * would dial, be refused at the handshake and report "not connected" for a reason that is here,
+ * not there. loadRunnerToken has already said in the log what is actually wrong.
+ */
+function runnerEnvironment(settings: Settings): NodeJS.ProcessEnv {
+  const url = settings.runner?.url
+  if (!url) return {}
+  const token = loadRunnerToken()
+  if (!token) {
+    log.warn(`A runner URL is set (${url}) but no token could be read; starting without the runner.`)
+    return {}
+  }
+  const name = settings.runner?.name
+  return {
+    CONCENTUS_RUNNER_URL: url,
+    CONCENTUS_RUNNER_TOKEN: token,
+    ...(name ? { CONCENTUS_RUNNER_NAME: name } : {}),
+  }
 }
 
 // --------------------------------------------------------------------- class-data sharing

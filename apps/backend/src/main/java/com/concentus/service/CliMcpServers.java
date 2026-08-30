@@ -70,6 +70,15 @@ public class CliMcpServers {
      *                     endpoint that would refuse every call
      */
     public ObjectNode node(McpServerSpec m, String organizationId, String runId, String runToolToken) {
+        return node(m, organizationId, runId, runToolToken, "http://127.0.0.1:" + serverPort);
+    }
+
+    /**
+     * @param baseUrl where the CLI reaches this backend — loopback for a process on this machine,
+     *                the hub's address for one on a runner (see {@code RunHost.toolsBaseUrl})
+     */
+    public ObjectNode node(McpServerSpec m, String organizationId, String runId, String runToolToken,
+                           String baseUrl) {
         // The stdio transport: the CLI launches the process itself, per run — the same
         // command/args/env shape the server's README says to put in mcp.json. Env values of the
         // form credential:<id> were resolved just now, so tokens live encrypted in the credential
@@ -112,7 +121,7 @@ public class CliMcpServers {
         // The whole point: the access token stays here. The CLI is given a local endpoint and the
         // run's own token, and the grant is resolved per request — so a fifteen-minute token no
         // longer decides how long a run may last.
-        server.put("url", "http://127.0.0.1:" + serverPort + RunMcpProxyController.PATH
+        server.put("url", baseUrl + RunMcpProxyController.PATH
                 .replace("{runId}", encode(runId)) + "/" + encode(m.name));
         server.putObject("headers").put(RUN_TOKEN_HEADER, runToolToken);
         return server;

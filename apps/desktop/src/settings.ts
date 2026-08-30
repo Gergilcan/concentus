@@ -39,6 +39,21 @@ export interface Settings {
   startWithSystem?: boolean
   /** The one-time balloon explaining that closing hid the app rather than quit it. */
   trayTipShown?: boolean
+  /**
+   * The Concentus server this machine also executes flows for.
+   *
+   * <p>"Also", not "instead": everything local keeps working, and the backend this shell starts
+   * additionally dials the server as a runner and takes the Claude CLI turns it is handed, on the
+   * login that lives on this machine. That is the whole reason it is a desktop setting at all —
+   * the login cannot move to the server, so the execution comes to the login. The registration
+   * token that goes with the URL is a credential and lives in the keyring (runner-token.ts), not
+   * here beside a port and a checkbox.
+   */
+  runner?: {
+    url: string
+    /** How the server lists this machine; the server falls back to the hostname when absent. */
+    name?: string
+  }
 }
 
 export function loadSettings(): Settings {

@@ -2,9 +2,11 @@ package com.concentus.service;
 
 import com.concentus.git.GitWorkspace;
 import com.concentus.model.RunPatch;
+import com.concentus.runners.RunnerRegistry;
 import com.concentus.store.RunStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -27,6 +29,10 @@ import java.util.Optional;
  * <p>When the directory is gone — a restart older than the run's workspace, a cleanup — the
  * recorded patch is served with a note saying so. A patch that was never recorded before the
  * directory went is a note without a patch: the honest answer is "unknown", not "no changes".
+ *
+ * <p>A checkout on a runner is re-read through the runner while it is connected, and served as
+ * last read with a note while it is not: the directory is on another machine, and "gone" is not
+ * something this one can tell from "not answering right now".
  */
 @Service
 public class RunDiffService {
@@ -40,10 +46,18 @@ public class RunDiffService {
 
     private final GitWorkspace git;
     private final RunStore runStore;
+    private final RunnerRegistry runners;
 
-    public RunDiffService(GitWorkspace git, RunStore runStore) {
+    @Autowired
+    public RunDiffService(GitWorkspace git, RunStore runStore, RunnerRegistry runners) {
         this.git = git;
         this.runStore = runStore;
+        this.runners = runners;
+    }
+
+    /** Without runners — what the tests that predate them build. */
+    public RunDiffService(GitWorkspace git, RunStore runStore) {
+        this(git, runStore, null);
     }
 
     /** Every checkout of the run with its current diff, coordinator first, then the workers. */
@@ -81,6 +95,9 @@ public class RunDiffService {
     }
 
     private RunPatch refresh(RunPatch stored) {
+        if (stored.directory() != null && stored.directory().startsWith(RunPatch.RUNNER_DIRECTORY_PREFIX)) {
+            return refreshRemote(stored);
+        }
         Path dir = stored.directory() == null ? null : Path.of(stored.directory());
         // `.git` rather than the directory alone: an empty folder left behind by a partial cleanup
         // is not a checkout, and git would say so less clearly.
@@ -94,6 +111,23 @@ public class RunDiffService {
             log.warn("diff of {} for {}: {}", dir, stored.nodeId(), e.getMessage());
             // The last good read stays; what failed is said next to it rather than replacing it.
             return stored.noting("Could not read the checkout now: " + e.getMessage());
+        }
+    }
+
+    /** {@code runner:<id>:<path>} — asked of the runner, which answers while it is connected. */
+    private RunPatch refreshRemote(RunPatch stored) {
+        String rest = stored.directory().substring(RunPatch.RUNNER_DIRECTORY_PREFIX.length());
+        int colon = rest.indexOf(':');
+        if (colon <= 0 || runners == null) {
+            return stored.note() != null ? stored : stored.noting("This checkout is on a runner; it cannot be re-read here.");
+        }
+        String runnerId = rest.substring(0, colon);
+        String directory = rest.substring(colon + 1);
+        try {
+            return stored.taken(runners.patchSince(runnerId, directory, stored.base()), System.currentTimeMillis());
+        } catch (IOException e) {
+            log.debug("diff of {} on runner {}: {}", directory, runnerId, e.getMessage());
+            return stored.noting(e.getMessage());
         }
     }
 }

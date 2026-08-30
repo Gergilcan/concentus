@@ -218,6 +218,11 @@ public class SecurityConfig {
                     // wants to know what the automation did last night should not need the power to
                     // make it do anything tonight.
                     .requestMatchers(HttpMethod.GET, "/api/**").authenticated()
+                    // The runner socket: a machine, not a browser, presenting a registration token
+                    // on the handshake. The handshake interceptor is what authenticates it — an
+                    // unknown token is refused there with 401, a revoked one with 403 — so the
+                    // session rule below must not get in first and refuse every runner.
+                    .requestMatchers("/ws/runner").permitAll()
                     .requestMatchers("/ws/**").authenticated()
                     // Running, and steering a run in flight. The person who runs the daily cycle is
                     // rarely the person who should be free to rewrite what it does.

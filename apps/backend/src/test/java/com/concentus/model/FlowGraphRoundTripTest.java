@@ -68,6 +68,28 @@ class FlowGraphRoundTripTest {
     }
 
     /**
+     * The newest component: where the flow's CLI runs. Through the canonical constructor, the
+     * round trip, withId and withFolder — every path a stale shortcut has eaten a component on.
+     */
+    @Test
+    void theRunnerSettingSurvivesEveryCopy() throws Exception {
+        FlowGraph flow = new FlowGraph("flow_1", "Triage",
+                List.of(new FlowNode("n1", "agent", "coordinator", Map.of("name", "Coord"))),
+                List.of(), true, List.of(), false, null, null, null, null, null, Map.of(), null, false,
+                "gr_1", "rn_abc");
+
+        ObjectMapper mapper = new ObjectMapper();
+        FlowGraph back = mapper.readValue(mapper.writeValueAsString(flow), FlowGraph.class);
+
+        assertThat(back.runner()).isEqualTo("rn_abc");
+        assertThat(back).isEqualTo(flow);
+        assertThat(flow.withId("flow_2").runner()).isEqualTo("rn_abc");
+        assertThat(flow.withFolder("Other").runner()).isEqualTo("rn_abc");
+        // The pre-runner shapes leave it unset, which reads as automatic.
+        assertThat(new FlowGraph("f", "F", List.of(), List.of(), null, null, null, null).runner()).isNull();
+    }
+
+    /**
      * Flows saved before the flow-level {@code mode} was removed still carry it — in the store, in
      * every flow version and in every exported .flow.json. The property must be skipped, not
      * refused, and under the strictest reader this JSON will ever meet.

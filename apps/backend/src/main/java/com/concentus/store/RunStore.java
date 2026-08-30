@@ -163,8 +163,9 @@ public class RunStore {
                       session_id, local_session_id, local_started, error,
                       total_input_tokens, total_output_tokens, flow_json, events_json, node_execs_json,
                       created_at, updated_at, initial_prompt, notify_webhook, cost_usd, golden,
-                      flow_version, started_by, patches_json, organization_id, group_id)
-                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                      flow_version, started_by, patches_json, organization_id, group_id,
+                      runner_id, runner_name)
+                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     on conflict (id) do update set
                       flow_id=excluded.flow_id, flow_name=excluded.flow_name,
                       backend=excluded.backend, status=excluded.status, trigger_type=excluded.trigger_type,
@@ -181,14 +182,16 @@ public class RunStore {
                       started_by=excluded.started_by,
                       patches_json=excluded.patches_json,
                       organization_id=excluded.organization_id,
-                      group_id=excluded.group_id
+                      group_id=excluded.group_id,
+                      runner_id=excluded.runner_id,
+                      runner_name=excluded.runner_name
                     """,
                     run.id, run.flowId, run.flowName, run.backend, run.status, run.trigger,
                     run.sessionId, run.localSessionId, run.localStarted, run.error,
                     run.totalInputTokens, run.totalOutputTokens, run.flowJson, eventsJson, execsJson,
                     run.createdAt, now, run.initialPrompt, run.notifyWebhook, run.estimatedCostUsd(),
                     run.golden, run.flowVersion, run.startedBy, patchesJson, run.organizationId,
-                    run.groupId);
+                    run.groupId, run.runnerId, run.runnerName);
             } catch (Exception e) {
                 log.debug("persist run {} failed: {}", run.id, e.getMessage());
             }
@@ -224,7 +227,8 @@ public class RunStore {
                     rs.getString("notify_webhook"), rs.getBoolean("golden"),
                     rs.getInt("flow_version"), rs.getString("started_by"),
                     parseList(rs.getString("patches_json"), new TypeReference<List<RunPatch>>() {}),
-                    rs.getString("organization_id"), rs.getString("group_id")),
+                    rs.getString("organization_id"), rs.getString("group_id"),
+                    rs.getString("runner_id"), rs.getString("runner_name")),
                 limit);
         } catch (Exception e) {
             log.warn("Loading persisted runs failed: {}", e.getMessage());
@@ -295,7 +299,25 @@ public class RunStore {
                          /** Whose run this is; null only on a row written before runs were stamped. */
                          String organizationId,
                          /** The group the flow belonged to at launch; null for an unscoped flow or an older row. */
-                         String groupId) {
+                         String groupId,
+                         /** The runner the CLI executed on; null for this server or an older row. */
+                         String runnerId,
+                         /** Its name at launch, so a restored run still says where it ran. */
+                         String runnerName) {
+
+        /** A row from before runs carried a runner. */
+        public RunRow(String id, String flowId, String flowName, String backend,
+                      String status, String trigger, String sessionId, String localSessionId,
+                      boolean localStarted, String error, long totalInputTokens,
+                      long totalOutputTokens, String flowJson, List<RunEvent> events,
+                      List<NodeExec> nodeExecs, long createdAt, String initialPrompt,
+                      String notifyWebhook, boolean golden, int flowVersion, String startedBy,
+                      List<RunPatch> patches, String organizationId, String groupId) {
+            this(id, flowId, flowName, backend, status, trigger, sessionId, localSessionId,
+                    localStarted, error, totalInputTokens, totalOutputTokens, flowJson, events,
+                    nodeExecs, createdAt, initialPrompt, notifyWebhook, golden, flowVersion,
+                    startedBy, patches, organizationId, groupId, null, null);
+        }
 
         /** A row from before runs carried a group. */
         public RunRow(String id, String flowId, String flowName, String backend,
@@ -308,7 +330,7 @@ public class RunStore {
             this(id, flowId, flowName, backend, status, trigger, sessionId, localSessionId,
                     localStarted, error, totalInputTokens, totalOutputTokens, flowJson, events,
                     nodeExecs, createdAt, initialPrompt, notifyWebhook, golden, flowVersion,
-                    startedBy, patches, organizationId, null);
+                    startedBy, patches, organizationId, null, null, null);
         }
 
         /**
@@ -324,7 +346,7 @@ public class RunStore {
             this(id, flowId, flowName, backend, status, trigger, sessionId, localSessionId,
                     localStarted, error, totalInputTokens, totalOutputTokens, flowJson, events,
                     nodeExecs, createdAt, initialPrompt, notifyWebhook, golden, flowVersion,
-                    null, List.of(), null, null);
+                    null, List.of(), null, null, null, null);
         }
     }
 }

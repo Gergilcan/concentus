@@ -60,6 +60,10 @@ import type {
   AuditStatus,
   AvailablePlugin,
   CreatedServiceAccount,
+  CreatedRunner,
+  Runner,
+  RunnerScope,
+  RunnersListing,
   FacadeProfile,
   Member,
   Organization,
@@ -671,6 +675,24 @@ export const api = {
     }),
   revokeServiceAccount: (id: string) =>
     req<ServiceAccount>(`/service-accounts/${id}/revoke`, { method: 'POST' }),
+
+  // Runners: machines that execute Claude CLI turns on their own login. The backend decides what
+  // the caller may SEE (an admin every runner; anybody else the organization's, their groups' and
+  // their own) and says in `mayCreate` which scopes they may register.
+  listRunners: () => req<RunnersListing>('/runners'),
+  /** The ones the caller may run flows on: revoked excluded, offline included. */
+  listUsableRunners: () => req<Runner[]>('/runners/usable'),
+  /** Mints the registration token — the one answer that carries it. */
+  createRunner: (name: string, scope: RunnerScope, groupId?: string) =>
+    req<CreatedRunner>('/runners', {
+      method: 'POST',
+      body: JSON.stringify({ name, scope, ...(groupId ? { groupId } : {}) }),
+    }),
+  renameRunner: (id: string, name: string) =>
+    req<Runner>(`/runners/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  /** Refuses the token from now on; the row stays. */
+  revokeRunner: (id: string) => req<Runner>(`/runners/${id}/revoke`, { method: 'POST' }),
+  deleteRunner: (id: string) => req<void>(`/runners/${id}`, { method: 'DELETE' }),
 
   /** Everyone in the caller's own organization. Password hashes never leave the backend. */
   listMembers: () => req<Member[]>('/account/members'),

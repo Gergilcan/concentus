@@ -1,6 +1,9 @@
 package com.concentus.service;
 
 import com.concentus.config.AgentSpec;
+import com.concentus.execution.LocalRunHost;
+import com.concentus.execution.RunHost;
+import com.concentus.execution.RunHosts;
 import com.concentus.model.NodeExec;
 import com.concentus.model.RunEvent;
 import com.concentus.model.WorkPlan;
@@ -55,27 +58,23 @@ public class FanoutExecutor {
     /** Grace after a soft kill before the process is killed hard; workers get no cleanup ritual. */
     private static final long FORCE_KILL_AFTER_SECONDS = 5;
 
-    /** Seam for tests: spawning is the one thing a unit test cannot do for real. */
-    interface ProcessStarter {
-        Process start(List<String> args, Path workdir) throws IOException;
-
-        /**
-         * With extra environment — the push credentials of the process's checkouts. Default so
-         * the fake starters in tests, which have no repositories, stay two-argument lambdas.
-         */
-        default Process start(List<String> args, Path workdir, java.util.Map<String, String> env)
-                throws IOException {
-            return start(args, workdir);
-        }
+    /**
+     * Seam for tests: spawning is the one thing a unit test cannot do for real. The shared
+     * interface, under the name the tests have always used.
+     */
+    interface ProcessStarter extends com.concentus.execution.ProcessStarter {
     }
 
-    private final LocalClaudeSupport support;
+    /**
+     * Which machine a run's processes are on — this one, or its runner. Null in the tests, which
+     * build the executor without Spring and run everything on {@link #fallbackHost}.
+     */
+    private RunHosts hosts;
+    /** This machine, as the tests' constructor wires it: the CLI, the folders, git and the fake starter. */
+    private final RunHost fallbackHost;
     private final RagContextInjector ragInjector;
     /** Flows wired INTO an agent, run before it — the same rule the shared-session path follows. */
     private final PreRunSubflows preRunSubflows;
-    /** Clones a worker's repositories into its workspace and takes its changes back out as patches. */
-    private final com.concentus.git.GitWorkspace gitWorkspace;
-    private final ContextFolderResolver contextFolders;
     private final ObjectMapper mapper;
     private final com.concentus.store.FacadeProfileStore profiles;
     private final PluginRegistry pluginRegistry;
@@ -84,20 +83,13 @@ public class FanoutExecutor {
     private final SkillService skillService;
     private final String dataDir;
     private final String permissionMode;
-    private final int serverPort;
     private final int timeoutSeconds;
     private final int retries;
-    private final ProcessStarter starter;
     /**
      * What a fan-out says about itself. Not final: the constructor tests use knows nothing about
      * telemetry, and this stays a recorder of nothing there.
      */
     private com.concentus.telemetry.Telemetry telemetry = com.concentus.telemetry.Telemetry.none();
-    /**
-     * The machine-wide cap on claude processes, shared with {@link LocalClaudeExecutor}. Not final
-     * for the same reason telemetry is not: the constructor tests use runs everything unlimited.
-     */
-    private ProcessCeiling ceiling = ProcessCeiling.unlimited();
     /**
      * The organization's facade rule for workers the canvas never had — the ones a plan creates
      * at run time, which the compiler could not see. Null means no policy, which is what the
@@ -114,9 +106,9 @@ public class FanoutExecutor {
     private final ScheduledExecutorService watchdogs;
 
     @Autowired
-    public FanoutExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
+    public FanoutExecutor(RunHosts hosts, RagContextInjector ragInjector,
                           PreRunSubflows preRunSubflows,
-                          ContextFolderResolver contextFolders, ObjectMapper mapper,
+                          ObjectMapper mapper,
                           com.concentus.store.FacadeProfileStore profiles,
                           PluginRegistry pluginRegistry,
                           com.concentus.store.SkillStore skillStore, SkillService skillService,
@@ -124,39 +116,34 @@ public class FanoutExecutor {
                           @Value("${server.port:8734}") int serverPort,
                           com.concentus.config.Settings settings,
                           com.concentus.telemetry.Telemetry telemetry,
-                          ProcessCeiling ceiling,
-                          com.concentus.git.GitWorkspace gitWorkspace,
                           com.concentus.policy.OrgPolicyService policies) {
         // Through Settings rather than as placeholders, so what somebody set under Resources →
         // Settings is what a fan-out actually runs with. The package-private constructor below
         // still takes plain values — it is what tests build, and they are about what a limit does
-        // rather than where it came from.
-        this(support, ragInjector, preRunSubflows, contextFolders, mapper, profiles, pluginRegistry,
+        // rather than where it came from. The CLI, the folders, git and the spawn are the run
+        // host's here (see hostOf), so the fallback host this delegation builds is never used.
+        this(null, ragInjector, preRunSubflows, null, mapper, profiles, pluginRegistry,
                 skillStore, skillService, dataDir,
                 settings.get("local.permission-mode", "bypassPermissions"), serverPort,
                 settings.number("workers.max-concurrent", 4),
                 settings.number("workers.timeout-seconds", 900),
-                settings.number("workers.retries", 1), gitWorkspace, new ProcessStarter() {
-                    @Override
-                    public Process start(List<String> args, Path workdir) throws IOException {
-                        return start(args, workdir, java.util.Map.of());
-                    }
-
-                    @Override
-                    public Process start(List<String> args, Path workdir, java.util.Map<String, String> env)
-                            throws IOException {
-                        ProcessBuilder pb = new ProcessBuilder(args).directory(workdir.toFile())
-                                .redirectErrorStream(true);
-                        pb.environment().putAll(env);
-                        return pb.start();
-                    }
-                });
+                settings.number("workers.retries", 1), null, null);
         // After the delegation rather than through it: the constructor below is what tests build,
-        // and none of them has anything to say about telemetry or the process ceiling.
+        // and none of them has anything to say about telemetry or where a run is hosted.
+        this.hosts = hosts;
         this.telemetry = telemetry;
-        this.ceiling = ceiling;
         this.policies = policies;
         this.settings = settings;
+    }
+
+    /**
+     * The run's host — this machine, or its runner, which has to be connected right now.
+     *
+     * @throws IllegalStateException when the runner is not connected; every caller turns that into
+     *                               the run's own failure rather than letting it escape a pool thread
+     */
+    private RunHost hostOf(AgentRun run) {
+        return hosts == null ? fallbackHost : hosts.hostOf(run);
     }
 
     /** The worker timeout for this run: its group's figure, else its organization's, else the deployment's. */
@@ -185,11 +172,12 @@ public class FanoutExecutor {
                    String dataDir, String permissionMode, int serverPort, int maxConcurrent,
                    int timeoutSeconds, int retries, com.concentus.git.GitWorkspace gitWorkspace,
                    ProcessStarter starter) {
-        this.support = support;
+        // This machine, from the pieces the tests hand over — an unlimited ceiling, as they always
+        // had. The Spring path never reaches it: hostOf asks the registry there.
+        this.fallbackHost = new LocalRunHost(support, contextFolders, gitWorkspace, ProcessCeiling.unlimited(),
+                starter == null ? com.concentus.execution.ProcessStarter.local() : starter, serverPort);
         this.ragInjector = ragInjector;
         this.preRunSubflows = preRunSubflows;
-        this.gitWorkspace = gitWorkspace;
-        this.contextFolders = contextFolders;
         this.mapper = mapper;
         this.profiles = profiles;
         this.pluginRegistry = pluginRegistry;
@@ -197,10 +185,8 @@ public class FanoutExecutor {
         this.skillService = skillService;
         this.dataDir = dataDir;
         this.permissionMode = permissionMode;
-        this.serverPort = serverPort;
         this.timeoutSeconds = Math.max(1, timeoutSeconds);
         this.retries = Math.max(0, retries);
-        this.starter = starter;
         AtomicInteger n = new AtomicInteger(1);
         // Its own pool, deliberately not RunService's: the coordinator turn already holds one of
         // that pool's threads while it waits here, so borrowing worker threads from the same pool
@@ -219,9 +205,17 @@ public class FanoutExecutor {
 
     /** One fan-out turn: every sub-agent runs the turn's text as its own process. Blocking. */
     public void runTurn(AgentRun run, CompiledFlow flow, String userText) {
-        String cmd = support.command().orElse(null);
+        RunHost host;
+        try {
+            host = hostOf(run);
+        } catch (IllegalStateException e) {
+            run.fail(e.getMessage());
+            return;
+        }
+        String cmd = host.command().orElse(null);
         if (cmd == null) {
-            run.fail("The claude CLI was not found. Install Claude Code or set local.claude-command.");
+            run.fail("The claude CLI was not found on " + host.displayName()
+                    + ". Install Claude Code there, or set local.claude-command.");
             return;
         }
         AgentSpec coord = flow.coordinator();
@@ -386,7 +380,7 @@ public class FanoutExecutor {
             return null;
         }
 
-        List<Path> dirs = contextFoldersFor(run, coord);
+        List<String> dirs = contextFoldersFor(run, coord);
 
         Outcome outcome = execute(run, coord, coordExec, cmd, userText, workdir, dirs,
                 readOnly ? PLANNER_READ_ONLY : PLANNER_MAY_ACT);
@@ -590,7 +584,12 @@ public class FanoutExecutor {
      * never inherits the sibling's tool tokens.
      */
     public String askAbout(AgentRun run, AgentSpec asker, AgentSpec sibling, String question) {
-        String cmd = support.command().orElse(null);
+        String cmd;
+        try {
+            cmd = hostOf(run).command().orElse(null);
+        } catch (IllegalStateException e) {
+            return "Nobody can answer: " + e.getMessage();
+        }
         if (cmd == null) return "The claude CLI was not found, so nobody can answer.";
         Path siblingDir = runWorkspace(run, "workers", workerFolder(sibling));
         if (!Files.isDirectory(siblingDir)) {
@@ -625,7 +624,7 @@ public class FanoutExecutor {
             return "Could not prepare the question: " + e.getMessage();
         }
         Attempt result = attempt(run, helper, null, cmd, "Question from '" + asker.name + "': " + question,
-                workdir, List.of(siblingDir), PLANNER_READ_ONLY, ASK_TIMEOUT_SECONDS);
+                workdir, List.of(siblingDir.toString()), PLANNER_READ_ONLY, ASK_TIMEOUT_SECONDS);
         if (!result.ok()) return "No answer: " + result.error();
         return result.finalText() == null || result.finalText().isBlank() ? "(no answer)" : result.finalText().trim();
     }
@@ -833,7 +832,7 @@ public class FanoutExecutor {
                     "workspace could not be prepared: " + e.getMessage()));
         }
 
-        List<Path> dirs = contextFoldersFor(run, spec);
+        List<String> dirs = contextFoldersFor(run, spec);
 
         // No Bash, deliberately: a fan-out is N unattended processes, and N shells is N times
         // the blast radius. Verification commands belong to the single merge step.
@@ -846,7 +845,7 @@ public class FanoutExecutor {
 
     /** The attempts loop shared by workers and the merge step. Does not settle NodeExec status. */
     private Outcome execute(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
-                            String prompt, Path workdir, List<Path> dirs, String disallowedTools) {
+                            String prompt, Path workdir, List<String> dirs, String disallowedTools) {
         // The block's own number when it set one; the run's scope's (group, organization,
         // deployment) otherwise.
         int attempts = 1 + (spec.retries >= 0 ? spec.retries : retriesFor(run));
@@ -883,19 +882,25 @@ public class FanoutExecutor {
     }
 
     private Attempt attempt(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
-                            String userText, Path workdir, List<Path> dirs, String disallowedTools) {
+                            String userText, Path workdir, List<String> dirs, String disallowedTools) {
         return attempt(run, spec, exec, cmd, userText, workdir, dirs, disallowedTools, timeoutFor(run));
     }
 
     private Attempt attempt(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
-                            String userText, Path workdir, List<Path> dirs, String disallowedTools,
+                            String userText, Path workdir, List<String> dirs, String disallowedTools,
                             int timeout) {
-        // The machine-wide ceiling, taken before the process exists and held until it has exited.
+        RunHost host;
+        try {
+            host = hostOf(run);
+        } catch (IllegalStateException e) {
+            return new Attempt(false, false, null, e.getMessage());
+        }
+        // The host's ceiling, taken before the process exists and held until it has exited.
         // Waiting here parks a fanout-pool thread, which is the point: the alternative is a
         // process the machine cannot carry. The run says what it is waiting for.
         ProcessCeiling.Slot slot;
         try {
-            slot = ceiling.acquire(() -> "TERMINATED".equals(run.status),
+            slot = host.ceiling().acquire(() -> "TERMINATED".equals(run.status),
                     msg -> run.emit(RunEvent.of("system", msg, spec.name, spec.nodeId)));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -905,15 +910,15 @@ public class FanoutExecutor {
             return new Attempt(false, false, null, "run was stopped");
         }
         try {
-            return attemptWithSlot(run, spec, exec, cmd, userText, workdir, dirs, disallowedTools, timeout);
+            return attemptWithSlot(run, spec, exec, cmd, userText, workdir, dirs, disallowedTools, timeout, host);
         } finally {
             slot.close();
         }
     }
 
     private Attempt attemptWithSlot(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
-                            String userText, Path workdir, List<Path> dirs, String disallowedTools,
-                            int timeout) {
+                            String userText, Path workdir, List<String> dirs, String disallowedTools,
+                            int timeout, RunHost host) {
         boolean promptOnStdin = userText.length() > LocalClaudeExecutor.MAX_INLINE_PROMPT_CHARS;
         // Written next to the worker's own MCP config, and passed as a path — inline JSON does not
         // survive ProcessBuilder on Windows. See LocalClaudeExecutor.writePluginSettings.
@@ -927,7 +932,7 @@ public class FanoutExecutor {
         try {
             // The push credentials of this process's own clones, on its environment and nowhere
             // on disk — the same rule the shared session follows.
-            proc = starter.start(args, workdir, com.concentus.git.GitWorkspace.environmentFor(
+            proc = host.start(args, workdir, com.concentus.git.GitWorkspace.environmentFor(
                     run.workerCheckouts.getOrDefault(spec.nodeId, List.of())));
         } catch (IOException e) {
             return new Attempt(false, false, null, "failed to start claude: " + e.getMessage());
@@ -1294,9 +1299,18 @@ public class FanoutExecutor {
         return dir.toAbsolutePath().normalize();
     }
 
-    /** This backend's per-run endpoint for a step's own tool server. */
-    private String runEndpoint(AgentRun run, String suffix) {
-        return "http://127.0.0.1:" + serverPort + "/api/runs/" + run.id + "/" + suffix;
+    /**
+     * This backend's per-run endpoint for a step's own tool server, as the step's process reaches
+     * it: loopback from this machine, the hub's address from a runner.
+     */
+    private String runEndpoint(AgentRun run, String suffix) throws IOException {
+        try {
+            return hostOf(run).toolsBaseUrl() + "/api/runs/" + run.id + "/" + suffix;
+        } catch (IllegalStateException e) {
+            // A runner gone mid-preparation is the same failure a workspace that cannot be written
+            // is, and the callers already report that one.
+            throw new IOException(e.getMessage());
+        }
     }
 
     /** Appends an agent's own instructions, when the node carries any. */
@@ -1306,11 +1320,19 @@ public class FanoutExecutor {
         }
     }
 
-    /** The folders a step may read, with every rejection reported on its own box. */
-    private List<Path> contextFoldersFor(AgentRun run, AgentSpec spec) {
-        return contextFolders.resolve(spec.contextFolders, (path, reason) ->
-                run.emit(RunEvent.of("system", "Context folder ignored — " + path + ": " + reason,
-                        spec.name, spec.nodeId)));
+    /**
+     * The folders a step may read — resolved on the host, as its own paths — with every rejection
+     * reported on the step's own box.
+     */
+    private List<String> contextFoldersFor(AgentRun run, AgentSpec spec) {
+        try {
+            return hostOf(run).resolveContextDirs(spec.contextFolders, (path, reason) ->
+                    run.emit(RunEvent.of("system", "Context folder ignored — " + path + ": " + reason,
+                            spec.name, spec.nodeId)));
+        } catch (IllegalStateException e) {
+            // The spawn that follows fails with the same sentence; the folders are moot by then.
+            return List.of();
+        }
     }
 
     /**
@@ -1336,7 +1358,7 @@ public class FanoutExecutor {
     // Package-private for the arg-shape test, like LocalClaudeExecutor.buildArgs: the ordering is
     // load-bearing and silent when wrong.
     List<String> buildWorkerArgs(String cmd, AgentRun run, AgentSpec spec, Path workdir,
-                                 List<Path> contextDirs, String sessionId, String userText,
+                                 List<String> contextDirs, String sessionId, String userText,
                                  boolean promptOnStdin, String disallowedTools, Path settingsFile) {
         List<String> a = new ArrayList<>();
         a.add(cmd);
@@ -1344,9 +1366,10 @@ public class FanoutExecutor {
             a.add("-p");
             a.add(userText);
         }
-        for (Path dir : contextDirs) {
+        // Strings, not Paths: on a runner these are that machine's paths. See LocalClaudeExecutor.
+        for (String dir : contextDirs) {
             a.add("--add-dir");
-            a.add(dir.toString());
+            a.add(dir);
         }
         a.add("--output-format");
         a.add("stream-json");
@@ -1546,8 +1569,8 @@ public class FanoutExecutor {
             return null;
         }
 
-        List<Path> dirs = new ArrayList<>();
-        if (Files.isDirectory(workersRoot)) dirs.add(workersRoot);
+        List<String> dirs = new ArrayList<>();
+        if (Files.isDirectory(workersRoot)) dirs.add(workersRoot.toString());
         dirs.addAll(contextFoldersFor(run, verifier));
 
         Outcome outcome = execute(run, verifier, exec, cmd, prompt, workdir, dirs, PLANNER_READ_ONLY);
@@ -1783,8 +1806,8 @@ public class FanoutExecutor {
             return;
         }
 
-        List<Path> dirs = new ArrayList<>();
-        if (Files.isDirectory(workersRoot)) dirs.add(workersRoot);
+        List<String> dirs = new ArrayList<>();
+        if (Files.isDirectory(workersRoot)) dirs.add(workersRoot.toString());
         dirs.addAll(contextFoldersFor(run, merger));
 
         // Bash stays available — running the tests is the point — but delegation does not.
@@ -1915,8 +1938,16 @@ public class FanoutExecutor {
      * in the log what arrived and what could not.
      */
     private void cloneInto(AgentRun run, AgentSpec spec, Path workdir, List<AgentSpec.RepoSpec> repos) {
-        if (gitWorkspace == null || repos == null || repos.isEmpty()) return;
-        List<com.concentus.git.GitWorkspace.Checkout> checkouts = gitWorkspace.prepare(repos, workdir);
+        if (repos == null || repos.isEmpty()) return;
+        RunHost host;
+        try {
+            host = hostOf(run);
+        } catch (IllegalStateException e) {
+            run.emit(RunEvent.of("system", "Could not clone for " + spec.name + ": " + e.getMessage(),
+                    spec.name, spec.nodeId));
+            return;
+        }
+        List<com.concentus.git.GitWorkspace.Checkout> checkouts = host.prepareClones(repos, workdir);
         run.workerCheckouts.put(spec.nodeId, checkouts);
         for (com.concentus.git.GitWorkspace.Checkout c : checkouts) {
             run.emit(RunEvent.of("system", c.ok()
@@ -1927,8 +1958,9 @@ public class FanoutExecutor {
             // For a worker that base is where it will stay; for the merge step, which commits
             // and pushes, it is what makes the diff still visible after the commit.
             if (c.ok()) {
-                run.recordPatch(com.concentus.model.RunPatch.registered(spec.nodeId, spec.name,
-                        c.folderName(), c.spec().url, c.directory(), gitWorkspace.headOf(c.directory())));
+                run.recordPatch(com.concentus.model.RunPatch.registeredAt(spec.nodeId, spec.name,
+                        c.folderName(), c.spec().url, host.patchDirectory(c.directory()),
+                        host.headOf(c.directory())));
             }
         }
     }
@@ -1939,10 +1971,17 @@ public class FanoutExecutor {
      * would be a description of a change rather than the change.
      */
     private void collectPatches(AgentRun run, AgentSpec spec) {
-        if (gitWorkspace == null) return;
+        RunHost host;
+        try {
+            host = hostOf(run);
+        } catch (IllegalStateException e) {
+            run.emit(RunEvent.of("system", "Could not collect " + spec.name + "'s changes: " + e.getMessage(),
+                    spec.name, spec.nodeId));
+            return;
+        }
         for (com.concentus.git.GitWorkspace.Checkout c : run.workerCheckouts.getOrDefault(spec.nodeId, List.of())) {
             if (!c.ok()) continue;
-            String patch = gitWorkspace.patchOf(c.directory());
+            String patch = host.patchOf(c.directory());
             // The review ledger learns the answer either way — "this worker changed nothing" is
             // a fact worth showing; the merge only wants the patches that exist.
             com.concentus.model.RunPatch registered = run.patchOf(spec.nodeId, c.folderName());

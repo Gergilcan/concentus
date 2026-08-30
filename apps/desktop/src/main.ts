@@ -2,7 +2,7 @@ import { app, BrowserWindow, Notification, dialog, ipcMain, Menu, shell } from '
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { RunningBackend, backendLogTail, startBackend, stopBackend } from './backend'
-import { StorageDraft, backendApi } from './backend-api'
+import { RunnerSelf, StorageDraft, backendApi } from './backend-api'
 import { resolveClaudeCli } from './claude-cli'
 import { installClaude, installCommand, openLoginTerminal } from './claude-install'
 import { hasApiKey, saveApiKey } from './api-key'
@@ -14,6 +14,7 @@ import { OnboardingState, StorageState, onboardingPage } from './onboarding-page
 import { backendLogFile, dataDir, isPackaged, shellLogFile } from './paths'
 import { Splash, noSplash, showSplash } from './splash'
 import { resetRunNotifications, startRunNotifications } from './run-notifications'
+import { RunnerDraft, RunnerSaveResult, clearRunner, runnerState, saveRunner } from './runner'
 import { loadSettings, saveSettings } from './settings'
 import { applyStartWithSystem, createTray } from './tray'
 import {
@@ -65,6 +66,8 @@ const altWindows: BrowserWindow[] = []
 let failureWindow: BrowserWindow | null = null
 let licenseWindow: BrowserWindow | null = null
 let onboardingWindow: BrowserWindow | null = null
+/** The window on the Concentus server this machine runs for; one, because there is one server. */
+let serverWindow: BrowserWindow | null = null
 /** The splash for the launch in progress; noSplash outside one, so callers never null-check. */
 let splash: Splash = noSplash
 /** Set once quitting has begun, so the backend is stopped exactly once. */
@@ -130,6 +133,8 @@ async function main(): Promise<void> {
   createTray({
     openWindow: openMainWindow,
     openSetup: showOnboardingWindow,
+    runnerStatus,
+    openServer: openServerWindow,
     quit: () => { quitting = true; app.quit() },
   })
   // Re-assert on every start: an update can move the installed binary, and a login item pointing
@@ -344,6 +349,70 @@ async function openAccountWindow(): Promise<{ ok: boolean; error?: string }> {
   }
 }
 
+/**
+ * The server's own interface, in a window of its own.
+ *
+ * <p>A machine connected to a server executes flows that are built, launched and approved over
+ * there, so the server's UI is the other half of what this machine is doing — and the tray, which
+ * is what somebody has when no window is open, is where the way to it belongs. A persistent
+ * partition of its own keeps the server's sign-in and storage apart from the local app's, so
+ * nothing done in one can read or clear the other's, and the sign-in survives closing the window.
+ * No preload at all: this page is somebody else's server, and it should be worth no more to this
+ * machine than a browser tab is.
+ */
+function openServerWindow(): void {
+  const url = loadSettings().runner?.url
+  if (!url) return
+  if (serverWindow && !serverWindow.isDestroyed()) {
+    serverWindow.show()
+    serverWindow.focus()
+    return
+  }
+  serverWindow = new BrowserWindow({
+    width: 1280,
+    height: 860,
+    minWidth: 960,
+    minHeight: 600,
+    title: 'Concentus — server',
+    icon: appIcon(),
+    autoHideMenuBar: true,
+    backgroundColor: '#0b0e14',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      partition: 'persist:server',
+    },
+  })
+  serverWindow.on('closed', () => {
+    serverWindow = null
+  })
+  openExternalLinksInBrowser(serverWindow, new URL(url).origin)
+  void serverWindow.loadURL(url)
+}
+
+/**
+ * What the tray and the wizard show about the server connection.
+ *
+ * <p>Asked of the backend rather than read from the settings, because the settings say what was
+ * asked for and the backend says what is happening: a token the server has since revoked, a host
+ * that is not answering, an agent between reconnection attempts. Nothing is asked when no server
+ * is configured — that is most installs, and their answer is known here.
+ */
+async function runnerStatus(): Promise<RunnerSelf> {
+  const none: RunnerSelf = { configured: false, connected: false, hubUrl: null, name: null, error: null }
+  const runner = loadSettings().runner
+  if (!runner?.url) return none
+  const configured: RunnerSelf = { ...none, configured: true, hubUrl: runner.url, name: runner.name ?? null }
+  if (!backend) return { ...configured, error: 'the backend is not running' }
+  // An adopted dev backend never received the shell's token, so there is no way to ask it.
+  if (!backend.shellToken) return { ...configured, error: 'the shell cannot ask a backend it did not start' }
+  try {
+    return await backendApi.runnerSelf(backend.port, backend.shellToken)
+  } catch (err) {
+    return { ...configured, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 async function showMainWindow(port: number): Promise<void> {
   failureWindow?.close()
   failureWindow = null
@@ -511,7 +580,7 @@ function showOnboardingWindow(): void {
     } catch (err) {
       log.warn(`Could not read the storage settings: ${err instanceof Error ? err.message : String(err)}`)
     }
-    const html = onboardingPage(claude, storage, hasApiKey(), dataKeyState())
+    const html = onboardingPage(claude, storage, hasApiKey(), dataKeyState(), runnerState())
     try {
       await onboardingWindow?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
     } finally {
@@ -715,6 +784,28 @@ function registerIpc(): void {
     return saved
   })
 
+  /**
+   * Connects this machine to a server, or disconnects it, and restarts the backend either way.
+   *
+   * <p>The restart is the point, exactly as for the API key: the runner variables are read when
+   * the backend process starts, so a save without one would leave the wizard reporting success
+   * over a backend that dials nothing. A restart that fails is reported to the page rather than
+   * thrown at it — the failure window is already up by then, and the page should say why.
+   */
+  ipcMain.handle('onboarding:runner-save', async (_event, draft: RunnerDraft | null) => {
+    const saved = saveRunner(draft ?? {})
+    const result = saved.ok ? await applyRunnerChange(saved) : saved
+    return { ...result, runner: runnerState() }
+  })
+
+  ipcMain.handle('onboarding:runner-clear', async () => {
+    const cleared = clearRunner()
+    const result = cleared.ok ? await applyRunnerChange(cleared) : cleared
+    return { ...result, runner: runnerState() }
+  })
+
+  ipcMain.handle('onboarding:runner-status', () => runnerStatus())
+
   ipcMain.on('onboarding:finish', (_event, dontAskAgain: boolean) => {
     // Recorded on the way out, not on the way in: a wizard closed halfway through has not asked
     // the database question, and should ask it again next time.
@@ -745,6 +836,19 @@ function storageCall(): { port: number; token: string } {
       + 'relaunch to choose a database here, or change it from Settings once signed in.')
   }
   return { port: backend.port, token: backend.shellToken }
+}
+
+/** The restart that makes a runner change real, with its failure folded into the page's answer. */
+async function applyRunnerChange(saved: RunnerSaveResult): Promise<RunnerSaveResult> {
+  try {
+    await restartBackend()
+    return saved
+  } catch (err) {
+    return {
+      ok: false,
+      detail: `${saved.detail} But the backend did not come back up: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
 }
 
 /**
