@@ -228,13 +228,24 @@ public final class AgentRuntime {
         }
     }
 
+    /** Children first (they hold the pipes), then the process itself; forcibly when asked. */
+    private static void destroyTree(Process process, boolean forcibly) {
+        process.descendants().forEach(h -> { if (forcibly) h.destroyForcibly(); else h.destroy(); });
+        if (forcibly) process.destroyForcibly(); else process.destroy();
+    }
+
     public void stop(String procId) {
         Running r = running.get(procId);
         if (r == null) return;
-        r.process().destroy();
+        // The whole tree, not only the process we started: a claude launched through a shell (and
+        // the fake CLI the tests use) has children holding the same stdout, and a shell that dies
+        // while its child lives on leaves the pipe open — the reader then reports the exit only
+        // when the orphan finishes, which is what an operator pressing Stop sees as "nothing
+        // happened".
+        destroyTree(r.process(), false);
         Thread hard = new Thread(() -> {
             try {
-                if (!r.process().waitFor(FORCE_KILL_AFTER_SECONDS, TimeUnit.SECONDS)) r.process().destroyForcibly();
+                if (!r.process().waitFor(FORCE_KILL_AFTER_SECONDS, TimeUnit.SECONDS)) destroyTree(r.process(), true);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
