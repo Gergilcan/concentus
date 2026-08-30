@@ -1,17 +1,25 @@
+import type { RunnerState } from './runner'
+
 /**
- * The first-run wizard: where data is kept, then signing in to Claude.
+ * The first-run wizard: where data is kept, then signing in to Claude, then — optionally — the
+ * Concentus server this machine also runs flows for.
  *
- * <p>Both steps exist for the same reason — they are the two things that must be settled before
- * the app can do anything, and both used to fail late and confusingly. A missing Claude sign-in
- * surfaced as an error on a flow the user had just spent ten minutes building. A database that
- * could not be reached surfaced as an app that opened onto nothing at the *next* launch, by which
- * point the connection details were somewhere else entirely.
+ * <p>The first two steps exist for the same reason — they are the two things that must be settled
+ * before the app can do anything, and both used to fail late and confusingly. A missing Claude
+ * sign-in surfaced as an error on a flow the user had just spent ten minutes building. A database
+ * that could not be reached surfaced as an app that opened onto nothing at the *next* launch, by
+ * which point the connection details were somewhere else entirely.
  *
  * <p>The database step therefore refuses to advance on an untested external connection. That is
  * the whole point of doing it here: the check happens while the person who typed the host name is
  * still looking at it.
  *
  * <p>The Claude step remains a prompt rather than a gate — the canvas is fully usable without it.
+ *
+ * <p>The server step is here because it is the one place the desktop app can be told about a
+ * server at all, and because the reason it is a desktop setting belongs next to the sign-in it
+ * depends on: the server never gets the Claude login, so a machine with the login is where the
+ * server's flows have to run. Skipped by most people, and reachable again from the tray.
  */
 
 /** State of the Claude half. */
@@ -47,11 +55,13 @@ export function onboardingPage(
   /** Whether an API key is already stored, so the page opens on the answer already given. */
   hasKey: boolean,
   dataKey: DataKeyNote,
+  /** The server this machine runs for, if any — the URL and whether a token is stored, never the token. */
+  runner: RunnerState,
 ): string {
   // Entities are literal text inside <script>, so HTML-escaping would corrupt this rather than
-  // protect it. `<` is what could close the element early, and these values include a JDBC URL and
-  // a filesystem path the user controls.
-  const initial = JSON.stringify({ claude, storage, hasKey, dataKey }).replace(/</g, '\\u003c')
+  // protect it. `<` is what could close the element early, and these values include a JDBC URL, a
+  // server URL and a filesystem path the user controls.
+  const initial = JSON.stringify({ claude, storage, hasKey, dataKey, runner }).replace(/</g, '\\u003c')
 
   return `<!doctype html>
 <html lang="en">
@@ -132,7 +142,7 @@ export function onboardingPage(
   </svg>
 
   <div class="steps">
-    <span id="lbl1">1. Database</span><span class="sep">›</span><span id="lbl2">2. Claude</span>
+    <span id="lbl1">1. Database</span><span class="sep">›</span><span id="lbl2">2. Claude</span><span class="sep">›</span><span id="lbl3">3. Server</span>
   </div>
 
   <!-- ---------------------------------------------------------------- step 1 -->
@@ -253,7 +263,7 @@ export function onboardingPage(
       <button id="locate">Locate claude…</button>
       <div class="spacer"></div>
       <button id="back">Back</button>
-      <button id="finish">Continue without it</button>
+      <button id="toServer">Continue without it</button>
     </div>
 
     <label class="ask"><input type="checkbox" id="dontask"> Don't check on future launches</label>
@@ -265,12 +275,48 @@ export function onboardingPage(
     </p>
   </section>
 
+  <!-- ---------------------------------------------------------------- step 3 -->
+  <section id="step3" class="hidden">
+    <h1>Connect this machine to a Concentus server?</h1>
+    <p class="lede">Optional. A Concentus server that somebody deployed keeps the flows, the runs
+      and the approvals; this machine then also executes flows for that server, through the Claude
+      login that is here. The server never receives the login — only the work — and everything
+      local keeps working exactly as it does now.</p>
+
+    <!-- The form, or the connection: never both. Changing the server is disconnect, then connect,
+         so the token can never be half-replaced. -->
+    <div id="runnerForm">
+      <div class="fields">
+        <label><span>Server URL</span>
+          <input id="runnerUrl" placeholder="https://concentus.example.com" spellcheck="false"></label>
+        <label><span>Registration token</span>
+          <input id="runnerToken" type="password" placeholder="crn_…" autocomplete="off" spellcheck="false"></label>
+        <label><span>Name (optional)</span>
+          <input id="runnerName" placeholder="How the server lists this machine"></label>
+      </div>
+      <p class="foot">The token comes from the server's <b>Resources → Runners</b> screen, where it is
+        shown once. It is kept in your operating system's keyring, on this machine only.</p>
+    </div>
+
+    <div class="status hidden" id="runnerStatus"></div>
+
+    <div class="actions" style="margin-top:1rem">
+      <button class="primary" id="runnerConnect">Connect</button>
+      <button id="runnerDisconnect" class="hidden">Disconnect</button>
+      <div class="spacer"></div>
+      <button id="back3">Back</button>
+      <button id="finish">Skip</button>
+    </div>
+    <p class="msg" id="runnerMsg"></p>
+  </section>
+
 <script>
   var s = ${initial};
   var claude = s.claude;
   var storage = s.storage;
   var hasKey = !!s.hasKey;
   var dataKey = s.dataKey || { source: 'keyring', file: '', detail: '' };
+  var runner = s.runner || { url: null, name: null, hasToken: false };
   // An external connection must prove itself before Continue unlocks. Reset by any edit, so
   // changing the host after a successful test does not carry the old verdict forward.
   var tested = false;
@@ -404,8 +450,8 @@ export function onboardingPage(
     $('locate').className = apiKey ? 'hidden' : '';
     if (apiKey) {
       $('title').textContent = hasKey ? "You're ready to go" : 'One step before you can run flows';
-      $('finish').textContent = hasKey ? 'Open Concentus' : 'Continue without it';
-      $('finish').className = hasKey ? 'primary' : '';
+      $('toServer').textContent = hasKey ? 'Continue' : 'Continue without it';
+      $('toServer').className = hasKey ? 'primary' : '';
       return;
     }
 
@@ -431,8 +477,8 @@ export function onboardingPage(
     $('howLede').textContent = hasCli
       ? 'A terminal opens on the sign-in itself and your browser follows. Concentus picks it up from there — you never paste a key. To do it by hand:'
       : 'Or do it yourself, once it is installed:';
-    $('finish').textContent = ready ? 'Open Concentus' : 'Continue without it';
-    $('finish').className = ready ? 'primary' : '';
+    $('toServer').textContent = ready ? 'Continue' : 'Continue without it';
+    $('toServer').className = ready ? 'primary' : '';
   }
 
   Array.prototype.forEach.call(document.querySelectorAll('input[name=billing]'), function (el) {
@@ -558,6 +604,96 @@ export function onboardingPage(
   });
 
   $('back').addEventListener('click', function () { showStep(1); });
+  $('toServer').addEventListener('click', function () { showStep(3); });
+
+  // ---------------------------------------------------------------- step 3
+  /** Half a configuration — a URL whose token is gone — is shown as the form, URL filled in. */
+  function runnerConfigured() { return !!(runner.url && runner.hasToken); }
+
+  function renderRunnerStatus(st) {
+    var connected = !!(st && st.connected);
+    var detail = connected
+      ? 'Connected. Flows the server assigns to this runner execute here, on this machine\\'s Claude login.'
+      : 'Not connected' + (st && st.error ? ' \\u2014 ' + st.error : ' yet \\u2014 the backend is dialing the server.');
+    $('runnerStatus').innerHTML =
+      row(true, 'Server', runner.url + (runner.name ? '  \\u00b7  listed as \\u201c' + runner.name + '\\u201d' : '')) +
+      row(connected, 'Connection', detail);
+  }
+
+  function refreshRunnerStatus() {
+    window.concentus.runnerStatus().then(renderRunnerStatus).catch(function (e) {
+      renderRunnerStatus({ connected: false, error: e && e.message ? e.message : String(e) });
+    });
+  }
+
+  // The agent dials once the restarted backend is up, so the first answer after Connect is
+  // usually "not yet"; the page keeps asking for half a minute rather than leaving that as the
+  // last word. Bounded, so a server that never answers is not polled forever.
+  var statusPoll = null;
+  function pollRunnerStatus() {
+    if (statusPoll) return;
+    var until = Date.now() + 30 * 1000;
+    statusPoll = setInterval(function () {
+      if (!runnerConfigured() || Date.now() > until) {
+        clearInterval(statusPoll); statusPoll = null;
+        return;
+      }
+      window.concentus.runnerStatus().then(function (st) {
+        renderRunnerStatus(st);
+        if (st && st.connected) { clearInterval(statusPoll); statusPoll = null; }
+      });
+    }, 3000);
+  }
+
+  function renderStep3() {
+    var on = runnerConfigured();
+    $('runnerForm').className = on ? 'hidden' : '';
+    $('runnerStatus').className = on ? 'status' : 'status hidden';
+    $('runnerConnect').className = on ? 'hidden' : 'primary';
+    $('runnerDisconnect').className = on ? '' : 'hidden';
+    $('finish').textContent = on ? 'Open Concentus' : 'Skip';
+    $('finish').className = on ? 'primary' : '';
+    if (on) {
+      renderRunnerStatus(null);
+      refreshRunnerStatus();
+    }
+  }
+
+  $('runnerConnect').addEventListener('click', function () {
+    var btn = this; btn.disabled = true; btn.textContent = 'Connecting\\u2026';
+    $('runnerMsg').textContent = ''; $('runnerMsg').className = 'msg';
+    window.concentus.saveRunner({
+      url: $('runnerUrl').value, token: $('runnerToken').value, name: $('runnerName').value,
+    }).then(function (r) {
+      if (r.runner) runner = r.runner;
+      $('runnerMsg').textContent = (r.ok ? '\\u2713 ' : '\\u2717 ') + r.detail;
+      $('runnerMsg').className = 'msg ' + (r.ok ? 'ok' : 'bad');
+      // The token is cleared on success and kept on failure, as the API key's field is: a refused
+      // token is usually a truncated paste, and the fix is one character, not the whole thing.
+      if (r.ok) { $('runnerToken').value = ''; pollRunnerStatus(); }
+    }).catch(function (e) {
+      $('runnerMsg').textContent = '\\u2717 ' + (e && e.message ? e.message : String(e));
+      $('runnerMsg').className = 'msg bad';
+    }).then(function () {
+      btn.disabled = false; btn.textContent = 'Connect'; renderStep3();
+    });
+  });
+
+  $('runnerDisconnect').addEventListener('click', function () {
+    var btn = this; btn.disabled = true; btn.textContent = 'Disconnecting\\u2026';
+    window.concentus.clearRunner().then(function (r) {
+      if (r.runner) runner = r.runner;
+      $('runnerMsg').textContent = (r.ok ? '\\u2713 ' : '\\u2717 ') + r.detail;
+      $('runnerMsg').className = 'msg ' + (r.ok ? 'ok' : 'bad');
+    }).catch(function (e) {
+      $('runnerMsg').textContent = '\\u2717 ' + (e && e.message ? e.message : String(e));
+      $('runnerMsg').className = 'msg bad';
+    }).then(function () {
+      btn.disabled = false; btn.textContent = 'Disconnect'; renderStep3();
+    });
+  });
+
+  $('back3').addEventListener('click', function () { showStep(2); });
 
   $('finish').addEventListener('click', function () {
     window.concentus.finishOnboarding($('dontask').checked);
@@ -567,9 +703,11 @@ export function onboardingPage(
   function showStep(n) {
     $('step1').className = n === 1 ? '' : 'hidden';
     $('step2').className = n === 2 ? '' : 'hidden';
+    $('step3').className = n === 3 ? '' : 'hidden';
     $('lbl1').innerHTML = n === 1 ? '<b>1. Database</b>' : '1. Database';
     $('lbl2').innerHTML = n === 2 ? '<b>2. Claude</b>' : '2. Claude';
-    if (n === 1) renderStep1(); else renderStep2();
+    $('lbl3').innerHTML = n === 3 ? '<b>3. Server</b>' : '3. Server';
+    if (n === 1) renderStep1(); else if (n === 2) renderStep2(); else renderStep3();
   }
 
   // Fixed for the life of the page: the key was decided when the backend started.
@@ -583,6 +721,8 @@ export function onboardingPage(
   $('url').value = storage.url || '';
   $('username').value = storage.username || '';
   if (storage.hasPassword) $('password').placeholder = '•••••••• (unchanged)';
+  $('runnerUrl').value = runner.url || '';
+  $('runnerName').value = runner.name || '';
   showStep(1);
 </script>
 </body>
