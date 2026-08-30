@@ -39,7 +39,7 @@ class RunFlowToolTest {
     private final SubflowService subflows = mock(SubflowService.class);
 
     private RunToolsController controller(AgentSpec.SubflowSpec... wired) {
-        run = new AgentRun("run-1", "flow-1", "Parent", "local");
+        run = new AgentRun("run-1", "flow-1", "Parent");
         run.toolToken = "tok-secret";
         AgentSpec coord = new AgentSpec();
         coord.name = "Coordinator";

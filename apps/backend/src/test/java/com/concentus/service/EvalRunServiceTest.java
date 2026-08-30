@@ -45,7 +45,7 @@ class EvalRunServiceTest {
     private final FlowVersionStore versions = mock(FlowVersionStore.class);
     private final AtomicInteger ids = new AtomicInteger();
 
-    private static final FlowGraph FLOW = new FlowGraph("f1", "Flow", "local", List.of(), List.of(),
+    private static final FlowGraph FLOW = new FlowGraph("f1", "Flow", List.of(), List.of(),
             null, List.of(), null, null);
 
     private EvalRunService service;
@@ -78,7 +78,7 @@ class EvalRunServiceTest {
 
     /** Registers a run the service will find settled with the given status and final answer. */
     private AgentRun settledRun(String id, String status, String answer) {
-        AgentRun run = new AgentRun(id, "f1", "Flow", "local");
+        AgentRun run = new AgentRun(id, "f1", "Flow");
         run.status = status;
         if (answer != null) run.emit(RunEvent.of("agent_message", answer));
         when(runs.get(id)).thenReturn(Optional.of(run));

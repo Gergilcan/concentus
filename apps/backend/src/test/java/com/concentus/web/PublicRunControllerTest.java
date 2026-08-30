@@ -51,7 +51,7 @@ class PublicRunControllerTest {
     /** The organization's rules: a fresh mock requires no approval, as before approvals existed. */
     private final com.concentus.policy.OrgPolicyService policies =
             mock(com.concentus.policy.OrgPolicyService.class);
-    private final AgentRun run = new AgentRun("run_1", "f1", "Flow", "local");
+    private final AgentRun run = new AgentRun("run_1", "f1", "Flow");
 
     /** Empty, so the license read from it is "none" — the free installation every test but the tier ones is. */
     @TempDir
@@ -80,7 +80,7 @@ class PublicRunControllerTest {
 
     private static FlowGraph flow(String id, Map<String, Object> inputData) {
         FlowNode input = new FlowNode("in1", "input", null, inputData);
-        return new FlowGraph(id, "Flow", "local", List.of(input), List.of(), null, List.of(), null, null);
+        return new FlowGraph(id, "Flow", List.of(input), List.of(), null, List.of(), null, null);
     }
 
     private static Map<String, Object> published(String token) {
@@ -111,7 +111,7 @@ class PublicRunControllerTest {
         when(flows.getAcrossOrganizations("f2")).thenReturn(Optional.of(flow("f2", unpublished)));
         when(flows.getAcrossOrganizations("nope")).thenReturn(Optional.empty());
         when(runService.startTriggered(any(FlowGraph.class), anyString(), eq("api"))).thenReturn(
-                new RunSummary("run_1", "f1", "Flow", "local", "STARTING", 0L, null, List.of(), null, "api",
+                new RunSummary("run_1", "f1", "Flow", "STARTING", 0L, null, List.of(), null, "api",
                         0L, 0L, 0.0, false, 1));
         when(runService.get("run_1")).thenReturn(Optional.of(run));
     }

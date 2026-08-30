@@ -38,7 +38,7 @@ class FlowGatesTest {
             previous = gate.id();
         }
         edges.add(new FlowEdge("e_end", previous, "hand-off"));
-        return new FlowGraph("flow_1", "Reporting", "local", nodes, edges,
+        return new FlowGraph("flow_1", "Reporting", nodes, edges,
                 null, null, null, null, null, null, null, null, null, null);
     }
 
@@ -165,7 +165,7 @@ class FlowGatesTest {
 
     @Test
     void gates_on_the_way_to_another_branch_do_not_apply_to_this_one() {
-        FlowGraph flow = new FlowGraph("flow_1", "Two branches", "local",
+        FlowGraph flow = new FlowGraph("flow_1", "Two branches",
                 List.of(node("agent-1", "agent", Map.of("name", "Reporter")),
                         node("if-1", "condition", Map.of("test", "contains", "value", "nope")),
                         node("gated", "flow", Map.of("flowId", "flow_2", "mode", "after")),

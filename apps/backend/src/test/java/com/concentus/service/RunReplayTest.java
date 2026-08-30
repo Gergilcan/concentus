@@ -35,7 +35,7 @@ class RunReplayTest {
     }
 
     private static FlowGraph graph(List<FlowNode> nodes, List<FlowEdge> edges) {
-        return new FlowGraph("flow_1", "Reporting", "local", nodes, edges,
+        return new FlowGraph("flow_1", "Reporting", nodes, edges,
                 null, null, null, null, null, null, null, null, null, null);
     }
 
@@ -47,7 +47,7 @@ class RunReplayTest {
     }
 
     private static AgentRun runWhere(String agentOutput, String handOffStatus) {
-        AgentRun run = new AgentRun("run_1", "flow_1", "Reporting", "local");
+        AgentRun run = new AgentRun("run_1", "flow_1", "Reporting");
         NodeExec a = run.nodeExec("a1", "agent", "Reporter");
         a.status = "passed";
         a.appendOutput(agentOutput);
@@ -162,7 +162,7 @@ class RunReplayTest {
     @Test
     void a_source_with_no_recorded_output_answers_unknown_rather_than_guessing() {
         FlowGraph flow = gated("contains", "ok");
-        AgentRun run = new AgentRun("run_1", "flow_1", "Reporting", "local");
+        AgentRun run = new AgentRun("run_1", "flow_1", "Reporting");
         RunReplay.ReplayReport report = RunReplay.compare(run, flow, flow);
 
         RunReplay.ReplayNode f1 = nodeOf(report, "f1");

@@ -105,7 +105,7 @@ describe('canvas undo/redo', () => {
   it('loading a flow resets history — undo cannot resurrect the previous drawing', () => {
     const s = () => useFlowStore.getState()
     s().addNode('agent')
-    s().loadBackendFlow({ id: 'f1', name: 'Other', mode: 'managed', nodes: [], edges: [] })
+    s().loadBackendFlow({ id: 'f1', name: 'Other', nodes: [], edges: [] })
 
     s().undo()
     expect(s().nodes).toHaveLength(0)

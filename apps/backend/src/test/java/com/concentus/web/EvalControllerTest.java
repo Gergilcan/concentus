@@ -34,7 +34,7 @@ class EvalControllerTest {
     private final EvalRunService evaluations = mock(EvalRunService.class);
     private final EvalController controller = new EvalController(flows, dataset, results, evaluations);
 
-    private static final FlowGraph FLOW = new FlowGraph("f1", "Flow", "local", List.of(), List.of(),
+    private static final FlowGraph FLOW = new FlowGraph("f1", "Flow", List.of(), List.of(),
             null, List.of(), null, null);
 
     @BeforeEach

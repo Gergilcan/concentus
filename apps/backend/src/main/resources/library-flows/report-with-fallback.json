@@ -1,7 +1,6 @@
 {
   "id": "report-with-fallback",
   "name": "Report with a safety net (on error)",
-  "mode": "local",
   "enabled": false,
   "favorite": false,
   "tags": ["recovery", "reporting"],

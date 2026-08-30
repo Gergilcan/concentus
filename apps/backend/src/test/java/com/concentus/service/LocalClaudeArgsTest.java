@@ -43,7 +43,7 @@ class LocalClaudeArgsTest {
     }
 
     private static AgentRun run() {
-        AgentRun run = new AgentRun("run-1", "flow-1", "Flow", "local");
+        AgentRun run = new AgentRun("run-1", "flow-1", "Flow");
         AgentSpec coord = new AgentSpec();
         coord.name = "Coordinator";
         run.compiled = new CompiledFlow(coord, List.of());

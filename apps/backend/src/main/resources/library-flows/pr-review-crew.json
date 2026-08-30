@@ -1,7 +1,6 @@
 {
   "id": "pr-review-crew",
   "name": "PR review crew",
-  "mode": "local",
   "enabled": true,
   "favorite": false,
   "tags": [

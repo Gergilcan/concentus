@@ -58,11 +58,11 @@ class WebhookControllerTest {
         if (secret != null) data.put("secret", secret);
         if (authParam != null) data.put("authParam", authParam);
         FlowNode input = new FlowNode("in1", "input", null, data);
-        return new FlowGraph("f1", "Flow", "managed", List.of(input), List.of(), null, List.of(), null, null);
+        return new FlowGraph("f1", "Flow", List.of(input), List.of(), null, List.of(), null, null);
     }
 
     private static RunSummary summary() {
-        return new RunSummary("run_abc123", "f1", "Flow", "managed", "RUNNING", 0L, null, List.of(), null, "webhook",
+        return new RunSummary("run_abc123", "f1", "Flow", "RUNNING", 0L, null, List.of(), null, "webhook",
                 0L, 0L, 0.0, false, 1);
     }
 

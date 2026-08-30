@@ -28,7 +28,7 @@ class SubflowLegacyModeTest {
     private static FlowGraph flow(FlowNode sub, List<FlowEdge> extraEdges) {
         List<FlowEdge> edges = new java.util.ArrayList<>(List.of(new FlowEdge("e1", "in-1", "agent-1")));
         edges.addAll(extraEdges);
-        return new FlowGraph("parent", "Parent", "local",
+        return new FlowGraph("parent", "Parent",
                 List.of(node("in-1", "input", null, Map.of("mode", "manual")),
                         node("agent-1", "agent", "coordinator", Map.of("name", "Lead")),
                         sub),

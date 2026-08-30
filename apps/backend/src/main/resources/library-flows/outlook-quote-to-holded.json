@@ -1,7 +1,6 @@
 {
   "id": "outlook-quote-to-holded",
   "name": "Presupuestos por correo → Holded",
-  "mode": "local",
   "enabled": true,
   "favorite": true,
   "tags": ["correo", "holded", "presupuestos"],

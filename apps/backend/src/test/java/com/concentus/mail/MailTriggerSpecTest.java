@@ -22,7 +22,7 @@ class MailTriggerSpecTest {
     private static FlowGraph flowWith(Map<String, Object> inputData) {
         Map<String, Object> data = new HashMap<>(inputData);
         data.putIfAbsent("mode", "mail");
-        return new FlowGraph("f1", "Flow", "local", List.of(new FlowNode("in1", "input", null, data)),
+        return new FlowGraph("f1", "Flow", List.of(new FlowNode("in1", "input", null, data)),
                 List.of(), true, List.of(), false, null);
     }
 
@@ -180,7 +180,7 @@ class MailTriggerSpecTest {
 
     @Test
     void aFlowWithNoInputNodeYieldsAnUnconfiguredSpec() {
-        FlowGraph noInput = new FlowGraph("f1", "Flow", "local", List.of(), List.of(), true,
+        FlowGraph noInput = new FlowGraph("f1", "Flow", List.of(), List.of(), true,
                 List.of(), false, null);
 
         assertThat(MailTriggerSpec.from(noInput).isConfigured()).isFalse();

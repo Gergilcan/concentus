@@ -147,17 +147,20 @@ public class RunStore {
         // while it lives, so a review in the same process is never the trimmed one.
         String patchesJson = toJson(RunPatch.capped(run.patchList(), RunPatch.MAX_STORED_BYTES));
         long now = System.currentTimeMillis();
+        // The table keeps a nullable `mode` column from when a flow chose between one claude
+        // process and hosted agents; nothing reads it any more, so new rows leave it null rather
+        // than carry a migration for a column that costs nothing where it is.
         writer.submit(() -> {
             try {
                 jdbc.update("""
-                    insert into runs (id, flow_id, flow_name, mode, backend, status, trigger_type,
+                    insert into runs (id, flow_id, flow_name, backend, status, trigger_type,
                       session_id, local_session_id, local_started, error,
                       total_input_tokens, total_output_tokens, flow_json, events_json, node_execs_json,
                       created_at, updated_at, initial_prompt, notify_webhook, cost_usd, golden,
                       flow_version, started_by, patches_json, organization_id)
-                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     on conflict (id) do update set
-                      flow_id=excluded.flow_id, flow_name=excluded.flow_name, mode=excluded.mode,
+                      flow_id=excluded.flow_id, flow_name=excluded.flow_name,
                       backend=excluded.backend, status=excluded.status, trigger_type=excluded.trigger_type,
                       session_id=excluded.session_id, local_session_id=excluded.local_session_id,
                       local_started=excluded.local_started, error=excluded.error,
@@ -173,7 +176,7 @@ public class RunStore {
                       patches_json=excluded.patches_json,
                       organization_id=excluded.organization_id
                     """,
-                    run.id, run.flowId, run.flowName, run.mode, run.backend, run.status, run.trigger,
+                    run.id, run.flowId, run.flowName, run.backend, run.status, run.trigger,
                     run.sessionId, run.localSessionId, run.localStarted, run.error,
                     run.totalInputTokens, run.totalOutputTokens, run.flowJson, eventsJson, execsJson,
                     run.createdAt, now, run.initialPrompt, run.notifyWebhook, run.estimatedCostUsd(),
@@ -202,7 +205,7 @@ public class RunStore {
                 """,
                 (rs, i) -> new RunRow(
                     rs.getString("id"), rs.getString("flow_id"), rs.getString("flow_name"),
-                    rs.getString("mode"), rs.getString("backend"), rs.getString("status"),
+                    rs.getString("backend"), rs.getString("status"),
                     rs.getString("trigger_type"), rs.getString("session_id"),
                     rs.getString("local_session_id"), rs.getBoolean("local_started"),
                     rs.getString("error"), rs.getLong("total_input_tokens"),
@@ -271,7 +274,7 @@ public class RunStore {
     }
 
     /** A persisted run row, ready for reconstruction into an in-memory {@link AgentRun}. */
-    public record RunRow(String id, String flowId, String flowName, String mode, String backend,
+    public record RunRow(String id, String flowId, String flowName, String backend,
                          String status, String trigger, String sessionId, String localSessionId,
                          boolean localStarted, String error, long totalInputTokens,
                          long totalOutputTokens, String flowJson, List<RunEvent> events,
@@ -288,13 +291,13 @@ public class RunStore {
          * A row with no author, no patches and no organization — the shape tests that predate
          * those three build.
          */
-        public RunRow(String id, String flowId, String flowName, String mode, String backend,
+        public RunRow(String id, String flowId, String flowName, String backend,
                       String status, String trigger, String sessionId, String localSessionId,
                       boolean localStarted, String error, long totalInputTokens,
                       long totalOutputTokens, String flowJson, List<RunEvent> events,
                       List<NodeExec> nodeExecs, long createdAt, String initialPrompt,
                       String notifyWebhook, boolean golden, int flowVersion) {
-            this(id, flowId, flowName, mode, backend, status, trigger, sessionId, localSessionId,
+            this(id, flowId, flowName, backend, status, trigger, sessionId, localSessionId,
                     localStarted, error, totalInputTokens, totalOutputTokens, flowJson, events,
                     nodeExecs, createdAt, initialPrompt, notifyWebhook, golden, flowVersion,
                     null, List.of(), null);

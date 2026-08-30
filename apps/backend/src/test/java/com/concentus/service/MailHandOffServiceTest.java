@@ -95,7 +95,7 @@ class MailHandOffServiceTest {
             previousHandle = null;
         }
         edges.add(new FlowEdge("e" + i, previous, "m1", previousHandle));
-        return new FlowGraph("flow_parent", "Ads campaign", "managed", nodes, edges,
+        return new FlowGraph("flow_parent", "Ads campaign", nodes, edges,
                 null, null, null, null, null, null, null, null, null, null, null);
     }
 
@@ -104,7 +104,7 @@ class MailHandOffServiceTest {
     }
 
     private static AgentRun run(String status, String subject) {
-        AgentRun run = new AgentRun("run-1", "flow_parent", "Ads campaign", "managed");
+        AgentRun run = new AgentRun("run-1", "flow_parent", "Ads campaign");
         run.organizationId = "default";
         run.status = status;
         run.compiled = new CompiledFlow(agent("a", "Planner"),
@@ -333,7 +333,7 @@ class MailHandOffServiceTest {
 
     @Test
     void a_node_missing_its_account_is_reported_instead_of_attempted() {
-        AgentRun run = new AgentRun("run-1", "flow_parent", "Ads campaign", "managed");
+        AgentRun run = new AgentRun("run-1", "flow_parent", "Ads campaign");
         run.organizationId = "default";
         run.status = "COMPLETED";
         run.restoreEvents(List.of(RunEvent.of("agent_message", "Done.")));

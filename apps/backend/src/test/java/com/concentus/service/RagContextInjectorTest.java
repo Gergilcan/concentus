@@ -115,7 +115,7 @@ class RagContextInjectorTest {
                 List.of("id"), List.of(List.of("1")), true);
         when(retriever.query(source)).thenReturn(result);
         when(retriever.asContextText(source, result)).thenReturn("id\n---\n1\n");
-        AgentRun run = new AgentRun("run1", "flow1", "Flow", "local");
+        AgentRun run = new AgentRun("run1", "flow1", "Flow");
 
         injector.inject(spec, run, s -> { });
 
@@ -132,7 +132,7 @@ class RagContextInjectorTest {
         SqlSourceSpec source = sqlSource("sql1", "orders", "select 1");
         AgentSpec spec = specWithSources(source);
         when(retriever.query(any())).thenThrow(new RuntimeException("boom"));
-        AgentRun run = new AgentRun("run1", "flow1", "Flow", "local");
+        AgentRun run = new AgentRun("run1", "flow1", "Flow");
 
         injector.inject(spec, run, s -> { });
 

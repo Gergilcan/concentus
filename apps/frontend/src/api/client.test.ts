@@ -50,13 +50,13 @@ describe('api request construction', () => {
   })
 
   it('interpolates path params, e.g. getFlow(id) -> /api/flows/:id', async () => {
-    fetchMock.mockResolvedValue(okResponse({ id: 'abc', name: 'f', mode: 'local', nodes: [], edges: [] }))
+    fetchMock.mockResolvedValue(okResponse({ id: 'abc', name: 'f', nodes: [], edges: [] }))
     await api.getFlow('abc')
     expect(fetchMock.mock.calls[0][0]).toBe('/api/flows/abc')
   })
 
   it('POSTs send the method and a JSON-stringified body', async () => {
-    const flow: BackendFlow = { name: 'My Flow', mode: 'local', nodes: [], edges: [] }
+    const flow: BackendFlow = { name: 'My Flow', nodes: [], edges: [] }
     fetchMock.mockResolvedValue(okResponse(flow))
     await api.saveFlow(flow)
 
@@ -103,7 +103,7 @@ describe('api error propagation', () => {
   it('propagates a network failure for other verbs too (POST)', async () => {
     const networkError = new TypeError('Failed to fetch')
     fetchMock.mockRejectedValue(networkError)
-    const flow: BackendFlow = { name: 'f', mode: 'local', nodes: [], edges: [] }
+    const flow: BackendFlow = { name: 'f', nodes: [], edges: [] }
 
     await expect(api.saveFlow(flow)).rejects.toBe(networkError)
   })
@@ -171,7 +171,7 @@ describe('api response body handling', () => {
   })
 
   it('parses a normal JSON 200 body', async () => {
-    const flows: BackendFlow[] = [{ id: '1', name: 'f', mode: 'local', nodes: [], edges: [] }]
+    const flows: BackendFlow[] = [{ id: '1', name: 'f', nodes: [], edges: [] }]
     fetchMock.mockResolvedValue({ ok: true, status: 200, statusText: 'OK', text: async () => JSON.stringify(flows) })
 
     await expect(api.listFlows()).resolves.toEqual(flows)

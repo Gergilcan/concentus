@@ -8,7 +8,6 @@ function sample(): BackendFlow {
   return {
     id: 'mailbox-assistant',
     name: 'Mailbox assistant (IMAP)',
-    mode: 'local',
     enabled: false,
     folder: 'Samples',
     nodes: [
@@ -119,7 +118,7 @@ describe('the recipe manifests', () => {
     const field = fieldsOf(recipe!).find((f) => f.nodeId === FLOW)!
 
     const built = applyRecipe(
-      { id: 'sample', name: 'Sample', mode: 'local', nodes: [], edges: [] },
+      { id: 'sample', name: 'Sample', nodes: [], edges: [] },
       recipe!,
       { [fieldKey(field)]: 'https://hooks.example.com/x' },
       false,

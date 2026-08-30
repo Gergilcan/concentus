@@ -154,8 +154,7 @@ public class FlowGenerator {
         }
         List<FlowEdge> edges = flow.edges() == null ? List.of() : flow.edges();
         String name = flow.name() == null || flow.name().isBlank() ? "Generated flow" : flow.name();
-        String mode = flow.mode() == null || flow.mode().isBlank() ? "local" : flow.mode();
-        return new FlowGraph(null, name, mode, nodes, edges, flow.enabled(), flow.tags(),
+        return new FlowGraph(null, name, nodes, edges, flow.enabled(), flow.tags(),
                 flow.favorite(), flow.notifyWebhook(), flow.budgetUsd(),
                 flow.approvalSlackCredentialId(), flow.approvalSlackChannel(),
                 flow.approvalTeamsWebhook(), flow.variables(), flow.folder(), flow.goldenAutoRun());

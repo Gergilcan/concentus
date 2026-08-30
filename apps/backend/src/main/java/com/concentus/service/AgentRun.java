@@ -21,7 +21,6 @@ public class AgentRun {
     public final String id;
     public final String flowId;
     public final String flowName;
-    public final String mode;
     /** Settable so restored runs keep their original ordering timestamp. */
     public volatile long createdAt = System.currentTimeMillis();
     /** FlowGraph snapshot (JSON) used to recompile and continue this run after a restart. */
@@ -679,11 +678,10 @@ public class AgentRun {
         for (com.concentus.model.RunPatch p : stored) recordPatch(p);
     }
 
-    public AgentRun(String id, String flowId, String flowName, String mode) {
+    public AgentRun(String id, String flowId, String flowName) {
         this.id = id;
         this.flowId = flowId;
         this.flowName = flowName;
-        this.mode = mode;
     }
 
     /**
@@ -725,7 +723,7 @@ public class AgentRun {
     }
 
     public RunSummary toSummary() {
-        return new RunSummary(id, flowId, flowName, mode, status, createdAt, sessionId, agentIds, error,
+        return new RunSummary(id, flowId, flowName, status, createdAt, sessionId, agentIds, error,
                 trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd(), golden, flowVersion,
                 startedBy);
     }

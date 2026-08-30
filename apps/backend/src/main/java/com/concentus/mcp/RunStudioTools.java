@@ -169,7 +169,7 @@ public class RunStudioTools implements StudioToolset {
         RunSummary started = flowId != null ? flows.run(flowId) : runs.start(Args.flow(mapper, inline));
 
         StringBuilder out = new StringBuilder("Started execution " + started.id()
-                + " of '" + started.flowName() + "' (" + started.mode() + ").\n");
+                + " of '" + started.flowName() + "'.\n");
         String prompt = Args.str(args, "prompt", null);
         if (prompt != null) {
             Ready ready = awaitReady(started.id());

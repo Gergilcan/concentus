@@ -50,16 +50,13 @@ describe('Toolbar', () => {
   })
   afterEach(() => vi.clearAllMocks())
 
-  it('shows the flow name and mode from the store and writes edits back', () => {
+  it('shows the flow name from the store and writes edits back', () => {
     renderToolbar()
 
     const name = screen.getByLabelText('Flow name')
     expect(name).toHaveValue('Nightly digest')
     fireEvent.change(name, { target: { value: 'Weekly digest' } })
     expect(useFlowStore.getState().name).toBe('Weekly digest')
-
-    fireEvent.change(screen.getByTitle('managed = multi-agent execution'), { target: { value: 'local' } })
-    expect(useFlowStore.getState().mode).toBe('local')
   })
 
   it('Back hands control to the flows list', () => {
@@ -124,7 +121,7 @@ describe('Toolbar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => expect(onFlowsChanged).toHaveBeenCalled())
-    expect(saveFlowMock).toHaveBeenCalledWith(expect.objectContaining({ name: 'Nightly digest', mode: 'managed' }))
+    expect(saveFlowMock).toHaveBeenCalledWith(expect.objectContaining({ name: 'Nightly digest' }))
     expect(useFlowStore.getState().flowId).toBe('flow_9')
     expect(pushError).not.toHaveBeenCalled()
   })

@@ -18,7 +18,7 @@ vi.mock('../api/client.ts', () => ({
 }))
 
 // One flow at the root keeps the page out of its empty state so the folder grid renders.
-const flow: BackendFlow = { id: 'f1', name: 'Mail triage', mode: 'local', nodes: [], edges: [] }
+const flow: BackendFlow = { id: 'f1', name: 'Mail triage', nodes: [], edges: [] }
 
 const renderPage = (runs: RunSummary[] = []) => {
   const onSaveFlow = vi.fn().mockResolvedValue(undefined)
@@ -62,7 +62,7 @@ function rerenderWith(view: ReturnType<typeof render>, runs: RunSummary[]) {
 }
 
 function run(id: string, status: RunSummary['status']): RunSummary {
-  return { id, flowId: 'f1', flowName: 'Mail triage', mode: 'local', status, createdAt: 1 }
+  return { id, flowId: 'f1', flowName: 'Mail triage', status, createdAt: 1 }
 }
 
 /** jsdom has no DataTransfer; the drag tests carry one just real enough for the handlers. */

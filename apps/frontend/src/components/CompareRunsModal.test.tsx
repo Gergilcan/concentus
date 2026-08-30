@@ -17,7 +17,6 @@ function run(id: string): RunSummary {
     id,
     flowId: 'f1',
     flowName: 'Flow',
-    mode: 'flow',
     status: 'COMPLETED',
     createdAt: 0,
     totalInputTokens: 1_000,

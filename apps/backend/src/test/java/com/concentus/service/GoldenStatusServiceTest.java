@@ -27,7 +27,7 @@ class GoldenStatusServiceTest {
     private final GoldenStatusService service = new GoldenStatusService(runs, mapper);
 
     private static FlowGraph flow(String id, List<FlowNode> nodes, List<FlowEdge> edges) {
-        return new FlowGraph(id, "Flow", "local", nodes, edges, null, null, null, null, null);
+        return new FlowGraph(id, "Flow", nodes, edges, null, null, null, null, null);
     }
 
     private static FlowNode agent(String id, String prompt, int x) {
@@ -44,7 +44,7 @@ class GoldenStatusServiceTest {
 
     /** Registers a golden run for f1 whose snapshot is the given flow. */
     private AgentRun golden(FlowGraph executed) throws Exception {
-        AgentRun run = new AgentRun("run_g", "f1", "Flow", "local");
+        AgentRun run = new AgentRun("run_g", "f1", "Flow");
         run.golden = true;
         run.flowJson = mapper.writeValueAsString(executed);
         when(runs.list()).thenReturn(List.of(run.toSummary()));
@@ -155,7 +155,7 @@ class GoldenStatusServiceTest {
     }
 
     private static FlowGraph optIn(FlowGraph flow) {
-        return new FlowGraph(flow.id(), flow.name(), flow.mode(), flow.nodes(), flow.edges(),
+        return new FlowGraph(flow.id(), flow.name(), flow.nodes(), flow.edges(),
                 null, null, null, null, null, null, null, null, null, null, true);
     }
 }

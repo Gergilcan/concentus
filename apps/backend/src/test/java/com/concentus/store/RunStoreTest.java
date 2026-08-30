@@ -38,7 +38,7 @@ class RunStoreTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private static AgentRun run(String id) {
-        AgentRun r = new AgentRun(id, "flow1", "Flow", "managed");
+        AgentRun r = new AgentRun(id, "flow1", "Flow");
         r.status = "RUNNING";
         r.backend = "local";
         r.trigger = "manual";
@@ -90,12 +90,12 @@ class RunStoreTest {
         Object[] args = captor.getValue();
         assertThat(args[0]).isEqualTo("r1");         // id
         assertThat(args[1]).isEqualTo("flow1");      // flow_id
-        assertThat(args[5]).isEqualTo("RUNNING");    // status
-        assertThat(args[11]).isEqualTo(10L);         // total_input_tokens
-        assertThat(args[12]).isEqualTo(20L);         // total_output_tokens
-        assertThat(args[18]).isEqualTo("hello");     // initial_prompt
+        assertThat(args[4]).isEqualTo("RUNNING");    // status
+        assertThat(args[10]).isEqualTo(10L);         // total_input_tokens
+        assertThat(args[11]).isEqualTo(20L);         // total_output_tokens
+        assertThat(args[17]).isEqualTo("hello");     // initial_prompt
         // patches_json: the review ledger goes with the run, patch text included.
-        assertThat((String) args[24]).contains("\"nodeId\":\"w1\"").contains("+b");
+        assertThat((String) args[23]).contains("\"nodeId\":\"w1\"").contains("+b");
     }
 
     @Test
@@ -112,7 +112,7 @@ class RunStoreTest {
 
         ArgumentCaptor<Object[]> captor = ArgumentCaptor.forClass(Object[].class);
         verify(jdbc, timeout(2000)).update(anyString(), captor.capture());
-        List<RunPatch> stored = mapper.readValue((String) captor.getValue()[24],
+        List<RunPatch> stored = mapper.readValue((String) captor.getValue()[23],
                 new TypeReference<List<RunPatch>>() {});
         assertThat(stored).hasSize(1);
         assertThat(stored.get(0).patch()).isNull();
@@ -173,7 +173,7 @@ class RunStoreTest {
         NodeExec ne = new NodeExec();
         ne.nodeId = "n1";
         String validExecs = mapper.writeValueAsString(List.of(ne));
-        ResultSet goodRs = mockResultSet("run_a", "flow1", "Flow", "managed", "local", "IDLE", "manual",
+        ResultSet goodRs = mockResultSet("run_a", "flow1", "Flow", "local", "IDLE", "manual",
                 "sess1", null, false, null, 1L, 2L, null, validEvents, validExecs, 100L, null, null);
         RunPatch patch = RunPatch.registered("w1", "Worker", "repo", "https://x/repo.git",
                 null, "abc").taken("diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n", 7);
@@ -189,7 +189,7 @@ class RunStoreTest {
 
         // A row with corrupt JSON in both columns must still map, with empty lists instead of
         // throwing (parseList fails closed to List.of()).
-        ResultSet badRs = mockResultSet("run_b", "flow1", "Flow", "managed", "local", "ERROR", "manual",
+        ResultSet badRs = mockResultSet("run_b", "flow1", "Flow", "local", "ERROR", "manual",
                 null, null, false, "boom", 0L, 0L, null, "{ not valid json", "[ also broken",
                 200L, null, null);
 
@@ -200,7 +200,7 @@ class RunStoreTest {
         assertThat(badRow.error()).isEqualTo("boom");
     }
 
-    private static ResultSet mockResultSet(String id, String flowId, String flowName, String mode,
+    private static ResultSet mockResultSet(String id, String flowId, String flowName,
                                            String backend, String status, String trigger, String sessionId,
                                            String localSessionId, boolean localStarted, String error,
                                            long totalInputTokens, long totalOutputTokens, String flowJson,
@@ -210,7 +210,6 @@ class RunStoreTest {
         when(rs.getString("id")).thenReturn(id);
         when(rs.getString("flow_id")).thenReturn(flowId);
         when(rs.getString("flow_name")).thenReturn(flowName);
-        when(rs.getString("mode")).thenReturn(mode);
         when(rs.getString("backend")).thenReturn(backend);
         when(rs.getString("status")).thenReturn(status);
         when(rs.getString("trigger_type")).thenReturn(trigger);

@@ -25,7 +25,6 @@ const script = path.join(here, '..', '..', '..', 'scripts', 'concentus-run.mjs')
 /** The smallest flow that compiles: a manual trigger wired to one coordinator. */
 const FLOW = {
   name: 'E2E headless flow',
-  mode: 'local',
   nodes: [
     { id: 'in-1', type: 'input', data: { mode: 'manual', prompt: '' } },
     {

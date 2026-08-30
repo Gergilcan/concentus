@@ -13,6 +13,7 @@ import com.concentus.secrets.CredentialResolver;
 import com.concentus.store.AgentLibraryStore;
 import com.concentus.store.RunStore;
 import com.concentus.store.VariableStore;
+import com.concentus.support.AnthropicClientProvider;
 import com.concentus.support.LocalClaudeSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,7 @@ import static org.mockito.Mockito.when;
 class FlowDoctorTest {
 
     private final LocalClaudeSupport claude = mock(LocalClaudeSupport.class);
+    private final AnthropicClientProvider clientProvider = mock(AnthropicClientProvider.class);
     private final CredentialResolver credentials = mock(CredentialResolver.class);
     private final McpOAuthStore mcpOAuth = mock(McpOAuthStore.class);
     private final PluginRegistry plugins = mock(PluginRegistry.class);
@@ -67,7 +69,7 @@ class FlowDoctorTest {
     private FlowDoctor doctorWith(FlowCompiler compiler, ContextFolderResolver contextRoots) {
         return new FlowDoctor(claude, compiler, credentials, mcpOAuth, plugins, runtimes, runStore,
                 variables, new OrgContext("default"), facades, agentLibrary, contextRoots, policies,
-                com.concentus.config.Settings.of(Map.of()));
+                com.concentus.config.Settings.of(Map.of()), clientProvider);
     }
 
     @BeforeEach
@@ -98,7 +100,7 @@ class FlowDoctorTest {
     }
 
     private static FlowGraph flow(List<FlowNode> nodes) {
-        return new FlowGraph("f1", "Flow", "local", nodes,
+        return new FlowGraph("f1", "Flow", nodes,
                 List.of(new FlowEdge("e1", "in-1", "a-1")), null, null, null, null, null);
     }
 
@@ -133,14 +135,27 @@ class FlowDoctorTest {
     // ---------------------------------------------------------------- the machine
 
     @Test
-    void aMachineWithoutASignedInCliIsAnErrorForALocalFlow() {
+    void aMachineWithoutASignedInCliIsAnErrorWhenNoOtherCredentialCanRunTheFlow() {
         when(claude.available()).thenReturn(false);
+        when(clientProvider.backend()).thenReturn("none");
 
         List<DoctorFinding> cli = ofArea(doctor.check(healthy()), "cli");
 
         assertThat(cli).hasSize(1);
         assertThat(cli.get(0).level()).isEqualTo("error");
         assertThat(cli.get(0).fix()).contains("sign in");
+    }
+
+    /** A flow no longer says where it runs: with an API key on the machine, the run goes there. */
+    @Test
+    void aMachineWithoutASignedInCliIsOnlyAWarningWhenAnApiKeyCarriesTheRun() {
+        when(claude.available()).thenReturn(false);
+        when(clientProvider.backend()).thenReturn("cloud");
+
+        List<DoctorFinding> cli = ofArea(doctor.check(healthy()), "cli");
+
+        assertThat(cli).hasSize(1);
+        assertThat(cli.get(0).level()).isEqualTo("warn");
     }
 
     // ---------------------------------------------------------------- the graph
@@ -320,7 +335,7 @@ class FlowDoctorTest {
 
     @Test
     void aPausedFlowIsWorthMentioningButIsNotBroken() {
-        FlowGraph paused = new FlowGraph("f1", "Flow", "local",
+        FlowGraph paused = new FlowGraph("f1", "Flow",
                 List.of(input("cron", "0 9 * * *"), coordinator()),
                 List.of(new FlowEdge("e1", "in-1", "a-1")), false, null, null, null, null);
 
@@ -393,7 +408,7 @@ class FlowDoctorTest {
     @Test
     void aFlowAtItsCeilingSaysSoBeforeTheRunIsRefused() {
         when(runStore.spendUsdSince(anyString(), anyLong())).thenReturn(30d);
-        FlowGraph budgeted = new FlowGraph("f1", "Flow", "local",
+        FlowGraph budgeted = new FlowGraph("f1", "Flow",
                 List.of(input("manual", ""), coordinator()),
                 List.of(new FlowEdge("e1", "in-1", "a-1")), null, null, null, null, 25.0);
 
@@ -407,7 +422,7 @@ class FlowDoctorTest {
     @Test
     void aFlowUnderItsCeilingSaysNothing() {
         when(runStore.spendUsdSince(anyString(), anyLong())).thenReturn(3d);
-        FlowGraph budgeted = new FlowGraph("f1", "Flow", "local",
+        FlowGraph budgeted = new FlowGraph("f1", "Flow",
                 List.of(input("manual", ""), coordinator()),
                 List.of(new FlowEdge("e1", "in-1", "a-1")), null, null, null, null, 25.0);
 
@@ -426,7 +441,7 @@ class FlowDoctorTest {
         nodes.addAll(extra);
         List<FlowEdge> edges = new java.util.ArrayList<>(List.of(new FlowEdge("e1", "in-1", "a-1")));
         edges.addAll(extraEdges);
-        return new FlowGraph("f1", "Flow", "local", nodes, edges, null, null, null, null, null);
+        return new FlowGraph("f1", "Flow", nodes, edges, null, null, null, null, null);
     }
 
     private static FlowNode worker(String id, String name, String facadeProfileId) {
@@ -519,7 +534,7 @@ class FlowDoctorTest {
     // ---------------------------------------------------------------- send mail
 
     private static FlowGraph flowWithMail(Map<String, Object> mailData) {
-        return new FlowGraph("f1", "Flow", "local",
+        return new FlowGraph("f1", "Flow",
                 List.of(input("manual", ""), coordinator(), new FlowNode("mail-1", "mail", null, mailData)),
                 List.of(new FlowEdge("e1", "in-1", "a-1"), new FlowEdge("e2", "a-1", "mail-1")),
                 null, null, null, null, null);

@@ -27,7 +27,7 @@ class SubflowCompilerTest {
     }
 
     private static FlowGraph flowWith(FlowNode sub) {
-        return new FlowGraph("parent", "Parent", "local",
+        return new FlowGraph("parent", "Parent",
                 List.of(node("in-1", "input", null, Map.of("mode", "manual")),
                         node("agent-1", "agent", "coordinator",
                                 Map.of("name", "Lead", "systemPrompt", "Lead the work.")),

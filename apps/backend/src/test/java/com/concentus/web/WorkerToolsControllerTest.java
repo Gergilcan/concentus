@@ -58,7 +58,7 @@ class WorkerToolsControllerTest {
     private FakeMcpClient mcp;
 
     private WorkerToolsController controller(FacadeProfile profile) {
-        run = new AgentRun("run-1", "flow-1", "Flow", "local");
+        run = new AgentRun("run-1", "flow-1", "Flow");
         run.organizationId = "default";
         AgentSpec coord = new AgentSpec();
         coord.name = "Coordinator";

@@ -1,7 +1,6 @@
 {
   "id": "support-triage-if-else",
   "name": "Support triage (if/else)",
-  "mode": "local",
   "enabled": false,
   "favorite": false,
   "tags": ["branching", "support"],

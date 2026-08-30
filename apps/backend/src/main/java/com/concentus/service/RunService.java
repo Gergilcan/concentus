@@ -557,7 +557,7 @@ public class RunService {
         enforceBudget(flow, backend);
 
         String runId = Ids.generate("run_", 12);
-        AgentRun run = new AgentRun(runId, flow.id(), flow.name(), flow.modeOrDefault());
+        AgentRun run = new AgentRun(runId, flow.id(), flow.name());
         run.organizationId = organizationFor(flow);
         run.backend = backend;
         run.compiled = compiled;
@@ -1218,7 +1218,7 @@ public class RunService {
     public void restore() {
         for (RunStore.RunRow row : runStore.loadAll(maxRetainedRuns)) {
             try {
-                AgentRun run = new AgentRun(row.id(), row.flowId(), row.flowName(), row.mode());
+                AgentRun run = new AgentRun(row.id(), row.flowId(), row.flowName());
                 run.createdAt = row.createdAt();
                 // A row from before runs were stamped belongs to the organization the deployment
                 // had then, which is the default one — the same reading the migration applied.

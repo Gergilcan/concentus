@@ -534,7 +534,6 @@ public class FlowCompiler {
     private AgentSpec buildAgentSpec(FlowNode node, FlowGraph flow, Resources resources) {
         Map<String, Object> d = withLibraryFields(node, node.dataOrEmpty());
         AgentSpec s = new AgentSpec();
-        s.mode = flow.modeOrDefault();
         s.nodeId = node.id();
         s.name = str(d, "name", node.id());
         s.tools = strList(d, "tools");

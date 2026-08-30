@@ -13,7 +13,6 @@ function flow(over: Partial<BackendFlow> = {}): BackendFlow {
   return {
     id: 'f1',
     name: 'Invoice runner',
-    mode: 'local',
     enabled: true,
     favorite: true,
     tags: ['ops'],

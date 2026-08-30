@@ -13,7 +13,6 @@ function run(overrides: Partial<RunSummary> = {}): RunSummary {
     id: 'r1',
     flowId: 'f1',
     flowName: 'Flow',
-    mode: 'local',
     status: 'IDLE',
     createdAt: 0,
     ...overrides,
@@ -21,7 +20,7 @@ function run(overrides: Partial<RunSummary> = {}): RunSummary {
 }
 
 function flow(overrides: Partial<BackendFlow> = {}): BackendFlow {
-  return { name: 'Flow', mode: 'local', nodes: [], edges: [], ...overrides }
+  return { name: 'Flow', nodes: [], edges: [], ...overrides }
 }
 
 describe('groupRunsByFlow', () => {

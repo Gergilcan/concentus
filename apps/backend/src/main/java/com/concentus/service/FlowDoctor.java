@@ -9,6 +9,7 @@ import com.concentus.secrets.CredentialResolver;
 import com.concentus.store.AgentLibraryStore;
 import com.concentus.store.RunStore;
 import com.concentus.store.VariableStore;
+import com.concentus.support.AnthropicClientProvider;
 import com.concentus.support.LocalClaudeSupport;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
@@ -54,15 +55,18 @@ public class FlowDoctor {
     private final com.concentus.policy.OrgPolicyService policies;
     /** Where the deployment's own permission mode lives — what a flow that names none gets. */
     private final com.concentus.config.Settings settings;
+    /** Which Claude credential the deployment has — whether a missing CLI sign-in stops a run. */
+    private final AnthropicClientProvider clientProvider;
 
     public FlowDoctor(LocalClaudeSupport claude, FlowCompiler compiler, CredentialResolver credentials,
                       McpOAuthStore mcpOAuth, PluginRegistry plugins, RuntimeProbe runtimes,
                       RunStore runStore, VariableStore variables, OrgContext orgContext,
                       com.concentus.store.FacadeProfileStore facades, AgentLibraryStore agentLibrary,
                       ContextFolderResolver contextRoots, com.concentus.policy.OrgPolicyService policies,
-                      com.concentus.config.Settings settings) {
+                      com.concentus.config.Settings settings, AnthropicClientProvider clientProvider) {
         this.policies = policies;
         this.settings = settings;
+        this.clientProvider = clientProvider;
         this.claude = claude;
         this.compiler = compiler;
         this.credentials = credentials;
@@ -80,7 +84,7 @@ public class FlowDoctor {
     /** Everything worth knowing before pressing Run. An empty list means "nothing found". */
     public List<DoctorFinding> check(FlowGraph flow) {
         List<DoctorFinding> findings = new ArrayList<>();
-        checkCli(flow, findings);
+        checkCli(findings);
         checkGraph(flow, findings);
         checkNodes(flow, findings);
         checkTrigger(flow, findings);
@@ -91,10 +95,12 @@ public class FlowDoctor {
 
     // ---------------------------------------------------------------- the machine
 
-    private void checkCli(FlowGraph flow, List<DoctorFinding> findings) {
+    private void checkCli(List<DoctorFinding> findings) {
         if (claude.available()) return;
-        boolean local = "local".equals(flow.modeOrDefault());
-        findings.add(new DoctorFinding(local ? "error" : "warn", "cli",
+        // A flow no longer says where it runs; the credential does. Without a CLI sign-in the run
+        // goes to an API key when the machine has one, and is refused when it has neither.
+        boolean unroutable = "none".equals(clientProvider.backend());
+        findings.add(new DoctorFinding(unroutable ? "error" : "warn", "cli",
                 "Claude Code has no sign-in on this machine.",
                 "Run `claude` in a terminal and sign in — the first-run wizard can install it for you.",
                 null));

@@ -392,7 +392,6 @@ type FlowMeta = {
 interface FlowState {
   flowId: string | null
   name: string
-  mode: 'managed' | 'local'
   flowMeta: FlowMeta
   nodes: AppNode[]
   edges: Edge[]
@@ -490,7 +489,6 @@ interface FlowState {
   duplicateSelection: () => void
   duplicateNode: (id: string) => void
   setName: (name: string) => void
-  setMode: (mode: 'managed' | 'local') => void
 
   newFlow: () => void
   loadBackendFlow: (flow: BackendFlow) => void
@@ -539,7 +537,6 @@ function sameDiffs(a: RunDiff[], b: RunDiff[]): boolean {
 export const useFlowStore = create<FlowState>((set, get) => ({
   flowId: null,
   name: 'Untitled flow',
-  mode: 'managed',
   flowMeta: {},
   nodes: [],
   edges: [],
@@ -884,7 +881,6 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   openNodeDetails: () => set({ detailsOpen: true }),
   closeNodeDetails: () => set({ detailsOpen: false }),
   setName: (name) => set({ name }),
-  setMode: (mode) => set({ mode }),
 
   previewVersion: null,
   setPreviewVersion: (version) => set({ previewVersion: version }),
@@ -893,7 +889,6 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     set({
       flowId: null,
       name: 'Untitled flow',
-      mode: 'managed',
       flowMeta: {},
       nodes: [],
       edges: [],
@@ -952,7 +947,6 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     set({
       flowId: flow.id ?? null,
       name: flow.name,
-      mode: flow.mode,
       flowMeta: {
         enabled: flow.enabled,
         tags: flow.tags,
@@ -1012,7 +1006,6 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     return {
       id: s.flowId ?? undefined,
       name: s.name,
-      mode: s.mode,
       ...s.flowMeta, // keep tags / favourite / enabled / webhook across canvas saves
       nodes,
       // sourceHandle travels with the wire: a block has two outputs now, and an edge that

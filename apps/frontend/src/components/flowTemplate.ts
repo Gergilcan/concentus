@@ -60,7 +60,6 @@ function templateNode(node: BackendFlowNode): BackendFlowNode {
 export function toTemplate(flow: BackendFlow): BackendFlow {
   return {
     name: flow.name,
-    mode: flow.mode,
     ...(flow.tags?.length ? { tags: flow.tags } : {}),
     nodes: flow.nodes.map(templateNode),
     edges: flow.edges,

@@ -1,7 +1,6 @@
 {
   "id": "docs-from-code",
   "name": "Docs from code",
-  "mode": "local",
   "enabled": true,
   "favorite": false,
   "tags": [

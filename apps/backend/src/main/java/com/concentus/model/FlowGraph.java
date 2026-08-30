@@ -8,7 +8,6 @@ import java.util.Map;
  *
  * @param id            stable id (assigned on first save)
  * @param name          display name
- * @param mode          "managed" (multi-agent execution) | "local"
  * @param nodes         agent + capability nodes
  * @param edges         delegation + capability attachments
  * @param enabled       false pauses scheduled (cron) execution without deleting the trigger
@@ -32,7 +31,12 @@ import java.util.Map;
  *                      such check is a real agent run with a real bill, and a setting that spends
  *                      money on every save must be chosen, not inherited.
  */
-public record FlowGraph(String id, String name, String mode,
+// Unknown properties are skipped, not refused. Flows saved before the flow-level "mode"
+// ("managed" | "local") was removed still carry it — in the store, in every flow version and in
+// every exported .flow.json — and the strict mappers some readers use would otherwise reject the
+// lot. The backend has chosen where each agent runs, by model and credential, for a long time.
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+public record FlowGraph(String id, String name,
                         List<FlowNode> nodes, List<FlowEdge> edges,
                         Boolean enabled, List<String> tags, Boolean favorite,
                         String notifyWebhook, Double budgetUsd,
@@ -49,27 +53,27 @@ public record FlowGraph(String id, String name, String mode,
 
     /** The pre-golden-auto-run shape, kept so the many existing constructions stay valid. */
     @com.fasterxml.jackson.annotation.JsonIgnore
-    public FlowGraph(String id, String name, String mode,
+    public FlowGraph(String id, String name,
                      List<FlowNode> nodes, List<FlowEdge> edges,
                      Boolean enabled, List<String> tags, Boolean favorite,
                      String notifyWebhook, Double budgetUsd,
                      String approvalSlackCredentialId, String approvalSlackChannel,
                      String approvalTeamsWebhook, Map<String, String> variables,
                      String folder) {
-        this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
+        this(id, name, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
                 approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, variables,
                 folder, null);
     }
 
     /** The pre-variables shape, kept so the many existing constructions stay valid. */
     @com.fasterxml.jackson.annotation.JsonIgnore
-    public FlowGraph(String id, String name, String mode,
+    public FlowGraph(String id, String name,
                      List<FlowNode> nodes, List<FlowEdge> edges,
                      Boolean enabled, List<String> tags, Boolean favorite,
                      String notifyWebhook, Double budgetUsd,
                      String approvalSlackCredentialId, String approvalSlackChannel,
                      String approvalTeamsWebhook) {
-        this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
+        this(id, name, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
                 approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook, null, null,
                 null);
     }
@@ -79,28 +83,28 @@ public record FlowGraph(String id, String name, String mode,
      * Canonical constructor, for the same reason {@link #withId} uses it.
      */
     public FlowGraph withFolder(String newFolder) {
-        return new FlowGraph(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook,
+        return new FlowGraph(id, name, nodes, edges, enabled, tags, favorite, notifyWebhook,
                 budgetUsd, approvalSlackCredentialId, approvalSlackChannel, approvalTeamsWebhook,
                 variables, newFolder, goldenAutoRun);
     }
 
     /** The pre-remote-approval shape, kept so the many existing constructions stay valid. */
     @com.fasterxml.jackson.annotation.JsonIgnore
-    public FlowGraph(String id, String name, String mode,
+    public FlowGraph(String id, String name,
                      List<FlowNode> nodes, List<FlowEdge> edges,
                      Boolean enabled, List<String> tags, Boolean favorite,
                      String notifyWebhook, Double budgetUsd) {
-        this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
+        this(id, name, nodes, edges, enabled, tags, favorite, notifyWebhook, budgetUsd,
                 null, null, null);
     }
 
     /** The pre-budget shape, kept for the same reason. */
     @com.fasterxml.jackson.annotation.JsonIgnore
-    public FlowGraph(String id, String name, String mode,
+    public FlowGraph(String id, String name,
                      List<FlowNode> nodes, List<FlowEdge> edges,
                      Boolean enabled, List<String> tags, Boolean favorite,
                      String notifyWebhook) {
-        this(id, name, mode, nodes, edges, enabled, tags, favorite, notifyWebhook, null);
+        this(id, name, nodes, edges, enabled, tags, favorite, notifyWebhook, null);
     }
 
     public List<FlowNode> nodesOrEmpty() {
@@ -124,10 +128,6 @@ public record FlowGraph(String id, String name, String mode,
         return enabled == null || enabled;
     }
 
-    public String modeOrDefault() {
-        return (mode == null || mode.isBlank()) ? "managed" : mode;
-    }
-
     /**
      * Returns a copy with the given id (records are immutable). MUST call the canonical
      * constructor: every save goes through here (JsonStore stamps the id on write), so a stale
@@ -136,7 +136,7 @@ public record FlowGraph(String id, String name, String mode,
      * shape dropped {@code variables} and {@code folder} on save.
      */
     public FlowGraph withId(String newId) {
-        return new FlowGraph(newId, name, mode, nodes, edges, enabled, tags, favorite,
+        return new FlowGraph(newId, name, nodes, edges, enabled, tags, favorite,
                 notifyWebhook, budgetUsd, approvalSlackCredentialId, approvalSlackChannel,
                 approvalTeamsWebhook, variables, folder, goldenAutoRun);
     }

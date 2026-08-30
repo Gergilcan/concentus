@@ -77,7 +77,7 @@ class FanoutExecutorTest {
     }
 
     private static AgentRun runWith(AgentSpec merger, AgentSpec verifier, AgentSpec... workers) {
-        AgentRun run = new AgentRun("run-1", "flow-1", "Flow", "local");
+        AgentRun run = new AgentRun("run-1", "flow-1", "Flow");
         AgentSpec coord = new AgentSpec();
         coord.nodeId = "c1";
         coord.name = "Coordinator";
@@ -995,7 +995,7 @@ class FanoutExecutorTest {
     void graphMetricsExistOnlyForRunsThatFannedOut() {
         // A single-session flow has no graph to measure — the report must carry nothing, not
         // a strip of zeros.
-        AgentRun plain = new AgentRun("run-2", "flow-1", "Flow", "local");
+        AgentRun plain = new AgentRun("run-2", "flow-1", "Flow");
         AgentSpec coord = new AgentSpec();
         coord.nodeId = "c1";
         AgentSpec sub = new AgentSpec();

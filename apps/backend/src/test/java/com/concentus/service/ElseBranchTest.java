@@ -33,7 +33,7 @@ class ElseBranchTest {
     }
 
     private static FlowGraph graph(List<FlowNode> nodes, List<FlowEdge> edges) {
-        return new FlowGraph("f1", "Flow", "managed", nodes, edges,
+        return new FlowGraph("f1", "Flow", nodes, edges,
                 null, null, null, null, null, null, null, null, null, null, null);
     }
 

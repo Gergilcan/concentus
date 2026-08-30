@@ -1,7 +1,6 @@
 {
   "id": "daily-briefing",
   "name": "Daily briefing (cron)",
-  "mode": "local",
   "enabled": false,
   "favorite": false,
   "tags": ["cron", "research"],

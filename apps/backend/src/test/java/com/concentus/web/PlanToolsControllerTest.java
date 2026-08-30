@@ -31,7 +31,7 @@ class PlanToolsControllerTest {
     private final FacadeProfileStore profiles = mock(FacadeProfileStore.class);
 
     private PlanToolsController controller(boolean fanout) {
-        run = new AgentRun("run-1", "flow-1", "Flow", "local");
+        run = new AgentRun("run-1", "flow-1", "Flow");
         run.toolToken = "tok-plan";
         AgentSpec coord = new AgentSpec();
         coord.name = "Coordinator";

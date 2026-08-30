@@ -1,7 +1,6 @@
 {
   "id": "mailbox-assistant",
   "name": "Mailbox assistant (IMAP)",
-  "mode": "local",
   "enabled": false,
   "favorite": false,
   "tags": ["mail", "triage"],

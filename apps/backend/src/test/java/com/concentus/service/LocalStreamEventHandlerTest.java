@@ -30,7 +30,7 @@ class LocalStreamEventHandlerTest {
     @BeforeEach
     void setUp() {
         handler = new LocalStreamEventHandler(new ObjectMapper());
-        run = new AgentRun("run1", "f1", "Flow", "local");
+        run = new AgentRun("run1", "f1", "Flow");
         run.compiled = new CompiledFlow(agent(COORD_NODE, "Coordinator"), List.of(agent(SUB_NODE, "Researcher")));
     }
 

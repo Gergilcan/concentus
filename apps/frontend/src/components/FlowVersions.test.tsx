@@ -34,7 +34,7 @@ function version(over: Partial<FlowVersionInfo> = {}): FlowVersionInfo {
 }
 
 function flow(id: string): BackendFlow {
-  return { id, name: 'My flow', mode: 'managed', nodes: [], edges: [] } as unknown as BackendFlow
+  return { id, name: 'My flow', nodes: [], edges: [] } as unknown as BackendFlow
 }
 
 beforeEach(() => {

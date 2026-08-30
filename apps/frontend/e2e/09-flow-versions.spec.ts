@@ -62,8 +62,8 @@ test('two saves produce two revisions, credited to the local user', async ({ pag
   await expect(versionRows(page)).toHaveCount(2)
   await expect(page.getByText('v2', { exact: true })).toBeVisible()
   // The desktop profile runs with authentication off: one person, credited as "local". Scoped to
-  // the row: unscoped, "local" also matches the mode select's hidden <option> and the header's
-  // "Local (subscription)" badge — and which one comes first depends on the machine, not the code.
+  // the row: unscoped, "local" also matches the header's "Local (subscription)" badge — and which
+  // one comes first depends on the machine, not the code.
   await expect(versionRows(page).filter({ hasText: 'v2' }).getByText('e2e@concentus.test')).toBeVisible()
   // The newest revision is the current one, and the second save added exactly one node.
   await expect(page.getByText('current')).toBeVisible()

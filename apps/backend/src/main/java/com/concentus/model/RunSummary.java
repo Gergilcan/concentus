@@ -8,7 +8,7 @@ import java.util.List;
  * <p>{@code flowVersion} is the flow revision this execution ran, or 0 when the flow had no
  * history at launch (unsaved flow, or version history unavailable).
  */
-public record RunSummary(String id, String flowId, String flowName, String mode,
+public record RunSummary(String id, String flowId, String flowName,
                          String status, long createdAt, String sessionId,
                          List<String> agentIds, String error, String trigger,
                          long totalInputTokens, long totalOutputTokens, double estimatedCostUsd,
@@ -22,12 +22,12 @@ public record RunSummary(String id, String flowId, String flowName, String mode,
 
     /** The shape before executions were credited to a person, kept for the callers that predate it. */
     @com.fasterxml.jackson.annotation.JsonIgnore
-    public RunSummary(String id, String flowId, String flowName, String mode,
+    public RunSummary(String id, String flowId, String flowName,
                       String status, long createdAt, String sessionId,
                       List<String> agentIds, String error, String trigger,
                       long totalInputTokens, long totalOutputTokens, double estimatedCostUsd,
                       boolean golden, int flowVersion) {
-        this(id, flowId, flowName, mode, status, createdAt, sessionId, agentIds, error, trigger,
+        this(id, flowId, flowName, status, createdAt, sessionId, agentIds, error, trigger,
                 totalInputTokens, totalOutputTokens, estimatedCostUsd, golden, flowVersion, null);
     }
 }

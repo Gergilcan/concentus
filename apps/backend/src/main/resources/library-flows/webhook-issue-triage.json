@@ -1,7 +1,6 @@
 {
   "id": "webhook-issue-triage",
   "name": "Issue triage (webhook)",
-  "mode": "local",
   "enabled": false,
   "favorite": false,
   "tags": ["webhook", "issues"],
