@@ -251,6 +251,20 @@ describe('useFlowStore node/edge mutations', () => {
     expect(useFlowStore.getState().selectedId).toBeNull()
   })
 
+  it('deleting the block whose dialog is open closes the dialog with it', () => {
+    const { addNode, selectNode, openNodeDetails, deleteNode } = useFlowStore.getState()
+    addNode('agent')
+    const agent = useFlowStore.getState().nodes[0]
+    selectNode(agent.id)
+    openNodeDetails()
+    expect(useFlowStore.getState().detailsOpen).toBe(true)
+
+    deleteNode(agent.id)
+
+    expect(useFlowStore.getState().detailsOpen).toBe(false)
+    expect(useFlowStore.getState().selectedId).toBeNull()
+  })
+
   it('deleteNode removes the node, any edges touching it, and clears selection if it was selected', () => {
     const { addNode, onConnect, selectNode, deleteNode } = useFlowStore.getState()
     addNode('agent')

@@ -723,7 +723,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     if (changes.some((c) => c.type === 'remove')) get().checkpoint('remove')
     set((s) => {
       const removed = new Set(changes.filter((c) => c.type === 'remove').map((c) => c.id))
-      return { nodes: applyNodeChanges(changes, removed.size ? orphan(s.nodes, removed) : s.nodes) }
+      return {
+        nodes: applyNodeChanges(changes, removed.size ? orphan(s.nodes, removed) : s.nodes),
+        ...(s.selectedId && removed.has(s.selectedId) ? { selectedId: null, detailsOpen: false } : {}),
+      }
     })
   },
   onEdgesChange: (changes) => {
@@ -824,6 +827,9 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       nodes: orphan(s.nodes, new Set([id])).filter((n) => n.id !== id),
       edges: s.edges.filter((e) => e.source !== id && e.target !== id),
       selectedId: s.selectedId === id ? null : s.selectedId,
+      // The dialog follows the selection; a block deleted from its own dialog must not leave the
+      // dialog armed to pop open on the next click anywhere on the canvas.
+      detailsOpen: s.selectedId === id ? false : s.detailsOpen,
     }))
   },
 
