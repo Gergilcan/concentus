@@ -130,6 +130,12 @@ public class SignInProviderController {
         // issuer is refused on Team before anything is written, so a Team admin is never left
         // with a saved registration that the sign-in screen then declines to show.
         registry.requireAllowedToRegister(id);
+        // Enabling a provider with no client id would put a button on the sign-in screen that
+        // sends people to a provider that refuses them; the screen holds Save back for the same
+        // reason, and the API must not be the way round it.
+        if (body.enabled() && (body.clientId() == null || body.clientId().isBlank())) {
+            throw new IllegalArgumentException("A client id is required to enable a sign-in provider.");
+        }
         String who = orgContext.currentUser()
                 .map(com.concentus.auth.ConcentusUserDetails::email).orElse(null);
 

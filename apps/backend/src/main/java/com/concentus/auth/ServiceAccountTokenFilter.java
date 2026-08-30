@@ -120,6 +120,10 @@ public class ServiceAccountTokenFilter extends OncePerRequestFilter {
         } finally {
             // Not saved to the session and not left on the thread: a token authenticates one request.
             SecurityContextHolder.clearContext();
+            // Nor may the request leave a session behind: anything downstream created during it
+            // (a CSRF token store, say) would hand the caller a cookie that outlives the token.
+            jakarta.servlet.http.HttpSession session = request.getSession(false);
+            if (session != null && session.isNew()) session.invalidate();
         }
     }
 

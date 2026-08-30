@@ -305,6 +305,47 @@
   <h1>What changed</h1>
   <p class="sub">Every release, newest first — the same notes that ship with the installers. The app updates itself from these releases; package-manager installs update through their manager.</p>
 
+  <section id="v0.1.14">
+    <h2>v0.1.14 <span class="date">2026-08-30</span></h2>
+<h3>What's new in 0.1.14</h3>
+<h4>The Marketplace</h4>
+<p>A view of its own, beside Studio, where the things a flow is built from are shared and installed — MCP servers, library agents, facades, skills, plugins, API definitions and flow templates.</p>
+<ul>
+<li><strong>Publish</strong> to your organization (no approval needed) or <strong>globally</strong> — a global item goes in front of every organization once a curator approves it. Curators are the administrators of the organization named by <code>marketplace.curator-organization</code>; by default the oldest one.</li>
+<li><strong>Install</strong> with one click: the resource appears in your organization, with its credential slot empty and named. Credentials never travel — publishing from a resource strips them and says so.</li>
+<li><strong>Search</strong>, filter by kind, scope, state and tag; sort by installs, newest or name. Cards say one line; the tooltip says the rest.</li>
+<li><strong>Seeded on day one</strong>: the MCP catalogue (Linear, GitHub, Google, Microsoft, …), the four library agents and the eight starter flows, as built-in items.</li>
+<li><em>Publish to Marketplace</em> from the MCP servers, Agents, Facades and Skills panels and from a flow card; <em>Use from Marketplace…</em> in the API block.</li>
+<li>Every publish, approval, install and uninstall lands in the audit trail.</li>
+</ul>
+<h4>Groups inside an organization (Enterprise)</h4>
+<p>Split an organization into groups under Resources → Groups. A resource — a flow, an MCP server, an agent, a facade, a knowledge base, a credential — can be visible to one group instead of the whole organization (<em>Visible to</em> on the resource or the flow card). A group carries its own policy and its own per-run settings, layered over the organization's for the flows it holds. Managers run their group; administrators create them. The Marketplace publishes to a group and installs into one. The tenth Enterprise feature.</p>
+<h4>Studio</h4>
+<ul>
+<li><strong>Tidy</strong> now lays out the blocks inside a group and sizes the frame to fit, then places groups as blocks of the outer layout. Before, anything inside a group was left where it was.</li>
+<li>The <strong>runs list</strong> in the executions area can be resized by dragging (or with ← → on the handle); the width is remembered per browser.</li>
+<li>The "+ on error" chip no longer sits on top of the "on rejected" output of a Verifier, so the wire can be dragged from it.</li>
+<li>A second output turned on with its chip ("+ on error") can be wired at once; before, the wire went nowhere until the flow was reopened.</li>
+<li>Deleting a block from its own dialog closes the dialog instead of leaving it armed for the next click.</li>
+<li>The dashboard search reads tags as well as names, so clicking a tag chip narrows to the tagged flows.</li>
+<li>The <strong>managed / local</strong> combo is gone from the toolbar: the backend has decided where each agent runs, by its model and credential, for a long time. Flows saved with the old field still load.</li>
+</ul>
+<h4>Resources</h4>
+<ul>
+<li>The <strong>Service accounts</strong> page reads like Members: a roster with role chips and quiet actions, "+ New", the token shown once — and explanations in tooltips instead of paragraphs.</li>
+</ul>
+<h4>Tests</h4>
+<ul>
+<li>UI tests, against the real application, for every node kind (palette, every inspector field, wiring rules, second outputs, persistence), every bundled flow and the flow lifecycle (save, rename, duplicate, export/import, versions, triggers, runs without a model), and every setting and administration panel. They run in CI with the rest.</li>
+</ul>
+<h4>Docs</h4>
+<ul>
+<li>The Marketplace in the docs (English, Spanish, Catalan) and the README.</li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.13...v0.1.14">https://github.com/Gergilcan/concentus/compare/v0.1.13...v0.1.14</a></p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.14">Installers and notes on GitHub →</a></p>
+  </section>
+
   <section id="v0.1.13">
     <h2>v0.1.13 <span class="date">2026-08-30</span></h2>
 <h3>What's new in 0.1.13</h3>

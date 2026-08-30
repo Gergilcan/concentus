@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { errMessage } from '../utils/errMessage.ts'
 import { cx } from '../utils/cx.ts'
 import { GroupChip } from './GroupChip.tsx'
+import { deniedReason, usePermissions } from '../state/permissionRules.ts'
 import styles from './resources.module.scss'
 
 /** Renamed from `Field`: fields.tsx exports a *component* by that name. */
@@ -69,6 +70,7 @@ export function CrudPanel<T extends Record<string, unknown>>({
   extra,
 }: Props<T>) {
   const { t } = useTranslation()
+  const permissions = usePermissions()
   const [items, setItems] = useState<T[]>([])
   const [draft, setDraft] = useState<T>(empty())
   const [status, setStatus] = useState<string | null>(null)
@@ -119,6 +121,8 @@ export function CrudPanel<T extends Record<string, unknown>>({
           <h3 className={styles.h3}>{title}</h3>
           <button
             className={styles.newBtn}
+            disabled={!permissions.canEdit}
+            title={permissions.canEdit ? undefined : deniedReason(permissions, 'edit')}
             onClick={() => {
               setDraft(empty())
               setStatus(null)
