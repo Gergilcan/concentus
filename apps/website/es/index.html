@@ -352,6 +352,8 @@
   .method p { font-size: 14.5px; color: var(--muted); margin-top: 10px; line-height: 1.55; }
   .method .btn { align-self: flex-start; margin-top: auto; }
   .method .actions { margin-top: auto; padding-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  /* A long command — the scoop bucket URL — scrolls inside its box rather than spilling out of the card. */
+  .method pre { overflow-x: auto; }
 
   /* ---------------------------- pricing / license ---------------------------- */
   /* Same card as .methods, three of them — the free form, the self-serve team card, the enterprise pitch. */
