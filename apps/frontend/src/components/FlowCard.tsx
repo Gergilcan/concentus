@@ -7,6 +7,7 @@ import { cx } from '../utils/cx.ts'
 import { hueOf } from '../utils/hueOf.ts'
 import { KIND_LABEL, compact, countsOf, decided, kindOf, money, timeAgo, triggerOf } from './flowFormat.ts'
 import { templateJson } from './flowTemplate.ts'
+import { GroupChip } from './GroupChip.tsx'
 import styles from './flows.module.scss'
 
 /** Drops the menu items whose feature is not wired up on this card. */
@@ -33,6 +34,7 @@ export function FlowCard({
   setTagFilter,
   onDragStart,
   onPublish,
+  setVisibleToFor,
   golden,
   onGoldenCheck,
   goldenChecking = false,
@@ -62,6 +64,8 @@ export function FlowCard({
   onDragStart?: (e: DragEvent) => void
   /** Opens the Marketplace publish form for this flow. Absent simply hides the item. */
   onPublish?: (flow: BackendFlow) => void
+  /** Opens the "Visible to" dialog — which group, if any, sees this flow. Absent simply hides the item. */
+  setVisibleToFor?: (flow: BackendFlow) => void
 }) {
   const { t } = useTranslation()
   // Copy-as-template feedback: a ✓ for a moment, then back. Clipboard writes are invisible,
@@ -146,6 +150,7 @@ export function FlowCard({
       <div className={styles.badges}>
         <span className={cx(styles.badge, styles['b_' + trigger.tone])}>{t(trigger.label)}</span>
         {paused && <span className={cx(styles.badge, styles.b_paused)}>{t('paused')}</span>}
+        <GroupChip groupId={flow.groupId} className={cx(styles.badge, styles.b_group)} />
         {voices.length > 0 && (
           <span className={styles.voices}>
             {voices.map((name, i) => (
@@ -275,6 +280,15 @@ export function FlowCard({
                 icon: '⇪',
                 hint: t('Shares this flow as a template on the Marketplace. Credentials, accounts and private endpoints are stripped and named.'),
                 onSelect: () => onPublish(flow),
+              },
+            flow.id &&
+              setVisibleToFor && {
+                label: t('Visible to…'),
+                icon: '◔',
+                hint: t('Everybody in the organization, or one group and the administrators. A flow in a group runs under the group\'s policy and settings.'),
+                disabled: !permissions.canEdit,
+                disabledReason: deniedReason(permissions, 'edit'),
+                onSelect: () => setVisibleToFor(flow),
               },
             {
               label: t('Duplicate'),

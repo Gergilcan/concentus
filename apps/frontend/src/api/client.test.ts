@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BackendFlow, RunEvent } from './types.ts'
+import type { BackendFlow, RunEvent, SessionGroup } from './types.ts'
 import { api, openRunSocket } from './client.ts'
 
 /** Minimal stand-in for the `fetch` Response object, only implementing what `req()` reads. */
@@ -360,5 +360,71 @@ describe('openRunSocket', () => {
     await vi.advanceTimersByTimeAsync(5_000)
 
     expect(MockWebSocket.instances).toHaveLength(1) // reconnect never fired
+  })
+})
+
+// The group routes: the status the whole interface reads once, the one endpoint that moves a
+// resource, and the session's own list of groups — typed, so a screen cannot read `manager` off
+// a shape that does not carry it.
+describe('groups routes', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('groupsStatus GETs /api/groups/status and the session carries typed groups', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse({ allowed: true, refusal: null, groups: 1, mine: [{ id: 'gr_1', name: 'platform', manager: true }] }),
+    )
+    const status = await api.groupsStatus()
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/groups/status')
+    expect(status.mine[0].manager).toBe(true)
+
+    fetchMock.mockResolvedValue(
+      okResponse({ storeAvailable: true, signedIn: true, groups: [{ id: 'gr_1', name: 'platform', manager: false }] }),
+    )
+    const session = await api.session()
+    const groups: SessionGroup[] | undefined = session.groups
+    expect(groups?.[0]).toEqual({ id: 'gr_1', name: 'platform', manager: false })
+  })
+
+  it('assignGroup POSTs the kind, the resource and the group — null to return it to the organization', async () => {
+    fetchMock.mockResolvedValue(okResponse({ kind: 'flow', resourceId: 'f1', groupId: null }))
+    await api.assignGroup('flow', 'f1', null)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/groups/assign')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ kind: 'flow', resourceId: 'f1', groupId: null })
+  })
+
+  it('an install into a group carries the group in the body; a plain install sends none', async () => {
+    fetchMock.mockResolvedValue(okResponse({ resourceId: 'mcp_1', kind: 'mcp', version: 1 }))
+    await api.installMarketplaceItem('mkt_1', { groupId: 'gr_1' })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ groupId: 'gr_1' })
+
+    await api.installMarketplaceItem('mkt_1')
+    expect(fetchMock.mock.calls[1][1].body).toBeUndefined()
+  })
+
+  it('the settings and policy routes address the group and PUT what the panel edits', async () => {
+    fetchMock.mockResolvedValue(okResponse({ values: {}, keys: [], inherited: {} }))
+    await api.saveGroupSettings('gr_1', { 'workers.retries': '3' })
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/groups/gr_1/settings')
+    expect(fetchMock.mock.calls[0][1].method).toBe('PUT')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ values: { 'workers.retries': '3' } })
+
+    await api.addGroupMember('gr_1', 'u2', true)
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/groups/gr_1/members')
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ userId: 'u2', manager: true })
+
+    await api.removeGroupMember('gr_1', 'u2')
+    expect(fetchMock.mock.calls[2][0]).toBe('/api/groups/gr_1/members/u2')
+    expect(fetchMock.mock.calls[2][1].method).toBe('DELETE')
   })
 })

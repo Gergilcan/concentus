@@ -9,6 +9,7 @@ import { cx } from '../utils/cx.ts'
 import { DoctorModal } from './DoctorModal.tsx'
 import { FlowEvaluationPanel } from './FlowEvaluationPanel.tsx'
 import { FlowVersions } from './FlowVersions.tsx'
+import { GroupChip } from './GroupChip.tsx'
 import { Modal } from './Modal.tsx'
 import styles from './toolbar.module.scss'
 
@@ -29,6 +30,7 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, onOpenRun
   const newFlow = useFlowStore((s) => s.newFlow)
   const loadBackendFlow = useFlowStore((s) => s.loadBackendFlow)
   const flowId = useFlowStore((s) => s.flowId)
+  const groupId = useFlowStore((s) => s.flowMeta.groupId)
   const [checking, setChecking] = useState(false)
   const [versions, setVersions] = useState(false)
   const [evaluations, setEvaluations] = useState(false)
@@ -70,6 +72,9 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, onOpenRun
         onChange={(e) => setName(e.target.value)}
         aria-label={t('Flow name')}
       />
+      {/* Which group this flow belongs to — and therefore whose policy and settings a run of it
+          follows. Next to the name because it is part of what the flow IS, not of what it does. */}
+      <GroupChip groupId={groupId} className={styles.group} />
 
       <div className={styles.spacer} />
 

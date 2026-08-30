@@ -12,6 +12,7 @@ export function mktItem(overrides: Partial<MarketplaceItem> = {}): MarketplaceIt
     version: 1,
     scope: 'global',
     organizationId: 'org_1',
+    groupId: null,
     status: 'published',
     rejection: null,
     author: { userId: 'u1', email: 'ana@example.com' },

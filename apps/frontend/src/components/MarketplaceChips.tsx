@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import type { MarketplaceItem } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
+import { groupName, useGroups } from './groups.ts'
 import { KIND_LABEL, SCOPE_LABEL, STATE_LABEL, stateOf } from './marketplace.ts'
 import styles from './marketplace.module.scss'
 
@@ -19,6 +20,7 @@ export function KindChip({ item }: { item: MarketplaceItem }) {
 
 export function ScopeChip({ item }: { item: MarketplaceItem }) {
   const { t } = useTranslation()
+  if (item.scope === 'group') return <GroupScopeChip groupId={item.groupId} />
   return (
     <span
       className={styles.chip}
@@ -29,6 +31,17 @@ export function ScopeChip({ item }: { item: MarketplaceItem }) {
       }
     >
       {t(SCOPE_LABEL[item.scope])}
+    </span>
+  )
+}
+
+/** A group-scoped item wears the group's name; "Group" only when the caller cannot see which. */
+function GroupScopeChip({ groupId }: { groupId: string | null }) {
+  const { t } = useTranslation()
+  const groups = useGroups({ all: true })
+  return (
+    <span className={styles.chip} title={t('Visible to the members of this group and administrators')}>
+      {groupName(groups, groupId) ?? t(SCOPE_LABEL.group)}
     </span>
   )
 }

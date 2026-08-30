@@ -5,17 +5,10 @@ import type { FacadeProfile, OrgPolicy, OrgPolicyView } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { PERMISSION_MODE_ORDER } from '../utils/permissionCeiling.ts'
 import { Field, SelectField } from './fields.tsx'
+import { MODE_LABEL } from './policyFields.ts'
 import { Spinner } from './Spinner.tsx'
 import panels from './panels.module.scss'
 import styles from './resources.module.scss'
-
-/** What each mode lets an agent do, for the ceiling picker — the coordinator's own wording. */
-const MODE_LABEL: Record<(typeof PERMISSION_MODE_ORDER)[number], string> = {
-  plan: 'Plan only — proposes, changes nothing',
-  default: 'Ask — prompts before each sensitive action',
-  acceptEdits: 'Auto-accept file edits, ask for the rest',
-  bypassPermissions: 'Bypass all checks',
-}
 
 /** The stored budget as the number box shows it: blank for none, never "0" or "null". */
 function budgetText(policy: OrgPolicy): string {

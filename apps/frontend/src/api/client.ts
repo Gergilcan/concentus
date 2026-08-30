@@ -79,6 +79,15 @@ import type {
   MarketplacePublishBody,
   MarketplacePublishFromBody,
   MarketplaceStatus,
+  AssignKind,
+  Group,
+  GroupAssignment,
+  GroupMember,
+  GroupPolicy,
+  GroupPolicyView,
+  GroupSettings,
+  GroupsList,
+  GroupsStatus,
 } from './types.ts'
 
 export interface SqlSourceInput {
@@ -805,8 +814,12 @@ export const api = {
   updateMarketplaceItem: (id: string, body: MarketplacePublishBody) =>
     req<MarketplaceItem>(`/marketplace/items/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteMarketplaceItem: (id: string) => req<void>(`/marketplace/items/${id}`, { method: 'DELETE' }),
-  installMarketplaceItem: (id: string) =>
-    req<MarketplaceInstallResult>(`/marketplace/items/${id}/install`, { method: 'POST' }),
+  /** Creates the item's resource in this organization — or, with `groupId`, visible to that group alone. */
+  installMarketplaceItem: (id: string, options?: { groupId?: string | null }) =>
+    req<MarketplaceInstallResult>(`/marketplace/items/${id}/install`, {
+      method: 'POST',
+      ...(options?.groupId ? { body: JSON.stringify({ groupId: options.groupId }) } : {}),
+    }),
   uninstallMarketplaceItem: (id: string) =>
     req<void>(`/marketplace/items/${id}/uninstall`, { method: 'POST' }),
   approveMarketplaceItem: (id: string) =>
@@ -820,6 +833,37 @@ export const api = {
       body: JSON.stringify(body),
     }),
   marketplaceStatus: () => req<MarketplaceStatus>('/marketplace/status'),
+
+  // Groups inside an organization (Enterprise). The backend decides what the caller may SEE:
+  // an admin gets every group, anybody else the ones they are in.
+  listGroups: () => req<GroupsList>('/groups'),
+  /** Admin only; refused with the Enterprise sentence on a Team license. */
+  createGroup: (name: string, description: string) =>
+    req<Group>('/groups', { method: 'POST', body: JSON.stringify({ name, description }) }),
+  /** Admin or a manager of the group. */
+  updateGroup: (id: string, name: string, description: string) =>
+    req<Group>(`/groups/${id}`, { method: 'PUT', body: JSON.stringify({ name, description }) }),
+  /** Admin only. Un-scopes what the group held — `unscoped` counts the resources returned to the organization. */
+  deleteGroup: (id: string) => req<{ deleted: true; unscoped: number }>(`/groups/${id}`, { method: 'DELETE' }),
+  listGroupMembers: (id: string) => req<GroupMember[]>(`/groups/${id}/members`),
+  /** Adds an account of the organization, or re-sends an existing one to change whether it manages. */
+  addGroupMember: (id: string, userId: string, manager: boolean) =>
+    req<GroupMember>(`/groups/${id}/members`, { method: 'POST', body: JSON.stringify({ userId, manager }) }),
+  removeGroupMember: (id: string, userId: string) =>
+    req<void>(`/groups/${id}/members/${userId}`, { method: 'DELETE' }),
+  getGroupSettings: (id: string) => req<GroupSettings>(`/groups/${id}/settings`),
+  /** Replaces the group's overrides: a key left out inherits the organization's value again. */
+  saveGroupSettings: (id: string, values: Record<string, string>) =>
+    req<GroupSettings>(`/groups/${id}/settings`, { method: 'PUT', body: JSON.stringify({ values }) }),
+  getGroupPolicy: (id: string) => req<GroupPolicyView>(`/groups/${id}/policy`),
+  /** A null field inherits the organization's policy for that rule. */
+  saveGroupPolicy: (id: string, policy: GroupPolicy) =>
+    req<GroupPolicyView>(`/groups/${id}/policy`, { method: 'PUT', body: JSON.stringify(policy) }),
+  /** Makes a resource visible to one group, or (null) to the whole organization again. Audited. */
+  assignGroup: (kind: AssignKind, resourceId: string, groupId: string | null) =>
+    req<GroupAssignment>('/groups/assign', { method: 'POST', body: JSON.stringify({ kind, resourceId, groupId }) }),
+  /** Whether groups may be used here, and which ones the caller is in — asked once per app life. */
+  groupsStatus: () => req<GroupsStatus>('/groups/status'),
 }
 
 export type RunSocketStatus = 'connecting' | 'open' | 'reconnecting' | 'disconnected'

@@ -1273,3 +1273,9 @@
 .menuLabel {
   white-space: nowrap;
 }
+
+/** The group a flow is visible to — the only badge in the accent, because it changes who sees the card at all. */
+.b_group {
+  color: t.$accent;
+  border-color: t.$accent-soft;
+}

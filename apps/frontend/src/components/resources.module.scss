@@ -1604,3 +1604,81 @@
     margin: var(--sp-3) 0 var(--sp-4);
   }
 }
+
+/* ---- groups ---- */
+
+/** The group a resource is visible to, on its row: the same pill the "manager" tag wears, muted. */
+.groupChip {
+  flex: none;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$muted;
+  border: 1px solid t.$border;
+  border-radius: 999px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+/** A group's description on its roster row, before the count chips. */
+.groupDescription {
+  margin-right: 8px;
+}
+
+.memberMeta .roleChip {
+  margin-left: 6px;
+}
+
+/** "Visible to" under a form: a short row, not a full-width field. */
+.visibleTo {
+  max-width: 320px;
+}
+
+/** A setting still following the organization: the value reads as a hint, not as the group's own. */
+.inheritedControl {
+  input,
+  select {
+    color: t.$muted;
+    font-style: italic;
+  }
+}
+
+.settingControl .rowBtn {
+  margin-top: 6px;
+}
+
+.groupDetail {
+  margin-top: var(--sp-3);
+}
+
+/** One policy rule of a group: label and inherit switch on one line, the control, then what is in effect. */
+.policyField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 1px solid t.$border;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  select,
+  input {
+    max-width: 420px;
+  }
+}
+
+.policyHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 420px;
+}
+
+.policyLabel {
+  font-size: 13px;
+  color: t.$text;
+}

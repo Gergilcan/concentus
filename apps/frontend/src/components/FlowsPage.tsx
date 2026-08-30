@@ -24,6 +24,7 @@ import { FlowsToolbar } from './FlowsToolbar.tsx'
 import { MarketplacePublishDialog } from './MarketplacePublishDialog.tsx'
 import { RecipesModal } from './RecipesModal.tsx'
 import { RecentRunsList } from './RecentRunsList.tsx'
+import { VisibleToDialog } from './VisibleTo.tsx'
 import styles from './flows.module.scss'
 
 /** dataTransfer types for the dashboard's drag & drop — custom so foreign drags are ignored. */
@@ -45,6 +46,8 @@ interface Props {
   onOpenRun: (runId: string) => void
   onSaveFlow: (flow: BackendFlow) => Promise<void>
   onRetryRun: (runId: string) => void
+  /** Something changed a flow without going through a save — a group assignment — so the list is stale. */
+  onFlowsChanged?: () => void
   pushError: (m: string) => void
 }
 
@@ -61,6 +64,7 @@ export function FlowsPage({
   onOpenRun,
   onSaveFlow,
   onRetryRun,
+  onFlowsChanged,
   pushError,
 }: Props) {
   const { t } = useTranslation()
@@ -100,6 +104,8 @@ export function FlowsPage({
   const [pickingRecipe, setPickingRecipe] = useState(false)
   // The flow being published to the Marketplace, from its card's menu.
   const [publishFor, setPublishFor] = useState<BackendFlow | null>(null)
+  // The flow whose group is being chosen, from its card's menu.
+  const [visibleToFor, setVisibleToFor] = useState<BackendFlow | null>(null)
   // Which flows have a golden reference and whether they drifted from it. Derived server-side, so
   // this is a read: re-fetched whenever the flow list changes, which is what a save produces.
   const [goldenStatuses, setGoldenStatuses] = useState<GoldenStatus[]>([])
@@ -316,6 +322,7 @@ export function FlowsPage({
       onGoldenCheck={startGoldenCheck}
       goldenChecking={!!checking && checking.flowId === flow.id}
       onPublish={setPublishFor}
+      setVisibleToFor={setVisibleToFor}
     />
   )
 
@@ -553,6 +560,22 @@ export function FlowsPage({
                 }),
               )
             }
+          }}
+          pushError={pushError}
+        />
+      )}
+
+      {visibleToFor?.id && (
+        <VisibleToDialog
+          kind="flow"
+          resourceId={visibleToFor.id}
+          name={visibleToFor.name}
+          groupId={visibleToFor.groupId}
+          onClose={() => setVisibleToFor(null)}
+          onAssigned={(groupId) => {
+            // The dialog keeps showing the answer; the grid behind it is told to re-read.
+            setVisibleToFor({ ...visibleToFor, groupId })
+            onFlowsChanged?.()
           }}
           pushError={pushError}
         />

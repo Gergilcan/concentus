@@ -9,6 +9,8 @@ import type {
 } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { Field, SelectField } from './fields.tsx'
+import { GroupChip } from './GroupChip.tsx'
+import { VisibleTo } from './VisibleTo.tsx'
 import styles from './resources.module.scss'
 
 const KINDS = [
@@ -236,7 +238,9 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
             {/* Grouped: the row is a flex line, so two loose children would sit side by side
                 instead of stacking — the label and its metadata each squeezed into half a column. */}
             <div className={styles.crudItemStack}>
-              <div>{c.label}</div>
+              <div>
+                {c.label} <GroupChip groupId={c.groupId} />
+              </div>
               <div className={styles.muted}>
                 {c.kind} · {c.hint ?? '••••'}
                 {c.lastUsedAt
@@ -407,6 +411,19 @@ export function CredentialsPanel({ pushError }: { pushError: (m: string) => void
                   'Stored as typed — this installation has no CONCENTUS_SECRET_KEY, so anyone who can read the database can read it. Never sent back to this screen or any API. To change it, type a new one.',
                 )}
               </p>
+            )}
+
+            {editing && (
+              <VisibleTo
+                kind="credential"
+                resourceId={editing.id}
+                groupId={editing.groupId}
+                pushError={pushError}
+                onAssigned={(groupId) => {
+                  setEditing({ ...editing, groupId })
+                  setItems((prev) => prev.map((c) => (c.id === editing.id ? { ...c, groupId } : c)))
+                }}
+              />
             )}
 
             <div className={styles.crudActions}>

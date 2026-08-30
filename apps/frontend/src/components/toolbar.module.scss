@@ -112,3 +112,16 @@
     background: t.$danger;
   }
 }
+
+/** The group the open flow belongs to, beside its name: whose policy and settings a run follows. */
+.group {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$accent;
+  border: 1px solid t.$accent-soft;
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-left: 8px;
+  white-space: nowrap;
+}

@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { errMessage } from '../utils/errMessage.ts'
 import { cx } from '../utils/cx.ts'
+import { GroupChip } from './GroupChip.tsx'
 import styles from './resources.module.scss'
 
 /** Renamed from `Field`: fields.tsx exports a *component* by that name. */
@@ -137,6 +138,9 @@ export function CrudPanel<T extends Record<string, unknown>>({
             }}
           >
             <span className={styles.crudItemLabel}>{labelOf(it) || t('(unnamed)')}</span>
+            {/* Every kind listed here can be scoped to a group, and the wire shape names it the
+                same way on all of them — so the chip is drawn once, here, for whichever has one. */}
+            {typeof it.groupId === 'string' && <GroupChip groupId={it.groupId} />}
             {/* Delete from the LIST, without opening: a record with data the form cannot render
                 must still be removable — opening it first is exactly what a broken one can't
                 survive. A span with role=button because a button may not contain a button. */}
