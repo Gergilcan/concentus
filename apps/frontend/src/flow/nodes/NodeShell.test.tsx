@@ -133,6 +133,22 @@ describe('NodeShell second outputs', () => {
     expect(container.querySelector('[data-handleid="error"]')).toBeNull()
   })
 
+  // The chip must not sit on the handle it would hide: with one output shown, the chips move
+  // up a row, and the card grows by that row.
+  it('puts the chips a row above the outputs already shown', () => {
+    const rejected: AltHandle = {
+      id: 'rejected',
+      label: 'on rejected',
+      tone: 'rejected',
+      optional: { flag: 'rejectedOutput', enabled: true },
+    }
+    const { container } = renderShell({ id: 'v1', altHandles: [rejected, onError(false)] })
+    const chips = screen.getByRole('button', { name: '+ on error' }).parentElement as HTMLElement
+    expect(chips.style.bottom).toBe('18px')
+    expect(screen.getByText('on rejected').style.bottom).toBe('2px')
+    expect((container.firstChild as HTMLElement).style.paddingBottom).toBe('40px')
+  })
+
   it('stacks two outputs lowest-first and offers one chip per hidden one', () => {
     const rejected: AltHandle = {
       id: 'rejected',

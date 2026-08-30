@@ -78,7 +78,10 @@ export function NodeShell({
 
   const shown = altHandles.filter((h) => !h.optional || h.optional.enabled || wired.has(h.id))
   const hidden = altHandles.filter((h) => !shown.includes(h))
-  const rows = Math.max(shown.length, hidden.length > 0 ? 1 : 0)
+  // The chips that turn a hidden output on take a row of their own above the outputs already
+  // shown: on the same row they sat on top of the lowest handle, and a verifier with on
+  // rejected shown could not be wired from it because '+ on error' was in the way.
+  const rows = shown.length + (hidden.length > 0 ? 1 : 0)
 
   return (
     <div
@@ -131,7 +134,7 @@ export function NodeShell({
         )
       })}
       {hidden.length > 0 && id && (
-        <span className={cx(styles.chips, 'nodrag', 'nopan')}>
+        <span className={cx(styles.chips, 'nodrag', 'nopan')} style={{ bottom: 2 + shown.length * ROW }}>
           {hidden.map((h) => (
             <button
               key={h.id}
