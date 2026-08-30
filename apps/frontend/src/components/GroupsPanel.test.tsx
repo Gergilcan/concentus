@@ -334,6 +334,21 @@ describe('GroupsPanel', () => {
       expect(await screen.findByText('Saved. Applies to the next run.')).toBeInTheDocument()
     })
 
+    it('a rule the API leaves out of its answer is an inherited one', async () => {
+      // The backend serialises with non_null: a fresh group answers only `effective`, and every
+      // rule of its own is simply absent — which has to read as inherited, not as "set to nothing".
+      getGroupPolicy.mockResolvedValue({ effective: POLICY.effective })
+      renderPanel()
+      await openGroup('platform')
+      fireEvent.click(await screen.findByRole('tab', { name: 'Policy' }))
+
+      expect(await screen.findByLabelText('Inherit: Permission ceiling')).toBeChecked()
+      expect(screen.getByLabelText('Inherit: Group budget (USD per month)')).toBeChecked()
+      expect(screen.getByLabelText('Permission ceiling')).toBeDisabled()
+      expect(screen.getByLabelText('Group budget (USD per month)')).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    })
+
     it('on Team there is no Save and the refusal shows', async () => {
       listGroups.mockResolvedValue({ groups: [platform], allowed: false, refusal: REFUSAL })
       renderPanel()
