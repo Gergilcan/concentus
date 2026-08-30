@@ -404,7 +404,7 @@ public class MarketplaceInstaller {
             }
             if (hadValues) stripped.add("variables");
         }
-        return new FlowGraph(null, source.name(), source.mode(), nodes, source.edgesOrEmpty(),
+        return new FlowGraph(null, source.name(), nodes, source.edgesOrEmpty(),
                 Boolean.FALSE, source.tagsOrEmpty(), Boolean.FALSE, null, source.budgetUsd(),
                 null, source.approvalSlackChannel(), null, variables, null, Boolean.FALSE);
     }

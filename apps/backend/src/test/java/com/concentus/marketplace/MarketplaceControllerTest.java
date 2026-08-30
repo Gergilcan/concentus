@@ -550,7 +550,7 @@ class MarketplaceControllerTest {
                 "published", true, "publishToken", "tok", "cron", "0 7 * * *"));
         FlowNode mail = new FlowNode("m", "mail", null, Map.of("credentialId", "cred_m", "folder", "Inbox"));
         FlowNode lead = new FlowNode("a", "agent", "coordinator", Map.of("name", "Lead", "description", "Leads"));
-        FlowGraph flow = flows.save(new FlowGraph(null, "Nightly", "managed", List.of(input, mail, lead),
+        FlowGraph flow = flows.save(new FlowGraph(null, "Nightly", List.of(input, mail, lead),
                 List.of(new FlowEdge("e1", "in", "a")), true, List.of("ops"), true, "https://hooks.slack/x", 5.0,
                 "cred_slack", "#ops", "https://teams/x", Map.of("API_KEY", "k"), "Samples", false));
 
