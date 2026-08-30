@@ -1,11 +1,14 @@
 @use '../styles/theme' as t;
 
 .runs {
+  /* The splitter below is positioned against this box. */
+  position: relative;
   /* Set by the drag handle on the panel's top edge (App.tsx); 260px until someone drags it. */
   height: var(--runs-h, 260px);
   display: grid;
-  /* 260px matches the node palette's DEFAULT width (App.tsx), so the left edges start aligned. */
-  grid-template-columns: 260px 1fr;
+  /* Set by the splitter between the list and the console (RunsPanel.tsx); 260px until someone
+     drags it, matching the node palette's DEFAULT width (App.tsx) so the left edges start aligned. */
+  grid-template-columns: var(--run-list-w, 260px) 1fr;
   border-top: 1px solid t.$border;
   background: t.$panel;
   min-height: 0;
@@ -15,6 +18,26 @@
   border-right: 1px solid t.$border;
   overflow: auto;
   padding: var(--sp-3);
+}
+
+/* The splitter between the list and the console: straddles the list's right border, invisible
+   until pointed at, focused or dragged — the handle every other Studio panel has (App.tsx). */
+.runSplit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--run-list-w, 260px) - 4px);
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 6;
+
+  &:hover,
+  &:focus-visible,
+  &.runSplitOn {
+    background: t.$accent-strong;
+    outline: none;
+  }
 }
 
 .h3 {

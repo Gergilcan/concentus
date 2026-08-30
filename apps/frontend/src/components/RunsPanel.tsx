@@ -1,4 +1,12 @@
-import { useState } from 'react'
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { RunSummary } from '../api/types.ts'
@@ -22,6 +30,139 @@ const TRIGGER_LABEL: Record<string, string> = {
   api: '🔌 api',
   golden: '⭐ golden',
   eval: '✓ eval',
+}
+
+/** Where the run list's width is remembered — per browser, like the dock's own height (App.tsx). */
+const LIST_WIDTH_KEY = 'studio.runs.listWidth'
+/** Matches the node palette's DEFAULT width (App.tsx), so the two left edges start aligned. */
+const LIST_WIDTH_DEFAULT = 260
+const LIST_WIDTH_MIN = 200
+/** The list may take this share of the dock at most: the console is what the dock is for. */
+const LIST_WIDTH_MAX_SHARE = 0.6
+/** How far one arrow key moves the split. */
+const LIST_WIDTH_STEP = 16
+
+/** The remembered width, or null when there is none or it is not a width. */
+function readStoredListWidth(): number | null {
+  try {
+    const n = Number(localStorage.getItem(LIST_WIDTH_KEY) ?? NaN)
+    return Number.isFinite(n) && n > 0 ? n : null
+  } catch {
+    return null
+  }
+}
+
+/** Remembers the width; null forgets it, so a future default applies. */
+function storeListWidth(width: number | null) {
+  try {
+    if (width === null) localStorage.removeItem(LIST_WIDTH_KEY)
+    else localStorage.setItem(LIST_WIDTH_KEY, String(width))
+  } catch {
+    // Storage refused (private mode, quota): the width still holds for this session.
+  }
+}
+
+/** The widest the list may be in a dock this wide — unbounded while the dock has no width yet. */
+function maxListWidth(dockWidth: number): number {
+  return dockWidth > 0 ? Math.max(LIST_WIDTH_MIN, dockWidth * LIST_WIDTH_MAX_SHARE) : Infinity
+}
+
+function clampListWidth(width: number, max: number): number {
+  return Math.min(max, Math.max(LIST_WIDTH_MIN, Math.round(width)))
+}
+
+/**
+ * How wide the run list is, dragged on the splitter between it and the console and remembered
+ * per browser — same home and same reason as the dock's height (App.tsx): how much of the dock
+ * the list deserves is a fact about this screen, not about any flow.
+ *
+ * The stored width is read in the state initialiser so the first paint already has it; one
+ * wider than the dock now allows is pulled back in a layout effect, before that paint. Written
+ * on release and on each key press, not on every move — a drag is dozens of values a second and
+ * only the last one is worth keeping.
+ */
+function useRunListWidth(dock: RefObject<HTMLElement | null>) {
+  const [width, setWidth] = useState(() => {
+    const stored = readStoredListWidth()
+    return stored === null ? LIST_WIDTH_DEFAULT : Math.max(LIST_WIDTH_MIN, stored)
+  })
+  // The upper bound as last measured, for the handle's aria-valuemax.
+  const [max, setMax] = useState(Infinity)
+  const [dragging, setDragging] = useState(false)
+  const dragActive = useRef(false)
+  const lastDragged = useRef<number | null>(null)
+
+  /** The dock as it is now: where the list starts, and how wide it may get. */
+  const measure = () => {
+    const rect = dock.current?.getBoundingClientRect()
+    const bound = maxListWidth(rect?.width ?? 0)
+    setMax(bound)
+    return { left: rect?.left ?? 0, max: bound }
+  }
+
+  useLayoutEffect(() => {
+    const bound = maxListWidth(dock.current?.getBoundingClientRect().width ?? 0)
+    setMax(bound)
+    setWidth((w) => Math.min(w, bound))
+  }, [dock])
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    // Otherwise the drag selects the console's text as the pointer crosses it.
+    e.preventDefault()
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      // No active pointer to capture (a synthetic event); the handle still follows the moves it gets.
+    }
+    dragActive.current = true
+    lastDragged.current = null
+    setDragging(true)
+  }
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragActive.current) return
+    const { left, max } = measure()
+    const next = clampListWidth(e.clientX - left, max)
+    lastDragged.current = next
+    setWidth(next)
+  }
+  const endDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragActive.current) return
+    dragActive.current = false
+    setDragging(false)
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    } catch {
+      // Nothing was captured.
+    }
+    if (lastDragged.current !== null) storeListWidth(lastDragged.current)
+  }
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === 'ArrowLeft' ? -LIST_WIDTH_STEP : e.key === 'ArrowRight' ? LIST_WIDTH_STEP : 0
+    if (step === 0) return
+    e.preventDefault()
+    const next = clampListWidth(width + step, measure().max)
+    setWidth(next)
+    storeListWidth(next)
+  }
+  const reset = () => {
+    setWidth(clampListWidth(LIST_WIDTH_DEFAULT, measure().max))
+    storeListWidth(null)
+  }
+
+  return {
+    width,
+    max,
+    dragging,
+    handleProps: {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp: endDrag,
+      onPointerCancel: endDrag,
+      onKeyDown,
+      onDoubleClick: reset,
+    },
+  }
 }
 
 interface Props {
@@ -111,8 +252,15 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
     else setPicking(true)
   }
 
+  const dock = useRef<HTMLElement>(null)
+  const list = useRunListWidth(dock)
+
   return (
-    <section className={styles.runs}>
+    <section
+      ref={dock}
+      className={styles.runs}
+      style={{ '--run-list-w': `${list.width}px` } as CSSProperties}
+    >
       <div className={styles.runList}>
         <h3 className={styles.h3}>{t('Executions')}</h3>
         {goldenRun && (
@@ -232,6 +380,18 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
             </div>
           ))}
       </div>
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t('Drag to resize')}
+        aria-valuemin={LIST_WIDTH_MIN}
+        aria-valuemax={Number.isFinite(list.max) ? Math.round(list.max) : undefined}
+        aria-valuenow={list.width}
+        tabIndex={0}
+        title={t('Drag to resize')}
+        className={cx(styles.runSplit, list.dragging && styles.runSplitOn)}
+        {...list.handleProps}
+      />
       <div className={styles.runMain}>
         {selected ? (
           <Console

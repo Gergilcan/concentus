@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RunSummary } from '../api/types.ts'
 import { RunsPanel } from './RunsPanel.tsx'
 
@@ -237,5 +237,128 @@ describe('RunsPanel golden runs', () => {
     renderPanel([run({ id: 'r1' })], 'f1')
 
     expect(screen.queryByTitle(/equivalent usage/)).not.toBeInTheDocument()
+  })
+})
+
+describe('RunsPanel run list width', () => {
+  const KEY = 'studio.runs.listWidth'
+  let rect: ReturnType<typeof vi.spyOn>
+
+  // jsdom lays nothing out, so the dock — and everything else — measures 1000px wide at x=0.
+  beforeEach(() => {
+    localStorage.clear()
+    rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      bottom: 260,
+      right: 1000,
+      width: 1000,
+      height: 260,
+      toJSON: () => ({}),
+    })
+  })
+  afterEach(() => {
+    rect.mockRestore()
+  })
+
+  const handle = () => screen.getByRole('separator')
+  const width = () => Number(handle().getAttribute('aria-valuenow'))
+  const cssWidth = () => handle().parentElement!.style.getPropertyValue('--run-list-w')
+
+  it('starts at the default width and lays the list out with it', () => {
+    renderPanel([run()], 'f1')
+
+    expect(handle()).toHaveAttribute('aria-orientation', 'vertical')
+    expect(width()).toBe(260)
+    expect(cssWidth()).toBe('260px')
+    expect(localStorage.getItem(KEY)).toBeNull()
+  })
+
+  it('starts at the remembered width, applied on the first render', () => {
+    localStorage.setItem(KEY, '340')
+    renderPanel([run()], 'f1')
+
+    expect(width()).toBe(340)
+    expect(cssWidth()).toBe('340px')
+  })
+
+  it('ignores a remembered value that is not a width', () => {
+    localStorage.setItem(KEY, 'wide')
+    renderPanel([run()], 'f1')
+
+    expect(width()).toBe(260)
+  })
+
+  it('a drag moves the split, and the width is remembered once the pointer is released', () => {
+    renderPanel([run()], 'f1')
+
+    fireEvent.pointerDown(handle(), { button: 0, pointerId: 1, clientX: 260 })
+    fireEvent.pointerMove(handle(), { pointerId: 1, clientX: 320 })
+    expect(width()).toBe(320)
+    // Dozens of moves a second: nothing is written until the drag ends.
+    expect(localStorage.getItem(KEY)).toBeNull()
+
+    fireEvent.pointerMove(handle(), { pointerId: 1, clientX: 400 })
+    fireEvent.pointerUp(handle(), { pointerId: 1, clientX: 400 })
+    expect(width()).toBe(400)
+    expect(cssWidth()).toBe('400px')
+    expect(localStorage.getItem(KEY)).toBe('400')
+  })
+
+  it('a move that is not a drag leaves the split alone', () => {
+    renderPanel([run()], 'f1')
+
+    fireEvent.pointerMove(handle(), { pointerId: 1, clientX: 500 })
+
+    expect(width()).toBe(260)
+  })
+
+  it('holds the list between 200px and 60% of the dock', () => {
+    renderPanel([run()], 'f1')
+
+    fireEvent.pointerDown(handle(), { button: 0, pointerId: 1, clientX: 260 })
+    fireEvent.pointerMove(handle(), { pointerId: 1, clientX: 40 })
+    expect(width()).toBe(200)
+    fireEvent.pointerMove(handle(), { pointerId: 1, clientX: 950 })
+    expect(width()).toBe(600)
+    fireEvent.pointerUp(handle(), { pointerId: 1, clientX: 950 })
+
+    expect(localStorage.getItem(KEY)).toBe('600')
+    expect(handle()).toHaveAttribute('aria-valuemin', '200')
+    expect(handle()).toHaveAttribute('aria-valuemax', '600')
+  })
+
+  it('pulls a remembered width wider than the dock allows back before it is painted', () => {
+    localStorage.setItem(KEY, '900')
+    renderPanel([run()], 'f1')
+
+    expect(width()).toBe(600)
+  })
+
+  it('the arrow keys move the split by 16px and remember it', () => {
+    renderPanel([run()], 'f1')
+    handle().focus()
+
+    fireEvent.keyDown(handle(), { key: 'ArrowRight' })
+    expect(width()).toBe(276)
+    expect(localStorage.getItem(KEY)).toBe('276')
+
+    fireEvent.keyDown(handle(), { key: 'ArrowLeft' })
+    fireEvent.keyDown(handle(), { key: 'ArrowLeft' })
+    expect(width()).toBe(244)
+    expect(localStorage.getItem(KEY)).toBe('244')
+  })
+
+  it('a double-click puts the split back to the default and forgets the remembered width', () => {
+    localStorage.setItem(KEY, '400')
+    renderPanel([run()], 'f1')
+    expect(width()).toBe(400)
+
+    fireEvent.doubleClick(handle())
+
+    expect(width()).toBe(260)
+    expect(localStorage.getItem(KEY)).toBeNull()
   })
 })
