@@ -51,10 +51,15 @@ public class ShellTokenFilter extends OncePerRequestFilter {
     /** Named in the log and nowhere else; it is not an account and cannot be granted one. */
     private static final String PRINCIPAL = "desktop-shell";
 
-    /** Exactly what the wizard calls. Anything else is not the shell's business. */
+    /**
+     * Exactly what the wizard and the tray call. Anything else is not the shell's business. The
+     * runner status is the one addition since the storage trio: the tray shows whether this
+     * install's own runner agent is connected to its server, and the tray has no session either.
+     */
     private static final Map<String, Set<String>> ALLOWED = Map.of(
             "/api/storage", Set.of("GET", "PUT"),
-            "/api/storage/test", Set.of("POST"));
+            "/api/storage/test", Set.of("POST"),
+            "/api/runners/self", Set.of("GET"));
 
     /** MEMBER rather than ADMIN: it is the least that satisfies the rule guarding these routes. */
     private static final List<SimpleGrantedAuthority> AUTHORITIES =

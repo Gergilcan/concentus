@@ -56,10 +56,22 @@ public record RunPatch(String nodeId, String label, String folder, String repoUr
     /** A checkout that exists and has not been read yet. */
     public static RunPatch registered(String nodeId, String label, String folder, String repoUrl,
                                       Path directory, String base) {
-        return new RunPatch(nodeId, label, folder, repoUrl,
-                directory == null ? null : directory.toAbsolutePath().normalize().toString(),
-                base, null, PatchStats.NONE, null, 0);
+        return registeredAt(nodeId, label, folder, repoUrl,
+                directory == null ? null : directory.toAbsolutePath().normalize().toString(), base);
     }
+
+    /**
+     * As above, with the directory already named the way the host names it — an absolute path
+     * here, or {@code runner:<id>:<path there>} for a checkout on a runner (see
+     * {@code RunHost.patchDirectory}). What the review re-reads it by later.
+     */
+    public static RunPatch registeredAt(String nodeId, String label, String folder, String repoUrl,
+                                      String directory, String base) {
+        return new RunPatch(nodeId, label, folder, repoUrl, directory, base, null, PatchStats.NONE, null, 0);
+    }
+
+    /** The prefix of a directory that lives on a runner rather than on this machine. */
+    public static final String RUNNER_DIRECTORY_PREFIX = "runner:";
 
     /** This checkout as just read: the patch (null for no change), its stats, no note. */
     public RunPatch taken(String patch, long at) {

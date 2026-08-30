@@ -24,10 +24,10 @@ class LocalClaudeArgsTest {
     }
 
     private static LocalClaudeExecutor executor(PluginRegistry plugins) {
-        return new LocalClaudeExecutor(null, null, null, null, null, null,
+        return new LocalClaudeExecutor(null, null, null, null,
                 new com.fasterxml.jackson.databind.ObjectMapper(), null, null, null, null, null,
-                plugins, ProcessCeiling.unlimited(), com.concentus.config.Settings.none(),
-                "bypassPermissions", "data", true, true, 8734);
+                plugins, com.concentus.config.Settings.none(),
+                "bypassPermissions", "data", true, true);
     }
 
     /** A registry with a fixed installed list — the CLI is never shelled from a unit test. */
@@ -102,7 +102,7 @@ class LocalClaudeArgsTest {
     @Test
     void contextDirectoriesAreGrantedIndividually() {
         List<String> args = executor().buildArgs("claude", run(), Path.of("."), true, "hi",
-                List.of(Path.of("/a"), Path.of("/b")), false, null);
+                List.of("/a", "/b"), false, null);
 
         assertThat(args).filteredOn("--add-dir"::equals).hasSize(2);
     }

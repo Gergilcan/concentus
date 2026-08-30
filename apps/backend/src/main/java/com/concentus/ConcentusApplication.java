@@ -15,12 +15,20 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * nightly retention purge ({@code RetentionService}). Flow schedules run on their own
  * {@code ScheduleService}, which is rebuilt whenever a flow is saved; a fixed cron on a bean is
  * the right shape for a job that never changes.
+ *
+ * <p>The same jar is also the runner: {@code java -jar concentus-backend.jar runner --url …
+ * --token …} never starts Spring — no database, no web server — and connects to a hub to execute
+ * its runs instead. Dispatched on the first argument, here, because the jar has one main class.
  */
 @SpringBootApplication
 @EnableScheduling
 public class ConcentusApplication {
 
     public static void main(String[] args) {
+        if (args.length > 0 && "runner".equals(args[0])) {
+            com.concentus.runners.agent.RunnerAgentMain.main(java.util.Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
         SpringApplication.run(ConcentusApplication.class, args);
     }
 }

@@ -140,4 +140,33 @@ class RunDiffServiceTest {
         RunPatch p = RunPatch.registered("w1", "Data worker", "concentus", null, null, null);
         assertThat(RunDiffService.fileNameOf(p)).isEqualTo("data-worker--concentus.patch");
     }
+
+    /**
+     * A checkout on a runner is re-read through the runner while it is connected, and served as
+     * last read — with the runner's own sentence — while it is not.
+     */
+    @Test
+    void a_checkout_on_a_runner_is_asked_of_the_runner_or_noted_as_offline() throws Exception {
+        com.concentus.runners.RunnerRegistry runners = mock(com.concentus.runners.RunnerRegistry.class);
+        RunDiffService remote = new RunDiffService(git, runStore, runners);
+        AgentRun run = new AgentRun("run-r", "flow", "Flow");
+        run.recordPatch(RunPatch.registeredAt("c1", "Coord", "api", "https://x/api.git",
+                "runner:rn_1:/home/r/runs/run-r/api", "abc"));
+
+        org.mockito.Mockito.when(runners.patchSince("rn_1", "/home/r/runs/run-r/api", "abc")).thenReturn("diff --git a/x b/x\n");
+        assertThat(remote.diffsOf(run)).singleElement().satisfies(p -> {
+            assertThat(p.patch()).startsWith("diff --git");
+            assertThat(p.note()).isNull();
+        });
+
+        org.mockito.Mockito.when(runners.patchSince("rn_1", "/home/r/runs/run-r/api", "abc"))
+                .thenThrow(new IOException("Runner 'nas' is offline; this is the change as last read."));
+        assertThat(remote.diffsOf(run)).singleElement().satisfies(p -> {
+            assertThat(p.patch()).startsWith("diff --git");
+            assertThat(p.note()).contains("is offline");
+        });
+
+        // Without a registry — the shape the tests that predate runners build — the answer is honest too.
+        assertThat(service.diffsOf(run)).singleElement().extracting(RunPatch::note).asString().contains("cannot be re-read");
+    }
 }

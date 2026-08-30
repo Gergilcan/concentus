@@ -140,7 +140,7 @@ class FanoutArgsTest {
     @Test
     void contextDirectoriesAreGrantedPerWorker() {
         List<String> a = executor().buildWorkerArgs("claude", run(), spec(), Path.of("wd"),
-                List.of(Path.of("/a"), Path.of("/b")), "s", "hola", false, "Task,Bash", null);
+                List.of("/a", "/b"), "s", "hola", false, "Task,Bash", null);
 
         assertThat(a).filteredOn("--add-dir"::equals).hasSize(2);
     }

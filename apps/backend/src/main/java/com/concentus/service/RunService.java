@@ -86,7 +86,10 @@ public class RunService {
     private final com.concentus.auth.OrgContext orgContext;
     /** Read-only: which organization a saved flow belongs to, for launches with no principal. */
     private final com.concentus.store.FlowStore flows;
+    /** Which runner, if any, a launch goes to — null in the tests that predate runners. */
+    private final com.concentus.runners.RunnerService runners;
 
+    /** The shape before runners, kept for the tests that build the service by hand. */
     public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
                       ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
                       CloudStreamEventHandler cloudEvents,
@@ -103,6 +106,30 @@ public class RunService {
                       com.concentus.policy.OrgPolicyService policies,
                       com.concentus.auth.OrgContext orgContext,
                       com.concentus.store.FlowStore flows) {
+        this(clientProvider, compiler, launcher, backends, pricing, cloudEvents, runStore, flowVersions, mapper,
+                notifier, remoteApprovals, subflows, mailHandOffs, variableStore, settings, telemetry, loops, usage,
+                audit, policies, orgContext, flows, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public RunService(AnthropicClientProvider clientProvider, FlowCompiler compiler,
+                      ManagedFlowLauncher launcher, ExecutionBackends backends, PricingTable pricing,
+                      CloudStreamEventHandler cloudEvents,
+                      RunStore runStore, com.concentus.store.FlowVersionStore flowVersions,
+                      com.fasterxml.jackson.databind.ObjectMapper mapper,
+                      NotificationService notifier, RemoteApprovalService remoteApprovals,
+                      SubflowService subflows, MailHandOffService mailHandOffs,
+                      com.concentus.store.VariableStore variableStore,
+                      com.concentus.config.Settings settings,
+                      com.concentus.telemetry.Telemetry telemetry,
+                      ToolCallLoopGuard loops,
+                      ClaudeUsageService usage,
+                      com.concentus.audit.AuditService audit,
+                      com.concentus.policy.OrgPolicyService policies,
+                      com.concentus.auth.OrgContext orgContext,
+                      com.concentus.store.FlowStore flows,
+                      com.concentus.runners.RunnerService runners) {
+        this.runners = runners;
         this.clientProvider = clientProvider;
         this.usage = usage;
         this.audit = audit;
@@ -586,7 +613,14 @@ public class RunService {
         String fallback = forcedFallback != null ? forcedFallback
                 : fallbackTheMeterAsksFor(compiled, organizationId, groupId);
         String fallbackNote = fallback == null ? null : applyFallback(compiled, fallback);
-        String backend = "api-key".equals(fallback) && fallbackNote == null ? "cloud" : chooseBackend(compiled);
+        boolean toApiKey = "api-key".equals(fallback) && fallbackNote == null;
+        // Where the CLI runs — this server, or a runner — per the flow's setting. Decided before
+        // the backend is: a runner makes the CLI backend the answer on a server that has no
+        // Claude login of its own, which is the whole point of having one.
+        com.concentus.runners.RunnerService.Selection onRunner = toApiKey ? null
+                : chooseRunner(flow, compiled, organizationId, groupId);
+        String backend = toApiKey ? "cloud"
+                : onRunner != null ? com.concentus.execution.LocalRunHost.ID : chooseBackend(compiled);
         enforceBudget(flow, backend, groupId);
 
         String runId = Ids.generate("run_", 12);
@@ -594,6 +628,11 @@ public class RunService {
         run.organizationId = organizationId;
         run.groupId = groupId;
         run.backend = backend;
+        if (onRunner != null) {
+            run.runnerId = onRunner.runnerId();
+            run.runnerName = onRunner.runnerName();
+            if (onRunner.note() != null) run.emit(RunEvent.of("system", onRunner.note()));
+        }
         run.compiled = compiled;
         run.flowJson = toJson(flow);
         armBudget(run, flow);
@@ -661,7 +700,10 @@ public class RunService {
             // Harmless on a backend that has no notion of a CLI session; the claude one needs it.
             run.localSessionId = UUID.randomUUID().toString();
             run.status = "IDLE";
-            String where = chosen.startupDescription();
+            // The runner's name when the run has one: it is the fact a person reading the log
+            // wants first, and the backend's own sentence would claim this machine's login.
+            String where = run.runnerId == null ? chosen.startupDescription()
+                    : "Runner '" + run.runnerName + "' — running on its Claude login";
             // Named on every run, because it decides what the agent may do to this machine without
             // asking, and it is otherwise invisible until something has already happened.
             if (!run.permissionMode.isBlank()) {
@@ -682,6 +724,24 @@ public class RunService {
             submitOrFail(run, () -> execute(run, compiled));
         }
         return run;
+    }
+
+    /**
+     * The runner a launch goes to, or null for this server.
+     *
+     * <p>Only a Claude model runs on a runner: a self-hosted model is served from this machine's
+     * own backend, and a runner would have nothing to spawn for it. What counts as the local CLI
+     * being available is the CLI backend's own answer — the login on this machine.
+     */
+    private com.concentus.runners.RunnerService.Selection chooseRunner(FlowGraph flow, CompiledFlow compiled,
+                                                                        String organizationId, String groupId) {
+        if (runners == null) return null;
+        String model = compiled.coordinator().model == null ? null : compiled.coordinator().model.id;
+        boolean claude = model == null || model.isBlank()
+                || model.toLowerCase(java.util.Locale.ROOT).startsWith("claude-");
+        boolean localCli = backends.byId(com.concentus.execution.LocalRunHost.ID)
+                .map(ExecutionBackend::isAvailable).orElse(false);
+        return runners.choose(flow.runner(), organizationId, groupId, claude, localCli);
     }
 
     /**
@@ -1269,6 +1329,8 @@ public class RunService {
                 run.organizationId = row.organizationId() != null
                         ? row.organizationId() : orgContext.defaultOrganizationId();
                 run.groupId = row.groupId();
+                run.runnerId = row.runnerId();
+                run.runnerName = row.runnerName();
                 run.backend = row.backend();
                 // A run that was mid-flight when the server stopped cannot be continued in place
                 // — the process is gone — so it lands as IDLE, and is told: Resume starts it

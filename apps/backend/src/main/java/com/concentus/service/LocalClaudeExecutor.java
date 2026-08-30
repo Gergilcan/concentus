@@ -3,13 +3,14 @@ package com.concentus.service;
 import com.concentus.auth.OrgContext;
 import com.concentus.config.AgentSpec;
 import com.concentus.config.AgentSpec.McpServerSpec;
+import com.concentus.execution.RunHost;
+import com.concentus.execution.RunHosts;
 import com.concentus.llm.McpOAuthStore;
 import com.concentus.model.NodeExec;
 import com.concentus.git.GitWorkspace;
 import com.concentus.model.RunEvent;
 import com.concentus.model.SkillDef;
 import com.concentus.store.SkillStore;
-import com.concentus.support.LocalClaudeSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -45,21 +46,22 @@ import java.util.stream.Collectors;
  * <p>The prompt itself follows the same rule once it stops being small: past
  * {@link #MAX_INLINE_PROMPT_CHARS} it is piped on stdin instead of passed as an argument. A
  * mail-triggered run carries a whole email, and a command line is not sized for that.
+ *
+ * <p>Where the process, the checkouts and the folders are is the run's {@link RunHost}: this
+ * machine, or a runner the run was launched for. The files this class composes go into the run's
+ * mirror directory here either way; a remote host ships them over before it spawns.
  */
 @Component
 public class LocalClaudeExecutor {
 
-    private final LocalClaudeSupport support;
+    /** Which machine a run's process is on — this one, or its runner. */
+    private final RunHosts hosts;
     private final RagContextInjector ragInjector;
     /** Flows wired INTO an agent: they run before it and their answers become its context. */
     private final PreRunSubflows preRunSubflows;
     private final McpRegistry mcpRegistry;
     private final PluginRegistry pluginRegistry;
-    /** The machine-wide cap on claude processes, shared with {@link FanoutExecutor}. */
-    private final ProcessCeiling ceiling;
     private final LocalStreamEventHandler streamHandler;
-    private final ContextFolderResolver contextFolders;
-    private final GitWorkspace gitWorkspace;
     private final String permissionMode;
     /** Per run, for the one setting a group may override that this class reads: the default permission mode. */
     private final com.concentus.config.Settings settings;
@@ -74,7 +76,6 @@ public class LocalClaudeExecutor {
     private final OrgContext orgContext;
     /** See {@link #writeMcpConfig}: runs see only the flow's MCP servers, not the user's list. */
     private final boolean strictMcp;
-    private final int serverPort;
     /**
      * The flow's own permission mode meaning "stop and ask a human before acting".
      *
@@ -132,10 +133,9 @@ public class LocalClaudeExecutor {
      */
     static final String SKILL_TOOL = "Skill";
 
-    public LocalClaudeExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
+    public LocalClaudeExecutor(RunHosts hosts, RagContextInjector ragInjector,
                                PreRunSubflows preRunSubflows,
-                               McpRegistry mcpRegistry, ContextFolderResolver contextFolders,
-                               GitWorkspace gitWorkspace,
+                               McpRegistry mcpRegistry,
                                ObjectMapper mapper,
                                McpOAuthStore mcpOAuthStore,
                                CliMcpServers cliMcpServers,
@@ -143,19 +143,15 @@ public class LocalClaudeExecutor {
                                SkillService skillService,
                                OrgContext orgContext,
                                PluginRegistry pluginRegistry,
-                               ProcessCeiling ceiling,
                                com.concentus.config.Settings settings,
                                @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                                @Value("${app.data-dir}") String dataDir,
                                @Value("${local.auto-register-mcp:true}") boolean autoRegisterMcp,
-                               @Value("${local.strict-mcp:true}") boolean strictMcp,
-                               @Value("${server.port:8734}") int serverPort) {
-        this.support = support;
+                               @Value("${local.strict-mcp:true}") boolean strictMcp) {
+        this.hosts = hosts;
         this.ragInjector = ragInjector;
         this.preRunSubflows = preRunSubflows;
         this.mcpRegistry = mcpRegistry;
-        this.contextFolders = contextFolders;
-        this.gitWorkspace = gitWorkspace;
         this.streamHandler = new LocalStreamEventHandler(mapper);
         this.mapper = mapper;
         this.mcpOAuthStore = mcpOAuthStore;
@@ -164,20 +160,32 @@ public class LocalClaudeExecutor {
         this.skillService = skillService;
         this.orgContext = orgContext;
         this.pluginRegistry = pluginRegistry;
-        this.ceiling = ceiling;
         this.settings = settings == null ? com.concentus.config.Settings.none() : settings;
         this.permissionMode = permissionMode;
         this.dataDir = dataDir;
         this.autoRegisterMcp = autoRegisterMcp;
         this.strictMcp = strictMcp;
-        this.serverPort = serverPort;
+    }
+
+    /** The run's host — this machine, or its runner, which has to be connected right now. */
+    private RunHost hostOf(AgentRun run) {
+        if (hosts == null) throw new IllegalStateException("No run host is configured.");
+        return hosts.hostOf(run);
     }
 
     /** Runs one turn and streams events into the run. Blocking — call on a worker thread. */
     public void runTurn(AgentRun run, CompiledFlow flow, String userText) {
-        String cmd = support.command().orElse(null);
+        RunHost host;
+        try {
+            host = hostOf(run);
+        } catch (IllegalStateException e) {
+            run.fail(e.getMessage());
+            return;
+        }
+        String cmd = host.command().orElse(null);
         if (cmd == null) {
-            run.fail("The claude CLI was not found. Install Claude Code or set local.claude-command.");
+            run.fail("The claude CLI was not found on " + host.displayName()
+                    + ". Install Claude Code there, or set local.claude-command.");
             return;
         }
 
@@ -186,7 +194,7 @@ public class LocalClaudeExecutor {
         Path workdir = Path.of(dataDir, "local", run.id).toAbsolutePath().normalize();
         try {
             if (first) {
-                prepareWorkspace(run, flow, workdir);
+                prepareWorkspace(run, flow, workdir, host);
             }
         } catch (IOException e) {
             run.fail("Failed to prepare local workspace: " + e.getMessage());
@@ -202,25 +210,18 @@ public class LocalClaudeExecutor {
         }
 
         // Rejections are reported on the first turn only, so a resumed session doesn't repeat them.
-        List<Path> contextDirs = resolveContextDirs(run, flow, first);
+        List<String> contextDirs = resolveContextDirs(run, flow, first, host);
         boolean promptOnStdin = userText.length() > MAX_INLINE_PROMPT_CHARS;
         List<String> args = buildArgs(cmd, run, workdir, first, userText, contextDirs, promptOnStdin,
                 writePluginSettings(run, workdir));
         run.status = "RUNNING";
         run.emit(RunEvent.of("system", "› " + userText));
 
-        ProcessBuilder pb = new ProcessBuilder(args).directory(workdir.toFile());
-        pb.redirectErrorStream(true);
-        // Push credentials for the flow's repositories. On the process environment rather than in
-        // any .git/config, so the token is not written to disk and does not appear in
-        // `git remote -v` or in anything the agent might paste into a commit or a PR body.
-        pb.environment().putAll(GitWorkspace.environmentFor(run.checkouts));
-
-        // The machine-wide ceiling on claude processes, shared with every fan-out's workers.
+        // The host's ceiling on claude processes, shared with every fan-out's workers there.
         // Acquired before the process exists, held until it has exited (the finally below).
         ProcessCeiling.Slot slot;
         try {
-            slot = ceiling.acquire(() -> "TERMINATED".equals(run.status),
+            slot = host.ceiling().acquire(() -> "TERMINATED".equals(run.status),
                     msg -> run.emit(RunEvent.of("system", msg)));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -234,10 +235,13 @@ public class LocalClaudeExecutor {
 
         Process proc;
         try {
-            proc = pb.start();
+            // Push credentials for the flow's repositories. On the process environment rather than
+            // in any .git/config, so the token is not written to disk and does not appear in
+            // `git remote -v` or in anything the agent might paste into a commit or a PR body.
+            proc = host.start(args, workdir, GitWorkspace.environmentFor(run.checkouts));
         } catch (IOException e) {
             slot.close();
-            run.fail("Failed to start claude: " + e.getMessage());
+            run.fail("Failed to start claude on " + host.displayName() + ": " + e.getMessage());
             return;
         }
         run.localProcess = proc;
@@ -355,14 +359,15 @@ public class LocalClaudeExecutor {
             """);
     }
 
-    private void prepareWorkspace(AgentRun run, CompiledFlow flow, Path workdir) throws IOException {
+    private void prepareWorkspace(AgentRun run, CompiledFlow flow, Path workdir, RunHost host) throws IOException {
         Files.createDirectories(workdir);
 
         // Clone the flow's repositories into this workdir, which is already the CLI's working
         // directory — so the checkouts are simply there, needing no --add-dir grant and no entry
         // in local.context-roots. A directory this process created for this run is not the
-        // filesystem exposure that allowlist exists to prevent.
-        run.checkouts = gitWorkspace.prepare(flow.allRepos(), workdir);
+        // filesystem exposure that allowlist exists to prevent. On a runner the clones land in
+        // its copy of this directory, and only there.
+        run.checkouts = host.prepareClones(flow.allRepos(), workdir);
         for (GitWorkspace.Checkout c : run.checkouts) {
             run.emit(RunEvent.of("system", c.ok()
                     ? "Cloned " + c.spec().url + " into ./" + c.folderName()
@@ -371,9 +376,9 @@ public class LocalClaudeExecutor {
             // the commit it starts from is what the diff is measured against later — the
             // coordinator has a shell and may well commit before anyone looks.
             if (c.ok()) {
-                run.recordPatch(com.concentus.model.RunPatch.registered(
+                run.recordPatch(com.concentus.model.RunPatch.registeredAt(
                         flow.coordinator().nodeId, flow.coordinator().name, c.folderName(),
-                        c.spec().url, c.directory(), gitWorkspace.headOf(c.directory())));
+                        c.spec().url, host.patchDirectory(c.directory()), host.headOf(c.directory())));
             }
         }
 
@@ -394,7 +399,7 @@ public class LocalClaudeExecutor {
         // workspace, not the user's project, so it would never be found by walking up from here.
         AgentSpec coord = flow.coordinator();
         StringBuilder claudeMd = new StringBuilder();
-        appendReferencedClaudeMd(run, coord, claudeMd);
+        appendReferencedClaudeMd(run, coord, claudeMd, host);
         if (coord.systemPrompt != null && !coord.systemPrompt.isBlank()) {
             claudeMd.append(coord.systemPrompt).append('\n');
         }
@@ -415,7 +420,7 @@ public class LocalClaudeExecutor {
                 // both called "Code Reviewer" get their own file instead of one clobbering the other.
                 String name = sub.cliName;
                 StringBuilder body = new StringBuilder();
-                appendReferencedClaudeMd(run, sub, body);
+                appendReferencedClaudeMd(run, sub, body, host);
                 if (sub.systemPrompt != null) body.append(sub.systemPrompt).append('\n');
                 appendContextFolderNote(sub, body);
                 appendDelegationRoster(sub, body);
@@ -431,8 +436,8 @@ public class LocalClaudeExecutor {
             run.emit(RunEvent.of("system", flow.subAgents().size() + " sub-agent(s) available for delegation."));
         }
 
-        registerMcpServers(run);
-        writeMcpConfig(run, workdir);
+        registerMcpServers(run, host);
+        writeMcpConfig(run, workdir, host);
         materialiseSkills(run, flow, workdir);
 
         // Said rather than silently skipped: the canvas shows the node, so the run must say why
@@ -490,7 +495,7 @@ public class LocalClaudeExecutor {
      * the token was already stored by {@code claude mcp add -H} in the user's own config before
      * this change, so this moves where a token rests rather than newly exposing one.
      */
-    private void writeMcpConfig(AgentRun run, Path workdir) throws IOException {
+    private void writeMcpConfig(AgentRun run, Path workdir, RunHost host) throws IOException {
         if (!strictMcp) return;
 
         Map<String, McpServerSpec> byName = new LinkedHashMap<>();
@@ -504,9 +509,12 @@ public class LocalClaudeExecutor {
         // OAuth grant is pointed at this backend's proxy, and that route is what the token opens.
         if (run.toolToken == null) run.toolToken = UUID.randomUUID().toString();
 
+        // Where the CLI reaches this backend: loopback from this machine, the hub's address from
+        // a runner. The proxy route and the per-run tools below both go through it.
+        String base = host.toolsBaseUrl();
         var servers = mapper.createObjectNode();
         for (McpServerSpec m : byName.values()) {
-            servers.set(m.name, cliMcpServers.node(m, run.organizationId, run.id, run.toolToken));
+            servers.set(m.name, cliMcpServers.node(m, run.organizationId, run.id, run.toolToken, base));
         }
 
         // API nodes become tools served by this very backend, per run. The CLI reaches them like
@@ -519,7 +527,7 @@ public class LocalClaudeExecutor {
         if (!apis.isEmpty() || hasMemory) {
             var server = mapper.createObjectNode();
             server.put("type", "http");
-            server.put("url", "http://127.0.0.1:" + serverPort + "/api/runs/" + run.id + "/tools");
+            server.put("url", base + "/api/runs/" + run.id + "/tools");
             server.putObject("headers")
                     .put(com.concentus.web.RunToolsController.TOKEN_HEADER, run.toolToken);
             servers.set("concentus-apis", server);
@@ -556,19 +564,16 @@ public class LocalClaudeExecutor {
                         + String.join(", ", byName.keySet()) + "."));
     }
 
-    /** Inlines the agent's referenced CLAUDE.md, if it names one and it passes the allowlist. */
-    private void appendReferencedClaudeMd(AgentRun run, AgentSpec spec, StringBuilder out) {
-        Path file = contextFolders.resolveClaudeMd(spec.claudeMdPath,
+    /** Inlines the agent's referenced CLAUDE.md, if it names one and it passes the host's allowlist. */
+    private void appendReferencedClaudeMd(AgentRun run, AgentSpec spec, StringBuilder out, RunHost host) {
+        if (spec.claudeMdPath == null || spec.claudeMdPath.isBlank()) return;
+        String content = host.readClaudeMd(spec.claudeMdPath,
                 (path, reason) -> run.emit(RunEvent.of("system",
                         "CLAUDE.md ignored for " + spec.name + " — " + path + ": " + reason)));
-        if (file == null) return;
-        try {
-            out.append(Files.readString(file)).append("\n\n");
-            run.emit(RunEvent.of("system", "Loaded CLAUDE.md for " + spec.name + " from " + file));
-        } catch (IOException e) {
-            run.emit(RunEvent.of("system",
-                    "CLAUDE.md could not be read for " + spec.name + ": " + e.getMessage()));
-        }
+        if (content == null) return;
+        out.append(content).append("\n\n");
+        run.emit(RunEvent.of("system", "Loaded CLAUDE.md for " + spec.name + " from " + spec.claudeMdPath
+                + (host.isLocal() ? "" : " on " + host.displayName())));
     }
 
     /**
@@ -652,19 +657,19 @@ public class LocalClaudeExecutor {
      * definition as instruction text (see {@link #prepareWorkspace}), which steers the agent but
      * does not enforce isolation.
      */
-    private List<Path> resolveContextDirs(AgentRun run, CompiledFlow flow, boolean report) {
+    private List<String> resolveContextDirs(AgentRun run, CompiledFlow flow, boolean report, RunHost host) {
         BiConsumer<String, String> onRejected = (path, reason) -> {
             if (report) run.emit(RunEvent.of("system", "Context folder ignored — " + path + ": " + reason));
         };
-        List<Path> all = new ArrayList<>();
+        List<String> all = new ArrayList<>();
         for (AgentSpec spec : flow.allAgents()) {
-            for (Path p : contextFolders.resolve(spec.contextFolders, onRejected)) {
+            for (String p : host.resolveContextDirs(spec.contextFolders, onRejected)) {
                 if (!all.contains(p)) all.add(p);
             }
         }
         if (report && !all.isEmpty()) {
-            run.emit(RunEvent.of("system", "Context folders: "
-                    + all.stream().map(Path::toString).collect(Collectors.joining(", "))));
+            run.emit(RunEvent.of("system", "Context folders: " + String.join(", ", all)
+                    + (host.isLocal() ? "" : " (on " + host.displayName() + ")")));
         }
         return all;
     }
@@ -696,7 +701,7 @@ public class LocalClaudeExecutor {
     // Package-private for the arg-shape test: the ordering here is load-bearing and silent when
     // wrong — a misplaced `-p` would take the next flag as the prompt.
     List<String> buildArgs(String cmd, AgentRun run, Path workdir, boolean first, String userText,
-                                   List<Path> contextDirs, boolean promptOnStdin, Path settingsFile) {
+                                   List<String> contextDirs, boolean promptOnStdin, Path settingsFile) {
         AgentSpec coord = run.compiled.coordinator();
         List<String> a = new ArrayList<>();
         a.add(cmd);
@@ -704,9 +709,11 @@ public class LocalClaudeExecutor {
             a.add("-p");
             a.add(userText);
         }
-        for (Path dir : contextDirs) {
+        // Strings, not Paths: on a runner these are that machine's paths, and a Linux path pushed
+        // through a Windows Path would come out with backslashes.
+        for (String dir : contextDirs) {
             a.add("--add-dir");
-            a.add(dir.toString());
+            a.add(dir);
         }
         a.add("--output-format");
         a.add("stream-json");
@@ -859,12 +866,23 @@ public class LocalClaudeExecutor {
      * uses it with its own auth handling. Nodes with a token are added with a bearer header;
      * OAuth servers are added and the user is told to run {@code claude mcp login}.
      */
-    private void registerMcpServers(AgentRun run) {
+    private void registerMcpServers(AgentRun run, RunHost host) {
         List<McpServerSpec> mcps = new ArrayList<>();
         for (AgentSpec agent : run.compiled.allAgents()) {
             mcps.addAll(agent.mcpServers);
         }
         if (mcps.isEmpty()) return;
+
+        // The user list is this machine's Claude Code's; a runner's CLI has its own, and the run's
+        // config file — which carries every server the run may reach — is what it reads anyway.
+        if (!host.isLocal()) {
+            for (McpServerSpec m : mcps) {
+                NodeExec ne = run.nodeExec(m.nodeId, "mcp", m.name);
+                if (ne != null) ne.input = m.isStdio() ? m.command : m.url;
+                markMcpResult(ne, "configured for the run on " + host.displayName());
+            }
+            return;
+        }
 
         if (!autoRegisterMcp) {
             run.emit(RunEvent.of("system",

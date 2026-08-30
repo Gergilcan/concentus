@@ -12,13 +12,17 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
  * carried identical copies — and a callback page that drifts between two sign-ins would be the
  * kind of difference somebody notices only when one of them stops escaping a provider's error.
  */
-final class OAuthCallbacks {
+public final class OAuthCallbacks {
 
     private OAuthCallbacks() {
     }
 
-    /** The address this browser reached the backend through — one it can, by definition, reach again. */
-    static String requestBase() {
+    /**
+     * The address this browser reached the backend through — one it can, by definition, reach
+     * again. Public because the runners screen answers the same question with the same reasoning:
+     * a runner is told to dial the address the person registering it is looking at.
+     */
+    public static String requestBase() {
         return ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
     }
 

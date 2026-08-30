@@ -62,6 +62,16 @@ public class AgentRun {
      */
     public volatile String groupId;
 
+    /**
+     * The runner this run's CLI executes on, or null for this server. Chosen at launch from the
+     * flow's {@code runner} setting and persisted with the run; the host itself is looked up per
+     * turn ({@code RunHosts}), because a runner's connection comes and goes and a restored run
+     * has to find it again — or find it gone and say so.
+     */
+    public volatile String runnerId;
+    /** That runner's name at launch: the run keeps saying where it ran after a rename or a delete. */
+    public volatile String runnerName;
+
     /** How this execution was triggered: "manual" | "prompt" | "cron" | "webhook". */
     public volatile String trigger = "manual";
     /**
@@ -747,7 +757,7 @@ public class AgentRun {
     public RunSummary toSummary() {
         return new RunSummary(id, flowId, flowName, status, createdAt, sessionId, agentIds, error,
                 trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd(), golden, flowVersion,
-                startedBy, groupId);
+                startedBy, groupId, runnerId, runnerName);
     }
 
     /**
