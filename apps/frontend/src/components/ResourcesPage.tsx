@@ -21,6 +21,7 @@ import { OrganizationsPanel } from './OrganizationsPanel.tsx'
 import { ModelField } from './ModelField.tsx'
 import { PluginsPanel } from './PluginsPanel.tsx'
 import { ServiceAccountsPanel } from './ServiceAccountsPanel.tsx'
+import { RunnersPanel } from './RunnersPanel.tsx'
 import { PoliciesPanel } from './PoliciesPanel.tsx'
 import { SettingsPanel } from './SettingsPanel.tsx'
 import { SkillsPanel } from './SkillsPanel.tsx'
@@ -31,7 +32,7 @@ import { shellBridge } from '../api/shell.ts'
 import { usePermissions } from '../state/permissionRules.ts'
 import styles from './resources.module.scss'
 
-type Tab = 'settings' | 'members' | 'serviceAccounts' | 'audit' | 'policies' | 'organizations' | 'groups' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
+type Tab = 'settings' | 'members' | 'serviceAccounts' | 'runners' | 'audit' | 'policies' | 'organizations' | 'groups' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
 
 /**
  * The tab strip, in display order, in two groups: the things a flow uses, then how the
@@ -93,6 +94,14 @@ const TABS: Array<{
     adminOnly: true,
     title:
       'Tokens for machines — a CI job, a cron entry, another system. Each acts as its role on every request and takes no seat.',
+  },
+  {
+    id: 'runners',
+    label: 'Runners',
+    // Every role: a viewer sees where things run, and the backend has already filtered the
+    // list to what the caller may see. Whether "+ New" is offered is the listing's own answer.
+    title:
+      "Machines that execute this organization's Claude CLI flows on their own login — a laptop, a NAS, a container. The server keeps everything else.",
   },
   {
     id: 'audit',
@@ -216,6 +225,7 @@ export function ResourcesPage({
       <div className={styles.tabBody}>
         {tab === 'members' && <MembersPanel pushError={pushError} />}
         {tab === 'serviceAccounts' && canAdminister && <ServiceAccountsPanel pushError={pushError} />}
+        {tab === 'runners' && <RunnersPanel pushError={pushError} />}
         {tab === 'audit' && <AuditPanel pushError={pushError} />}
         {tab === 'policies' && <PoliciesPanel pushError={pushError} />}
         {tab === 'organizations' && canAdminister && <OrganizationsPanel pushError={pushError} />}

@@ -349,6 +349,14 @@ export function RunsPanel({ runs, loading = false, selected, onSelect, flowId = 
                   {r.startedBy.split('@')[0]}
                 </span>
               )}
+              {/* Where it ran, when that was not this server. Stamped at launch, so the name is
+                  the runner's as it was then — a rename or a deletion since does not rewrite
+                  history. */}
+              {r.runnerName && (
+                <span className={styles.runCost} title={t('Ran on runner {{name}}', { name: r.runnerName })}>
+                  {r.runnerName}
+                </span>
+              )}
               {/* What this execution cost, where the choice to run another one is made. It was
                   only visible inside a comparison, which is one click and one decision too late
                   for the question it answers. */}
