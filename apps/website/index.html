@@ -186,6 +186,9 @@
   .v-merge { border-left: 3px solid var(--merge); }
   .v-verifier { border-left: 3px solid var(--verifier); }
   .v-gate { border-left: 3px solid var(--gate); }
+  .v-input { border-left: 3px solid var(--accent); }
+  .v-mail { border-left: 3px solid var(--api); }
+  .v-note { border-left: 3px solid var(--muted); }
 
   /* Selection and kinship rings, as canvas-overrides.css sets them. */
   .sel { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -759,9 +762,9 @@
             </div>
 
             <div style="background:var(--panel);border-left:1px solid var(--border)">
-              <div class="panel-h">Agent · Tech Lead</div>
+              <div class="panel-h">Coordinator · Tech Lead</div>
               <div style="padding:0 12px;display:flex;flex-direction:column;gap:12px">
-                <div><div class="field-l">Role</div><div class="field">coordinator</div></div>
+                <div><div class="field-l">Effort</div><div class="field">high</div></div>
                 <div><div class="field-l">Model</div><div class="field">claude-opus-5</div></div>
                 <div>
                   <div class="field-l">System prompt</div>
@@ -795,7 +798,7 @@
       <div class="band-head" data-reveal>
         <div>
           <span class="eyebrow">02 · The crew</span>
-          <h2>Twelve kinds of node. One vocabulary.</h2>
+          <h2>Sixteen kinds of node. One vocabulary.</h2>
         </div>
         <p class="lede">Each is a real card on the canvas: an icon, a name, a badge, and a coloured spine that says what it is from across the room. Chains, not a flat roster — an agent can feed the next, branch on a condition, fan out over a list, or call another flow entirely.</p>
       </div>
@@ -848,6 +851,18 @@
         <div>
           <div class="n v-flow"><div class="n-h"><span class="n-i">🔗</span><span class="n-t">release-notes</span><span class="n-b">after</span></div><div class="n-s">a flow inside this flow</div></div>
           <p class="cap">One flow calling another.</p>
+        </div>
+        <div>
+          <div class="n v-input"><div class="n-h"><span class="n-i">▶</span><span class="n-t">Ticket in</span><span class="n-b">trigger</span></div><div class="n-s">cron · every day at 09:00</div></div>
+          <p class="cap">Where a run starts: typed, scheduled, a webhook, or an incoming mail.</p>
+        </div>
+        <div>
+          <div class="n v-mail"><div class="n-h"><span class="n-i">✉</span><span class="n-t">Notify</span><span class="n-b">mail</span></div><div class="n-s">to: team@ · the run’s result</div></div>
+          <p class="cap">Sends the result by SMTP when the run gets there.</p>
+        </div>
+        <div>
+          <div class="n v-note"><div class="n-h"><span class="n-i">✎</span><span class="n-t">Why this shape</span><span class="n-b">note</span></div><div class="n-s">Written for the next person</div></div>
+          <p class="cap">A note on the canvas. Group blocks to move them together.</p>
         </div>
       </div>
     </div>
@@ -924,7 +939,7 @@
           <span class="eyebrow">04 · Use cases</span>
           <h2>Wire the crew for the job.</h2>
         </div>
-        <p class="lede">The same twelve blocks, arranged for the work in front of you. None of these needs a line of glue code — only a different drawing.</p>
+        <p class="lede">The same sixteen blocks, arranged for the work in front of you. None of these needs a line of glue code — only a different drawing.</p>
       </div>
 
       <div class="uses">

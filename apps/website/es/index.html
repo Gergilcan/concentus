@@ -186,6 +186,9 @@
   .v-merge { border-left: 3px solid var(--merge); }
   .v-verifier { border-left: 3px solid var(--verifier); }
   .v-gate { border-left: 3px solid var(--gate); }
+  .v-input { border-left: 3px solid var(--accent); }
+  .v-mail { border-left: 3px solid var(--api); }
+  .v-note { border-left: 3px solid var(--muted); }
 
   /* Selection and kinship rings, as canvas-overrides.css sets them. */
   .sel { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -759,9 +762,9 @@
             </div>
 
             <div style="background:var(--panel);border-left:1px solid var(--border)">
-              <div class="panel-h">Agente · Tech Lead</div>
+              <div class="panel-h">Coordinador · Tech Lead</div>
               <div style="padding:0 12px;display:flex;flex-direction:column;gap:12px">
-                <div><div class="field-l">Rol</div><div class="field">coordinador</div></div>
+                <div><div class="field-l">Esfuerzo</div><div class="field">alto</div></div>
                 <div><div class="field-l">Modelo</div><div class="field">claude-opus-5</div></div>
                 <div>
                   <div class="field-l">System prompt</div>
@@ -795,7 +798,7 @@
       <div class="band-head" data-reveal>
         <div>
           <span class="eyebrow">02 · El equipo</span>
-          <h2>Doce tipos de nodo. Un solo vocabulario.</h2>
+          <h2>Dieciséis tipos de nodo. Un solo vocabulario.</h2>
         </div>
         <p class="lede">Cada uno es una tarjeta real en el lienzo: un icono, un nombre, una etiqueta y un lomo de color que dice qué es desde la otra punta de la sala. Cadenas, no una lista plana — un agente puede alimentar al siguiente, bifurcar según una condición, repartirse sobre una lista o llamar a otro flow entero.</p>
       </div>
@@ -848,6 +851,18 @@
         <div>
           <div class="n v-flow"><div class="n-h"><span class="n-i">🔗</span><span class="n-t">release-notes</span><span class="n-b">después</span></div><div class="n-s">un flow dentro de este flow</div></div>
           <p class="cap">Un flow llamando a otro.</p>
+        </div>
+        <div>
+          <div class="n v-input"><div class="n-h"><span class="n-i">▶</span><span class="n-t">Ticket</span><span class="n-b">disparador</span></div><div class="n-s">cron · cada día a las 09:00</div></div>
+          <p class="cap">Donde empieza una ejecución: escrito, programado, un webhook o un correo entrante.</p>
+        </div>
+        <div>
+          <div class="n v-mail"><div class="n-h"><span class="n-i">✉</span><span class="n-t">Avisar</span><span class="n-b">correo</span></div><div class="n-s">para: equipo@ · el resultado</div></div>
+          <p class="cap">Envía el resultado por SMTP cuando la ejecución llega aquí.</p>
+        </div>
+        <div>
+          <div class="n v-note"><div class="n-h"><span class="n-i">✎</span><span class="n-t">Por qué esta forma</span><span class="n-b">nota</span></div><div class="n-s">Escrita para el siguiente</div></div>
+          <p class="cap">Una nota en el lienzo. Agrupa bloques para moverlos juntos.</p>
         </div>
       </div>
     </div>
@@ -924,7 +939,7 @@
           <span class="eyebrow">04 · Casos de uso</span>
           <h2>Conecta el equipo según el trabajo.</h2>
         </div>
-        <p class="lede">Los mismos doce bloques, dispuestos para el trabajo que tienes delante. Ninguno de estos necesita una línea de código de pegamento — solo un dibujo distinto.</p>
+        <p class="lede">Los mismos dieciséis bloques, dispuestos para el trabajo que tienes delante. Ninguno de estos necesita una línea de código de pegamento — solo un dibujo distinto.</p>
       </div>
 
       <div class="uses">

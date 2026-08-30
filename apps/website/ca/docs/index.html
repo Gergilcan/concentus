@@ -611,8 +611,12 @@ npx concentus</code></pre>
               <td>D'on surt el text de l'execució: escrit per tu, una programació, un webhook o un correu entrant.</td>
             </tr>
             <tr>
+              <td><strong>Coordinador</strong></td>
+              <td>El líder: planifica la feina, la reparteix entre els agents connectats a sota i escriu la resposta. Un per flow; la paleta ho diu quan el llenç ja en té un.</td>
+            </tr>
+            <tr>
               <td><strong>Agent</strong></td>
-              <td>Un model amb un system prompt, un nivell d'esforç i un sostre de tokens. El primer agent d'un llenç es converteix en el coordinador.</td>
+              <td>Un model amb un system prompt, un nivell d'esforç i un sostre de tokens, que fa una feina en el seu propi context.</td>
             </tr>
             <tr>
               <td><strong>Verificador</strong></td>
@@ -653,6 +657,18 @@ npx concentus</code></pre>
             <tr>
               <td><strong>Executar un altre flow</strong></td>
               <td>Un flow dins d'un flow. Vegeu <a href="#subflows">Subflows</a>.</td>
+            </tr>
+            <tr>
+              <td><strong>Enviar correu</strong></td>
+              <td>Envia per SMTP el que li arriba — el resultat, o el d’una branca — a les adreces que indiquis. Les credencials surten del magatzem, mai del fitxer del flow.</td>
+            </tr>
+            <tr>
+              <td><strong>Nota</strong></td>
+              <td>Text al llenç per a la persona següent. Les execucions l’ignoren.</td>
+            </tr>
+            <tr>
+              <td><strong>Grup</strong></td>
+              <td>Una caixa al voltant de diversos blocs per moure’ls, copiar-los i llegir-los com un de sol.</td>
             </tr>
           </tbody>
         </table>
@@ -1143,6 +1159,47 @@ semantic (cosine,      top 50) ─┘</code></pre>
         permís es compleix de debò. Dos comptes <em>actius</em> alhora necessiten dues finestres,
         perquè una sessió és una cookie.
       </p>
+      <h3>Comptes de servei</h3>
+      <p>
+        Tokens per a màquines — un job de CI, una entrada de cron, un altre sistema — a
+        <strong>Recursos → Comptes de servei</strong>. Cadascun actua amb el seu rol a cada petició
+        i no ocupa seient; el token (<code>csa_…</code>) es mostra un sol cop i es desa amb hash.
+        El CLI sense interfície el llegeix de <code>CONCENTUS_TOKEN</code> i s’estalvia l’inici
+        de sessió. Una llicència Team n’admet dos alhora; Enterprise, els que calguin.
+      </p>
+
+      <h3>Diverses organitzacions</h3>
+      <p>
+        Un desplegament pot allotjar diverses organitzacions, cadascuna amb els seus flows,
+        credencials, execucions i ajustos, a <strong>Recursos → Organitzacions</strong>. Una
+        persona pot pertànyer a més d’una i canvia des del menú de compte; els seients es compten
+        per persona, no per pertinença. Crear la segona organització és una funció Enterprise — la
+        resta d’aquesta pantalla funciona en Team.
+      </p>
+
+      <h3>Polítiques d’organització</h3>
+      <p>
+        Regles sobre tots els flows de l’organització, a <strong>Recursos → Polítiques</strong>:
+        una façana per defecte per als workers independents (s’omple on un bloc no n’indica cap,
+        o es rebutja), un sostre al mode de permisos que qualsevol bloc pot demanar, un pressupost
+        mensual per a tota l’organització al costat del de cada flow, i aprovació abans que un
+        endpoint publicat respongui — fins que un administrador aprova el token desat, l’endpoint
+        respon el mateix 404 que un de no publicat. El doctor del flow avisa de les tres coses
+        abans d’executar. Enterprise; un desplegament Team veu el que hi ha desat, només lectura.
+      </p>
+
+      <h3>Registre d’auditoria i retenció</h3>
+      <p>
+        Qui va fer què i quan — execucions iniciades i aturades, aprovacions, flows desats i
+        publicats, membres i rols, credencials (només etiqueta i tipus), ajustos (només la clau),
+        llicències instal·lades, còpies de seguretat — a <strong>Recursos → Auditoria</strong>,
+        llegible per administradors a tots els nivells, amb filtres per autor, tipus i data.
+        Exportar-lo com a CSV o JSON és Enterprise. La retenció segueix el nivell: un desplegament
+        Team conserva noranta dies d’execucions, versions de flow i files d’auditoria i purga cada
+        nit (les execucions daurades i la versió actual de cada flow es queden sempre); Enterprise
+        ho conserva tot llevat que <code>retention.enterprise-days</code> digui una altra cosa; una
+        instal·lació gratuïta no es purga mai.
+      </p>
     </section>
 
     <section id="storage">
@@ -1303,6 +1360,8 @@ semantic (cosine,      top 50) ─┘</code></pre>
       <pre><code>pnpm desktop:build                                     # once — builds the jar
 export CONCENTUS_EMAIL=you@company.com
 export CONCENTUS_PASSWORD=…
+# o, per a una màquina: el token d’un compte de servei en comptes d’iniciar sessió
+export CONCENTUS_TOKEN=csa_…
 node scripts/concentus-run.mjs my-flow.json --input "go"
 echo $?                                                # 0 completed · 1 failed · 2 needs a human</code></pre>
       <p>
@@ -1337,11 +1396,37 @@ echo $?                                                # 0 completed · 1 failed
         <li><strong>SSO</strong> — iniciar sessió amb Microsoft, Google o Discord en comptes d'una contrasenya local.</li>
       </ul>
       <p>
-        Amb preu per seient, facturat mensualment o anualment — anual és un 10% més barat. Encara no
-        hi ha xifres publicades; escriu a
-        <a href="mailto:gila791@hotmail.com?subject=Concentus%20enterprise">gila791@hotmail.com</a>
-        o fes servir la targeta enterprise de la <a href="/ca#license">secció de preus</a> del lloc
-        web.
+        Una llicència <strong>Team</strong> cobreix fins a deu seients — 25 € per seient al mes, o
+        20 € per seient al mes si pagues l’any de cop — i es compra amb targeta a la
+        <a href="/ca#license">secció de preus</a>: la llicència arriba per correu minuts després
+        del pagament, renovar és tornar a comprar i tots els membres enganxen el mateix token.
+        Inclou tot el que un equip necessita per treballar junt: les tres coses de dalt, el
+        registre d’auditoria en pantalla, comptes de servei, endpoints publicats i els inicis de
+        sessió amb Google i Microsoft.
+      </p>
+      <p>
+        <strong>Enterprise</strong> és escala i governança — qualsevol nombre de seients, factura
+        en comptes de targeta, o un contracte: escriu a
+        <a href="mailto:gila791@hotmail.com?subject=Concentus%20enterprise">gila791@hotmail.com</a>.
+        Nou coses són només Enterprise, i cadascuna es diu igual al lloc web, al panell de
+        llicència i a la frase que veus quan una llicència Team no la cobreix:
+      </p>
+      <ul>
+        <li><strong>Proveïdors d’identitat personalitzats</strong> — qualsevol emissor OpenID Connect (Okta, Keycloak, una app d’Entra pròpia). Team té els preajustos de Google i Microsoft.</li>
+        <li><strong>Comptes automàtics per a un domini de correu</strong> — el primer inici de sessió crea el compte. En Team es convida.</li>
+        <li><strong>Exportació OpenTelemetry</strong> al teu col·lector.</li>
+        <li><strong>Polítiques d’organització</strong> — vegeu <a href="#teams">Equips i inici de sessió</a>.</li>
+        <li><strong>Exportació del registre d’auditoria</strong> com a CSV o JSON.</li>
+        <li><strong>Retenció il·limitada</strong> — Team conserva noranta dies.</li>
+        <li><strong>Diverses organitzacions</strong> en un desplegament.</li>
+        <li><strong>Comptes de servei il·limitats</strong> — Team en té dos.</li>
+        <li><strong>Endpoints publicats sense límit de peticions</strong> — Team: 60 peticions per minut i token.</li>
+      </ul>
+      <p>
+        Enterprise és també el nivell per a un desplegament darrere d’un proxy o sense internet:
+        la llicència es verifica sense connexió, la telemetria és opcional i un desplegament en
+        servidor no fa cap crida externa pel seu compte — Claude continua necessitant arribar a
+        Anthropic; un flow amb un model propi no necessita res fora de la xarxa.
       </p>
 
       <h3>On va una llicència</h3>
@@ -1404,6 +1489,13 @@ echo $?                                                # 0 completed · 1 failed
             <tr><td>GET</td><td><code>/api/knowledge/embedder</code></td><td>Els models opcionals · <code>/reranker</code> · <code>…/download</code></td></tr>
             <tr><td>GET/PUT</td><td><code>/api/settings</code></td><td>Tot l'ajustable, amb l'origen de cada valor <span class="pill">admin</span></td></tr>
             <tr><td>GET/POST</td><td><code>/api/storage</code></td><td>On viuen les dades · <code>/migrate</code> les copia <span class="pill">admin</span></td></tr>
+            <tr><td>GET</td><td><code>/api/audit</code></td><td>El registre, filtrat i paginat · <code>/export?format=csv|json</code> <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/retention</code></td><td>La finestra en vigor · <code>/run-now</code> purga avui <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/organizations</code></td><td>Organitzacions · <code>/{id}/members</code> · <code>/{id}/switch</code> <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/service-accounts</code></td><td>Tokens per a màquines · <code>/{id}/revoke</code> <span class="pill">admin</span></td></tr>
+            <tr><td>GET/PUT</td><td><code>/api/org-policy</code></td><td>Les regles de l’organització · <code>/publish/{flowId}/approve</code> <span class="pill">admin</span></td></tr>
+            <tr><td>POST</td><td><code>/api/public/flows/{id}/run</code></td><td>Un endpoint publicat, amb el seu token bearer · <code>/runs/{runId}</code> el consulta</td></tr>
+            <tr><td>GET/POST</td><td><code>/api/license</code></td><td>La llicència en vigor i el que desbloqueja · instal·lar un token <span class="pill">admin</span></td></tr>
           </tbody>
         </table>
       </div>

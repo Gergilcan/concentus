@@ -615,8 +615,12 @@ npx concentus</code></pre>
               <td>De dónde sale el texto de la ejecución: escrito por ti, una programación, un webhook o un correo entrante.</td>
             </tr>
             <tr>
+              <td><strong>Coordinador</strong></td>
+              <td>El líder: planifica el trabajo, lo reparte entre los agentes conectados debajo y escribe la respuesta. Uno por flow; la paleta lo dice cuando el lienzo ya tiene uno.</td>
+            </tr>
+            <tr>
               <td><strong>Agente</strong></td>
-              <td>Un modelo con un system prompt, un nivel de esfuerzo y un techo de tokens. El primer agente de un lienzo se convierte en el coordinador.</td>
+              <td>Un modelo con un system prompt, un nivel de esfuerzo y un techo de tokens, que hace un trabajo en su propio contexto.</td>
             </tr>
             <tr>
               <td><strong>Verificador</strong></td>
@@ -657,6 +661,18 @@ npx concentus</code></pre>
             <tr>
               <td><strong>Ejecutar otro flow</strong></td>
               <td>Un flow dentro de un flow. Ver <a href="#subflows">Subflows</a>.</td>
+            </tr>
+            <tr>
+              <td><strong>Enviar correo</strong></td>
+              <td>Envía por SMTP lo que le llega — el resultado, o el de una rama — a las direcciones que indiques. Las credenciales salen del almacén, nunca del fichero del flow.</td>
+            </tr>
+            <tr>
+              <td><strong>Nota</strong></td>
+              <td>Texto en el lienzo para la siguiente persona. Las ejecuciones lo ignoran.</td>
+            </tr>
+            <tr>
+              <td><strong>Grupo</strong></td>
+              <td>Una caja alrededor de varios bloques para moverlos, copiarlos y leerlos como uno solo.</td>
             </tr>
           </tbody>
         </table>
@@ -1151,6 +1167,48 @@ semantic (cosine,      top 50) ─┘</code></pre>
         permiso se cumple de verdad. Dos cuentas <em>activas</em> a la vez necesitan dos ventanas,
         porque una sesión es una cookie.
       </p>
+      <h3>Cuentas de servicio</h3>
+      <p>
+        Tokens para máquinas — un job de CI, una entrada de cron, otro sistema — en
+        <strong>Recursos → Cuentas de servicio</strong>. Cada una actúa con su rol en cada petición
+        y no ocupa asiento; el token (<code>csa_…</code>) se muestra una sola vez y se guarda con
+        hash. El CLI sin interfaz lo lee de <code>CONCENTUS_TOKEN</code> y se salta el inicio de
+        sesión. Una licencia Team admite dos a la vez; Enterprise, las que necesites.
+      </p>
+
+      <h3>Varias organizaciones</h3>
+      <p>
+        Un despliegue puede alojar varias organizaciones, cada una con sus flows, credenciales,
+        ejecuciones y ajustes, en <strong>Recursos → Organizaciones</strong>. Una persona puede
+        pertenecer a más de una y cambia desde el menú de cuenta; los asientos se cuentan por
+        persona, no por pertenencia. Crear la segunda organización es una función Enterprise — el
+        resto de esa pantalla funciona en Team.
+      </p>
+
+      <h3>Políticas de organización</h3>
+      <p>
+        Reglas sobre todos los flows de la organización, en <strong>Recursos → Políticas</strong>:
+        una fachada por defecto para los workers independientes (se rellena donde un bloque no
+        indica ninguna, o se rechaza), un techo al modo de permisos que cualquier bloque puede
+        pedir, un presupuesto mensual para toda la organización junto al de cada flow, y
+        aprobación antes de que un endpoint publicado responda — hasta que un administrador
+        aprueba el token guardado, el endpoint responde el mismo 404 que uno sin publicar. El
+        doctor del flow avisa de las tres cosas antes de ejecutar. Enterprise; un despliegue Team
+        ve lo guardado, solo lectura.
+      </p>
+
+      <h3>Registro de auditoría y retención</h3>
+      <p>
+        Quién hizo qué y cuándo — ejecuciones iniciadas y detenidas, aprobaciones, flows guardados
+        y publicados, miembros y roles, credenciales (solo etiqueta y tipo), ajustes (solo la
+        clave), licencias instaladas, copias de seguridad — en <strong>Recursos → Auditoría</strong>,
+        legible por administradores en todos los niveles, con filtros por autor, tipo y fecha.
+        Exportarlo como CSV o JSON es Enterprise. La retención sigue al nivel: un despliegue Team
+        conserva noventa días de ejecuciones, versiones de flow y filas de auditoría y purga cada
+        noche (las ejecuciones doradas y la versión actual de cada flow se quedan siempre);
+        Enterprise lo conserva todo salvo que <code>retention.enterprise-days</code> diga otra
+        cosa; una instalación gratuita nunca se purga.
+      </p>
     </section>
 
     <section id="storage">
@@ -1311,6 +1369,8 @@ semantic (cosine,      top 50) ─┘</code></pre>
       <pre><code>pnpm desktop:build                                     # once — builds the jar
 export CONCENTUS_EMAIL=you@company.com
 export CONCENTUS_PASSWORD=…
+# o, para una máquina: el token de una cuenta de servicio en vez de iniciar sesión
+export CONCENTUS_TOKEN=csa_…
 node scripts/concentus-run.mjs my-flow.json --input "go"
 echo $?                                                # 0 completed · 1 failed · 2 needs a human</code></pre>
       <p>
@@ -1346,10 +1406,37 @@ echo $?                                                # 0 completed · 1 failed
         <li><strong>SSO</strong> — iniciar sesión con Microsoft, Google o Discord en vez de con una contraseña local.</li>
       </ul>
       <p>
-        Con precio por asiento, facturado mensual o anualmente — anual es un 10% más barato. Aún no
-        hay cifras publicadas; escribe a
-        <a href="mailto:gila791@hotmail.com?subject=Concentus%20enterprise">gila791@hotmail.com</a>
-        o usa la tarjeta enterprise de la <a href="/es#license">sección de precios</a> del sitio.
+        Una licencia <strong>Team</strong> cubre hasta diez asientos — 25 € por asiento al mes, o
+        20 € por asiento al mes si pagas el año de una vez — y se compra con tarjeta en la
+        <a href="/es#license">sección de precios</a>: la licencia llega por correo minutos después
+        del pago, renovar es volver a comprar y todos los miembros pegan el mismo token. Incluye
+        todo lo que un equipo necesita para trabajar junto: las tres cosas de arriba, el registro
+        de auditoría en pantalla, cuentas de servicio, endpoints publicados y los inicios de
+        sesión con Google y Microsoft.
+      </p>
+      <p>
+        <strong>Enterprise</strong> es escala y gobernanza — cualquier número de asientos, factura
+        en vez de tarjeta, o un contrato: escribe a
+        <a href="mailto:gila791@hotmail.com?subject=Concentus%20enterprise">gila791@hotmail.com</a>.
+        Nueve cosas son solo Enterprise, y cada una se llama igual en el sitio, en el panel de
+        licencia y en la frase que ves cuando una licencia Team no la cubre:
+      </p>
+      <ul>
+        <li><strong>Proveedores de identidad personalizados</strong> — cualquier emisor OpenID Connect (Okta, Keycloak, una app de Entra propia). Team tiene los preajustes de Google y Microsoft.</li>
+        <li><strong>Cuentas automáticas para un dominio de correo</strong> — el primer inicio de sesión crea la cuenta. En Team se invita.</li>
+        <li><strong>Exportación OpenTelemetry</strong> a tu colector.</li>
+        <li><strong>Políticas de organización</strong> — ver <a href="#teams">Equipos e inicio de sesión</a>.</li>
+        <li><strong>Exportación del registro de auditoría</strong> como CSV o JSON.</li>
+        <li><strong>Retención ilimitada</strong> — Team conserva noventa días.</li>
+        <li><strong>Varias organizaciones</strong> en un despliegue.</li>
+        <li><strong>Cuentas de servicio ilimitadas</strong> — Team tiene dos.</li>
+        <li><strong>Endpoints publicados sin límite de peticiones</strong> — Team: 60 peticiones por minuto y token.</li>
+      </ul>
+      <p>
+        Enterprise es también el nivel para un despliegue detrás de un proxy o sin internet: la
+        licencia se verifica sin conexión, la telemetría es opcional y un despliegue en servidor no
+        hace ninguna llamada externa por su cuenta — Claude sigue necesitando llegar a Anthropic;
+        un flow con un modelo propio no necesita nada fuera de la red.
       </p>
 
       <h3>Dónde va una licencia</h3>
@@ -1411,6 +1498,13 @@ echo $?                                                # 0 completed · 1 failed
             <tr><td>GET</td><td><code>/api/knowledge/embedder</code></td><td>Los modelos opcionales · <code>/reranker</code> · <code>…/download</code></td></tr>
             <tr><td>GET/PUT</td><td><code>/api/settings</code></td><td>Todo lo ajustable, con el origen de cada valor <span class="pill">admin</span></td></tr>
             <tr><td>GET/POST</td><td><code>/api/storage</code></td><td>Dónde viven los datos · <code>/migrate</code> los copia <span class="pill">admin</span></td></tr>
+            <tr><td>GET</td><td><code>/api/audit</code></td><td>El registro, filtrado y paginado · <code>/export?format=csv|json</code> <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/retention</code></td><td>La ventana en vigor · <code>/run-now</code> purga hoy <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/organizations</code></td><td>Organizaciones · <code>/{id}/members</code> · <code>/{id}/switch</code> <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/service-accounts</code></td><td>Tokens para máquinas · <code>/{id}/revoke</code> <span class="pill">admin</span></td></tr>
+            <tr><td>GET/PUT</td><td><code>/api/org-policy</code></td><td>Las reglas de la organización · <code>/publish/{flowId}/approve</code> <span class="pill">admin</span></td></tr>
+            <tr><td>POST</td><td><code>/api/public/flows/{id}/run</code></td><td>Un endpoint publicado, con su token bearer · <code>/runs/{runId}</code> lo consulta</td></tr>
+            <tr><td>GET/POST</td><td><code>/api/license</code></td><td>La licencia en vigor y lo que desbloquea · instalar un token <span class="pill">admin</span></td></tr>
           </tbody>
         </table>
       </div>

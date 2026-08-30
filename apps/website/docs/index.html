@@ -606,8 +606,12 @@ npx concentus</code></pre>
               <td>Where the run's text comes from: typed by you, a schedule, a webhook, or an incoming email.</td>
             </tr>
             <tr>
+              <td><strong>Coordinator</strong></td>
+              <td>The lead: plans the work, hands it to the agents wired under it and writes the answer. One per flow; the palette says so when a canvas already has one.</td>
+            </tr>
+            <tr>
               <td><strong>Agent</strong></td>
-              <td>A model with a system prompt, an effort level and a token ceiling. The first agent on a canvas becomes the coordinator.</td>
+              <td>A model with a system prompt, an effort level and a token ceiling, doing one job in its own context.</td>
             </tr>
             <tr>
               <td><strong>Verifier</strong></td>
@@ -648,6 +652,18 @@ npx concentus</code></pre>
             <tr>
               <td><strong>Run another flow</strong></td>
               <td>A flow inside a flow. See <a href="#subflows">Sub-flows</a>.</td>
+            </tr>
+            <tr>
+              <td><strong>Send mail</strong></td>
+              <td>Sends what reached it by SMTP — the result, or a branch’s — to the addresses you name. Credentials come from the store, never from the flow file.</td>
+            </tr>
+            <tr>
+              <td><strong>Note</strong></td>
+              <td>Text on the canvas for the next person. Runs ignore it.</td>
+            </tr>
+            <tr>
+              <td><strong>Group</strong></td>
+              <td>A box around blocks so they move, copy and read as one thing.</td>
             </tr>
           </tbody>
         </table>
@@ -1126,6 +1142,46 @@ semantic (cosine,      top 50) ─┘</code></pre>
         role shown beside it — which is also the practical way to check that a permission actually
         holds. Two accounts <em>active</em> at once needs two windows, because a session is a cookie.
       </p>
+      <h3>Service accounts</h3>
+      <p>
+        Tokens for machines — a CI job, a cron entry, another system — under
+        <strong>Resources → Service accounts</strong>. Each acts as its role on every request and
+        takes no seat; the token (<code>csa_…</code>) is shown once and stored hashed. The headless
+        CLI reads it from <code>CONCENTUS_TOKEN</code> and skips the sign-in. A Team license holds
+        two at a time; Enterprise, as many as you need.
+      </p>
+
+      <h3>Several organizations</h3>
+      <p>
+        One deployment can carry several organizations, each with its own flows, credentials, runs
+        and settings, under <strong>Resources → Organizations</strong>. A person can belong to more
+        than one and switches from the account menu; seats are counted per person, not per
+        membership. Creating the second organization is an Enterprise feature — everything else
+        on that screen works on Team.
+      </p>
+
+      <h3>Organization policies</h3>
+      <p>
+        Rules over every flow in the organization, under <strong>Resources → Policies</strong>: a
+        default facade for independent workers (filled in where a block names none, or refused),
+        a ceiling on the permission mode any block may ask for, a monthly budget for the whole
+        organization beside each flow’s own, and approval before a published endpoint answers —
+        until an admin approves the saved token, the endpoint answers the same 404 as an
+        unpublished one. The flow doctor reports all three before a run. Enterprise; a Team
+        deployment sees what is stored, read-only.
+      </p>
+
+      <h3>Audit trail and retention</h3>
+      <p>
+        Who did what, and when — runs started and stopped, approvals, flows saved and published,
+        members and roles, credentials (label and kind only), settings (key only), license
+        installs, backups — under <strong>Resources → Audit</strong>, readable by administrators on
+        every tier, with actor, kind and date filters. Exporting it as CSV or JSON is Enterprise.
+        Retention follows the tier: a Team deployment keeps ninety days of runs, flow versions
+        and audit rows and purges nightly (golden runs and every flow’s current version always
+        stay); Enterprise keeps everything unless <code>retention.enterprise-days</code> says
+        otherwise; a free installation is never purged.
+      </p>
     </section>
 
     <section id="storage">
@@ -1282,13 +1338,16 @@ semantic (cosine,      top 50) ─┘</code></pre>
       <pre><code>pnpm desktop:build                                     # once — builds the jar
 export CONCENTUS_EMAIL=you@company.com
 export CONCENTUS_PASSWORD=…
+# or, for a machine: a service account token instead of a sign-in
+export CONCENTUS_TOKEN=csa_…
 node scripts/concentus-run.mjs my-flow.json --input "go"
 echo $?                                                # 0 completed · 1 failed · 2 needs a human</code></pre>
       <p>
         It signs in like everything else does. A script that could drive the backend without
         credentials would be a hole rather than a convenience. Prefer the environment variables over
         <code>--email</code> / <code>--password</code>: an argument ends up in the job's log and in
-        the process list.
+        the process list. A <code>CONCENTUS_TOKEN</code> from a service account skips the sign-in
+        altogether and acts as that account’s role — the right shape for CI.
       </p>
     </section>
 
@@ -1317,13 +1376,36 @@ echo $?                                                # 0 completed · 1 failed
         <li><strong>SSO</strong> — signing in with Microsoft, Google or Discord rather than a local password.</li>
       </ul>
       <p>
-        Two ways to get them, same features either way. A <strong>team</strong> license covers up
-        to ten seats, monthly or annually — 25 € per seat per month, 20 € when the year is paid at once — and is bought by card on the
+        A <strong>Team</strong> license covers up to ten seats — 25 € per seat per month, or
+        20 € per seat per month when the year is paid at once — and is bought by card on the
         <a href="/#license">pricing section</a>: the license arrives by email minutes after
-        checkout, and renewing is buying again. <strong>Enterprise</strong> is for more than ten
-        seats, an invoice instead of a card, or a contract: write to
+        checkout, renewing is buying again, and every member pastes the same token. It carries
+        everything a team needs to work together: the three above, the audit trail on screen,
+        service accounts, published endpoints, the Google and Microsoft sign-ins.
+      </p>
+      <p>
+        <strong>Enterprise</strong> is scale and governance — any number of seats, an invoice
+        instead of a card, or a contract: write to
         <a href="mailto:gila791@hotmail.com?subject=Concentus%20enterprise">gila791@hotmail.com</a>.
-        Every member of a team pastes the same token.
+        Nine things are Enterprise-only, and each is named the same way on the site, in the
+        License panel and in the sentence you see when a Team license does not cover it:
+      </p>
+      <ul>
+        <li><strong>Custom identity providers</strong> — any OpenID Connect issuer (Okta, Keycloak, a custom Entra app). Team has the Google and Microsoft presets.</li>
+        <li><strong>Automatic accounts for an email domain</strong> — first sign-in creates the account. Team invites people.</li>
+        <li><strong>OpenTelemetry export</strong> to your collector.</li>
+        <li><strong>Organization policies</strong> — see <a href="#teams">Teams and sign-in</a>.</li>
+        <li><strong>Audit trail export</strong> as CSV or JSON.</li>
+        <li><strong>Unlimited retention</strong> — Team keeps ninety days.</li>
+        <li><strong>Several organizations</strong> on one deployment.</li>
+        <li><strong>Unlimited service accounts</strong> — Team gets two.</li>
+        <li><strong>Published endpoints without a rate limit</strong> — Team: 60 requests a minute per token.</li>
+      </ul>
+      <p>
+        Enterprise is also the tier for a deployment behind a proxy or without internet: the
+        license verifies offline, telemetry is opt-in, and a server deployment makes no outside
+        call of its own — Claude itself still needs Anthropic reachable; a flow on a self-hosted
+        model needs nothing outside the network.
       </p>
       <p>
         To try before either: the <a href="/#trial">trial form</a> on the site issues a
@@ -1391,6 +1473,13 @@ echo $?                                                # 0 completed · 1 failed
             <tr><td>GET</td><td><code>/api/knowledge/embedder</code></td><td>The optional models · <code>/reranker</code> · <code>…/download</code></td></tr>
             <tr><td>GET/PUT</td><td><code>/api/settings</code></td><td>Everything adjustable, with where each value came from <span class="pill">admin</span></td></tr>
             <tr><td>GET/POST</td><td><code>/api/storage</code></td><td>Where data lives · <code>/migrate</code> copies it <span class="pill">admin</span></td></tr>
+            <tr><td>GET</td><td><code>/api/audit</code></td><td>The trail, filtered and paged · <code>/export?format=csv|json</code> <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/retention</code></td><td>The window in force · <code>/run-now</code> purges today <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/organizations</code></td><td>Organizations · <code>/{id}/members</code> · <code>/{id}/switch</code> <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/service-accounts</code></td><td>Tokens for machines · <code>/{id}/revoke</code> <span class="pill">admin</span></td></tr>
+            <tr><td>GET/PUT</td><td><code>/api/org-policy</code></td><td>The organization’s rules · <code>/publish/{flowId}/approve</code> <span class="pill">admin</span></td></tr>
+            <tr><td>POST</td><td><code>/api/public/flows/{id}/run</code></td><td>A published endpoint, with its bearer token · <code>/runs/{runId}</code> polls it</td></tr>
+            <tr><td>GET/POST</td><td><code>/api/license</code></td><td>The license in force, with what it unlocks · install a token <span class="pill">admin</span></td></tr>
           </tbody>
         </table>
       </div>

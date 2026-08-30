@@ -2,7 +2,7 @@
 
 A **desktop application** for designing, running, and steering Claude agents — visually.
 
-**[Download for Windows or Linux →](https://github.com/Gergilcan/concentus/releases/latest)**
+**[Download for Windows, macOS or Linux →](https://github.com/Gergilcan/concentus/releases/latest)**
 
 Install it and open it. There is no server to deploy, no database to provision, no API key to
 paste, and nothing to configure — the app carries its own Java runtime and its own PostgreSQL, and
@@ -1771,8 +1771,9 @@ java -cp target/concentus-backend.jar com.concentus.Main path/to/agent.yaml "you
 
 - Managed runs create fresh agents/environment each launch (demo simplicity) — in production these
   are persistent, versioned resources created once.
-- Managed-mode **MCP auth** needs a vault; MCP servers are declared without credentials for now
-  (public/unauthenticated MCP and native GitHub repo mounts work as-is).
+- Managed-mode **MCP auth** is a stored credential: an MCP server block names one and the
+  session receives it as its `authorization_token`. Public MCP and native GitHub repo mounts need
+  none.
 - Runs, events and per-node output are persisted (see [Persistence](#persistence-postgresql)), but
   the live handles to a running session are not — restarting the backend leaves history intact and
   drops anything mid-flight.

@@ -186,6 +186,9 @@
   .v-merge { border-left: 3px solid var(--merge); }
   .v-verifier { border-left: 3px solid var(--verifier); }
   .v-gate { border-left: 3px solid var(--gate); }
+  .v-input { border-left: 3px solid var(--accent); }
+  .v-mail { border-left: 3px solid var(--api); }
+  .v-note { border-left: 3px solid var(--muted); }
 
   /* Selection and kinship rings, as canvas-overrides.css sets them. */
   .sel { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -759,9 +762,9 @@
             </div>
 
             <div style="background:var(--panel);border-left:1px solid var(--border)">
-              <div class="panel-h">Agent · Tech Lead</div>
+              <div class="panel-h">Coordinador · Tech Lead</div>
               <div style="padding:0 12px;display:flex;flex-direction:column;gap:12px">
-                <div><div class="field-l">Rol</div><div class="field">coordinador</div></div>
+                <div><div class="field-l">Esforç</div><div class="field">alt</div></div>
                 <div><div class="field-l">Model</div><div class="field">claude-opus-5</div></div>
                 <div>
                   <div class="field-l">System prompt</div>
@@ -795,7 +798,7 @@
       <div class="band-head" data-reveal>
         <div>
           <span class="eyebrow">02 · L'equip</span>
-          <h2>Dotze tipus de node. Un sol vocabulari.</h2>
+          <h2>Setze tipus de node. Un sol vocabulari.</h2>
         </div>
         <p class="lede">Cadascun és una targeta real al llenç: una icona, un nom, una etiqueta i un llom de color que diu què és des de l'altra punta de la sala. Cadenes, no una llista plana — un agent pot alimentar el següent, bifurcar segons una condició, repartir-se sobre una llista o cridar un altre flow sencer.</p>
       </div>
@@ -848,6 +851,18 @@
         <div>
           <div class="n v-flow"><div class="n-h"><span class="n-i">🔗</span><span class="n-t">release-notes</span><span class="n-b">després</span></div><div class="n-s">un flow dins d'aquest flow</div></div>
           <p class="cap">Un flow cridant-ne un altre.</p>
+        </div>
+        <div>
+          <div class="n v-input"><div class="n-h"><span class="n-i">▶</span><span class="n-t">Tiquet</span><span class="n-b">activador</span></div><div class="n-s">cron · cada dia a les 09:00</div></div>
+          <p class="cap">On comença una execució: escrit, programat, un webhook o un correu entrant.</p>
+        </div>
+        <div>
+          <div class="n v-mail"><div class="n-h"><span class="n-i">✉</span><span class="n-t">Avisar</span><span class="n-b">correu</span></div><div class="n-s">per a: equip@ · el resultat</div></div>
+          <p class="cap">Envia el resultat per SMTP quan l’execució arriba aquí.</p>
+        </div>
+        <div>
+          <div class="n v-note"><div class="n-h"><span class="n-i">✎</span><span class="n-t">Per què aquesta forma</span><span class="n-b">nota</span></div><div class="n-s">Escrita per al següent</div></div>
+          <p class="cap">Una nota al llenç. Agrupa blocs per moure’ls junts.</p>
         </div>
       </div>
     </div>
@@ -924,7 +939,7 @@
           <span class="eyebrow">04 · Casos d'ús</span>
           <h2>Connecta l'equip segons la feina.</h2>
         </div>
-        <p class="lede">Els mateixos dotze blocs, disposats per a la feina que tens al davant. Cap d'aquests necessita una línia de codi de cola — només un dibuix diferent.</p>
+        <p class="lede">Els mateixos setze blocs, disposats per a la feina que tens al davant. Cap d'aquests necessita una línia de codi de cola — només un dibuix diferent.</p>
       </div>
 
       <div class="uses">

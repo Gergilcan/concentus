@@ -305,6 +305,125 @@
   <h1>What changed</h1>
   <p class="sub">Every release, newest first — the same notes that ship with the installers. The app updates itself from these releases; package-manager installs update through their manager.</p>
 
+  <section id="v0.1.12">
+    <h2>v0.1.12 <span class="date">2026-08-29</span></h2>
+<h3>What's new in 0.1.12</h3>
+<p>A maintenance release: the whole codebase simplified and cleaned up with no change in what it does — and one real bug the cleanup's own test gate caught.</p>
+<h4>Fixed</h4>
+<ul>
+<li><strong>A slow Save no longer closes the block you just opened.</strong> When the server took its time answering a Save and you had meanwhile double-clicked a block — even after leaving for the dashboard and reopening the same flow — the inspector vanished the moment the Save came back. Your selection now survives a reload of the flow it points into.</li>
+</ul>
+<h4>Under the hood</h4>
+<ul>
+<li>About 570 fewer lines across backend, Studio, desktop shell and website: duplicated logic written once (how a run fails, the MCP JSON-RPC dispatch, the OAuth callback page, the browser sign-in sequence, the admin panels' first fetch), code with no caller removed, and comments that had stopped being true corrected.</li>
+<li>The Studio's lint is clean for the first time (17 errors → 0), and the site's translation check now runs with its tests.</li>
+<li>Nothing user-visible changed: no endpoint, setting key, message or layout moved.</li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.11...v0.1.12">https://github.com/Gergilcan/concentus/compare/v0.1.11...v0.1.12</a></p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.12">Installers and notes on GitHub →</a></p>
+  </section>
+
+  <section id="v0.1.11">
+    <h2>v0.1.11 <span class="date">2026-08-29</span></h2>
+<h3>What's new in 0.1.11</h3>
+<h4>Team pricing</h4>
+<p><strong>25 € per seat per month, or 20 € per seat per month when the year is paid at once.</strong> Up to ten seats, bought by card on the site; the license lands in your inbox minutes after checkout.</p>
+<h4>The Enterprise line</h4>
+<p>Team keeps everything a team needs to work together. Enterprise adds scale and governance — nine things, each named the same way on the site, in the License panel and in the refusal you see when a Team license does not cover it:</p>
+<ul>
+<li><strong>Custom identity providers</strong> (any OpenID Connect issuer) — Team has the Google and Microsoft presets.</li>
+<li><strong>Automatic accounts for an email domain</strong> — Team invites people.</li>
+<li><strong>OpenTelemetry export</strong> to your collector.</li>
+<li><strong>Organization policies</strong> — a default facade for workers, a permission ceiling, an organization-wide budget, approval before a published endpoint answers.</li>
+<li><strong>Audit trail export</strong> — every tier reads the trail on screen; Enterprise exports it as CSV or JSON.</li>
+<li><strong>Unlimited retention</strong> — Team keeps ninety days of runs and versions (golden runs and current versions always stay).</li>
+<li><strong>Several organizations on one deployment</strong>, each with its own flows, credentials, runs and settings, and a switch in the account menu.</li>
+<li><strong>Unlimited service accounts</strong> — Team gets two. Tokens for machines: a CI job, a cron entry, another system; <code>CONCENTUS_TOKEN</code> in the CLI.</li>
+<li><strong>Published endpoints without a rate limit</strong> — Team: 60 requests a minute per token.</li>
+</ul>
+<h4>Also</h4>
+<ul>
+<li>An <strong>audit trail</strong> for every tier: who did what and when, from runs to license installs, under Resources → Audit.</li>
+<li><strong>Service accounts</strong> under Resources, for administrators.</li>
+<li>Isolated and offline installs documented: the license verifies offline, and a server deployment makes no outside call of its own.</li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.10...v0.1.11">https://github.com/Gergilcan/concentus/compare/v0.1.10...v0.1.11</a></p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.11">Installers and notes on GitHub →</a></p>
+  </section>
+
+  <section id="v0.1.10">
+    <h2>v0.1.10 <span class="date">2026-08-29</span></h2>
+<h3>What's new in 0.1.10</h3>
+<h4>Credentials are encrypted at rest</h4>
+<p>Stored credentials are sealed with a key the desktop shell keeps in your OS keyring. If an installation ever finds rows it cannot open — a reinstall, a second machine on a shared database without the key — they show as <strong>locked — enter the value again</strong>; the app runs, the flow doctor names them, and re-entering seals them under this installation's key. Nothing is deleted and no flow needs rewiring. Backups include secrets only when you ask.</p>
+<h4>A Team tier, and a trial</h4>
+<ul>
+<li><strong>Team</strong>: up to ten seats, bought by card on the site, the license in your inbox minutes later. The same features as Enterprise — the shared database, members and roles, SSO. (Being switched on: until pricing is configured the card says "to be announced".)</li>
+<li><strong>Trial</strong>: fourteen days of the team features, no card, one per email; the License panel shows the days left.</li>
+</ul>
+<h4>The site</h4>
+<ul>
+<li>Windows, macOS and Linux, everywhere it used to say two.</li>
+<li>A changelog page — these notes, for every release, at concentus-ai.com/changelog.</li>
+<li>The site in Spanish and Catalan.</li>
+</ul>
+<h4>Quality</h4>
+<ul>
+<li>116 tests for the desktop shell (the part that finds <code>claude</code>, sets the PATH and updates the app) and an Electron smoke test.</li>
+<li>The Studio's inspectors, palette, toolbar and console under test; a fix for the model picker, which opened a saved local model as "Custom…".</li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.9...v0.1.10">https://github.com/Gergilcan/concentus/compare/v0.1.9...v0.1.10</a></p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.10">Installers and notes on GitHub →</a></p>
+  </section>
+
+  <section id="v0.1.9">
+    <h2>v0.1.9 <span class="date">2026-08-29</span></h2>
+<h3>What's new in 0.1.9</h3>
+<p>The first twenty-four items of the improvements report.</p>
+<h4>Your subscription's allowance</h4>
+<ul>
+<li><strong>A meter for the weekly allowance.</strong> Anthropic meters non-interactive Claude Code use — the way Concentus runs the CLI — in its own allowance. Set your plan's figure under Settings → Usage and the Usage page shows how far this machine's runs are from it; a run that starts past 80% says so in its first line.</li>
+<li><strong>A fallback when it is spent.</strong> On the Coordinator: run on the API key, or run every agent on a local model. Applied at start when the meter says spent, and mid-run when the CLI refuses for the allowance — the run ends as a failure and continues as a new run on the fallback, which says where it came from.</li>
+<li><strong>A hard ceiling.</strong> The monthly budget now stops a billed run that reaches it mid-run, not only the next one.</li>
+</ul>
+<h4>Fan-out</h4>
+<ul>
+<li><strong>Items that wait for others.</strong> A plan item may list <code>dependsOn</code>; it starts when those items finished and gets their reports in its prompt. Loops and unknown ids are refused; ordered items may share a file.</li>
+<li><strong>Repositories inside the workers.</strong> A repository wired to a worker is cloned into that worker's own workspace; its changes reach the merge step as patches, and the merge — the one process with a shell — applies, verifies, commits and opens the pull request.</li>
+<li><strong><code>ask_worker</code>.</strong> A worker can put a question to a named sibling; it is answered from that sibling's workspace and report by a short read-only process, without interrupting it. Five per worker.</li>
+<li><strong>Retries per block</strong>, and a block's <code>on error</code> / <code>on rejected</code> fires the moment the block settles instead of after the merge.</li>
+</ul>
+<h4>Runs</h4>
+<ul>
+<li><strong>Resume.</strong> Start again keeping every worker that passed; only the rest runs. Runs the backend lost in flight say so, with Resume as the way back.</li>
+<li><strong>Telegram</strong> approvals and questions: a bot set up once under Settings → Approvals posts every request with ✅ / ❌ buttons and every question as a message you reply to. The app polls the bot, so the answer comes back with no public URL.</li>
+<li><strong>Changes tab.</strong> The diffs of what the agents did to the repositories, per block and per run, persisted with the run.</li>
+<li><strong>Evaluations.</strong> Datasets per flow — cases with <code>contains</code>, <code>regex</code>, <code>exact</code> or an LLM judge — and results per flow version.</li>
+</ul>
+<h4>Blocks and triggers</h4>
+<ul>
+<li><strong>Send mail</strong> node: wire it to a block's output and the run mails what that output carries — the error and its log, the verification report, the final answer.</li>
+<li><strong>Folder watch</strong> trigger, and provider presets (GitHub, GitLab, Linear) for the webhook form.</li>
+<li><strong>Publish a flow as an endpoint</strong>: <code>POST /api/public/flows/{id}/run</code> with a bearer token, a synchronous answer or 202 + polling, and a minimal chat page.</li>
+<li><strong>Notes and groups</strong> on the canvas, "Go to block" in Ctrl+K, a minimap.</li>
+<li><strong>Library agents as live references</strong>: link a block to a library agent, versioned; the doctor warns when the library moved on.</li>
+</ul>
+<h4>Knowledge</h4>
+<ul>
+<li><strong>OCR</strong> for scanned PDFs and images through the Tesseract program when it is installed (nothing bundled; the message says how to get it).</li>
+<li>The retrieval budget is in <strong>tokens</strong> (estimated); characters stay as the fallback.</li>
+<li>pgvector <strong>does</strong> ship in the desktop app — the message that said otherwise is gone, and tool search ranks with the built-in embedder.</li>
+</ul>
+<h4>Managed sessions</h4>
+<ul>
+<li>A remote MCP server's credential reaches the managed session as <code>authorization_token</code> — declared, not yet verified against a live session; the run log says per server when a credential left the machine.</li>
+</ul>
+<h4>Not exercised against the real world in this release</h4>
+<p>SMTP send, the Telegram bot, Tesseract, the managed-session MCP token and the LLM judge were tested through fakes only. If one of them misbehaves for you, the run log says so — open an issue with that line.</p>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.8...v0.1.9">https://github.com/Gergilcan/concentus/compare/v0.1.8...v0.1.9</a></p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.9">Installers and notes on GitHub →</a></p>
+  </section>
+
   <section id="v0.1.8">
     <h2>v0.1.8 <span class="date">2026-08-29</span></h2>
 <h3>What's new in 0.1.8</h3>
