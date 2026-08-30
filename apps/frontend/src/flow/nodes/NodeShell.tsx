@@ -1,5 +1,5 @@
-import { Handle, Position } from '@xyflow/react'
-import { useMemo } from 'react'
+import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react'
+import { useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useFlowStore } from '../../state/store.ts'
@@ -78,6 +78,16 @@ export function NodeShell({
 
   const shown = altHandles.filter((h) => !h.optional || h.optional.enabled || wired.has(h.id))
   const hidden = altHandles.filter((h) => !shown.includes(h))
+
+  // A second output turned on by its chip puts a new dot on a card whose size does not change —
+  // the chip row and the label row are the same height — and React Flow measures a card's handles
+  // only when its size does. Told outright, it learns the dot at once; left to notice, it never
+  // did, and a wire dragged from the new dot went nowhere until the flow was reopened.
+  const updateNodeInternals = useUpdateNodeInternals()
+  const shownIds = shown.map((h) => h.id).join(',')
+  useEffect(() => {
+    if (id) updateNodeInternals(id)
+  }, [id, shownIds, updateNodeInternals])
   // The chips that turn a hidden output on take a row of their own above the outputs already
   // shown: on the same row they sat on top of the lowest handle, and a verifier with on
   // rejected shown could not be wired from it because '+ on error' was in the way.
