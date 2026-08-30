@@ -343,6 +343,7 @@
     <h4>Operar</h4>
     <a href="#marketplace">Marketplace</a>
     <a href="#teams">Equipos e inicio de sesión</a>
+    <a href="#runners">Runners</a>
     <a href="#storage">Almacenamiento</a>
     <a href="#settings">Ajustes</a>
     <a href="#updates">Actualizaciones</a>
@@ -1272,6 +1273,95 @@ semantic (cosine,      top 50) ─┘</code></pre>
       </p>
     </section>
 
+    <section id="runners">
+      <h2>Runners</h2>
+      <p class="sub">Ejecución en una máquina que alguien opera, para un hub que alguien ha desplegado.</p>
+      <p>
+        La aplicación de escritorio es un solo backend que es a la vez el plano de control y el
+        sitio donde se ejecutan los flows: el CLI <code>claude</code> corre en la máquina donde
+        está la ventana, con la sesión que ya hay allí. Un <strong>runner</strong> es esa mitad de
+        ejecución por sí sola — un proceso en una máquina que tú operas (un portátil que se queda
+        encendido, un NAS, un contenedor en tu propio clúster) que se conecta <em>hacia fuera</em>
+        a un backend de Concentus, el <strong>hub</strong>, se registra con un token acuñado allí
+        y ejecuta los turnos del CLI que el hub le entrega. El hub se queda con los flows, las
+        ejecuciones, las aprobaciones, las credenciales, los grupos, las políticas y la interfaz;
+        el runner se queda con la sesión, las carpetas, los clones y los procesos. La aplicación
+        por sí sola no cambia — los runners son para la forma en que un hub corre en algún sitio
+        (<code>java -jar</code>, o la imagen Docker) y se abre en un navegador.
+      </p>
+
+      <h3>Dónde vive la sesión</h3>
+      <p>
+        Las condiciones de Anthropic no permiten que las credenciales de una suscripción pasen
+        por un tercero, y un hub que guardara tu <code>claude setup-token</code> sería exactamente
+        eso. Así que el hub nunca guarda una sesión de Claude: un runner lo registra
+        <em>quien</em> lo opera, en una máquina que opera, y lleva su propia autenticación — la
+        sesión del CLI en esa máquina, <code>CLAUDE_CODE_OAUTH_TOKEN</code> salido de
+        <code>claude setup-token</code>, o <code>ANTHROPIC_API_KEY</code>. El hub solo sabe de qué
+        tipo es, y la lista lo muestra.
+      </p>
+
+      <h3>Ámbitos</h3>
+      <p>
+        Quien registra un runner elige quién puede ejecutar flows en él.
+        <strong>Organización</strong>: todos sus miembros; los registra un administrador.
+        <strong>Grupo</strong>: sus miembros, un administrador, y una programación o un webhook
+        de un flow que pertenezca al grupo; un gestor del grupo puede registrar uno, y necesita
+        grupos, así que Enterprise. <strong>Solo yo</strong>: el propietario y nadie más — ni un
+        administrador que no sea el propietario, ni nunca una programación o un webhook. Es la
+        máquina de alguien y la sesión de alguien; cualquier miembro puede registrar uno para sí.
+        Los administradores ven todos los runners; el resto ve los de la organización, los de sus
+        grupos y los suyos.
+      </p>
+
+      <h3>Arrancar uno</h3>
+      <p>
+        <strong>Recursos → Runners → + Nuevo</strong> pide un nombre y un ámbito y responde con
+        el token (<code>crn_…</code>), mostrado una sola vez y guardado con hash, y las tres
+        maneras de arrancarlo con la URL del hub ya rellena:
+      </p>
+      <pre><code>java -jar concentus-backend.jar runner --url https://hub.example.com --token crn_…
+
+docker run -d -v concentus-runner:/data \
+  -e CONCENTUS_RUNNER_URL=https://hub.example.com -e CONCENTUS_RUNNER_TOKEN=crn_… \
+  -e CLAUDE_CODE_OAUTH_TOKEN=… ghcr.io/gergilcan/concentus-runner:latest</code></pre>
+      <p>
+        O la propia aplicación de escritorio, en <em>Ajustes → Conectar a un servidor</em>: sigue
+        funcionando como hasta ahora y además ejecuta para ese hub. En modo <code>runner</code>
+        el jar nunca arranca Spring — ni base de datos ni puerto — y sale con <code>3</code> si
+        el token se rechaza, en vez de reintentar. Lo que necesita de su lado: <code>git</code>,
+        el CLI <code>claude</code>, <code>LOCAL_CONTEXT_ROOTS</code> para las carpetas que los
+        flows pueden leer allí (vacío las rechaza todas, como en un hub), y
+        <code>EXECUTION_MAX_PROCESSES</code> para cuántos turnos a la vez — aplica su propio
+        techo, no el del hub. Un hub y un runner juntos, con compose, están en
+        <code>packaging/docker</code> del repositorio.
+      </p>
+
+      <h3>Qué runner usa un flow</h3>
+      <p>
+        <em>Se ejecuta en</em>, en los Ajustes del flow. <strong>Este servidor</strong> (por
+        defecto): aquí cuando el CLI tiene sesión en este backend; si no, el runner en línea
+        menos ocupado que puedas usar — el registro lo dice —; si no, una API key o el rechazo.
+        <strong>Cualquier runner</strong>: el runner utilizable en línea menos ocupado; sin
+        ninguno en línea, el arranque falla en el acto, no hay cola. <strong>Un runner por
+        nombre</strong>: ese; desconectado, revocado o no tuyo para usarlo, y el arranque se
+        rechaza nombrándolo. Solo los flows del CLI de Claude van a runners; un modelo
+        autoalojado se queda en el hub. La primera línea de la ejecución nombra al runner, la
+        lista de ejecuciones lleva un chip con su nombre, y la ejecución se factura como una
+        local — con la suscripción de ese runner.
+      </p>
+      <div class="note">
+        <b>No en esta versión</b>
+        <p>
+          Un turno no sobrevive a que el runner se desconecte: tras 45 s sin latido el hub lo
+          termina como <em>desconectado</em>, y lo que el runner estaba ejecutando acaba de su
+          lado con la salida perdida. El runner se reconecta solo; nada se reanuda. Los espacios
+          de trabajo terminados no se limpian en el runner, y ninguna cola espera a que un runner
+          se conecte.
+        </p>
+      </div>
+    </section>
+
     <section id="storage">
       <h2>Almacenamiento</h2>
       <p class="sub">Integrado por defecto; una base de datos de empresa cuando la quieras.</p>
@@ -1564,6 +1654,8 @@ echo $?                                                # 0 completed · 1 failed
             <tr><td>GET/POST</td><td><code>/api/retention</code></td><td>La ventana en vigor · <code>/run-now</code> purga hoy <span class="pill">admin</span></td></tr>
             <tr><td>GET/POST</td><td><code>/api/organizations</code></td><td>Organizaciones · <code>/{id}/members</code> · <code>/{id}/switch</code> <span class="pill">admin</span></td></tr>
             <tr><td>GET/POST</td><td><code>/api/service-accounts</code></td><td>Tokens para máquinas · <code>/{id}/revoke</code> <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/runners</code></td><td>Runners · <code>/{id}/revoke</code> · <code>/usable</code> — en los que puedes ejecutar flows · <code>/self</code> — el agente de este mismo backend</td></tr>
+            <tr><td>WS</td><td><code>/ws/runner</code></td><td>La conexión de un runner, con su token <code>crn_…</code> como bearer</td></tr>
             <tr><td>GET/PUT</td><td><code>/api/org-policy</code></td><td>Las reglas de la organización · <code>/publish/{flowId}/approve</code> <span class="pill">admin</span></td></tr>
             <tr><td>POST</td><td><code>/api/public/flows/{id}/run</code></td><td>Un endpoint publicado, con su token bearer · <code>/runs/{runId}</code> lo consulta</td></tr>
             <tr><td>GET/POST</td><td><code>/api/license</code></td><td>La licencia en vigor y lo que desbloquea · instalar un token <span class="pill">admin</span></td></tr>
@@ -1598,6 +1690,14 @@ echo $?                                                # 0 completed · 1 failed
             <tr>
               <td><code>APP_DATA_DIR</code> · <code>SERVER_PORT</code></td>
               <td>Dónde viven los datos y a qué puerto escuchar.</td>
+            </tr>
+            <tr>
+              <td><code>CONCENTUS_RUNNER_URL</code><br /><code>CONCENTUS_RUNNER_TOKEN</code><br /><code>CONCENTUS_RUNNER_NAME</code></td>
+              <td>Arrancar el jar como runner (con <code>runner</code> como primer argumento), o hacer que un backend completo actúe también como uno.</td>
+            </tr>
+            <tr>
+              <td><code>CONCENTUS_RUNNER_DATA_DIR</code> · <code>CLAUDE_COMMAND</code> · <code>LOCAL_CONTEXT_ROOTS</code> · <code>EXECUTION_MAX_PROCESSES</code></td>
+              <td>Lo que un runner guarda de su lado: espacios de trabajo y clones, el CLI, las carpetas que puede leer, cuántos procesos del CLI a la vez.</td>
             </tr>
           </tbody>
         </table>

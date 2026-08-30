@@ -26,6 +26,13 @@ theoretical.
 The trade-off is honest: flows run while the app is running. A scheduled or mail-triggered flow
 fires when your machine is on and Concentus is open, not at 3am on a server.
 
+That is no longer the whole story. The same jar can be deployed as a **hub** — in a container, on
+a server, reached in a browser — with **runners** connected to it: processes on machines people
+operate, each carrying its own Claude login, executing the flows the hub hands them. The hub still
+holds no login, for the reason above; what changed is that the login no longer has to be on the
+machine the window is on. A schedule fires on the hub and runs on whichever of its runners is
+online. See [Runners](#runners).
+
 ### What is inside
 
 - **`apps/desktop`** — the Electron shell. It owns the backend as a child process: picks a port,
@@ -1053,6 +1060,133 @@ POST            /api/groups/assign                {kind, resourceId, groupId|nul
 GET             /api/groups/status
 ```
 
+### Runners
+
+The desktop app is one backend that is both the control plane and the place flows execute: the
+`claude` CLI runs on the machine the window is on, against the login already there. A **runner**
+is that execution half on its own — a process on a machine somebody operates (a laptop that stays
+on, a NAS, a container on your own cluster) that connects *outbound* to a Concentus backend, the
+**hub**, registers with a token minted there, and executes the CLI turns the hub hands it. The
+hub keeps everything else: flows, runs, events, approvals, credentials, groups, policies, MCP
+proxying, the UI. The runner keeps the login, the folders, the clones and the processes. The
+same shape as a GitLab runner.
+
+Nothing changes for the app on its own: it is still the whole thing, on one machine. Runners are
+for the other shape — a hub somebody deployed (`java -jar`, or
+[the Docker image](packaging/docker/README.md)), reached in a browser, and runners connected to
+it: the bare jar in runner mode, the runner image, or a desktop install *also* acting as a runner
+for that hub (a setting, off by default).
+
+**Where the login lives.** Anthropic's terms do not allow a Pro or Max subscription's
+credentials to be routed through a third party, and a hub holding your `claude setup-token`
+would be exactly that. So the hub never holds a Claude login. A runner is registered *by* the
+person or organization operating it, on a machine they operate, and carries its own auth: the
+CLI's login on that machine, or `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, or
+`ANTHROPIC_API_KEY`. The hub only ever learns which kind it is — the roster shows it beside the
+runner's version and host. Concentus-hosted execution stays API-key only, as before.
+
+**Scopes.** Whoever registers a runner chooses who may run flows on it:
+
+- **Organization** — everyone in it. An admin registers these.
+- **Group** — the group's members, an admin, and a launch with nobody behind it (a schedule, a
+  webhook) whose flow belongs to that group. A group's manager may register one; it needs
+  groups, so Enterprise.
+- **Only me** — the owner, and nobody else: not an admin who is not the owner, and never a
+  schedule or a webhook. It is somebody's machine and somebody's login. Any member may register
+  one for themselves.
+
+An admin sees every runner of the organization; everybody else sees the organization's, those
+of their groups, and their own. Renaming, revoking and deleting take an admin, the owner, or a
+manager of the runner's group. Registering, renaming, revoking and deleting are audited.
+
+**Registering one.** *Resources → Runners → + New*: a name and a scope. The answer is the one
+screen the token (`crn_` and forty random characters) is ever on, with the hub's URL filled into
+the three ways to start it; close it and only the hash remains, as with a service account. A
+runner presenting a revoked or unknown token is refused at the handshake and does not retry.
+
+**Starting one.** The bare jar, with `runner` as the first argument:
+
+```sh
+java -jar concentus-backend.jar runner --url https://hub.example.com --token crn_… \
+  [--name office-pc] [--data-dir DIR] [--claude PATH] [--context-roots /srv/a,/srv/b] [--max-processes 4]
+```
+
+Started that way the jar never starts Spring — no database, no web server, a few hundred
+milliseconds to connect. It exits `2` on a usage error, `3` when the token is refused (and does
+not retry), `0` on SIGTERM. Every option is also an environment variable, which is how the
+Docker image and the desktop app pass them:
+
+| Variable | |
+|---|---|
+| `CONCENTUS_RUNNER_URL` · `CONCENTUS_RUNNER_TOKEN` | the hub, and the token it minted |
+| `CONCENTUS_RUNNER_NAME` | optional; a label for this process — the roster shows the name it was registered under |
+| `CONCENTUS_RUNNER_DATA_DIR` | run workspaces and clones on this machine; `~/.concentus-runner` by default |
+| `CLAUDE_COMMAND` | the `claude` binary, when it is not on `PATH` |
+| `LOCAL_CONTEXT_ROOTS` | the folders on *this* machine a flow's context folders may point into; empty rejects every one, as on a hub ([why](#context-folders)) |
+| `EXECUTION_MAX_PROCESSES` | CLI processes at once on this runner (4). A turn here holds no slot of the hub's ceiling; the runner enforces its own and says *waiting for a free slot* in the run's console |
+| `CLAUDE_CODE_OAUTH_TOKEN` · `ANTHROPIC_API_KEY` | the CLI's auth when there is no login on the machine |
+
+In Docker, with everything on the environment:
+
+```sh
+docker run -d -v concentus-runner:/data \
+  -e CONCENTUS_RUNNER_URL=https://hub.example.com -e CONCENTUS_RUNNER_TOKEN=crn_… \
+  -e CLAUDE_CODE_OAUTH_TOKEN=… ghcr.io/gergilcan/concentus-runner:latest
+```
+
+Or a hub and a runner together, from [packaging/docker](packaging/docker/README.md):
+
+```sh
+cd packaging/docker && cp .env.example .env     # CONCENTUS_SECRET_KEY at least
+docker compose up -d hub                        # http://localhost:8080 → first account → Resources → Runners → + New
+docker compose --profile runner up -d           # once the token is in .env
+```
+
+And the desktop app: *Settings → Connect to a server* (also the optional last step of the
+first-run wizard) takes the hub's URL and the token, keeps the token in the OS keyring, and
+restarts the backend with its embedded agent connected — everything local keeps working; this is
+*also*, not *instead*. The tray says whether it is connected and opens the hub's UI in a window
+of its own.
+
+**What a runner needs on its side.** `git`, for repositories; the `claude` CLI, logged in or
+given a token as above; `LOCAL_CONTEXT_ROOTS` for the folders flows may read there; and room
+for `EXECUTION_MAX_PROCESSES` CLI processes. The Docker image carries the first two.
+
+**Which runner a flow uses.** *Runs on*, in the flow's Settings:
+
+- **This server** (the default, automatic) — here, when the Claude CLI is logged in on this
+  backend; otherwise the least busy online runner the launcher may use, and the log says *No
+  Claude login on this server; running on runner ‹name›*; otherwise exactly today's answer — an
+  API key, or the refusal.
+- **Any runner** — the least busy usable runner that is online. None online, and the launch
+  fails at once: *No runner is online for this flow. Start one, or set the flow to run here.*
+  There is no queue that waits for one; a schedule simply fires again next time.
+- **A runner by name** — that one. Offline, revoked, or not usable by whoever launches (the
+  owner's alone, a group you are not in), and the launch is refused naming it; the doctor
+  reports the last two before any run.
+
+Only the Claude CLI backend runs on runners. A flow whose coordinator uses a self-hosted model
+and names a runner is refused: *Runners execute Claude CLI flows; ‹model› runs on the
+local-model backend.* On a run that went to a runner, the console's first line says so
+(*Runner ‹name› — running on its Claude login*), the runs list carries a chip with its name, and
+the Changes tab re-reads a checkout's diff from the runner while it is connected — and says the
+runner is offline, showing the change as last read, when it is not. The run is billed the way a
+local run is: on that runner's subscription, per turn.
+
+What travels: the hub keeps writing the run's files — `CLAUDE.md`, the agents, the MCP
+configuration, the settings — into its own mirror of the workspace, ships what changed to the
+runner before each turn, and the CLI runs there, in `<data-dir>/runs/<runId>`, with its output
+streamed back line by line. Clones happen on the runner and only there; repository tokens ride
+the socket for the clone and the process environment and are written to disk on neither side.
+Fan-out works the same way, workers and merge step included.
+
+**Not in this version.** A turn does not survive the runner disconnecting: after 45 s without
+a heartbeat the hub marks it offline, the turn ends as *Runner ‹name› disconnected*, and what
+the runner was running finishes on its side with its output lost — it reconnects on its own
+(2 s → 60 s backoff), but nothing is resumed. Finished workspaces are not cleaned up on the
+runner; retention purges the hub's rows only. Self-hosted models stay on the hub. There are no
+tags or labels beyond the three scopes, and no queue for a runner that is not there.
+
 ### Isolation
 
 **Every table is partitioned by `organization_id`**, and the id always comes from the authenticated
@@ -1373,6 +1507,10 @@ Four things cannot be settings, because they are what has to be known before the
 keep one: the database the table lives in, the key that decrypts it, the data directory and the
 port, and the bootstrap administrator for a deployment nobody sits in front of.
 
+A runner has no settings at all, in the same spirit: it never starts Spring, so there is no table
+to keep one in, and everything about it comes from its command line or its environment — see
+[Runners](#runners).
+
 The catalogue only lists settings whose consumers actually read through it. A field that saves a
 row nothing looks at is worse than no field, because it looks like it worked — so it grows as
 consumers are converted rather than being written out in full first.
@@ -1635,6 +1773,9 @@ onto a valid delivery.
 | POST | `/api/account/login` · `/api/account/logout` | sign in / out ([details](#sign-in-and-organizations)) |
 | GET/POST | `/api/account/members` | organization members (admin only) · `POST /api/account/password` |
 | GET/POST | `/api/service-accounts` · PUT `…/{id}` · POST `…/{id}/revoke` | tokens for machines: list, mint (the token is in this one answer), rename, revoke (admin only; [details](#service-accounts)) |
+| GET/POST | `/api/runners` · PUT `…/{id}` · POST `…/{id}/revoke` · DELETE `…/{id}` | runners: list (with which scopes the caller may register), register (the token is in this one answer), rename, revoke, delete ([details](#runners)) |
+| GET | `/api/runners/usable` · `/api/runners/self` | the runners the caller may run flows on · whether this backend's own runner agent is connected to a hub (what the desktop tray reads) |
+| WS | `/ws/runner` | the runner protocol: opened by a runner with its `crn_…` token as a bearer, no session |
 | GET | `/api/account/accounts` · POST `…/{userId}/use` | the accounts this browser has signed into, and switching to one |
 | GET/PUT | `/api/account/providers` | register Microsoft / Google / Discord, and the redirect URI to give them (admin only) |
 | GET/PUT | `/api/settings` | everything adjustable, with where each value came from (admin only) |

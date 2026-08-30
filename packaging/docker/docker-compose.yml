@@ -1,0 +1,75 @@
+# A hub and one runner on the same machine. Start in two steps, because the runner's token is
+# minted in the hub's UI and cannot exist before the hub does:
+#
+#   cp .env.example .env            # fill in CONCENTUS_SECRET_KEY at least
+#   docker compose up -d hub        # http://localhost:8080 → create the first account
+#                                   # → Resources → Runners → + New → copy the token into .env
+#   docker compose --profile runner up -d
+#
+# `image:` and `build:` together: `docker compose up` builds from this checkout (the context is
+# the repository root, two levels up) and tags the result with the published name. To run the
+# images from the registry instead, `docker compose pull` and then `up --no-build`.
+#
+# The runner keeps its own Claude auth (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY, from .env)
+# and the hub never sees it. That is not a limitation of this file; it is the rule the feature is
+# built on — see packaging/docker/README.md.
+
+# Otherwise the project takes the folder's name and the volumes come out as docker_hub-data.
+name: concentus
+
+services:
+  hub:
+    image: ghcr.io/gergilcan/concentus-hub:latest
+    build:
+      context: ../..
+      dockerfile: packaging/docker/Dockerfile
+      target: hub
+    ports:
+      - "8080:8080"
+    volumes:
+      # The embedded PostgreSQL, the run workspaces, the logs. Losing this volume is losing the
+      # deployment; back it up as you would a database.
+      - hub-data:/data
+    environment:
+      # Required, and stable for the life of the data — see the hub target in the Dockerfile.
+      CONCENTUS_SECRET_KEY: ${CONCENTUS_SECRET_KEY:?set CONCENTUS_SECRET_KEY in .env (openssl rand -base64 32)}
+      # Optional: the first account, for a hub nobody opens in a browser first.
+      CONCENTUS_ADMIN_EMAIL: ${CONCENTUS_ADMIN_EMAIL:-}
+      CONCENTUS_ADMIN_PASSWORD: ${CONCENTUS_ADMIN_PASSWORD:-}
+    restart: unless-stopped
+
+  runner:
+    # Behind a profile so that `docker compose up hub` works before a token exists; the runner
+    # starts only when asked for by name or with --profile runner.
+    profiles: [runner]
+    image: ghcr.io/gergilcan/concentus-runner:latest
+    build:
+      context: ../..
+      dockerfile: packaging/docker/Dockerfile
+      target: runner
+    # Start order only. A runner that comes up before its hub is not a problem — it reconnects
+    # with backoff (2 s → 60 s) and every process it was running keeps running.
+    depends_on:
+      - hub
+    volumes:
+      # Run workspaces and clones, on the runner's side.
+      - runner-data:/data
+      # Folders a flow's context folders may point into go here as bind mounts, and are then
+      # named in LOCAL_CONTEXT_ROOTS below. Nothing is mounted by default.
+      # - /srv/code:/srv/code:ro
+    environment:
+      # The service name resolves inside the compose network; the CLI on the runner reaches the
+      # hub's tools through the same address.
+      CONCENTUS_RUNNER_URL: http://hub:8080
+      CONCENTUS_RUNNER_TOKEN: ${CONCENTUS_RUNNER_TOKEN:-}
+      CONCENTUS_RUNNER_NAME: ${CONCENTUS_RUNNER_NAME:-compose-runner}
+      # The runner's own Claude auth. One of the two; the hub never sees either.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # LOCAL_CONTEXT_ROOTS: /srv/code
+      # EXECUTION_MAX_PROCESSES: "4"
+    restart: unless-stopped
+
+volumes:
+  hub-data:
+  runner-data:
