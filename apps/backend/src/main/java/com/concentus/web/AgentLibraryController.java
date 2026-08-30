@@ -32,10 +32,15 @@ public class AgentLibraryController {
 
     @PostMapping
     public LibraryAgent save(@RequestBody LibraryAgent agent) {
+        return store.save(validated(agent));
+    }
+
+    /** The rule a saved agent must meet — shared with the marketplace, which validates a payload the same way. */
+    public static LibraryAgent validated(LibraryAgent agent) {
         if (agent == null || agent.name() == null || agent.name().isBlank()) {
             throw new IllegalArgumentException("name is required.");
         }
-        return store.save(agent);
+        return agent;
     }
 
     @DeleteMapping("/{id}")

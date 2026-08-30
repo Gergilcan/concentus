@@ -1,0 +1,311 @@
+[
+  {
+    "name": "GitHub",
+    "url": "https://api.githubcopilot.com/mcp/",
+    "auth": "token",
+    "blurb": "Issues, PRs, repositories",
+    "note": "Needs a fine-grained personal access token stored as a credential — its OAuth rejects automated sign-in.",
+    "category": "Development"
+  },
+  {
+    "name": "GitLab",
+    "url": "https://gitlab.com/api/v4/mcp",
+    "auth": "token",
+    "blurb": "Issues, MRs, pipelines",
+    "note": "Needs a personal access token stored as a credential (PRIVATE-TOKEN header).",
+    "header": "PRIVATE-TOKEN",
+    "category": "Development"
+  },
+  {
+    "name": "Sentry",
+    "url": "https://mcp.sentry.dev/mcp",
+    "auth": "oauth",
+    "blurb": "Errors, issues, performance",
+    "note": "Sign in from the node after adding.",
+    "category": "Development"
+  },
+  {
+    "name": "Linear",
+    "url": "https://mcp.linear.app/mcp",
+    "auth": "oauth",
+    "blurb": "Issues, projects, cycles",
+    "note": "Sign in from the node after adding.",
+    "category": "Planning & docs"
+  },
+  {
+    "name": "Notion",
+    "url": "https://mcp.notion.com/mcp",
+    "auth": "oauth",
+    "blurb": "Pages and databases",
+    "note": "Sign in from the node after adding.",
+    "category": "Planning & docs"
+  },
+  {
+    "name": "Atlassian",
+    "url": "https://mcp.atlassian.com/v1/sse",
+    "auth": "oauth",
+    "blurb": "Jira issues, Confluence pages",
+    "note": "Sign in from the node after adding.",
+    "category": "Planning & docs"
+  },
+  {
+    "name": "Asana",
+    "url": "https://mcp.asana.com/sse",
+    "auth": "oauth",
+    "blurb": "Tasks, projects, portfolios",
+    "note": "Sign in from the node after adding.",
+    "category": "Planning & docs"
+  },
+  {
+    "name": "Intercom",
+    "url": "https://mcp.intercom.com/mcp",
+    "auth": "oauth",
+    "blurb": "Support conversations, contacts",
+    "note": "Sign in from the node after adding.",
+    "category": "Planning & docs"
+  },
+  {
+    "name": "Stripe",
+    "url": "https://mcp.stripe.com",
+    "auth": "oauth",
+    "blurb": "Customers, invoices, payments",
+    "note": "Sign in from the node after adding.",
+    "category": "Business"
+  },
+  {
+    "name": "PayPal",
+    "url": "https://mcp.paypal.com/mcp",
+    "auth": "oauth",
+    "blurb": "Invoices, orders, transactions",
+    "note": "Sign in from the node after adding.",
+    "category": "Business"
+  },
+  {
+    "name": "Square",
+    "url": "https://mcp.squareup.com/sse",
+    "auth": "oauth",
+    "blurb": "Payments, catalogue, customers",
+    "note": "Sign in from the node after adding.",
+    "category": "Business"
+  },
+  {
+    "name": "HubSpot",
+    "url": "https://mcp.hubspot.com/anthropic",
+    "auth": "oauth",
+    "blurb": "CRM contacts, companies, deals",
+    "note": "Sign in from the node after adding.",
+    "category": "Business"
+  },
+  {
+    "name": "Cloudflare",
+    "url": "https://observability.mcp.cloudflare.com/sse",
+    "auth": "oauth",
+    "blurb": "Workers logs and analytics",
+    "note": "Sign in from the node after adding.",
+    "category": "Data & content"
+  },
+  {
+    "name": "Figma",
+    "url": "http://127.0.0.1:3845/mcp",
+    "auth": "none",
+    "blurb": "Designs from Figma desktop",
+    "note": "Local only: needs Figma desktop running with its MCP server enabled in preferences.",
+    "category": "Data & content"
+  },
+  {
+    "name": "Google Analytics",
+    "command": "pipx",
+    "args": [
+      "run",
+      "analytics-mcp"
+    ],
+    "env": {
+      "GOOGLE_APPLICATION_CREDENTIALS": ""
+    },
+    "auth": "stdio",
+    "blurb": "Reports and metrics (official)",
+    "note": "Google's own server (PyPI analytics-mcp) — needs pipx installed. Point GOOGLE_APPLICATION_CREDENTIALS at a service-account key with Analytics access, or leave it empty to use gcloud's application-default login.",
+    "category": "Google"
+  },
+  {
+    "name": "Google Ads",
+    "command": "pipx",
+    "args": [
+      "run",
+      "google-ads-mcp"
+    ],
+    "auth": "stdio",
+    "blurb": "Campaigns and reporting (official)",
+    "note": "Google's own server (PyPI google-ads-mcp) — needs pipx installed, plus Google Ads API credentials configured as its README describes (github.com/googleads/google-ads-mcp). Read-only: it cannot change a bid, a budget or a campaign's status.",
+    "category": "Google"
+  },
+  {
+    "name": "Google Ads (read)",
+    "command": "npx",
+    "args": [
+      "-y",
+      "mcp-google-ads"
+    ],
+    "env": {
+      "GOOGLE_ADS_CUSTOMER_ID": "",
+      "GOOGLE_ADS_MCC_CUSTOMER_ID": ""
+    },
+    "auth": "stdio",
+    "blurb": "Reports, search terms, keyword ideas",
+    "note": "Community server (npm mcp-google-ads) — runs via npx, so no Python needed, unlike the official one above. Run `npx mcp-google-ads-auth` once to sign in and store the refresh token; fill the customer id (123-456-7890) and, for a manager account, the MCC id. Read-only: mutating tools stay hidden without the write flag.",
+    "category": "Google"
+  },
+  {
+    "name": "Google Ads (write)",
+    "command": "npx",
+    "args": [
+      "-y",
+      "mcp-google-ads"
+    ],
+    "env": {
+      "GOOGLE_ADS_CUSTOMER_ID": "",
+      "GOOGLE_ADS_MCC_CUSTOMER_ID": "",
+      "GOOGLE_ADS_MCP_WRITE": "true"
+    },
+    "auth": "stdio",
+    "blurb": "Create, pause, budgets, bids, keywords",
+    "note": "The same server as above with GOOGLE_ADS_MCP_WRITE=true, which exposes the mutating tools — this one moves live ad spend. Everything it creates lands PAUSED and enabling is a separate, explicit call. Clear the flag to put it back in read-only mode.",
+    "category": "Google"
+  },
+  {
+    "name": "Google Search Console",
+    "command": "npx",
+    "args": [
+      "-y",
+      "mcp-server-gsc"
+    ],
+    "env": {
+      "GOOGLE_APPLICATION_CREDENTIALS": ""
+    },
+    "auth": "stdio",
+    "blurb": "Search performance and sitemaps",
+    "note": "Community server (npm mcp-server-gsc) — runs via npx. Point GOOGLE_APPLICATION_CREDENTIALS at a service-account key added to your Search Console property.",
+    "category": "Google"
+  },
+  {
+    "name": "Google Tag Manager",
+    "command": "npx",
+    "args": [
+      "-y",
+      "google-tag-manager-mcp-server"
+    ],
+    "auth": "stdio",
+    "blurb": "Containers, tags, triggers",
+    "note": "Community server (npm google-tag-manager-mcp-server, by stape-io) — runs via npx; needs Google OAuth credentials as its README describes.",
+    "category": "Google"
+  },
+  {
+    "name": "Google Workspace",
+    "command": "uvx",
+    "args": [
+      "workspace-mcp"
+    ],
+    "env": {
+      "GOOGLE_OAUTH_CLIENT_ID": "",
+      "GOOGLE_OAUTH_CLIENT_SECRET": ""
+    },
+    "auth": "stdio",
+    "blurb": "Gmail, Calendar, Drive, Docs, Sheets",
+    "note": "Community server (PyPI workspace-mcp) — needs uv installed. Fill the OAuth client id/secret from a Google Cloud project with the Workspace APIs enabled.",
+    "category": "Google"
+  },
+  {
+    "name": "Google Maps",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-google-maps"
+    ],
+    "env": {
+      "GOOGLE_MAPS_API_KEY": ""
+    },
+    "auth": "stdio",
+    "blurb": "Places, directions, geocoding",
+    "note": "Reference server (npm @modelcontextprotocol/server-google-maps) — runs via npx; fill GOOGLE_MAPS_API_KEY.",
+    "category": "Google"
+  },
+  {
+    "name": "Microsoft Graph",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@merill/lokka"
+    ],
+    "env": {
+      "TENANT_ID": "",
+      "CLIENT_ID": "",
+      "CLIENT_SECRET": ""
+    },
+    "auth": "stdio",
+    "blurb": "Users, mail, Teams, Entra, Intune",
+    "note": "Lokka (npm @merill/lokka) — runs via npx. Fill the env from an Entra app registration with the Graph permissions you want; env values can reference credential:<id> to keep secrets in Credentials.",
+    "category": "Microsoft"
+  },
+  {
+    "name": "Microsoft Learn Docs",
+    "url": "https://learn.microsoft.com/api/mcp",
+    "auth": "none",
+    "blurb": "Official Microsoft/Azure docs search",
+    "note": "Hosted by Microsoft, no sign-in needed.",
+    "category": "Microsoft"
+  },
+  {
+    "name": "Resend",
+    "url": "https://mcp.resend.com/mcp",
+    "auth": "oauth",
+    "blurb": "Send email, contacts, broadcasts (official)",
+    "note": "Hosted by Resend. Sign in from the node after adding — or, for headless runs, store a Resend API key as a credential on the definition instead (it is accepted as a Bearer token).",
+    "category": "Email"
+  },
+  {
+    "name": "Mailtrap",
+    "command": "npx",
+    "args": [
+      "-y",
+      "mcp-mailtrap"
+    ],
+    "env": {
+      "MAILTRAP_API_TOKEN": "",
+      "DEFAULT_FROM_EMAIL": ""
+    },
+    "auth": "stdio",
+    "blurb": "Send email, sandbox testing (official)",
+    "note": "Mailtrap's own server (npm mcp-mailtrap) — runs via npx. Fill MAILTRAP_API_TOKEN and DEFAULT_FROM_EMAIL; env values can reference credential:<id> to keep the token in Credentials.",
+    "category": "Email"
+  },
+  {
+    "name": "SendGrid",
+    "command": "npx",
+    "args": [
+      "-y",
+      "sendgrid-mcp"
+    ],
+    "env": {
+      "SENDGRID_API_KEY": ""
+    },
+    "auth": "stdio",
+    "blurb": "Send email, lists, templates, stats",
+    "note": "Community server (npm sendgrid-mcp) against the SendGrid v3 API — runs via npx. Fill SENDGRID_API_KEY (can reference credential:<id>).",
+    "category": "Email"
+  },
+  {
+    "name": "Mailchimp",
+    "command": "uvx",
+    "args": [
+      "mailchimp-mcp"
+    ],
+    "env": {
+      "MAILCHIMP_API_KEY": "",
+      "MAILCHIMP_READ_ONLY": "true"
+    },
+    "auth": "stdio",
+    "blurb": "Campaigns, audiences, reports",
+    "note": "Community server (PyPI mailchimp-mcp) — needs uv installed. Ships read-only on purpose (MAILCHIMP_READ_ONLY=true): explore safely first, and clear the flag only when the flow should write.",
+    "category": "Email"
+  }
+]

@@ -21,7 +21,10 @@ public class FacadeProfileStore extends JsonStore<FacadeProfile> {
 
     @Override
     protected FacadeProfile withId(FacadeProfile p, String id) {
-        return new FacadeProfile(id, p.name(), p.description(), p.tools(), p.readOnly(), p.dryRun());
+        // The canonical constructor, and that is load-bearing: every save goes through here, and
+        // the six-argument shortcut this used to call silently dropped readAlso from every stored
+        // profile — the same trap FlowGraph.withId documents.
+        return new FacadeProfile(id, p.name(), p.description(), p.tools(), p.readOnly(), p.dryRun(), p.readAlso());
     }
 
     @Override

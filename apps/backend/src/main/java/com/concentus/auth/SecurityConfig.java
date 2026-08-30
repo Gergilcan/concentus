@@ -228,7 +228,11 @@ public class SecurityConfig {
                             "/api/runs/*/golden", "/api/runs/*/golden/rerun",
                             // Running an evaluation is running the flow, once per case. Editing
                             // its cases changes what "right" means, and stays a write below.
-                            "/api/flows/*/evals/run")
+                            "/api/flows/*/evals/run",
+                            // Installing from the marketplace creates a resource in the caller's
+                            // organization — the same right the resource's own panel asks for,
+                            // which is OPERATOR's; the controller checks the role again.
+                            "/api/marketplace/items/*/install", "/api/marketplace/items/*/uninstall")
                             .hasAnyRole(Accounts.ROLE_OPERATOR, Accounts.ROLE_MEMBER, Accounts.ROLE_ADMIN)
                     // Everything left changes what the work IS — flows, agents, servers,
                     // credentials, knowledge. Denied by default rather than listed: a route added

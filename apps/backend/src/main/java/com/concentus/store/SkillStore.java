@@ -28,4 +28,16 @@ public class SkillStore extends JsonStore<SkillDef> {
     protected String sortKey(SkillDef s) {
         return s.name();
     }
+
+    /**
+     * Saves, replacing any skill of the same name in the organization: re-installing a corrected
+     * skill must not leave two versions competing for the same folder name in every future run
+     * workspace. The upload, the catalog install and the marketplace all go through here.
+     */
+    public SkillDef saveReplacingByName(SkillDef parsed) {
+        list().stream()
+                .filter(existing -> existing.name().equals(parsed.name()))
+                .forEach(existing -> delete(existing.id()));
+        return save(parsed);
+    }
 }

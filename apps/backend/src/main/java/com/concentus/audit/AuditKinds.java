@@ -45,6 +45,12 @@ public final class AuditKinds {
     public static final String BACKUP_EXPORTED = "backup.exported";
     public static final String RETENTION_PURGED = "retention.purged";
 
+    public static final String MARKETPLACE_PUBLISHED = "marketplace.published";
+    public static final String MARKETPLACE_APPROVED = "marketplace.approved";
+    public static final String MARKETPLACE_REJECTED = "marketplace.rejected";
+    public static final String MARKETPLACE_INSTALLED = "marketplace.installed";
+    public static final String MARKETPLACE_UNINSTALLED = "marketplace.uninstalled";
+
     /** Every kind, in the order the filter lists them. */
     public static final List<String> ALL = List.of(
             RUN_STARTED, RUN_STOPPED, RUN_APPROVED, RUN_REJECTED, RUN_RETRIED, RUN_RESUMED,
@@ -53,5 +59,7 @@ public final class AuditKinds {
             FLOW_TOKEN_REGENERATED,
             MEMBER_INVITED, MEMBER_ROLE_CHANGED,
             CREDENTIAL_CREATED, CREDENTIAL_UPDATED, CREDENTIAL_DELETED,
-            SETTING_CHANGED, LICENSE_INSTALLED, BACKUP_EXPORTED, RETENTION_PURGED);
+            SETTING_CHANGED, LICENSE_INSTALLED, BACKUP_EXPORTED, RETENTION_PURGED,
+            MARKETPLACE_PUBLISHED, MARKETPLACE_APPROVED, MARKETPLACE_REJECTED, MARKETPLACE_INSTALLED,
+            MARKETPLACE_UNINSTALLED);
 }

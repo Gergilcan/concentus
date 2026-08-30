@@ -32,10 +32,15 @@ public class FacadeProfileController {
 
     @PostMapping
     public FacadeProfile save(@RequestBody FacadeProfile profile) {
+        return store.save(validated(profile));
+    }
+
+    /** The rule a saved profile must meet — shared with the marketplace, which validates a payload the same way. */
+    public static FacadeProfile validated(FacadeProfile profile) {
         if (profile == null || profile.name() == null || profile.name().isBlank()) {
             throw new IllegalArgumentException("A profile needs a name.");
         }
-        return store.save(profile);
+        return profile;
     }
 
     @DeleteMapping("/{id}")

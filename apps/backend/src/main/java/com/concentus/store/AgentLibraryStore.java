@@ -44,7 +44,7 @@ public class AgentLibraryStore extends JsonStore<LibraryAgent> {
     private static final String DEFAULT_EFFORT = "high";
     private static final long DEFAULT_MAX_TOKENS = 16000;
 
-    private final ObjectMapper yaml = new ObjectMapper(new YAMLFactory())
+    private static final ObjectMapper YAML = new ObjectMapper(new YAMLFactory())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public AgentLibraryStore(JdbcTemplate jdbc,
@@ -117,7 +117,7 @@ public class AgentLibraryStore extends JsonStore<LibraryAgent> {
     }
 
     private LibraryAgent parse(Path p) throws IOException {
-        AgentSpec spec = yaml.readValue(Files.readString(p), AgentSpec.class);
+        AgentSpec spec = YAML.readValue(Files.readString(p), AgentSpec.class);
         // The filename was the id in the file-backed layout, so importing keeps it — a flow node
         // that recorded which library agent it came from still matches.
         return toLibraryAgent(spec, p.getFileName().toString().replaceFirst("\\.(ya?ml)$", ""));
@@ -128,7 +128,7 @@ public class AgentLibraryStore extends JsonStore<LibraryAgent> {
      * examples: a default that applied on one path and not the other would show as two agents
      * that look identical in the picker and behave differently at run time.
      */
-    private static LibraryAgent toLibraryAgent(AgentSpec spec, String id) {
+    public static LibraryAgent toLibraryAgent(AgentSpec spec, String id) {
         String model = (spec.model != null && spec.model.id != null) ? spec.model.id : DEFAULT_MODEL;
         String effort = (spec.model != null && spec.model.effort != null)
                 ? spec.model.effort : DEFAULT_EFFORT;
@@ -138,6 +138,15 @@ public class AgentLibraryStore extends JsonStore<LibraryAgent> {
         return new LibraryAgent(id, name, model, effort, maxTokens,
                 spec.systemPrompt == null ? "" : spec.systemPrompt,
                 spec.description == null ? "" : spec.description, 1);
+    }
+
+    /**
+     * One bundled YAML, as the library row it becomes — the same reading the seeding below does,
+     * for the marketplace seeder, which lists the bundle as global items rather than copying it
+     * into one organization.
+     */
+    public static LibraryAgent fromYaml(byte[] yaml, String id) throws IOException {
+        return toLibraryAgent(YAML.readValue(yaml, AgentSpec.class), id);
     }
 
     private static boolean isYaml(Path p) {
@@ -162,7 +171,7 @@ public class AgentLibraryStore extends JsonStore<LibraryAgent> {
                 String filename = r.getFilename();
                 if (filename == null) continue;
                 try (InputStream in = r.getInputStream()) {
-                    AgentSpec spec = yaml.readValue(in.readAllBytes(), AgentSpec.class);
+                    AgentSpec spec = YAML.readValue(in.readAllBytes(), AgentSpec.class);
                     super.save(toLibraryAgent(spec, filename.replaceFirst("\\.(ya?ml)$", "")));
                 }
             }

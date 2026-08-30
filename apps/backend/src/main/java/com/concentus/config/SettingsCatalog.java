@@ -48,6 +48,10 @@ public final class SettingsCatalog {
     /** The published endpoints' rate on Enterprise; 0 is unlimited. Read by PublicRunController. */
     public static final String ENDPOINT_RATE_PER_MINUTE = "endpoints.rate-per-minute";
     public static final String GROUP_RETENTION = "Retention";
+    public static final String GROUP_MARKETPLACE = "Marketplace";
+
+    /** Which organization's admins approve global marketplace submissions. Read by MarketplacePolicy. */
+    public static final String MARKETPLACE_CURATOR_ORGANIZATION = "marketplace.curator-organization";
 
     private static final List<SettingDef> ALL = List.of(
             number("runs.max-concurrent", GROUP_RUNS, "Runs at once",
@@ -185,7 +189,14 @@ public final class SettingsCatalog {
                             + "for one. Read on the Enterprise tier alone: a Team deployment keeps "
                             + "ninety days whatever is typed here, and a free installation is never "
                             + "purged. A golden run, the current version of every flow and the "
-                            + "version the golden run executed are always kept.", false)
+                            + "version the golden run executed are always kept.", false),
+
+            text(MARKETPLACE_CURATOR_ORGANIZATION, GROUP_MARKETPLACE, "Curating organization",
+                    "The id of the organization whose administrators approve items submitted to the "
+                            + "whole deployment. Empty means the oldest organization — the one the "
+                            + "first account created — so a deployment with a single organization "
+                            + "needs nothing set: its admin approves. Read installation-wide, from "
+                            + "the default organization's settings.", false)
     );
 
     public static List<SettingDef> all() {

@@ -77,15 +77,8 @@ public class SkillController {
                 body.getOrDefault("path", "")));
     }
 
-    /**
-     * Same name replaces: re-installing a corrected skill must not leave two versions competing
-     * for the same folder name in every future run workspace.
-     */
     private Map<String, Object> saveReplacing(SkillDef parsed) {
-        store.list().stream()
-                .filter(existing -> existing.name().equals(parsed.name()))
-                .forEach(existing -> store.delete(existing.id()));
-        return view(store.save(parsed));
+        return view(store.saveReplacingByName(parsed));
     }
 
     @DeleteMapping("/{id}")
