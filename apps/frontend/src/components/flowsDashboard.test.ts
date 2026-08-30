@@ -84,6 +84,11 @@ describe('visibleFlows', () => {
   ]
   const emptyRunsByFlow = new Map<string, RunSummary[]>()
 
+  it('a tag matches the search too, which is what a tag chip on a card types', () => {
+    const result = visibleFlows(flows, emptyRunsByFlow, 'reports', 'recent')
+    expect(result.map((f) => f.id)).toEqual(['f2'])
+  })
+
   it('filters by a case-insensitive name substring', () => {
     const result = visibleFlows(flows, emptyRunsByFlow, 'nightly', 'recent')
     expect(result.map((f) => f.id)).toEqual(['f1'])

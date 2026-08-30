@@ -35,7 +35,7 @@ export function computeStats(flows: BackendFlow[], runs: RunSummary[]): Dashboar
   }
 }
 
-/** Filters flows by name, then sorts with favourites always floated to the top. */
+/** Filters flows by name or tag, then sorts with favourites always floated to the top. */
 export function visibleFlows(
   flows: BackendFlow[],
   runsByFlow: Map<string, RunSummary[]>,
@@ -43,7 +43,11 @@ export function visibleFlows(
   sort: Sort,
 ): BackendFlow[] {
   const q = query.trim().toLowerCase()
-  const list = q ? flows.filter((f) => f.name.toLowerCase().includes(q)) : flows
+  // A tag chip on a card puts the tag in the search box, so the search must read tags as well
+  // as names — otherwise clicking a chip narrowed the list to nothing.
+  const matches = (f: BackendFlow) =>
+    f.name.toLowerCase().includes(q) || (f.tags ?? []).some((tag) => tag.toLowerCase().includes(q))
+  const list = q ? flows.filter(matches) : flows
   const lastRunAt = (f: BackendFlow) => (f.id ? (runsByFlow.get(f.id)?.[0]?.createdAt ?? 0) : 0)
   return [...list].sort((a, b) => {
     if (!!a.favorite !== !!b.favorite) return a.favorite ? -1 : 1
