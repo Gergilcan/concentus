@@ -1142,7 +1142,7 @@ docker compose up -d hub                        # http://localhost:8080 → firs
 docker compose --profile runner up -d           # once the token is in .env
 ```
 
-And the desktop app: *Settings → Connect to a server* (also the optional last step of the
+And the desktop app: the tray’s *Set up… → Server* (also the optional last step of the
 first-run wizard) takes the hub's URL and the token, keeps the token in the OS keyring, and
 restarts the backend with its embedded agent connected — everything local keeps working; this is
 *also*, not *instead*. The tray says whether it is connected and opens the hub's UI in a window

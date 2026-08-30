@@ -1326,7 +1326,7 @@ docker run -d -v concentus-runner:/data \
   -e CONCENTUS_RUNNER_URL=https://hub.example.com -e CONCENTUS_RUNNER_TOKEN=crn_… \
   -e CLAUDE_CODE_OAUTH_TOKEN=… ghcr.io/gergilcan/concentus-runner:latest</code></pre>
       <p>
-        O la propia aplicación de escritorio, en <em>Ajustes → Conectar a un servidor</em>: sigue
+        O la propia aplicación de escritorio, desde la bandeja, en <em>Configurar… → Servidor</em>: sigue
         funcionando como hasta ahora y además ejecuta para ese hub. En modo <code>runner</code>
         el jar nunca arranca Spring — ni base de datos ni puerto — y sale con <code>3</code> si
         el token se rechaza, en vez de reintentar. Lo que necesita de su lado: <code>git</code>,

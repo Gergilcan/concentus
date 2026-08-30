@@ -305,6 +305,34 @@
   <h1>What changed</h1>
   <p class="sub">Every release, newest first — the same notes that ship with the installers. The app updates itself from these releases; package-manager installs update through their manager.</p>
 
+  <section id="v0.1.15">
+    <h2>v0.1.15 <span class="date">2026-08-30</span></h2>
+<h3>What's new in 0.1.15</h3>
+<h4>Runners</h4>
+<p>Concentus has been one backend that is both the control plane and the place flows execute — the <code>claude</code> CLI on the machine the window is on, against the login already there. It still is. What is new is the other shape: a <strong>hub</strong> somebody deployed (<code>java -jar</code>, or the Docker image), and <strong>runners</strong> connected to it.</p>
+<ul>
+<li><strong>A runner is the execution half on its own.</strong> A process on a machine you operate — a laptop that stays on, a NAS, a container on your own cluster — connects <em>out</em> to the hub, registers with a token minted there, and runs the CLI turns the hub hands it. The hub keeps the flows, runs, approvals, credentials, groups, policies and the interface; the runner keeps the login, the folders, the clones and the processes. The same shape as a GitLab runner.</li>
+<li><strong>The login stays where its owner runs the process.</strong> Anthropic's terms do not allow a subscription's credentials to be routed through a third party, so the hub never holds a Claude login or a <code>setup-token</code>. A runner carries its own — the CLI's login on that machine, <code>CLAUDE_CODE_OAUTH_TOKEN</code> from <code>claude setup-token</code>, or <code>ANTHROPIC_API_KEY</code> — and the hub only ever learns which kind. Hosted execution stays API-key only, as before.</li>
+<li><strong>Three scopes.</strong> Whoever registers a runner chooses who may run flows on it: the whole organization, one group (Enterprise), or <em>only me</em> — somebody's machine and somebody's login, so not even an admin, and never a schedule or a webhook.</li>
+<li><strong>Resources → Runners.</strong> A roster with a status dot, the runner's host, version and CLI auth, and how busy it is. <em>+ New</em> asks a name and a scope and shows the token once, with the three ways to start it and the hub's URL filled in: <code>java -jar concentus-backend.jar runner --url … --token crn_…</code>, <code>docker run …</code>, or the desktop app's tray → <em>Set up… → Server</em>.</li>
+<li><strong>The desktop app can be a runner too.</strong> <em>Server</em>, the optional last step of the first-run wizard (and reachable from the tray later), keeps the token in the OS keyring and restarts the backend with its agent connected. Everything local keeps working; this is <em>also</em>, not <em>instead</em>. The tray says whether it is connected and opens the hub's interface in a window of its own.</li>
+<li><strong>Runs on</strong>, in a flow's Settings: <em>This server</em> (here when the CLI is logged in, otherwise a runner you may use, otherwise today's answer), <em>Any runner</em> (the least busy one online), or a runner by name. Only Claude CLI flows go to runners; a self-hosted model stays on the hub. A run that went to a runner says so in its first line and carries a chip with the runner's name; the review of its checkouts is re-read through the runner while it is connected.</li>
+<li><strong><code>runner</code> mode of the jar</strong> never starts Spring — no database, no port, a few hundred milliseconds to connect — and reconnects on its own when the hub goes away. A revoked token makes it stop for good, with exit code 3.</li>
+<li><strong>Docker.</strong> <code>ghcr.io/gergilcan/concentus-hub</code> and <code>ghcr.io/gergilcan/concentus-runner</code>, built on every stable release from now on, and a compose file under <code>packaging/docker</code> that brings up a hub and a runner in the order the token requires.</li>
+</ul>
+<p><strong>Not in this release.</strong> A turn does not survive the runner disconnecting: after 45 s without a heartbeat the hub ends it as <em>disconnected</em>, and what the runner was running finishes on its side with its output lost. Finished workspaces are not cleaned up on the runner. Self-hosted models do not run on runners. There is no queue for a runner that is not online — a launch with none fails at once, and a schedule simply fires again.</p>
+<h4>Tests</h4>
+<ul>
+<li>The runners end to end, against the real application: the jar in runner mode registered, connected, executing a flow and revoked, with a fake <code>claude</code> that prints what the real one prints. In CI with the rest.</li>
+</ul>
+<h4>Docs</h4>
+<ul>
+<li>Runners in the docs (English, Spanish, Catalan) and the README; the Docker images and compose under <code>packaging/docker</code>.</li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.14...v0.1.15">https://github.com/Gergilcan/concentus/compare/v0.1.14...v0.1.15</a></p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.15">Installers and notes on GitHub →</a></p>
+  </section>
+
   <section id="v0.1.14">
     <h2>v0.1.14 <span class="date">2026-08-30</span></h2>
 <h3>What's new in 0.1.14</h3>

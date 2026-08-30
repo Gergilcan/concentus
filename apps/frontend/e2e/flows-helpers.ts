@@ -16,6 +16,8 @@ export interface SavedFlow {
   favorite?: boolean
   nodes: { id: string; type: string; role?: string | null; data: Record<string, unknown> }[]
   edges: { id: string; source: string; target: string; sourceHandle?: string | null }[]
+  /** Where the flow's CLI runs: blank for automatic, `any`, or a runner's id. */
+  runner?: string | null
 }
 
 export const nodes = (page: Page) => page.locator('.react-flow__node')

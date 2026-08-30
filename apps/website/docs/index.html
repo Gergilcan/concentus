@@ -1292,7 +1292,7 @@ docker run -d -v concentus-runner:/data \
   -e CONCENTUS_RUNNER_URL=https://hub.example.com -e CONCENTUS_RUNNER_TOKEN=crn_… \
   -e CLAUDE_CODE_OAUTH_TOKEN=… ghcr.io/gergilcan/concentus-runner:latest</code></pre>
       <p>
-        Or the desktop app itself, under <em>Settings → Connect to a server</em>: it keeps
+        Or the desktop app itself, from the tray, under <em>Set up… → Server</em>: it keeps
         working as it does and also executes for that hub. In <code>runner</code> mode the jar
         never starts Spring — no database, no port — and exits <code>3</code> on a refused token
         rather than retrying. What it needs on its side: <code>git</code>, the <code>claude</code>
