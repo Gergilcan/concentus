@@ -101,6 +101,19 @@ describe('RunsPanel', () => {
 
     expect(screen.queryByText(/^v\d/)).not.toBeInTheDocument()
   })
+
+  it('names the runner an execution ran on, and says so on hover', () => {
+    // Stamped at launch: the name is the runner's as it was then, whatever happened to it since.
+    renderPanel([run({ runnerId: 'rn_1', runnerName: 'office-pc' })], 'f1')
+
+    expect(screen.getByText('office-pc')).toHaveAttribute('title', 'Ran on runner office-pc')
+  })
+
+  it('shows no runner chip for a run on this server', () => {
+    renderPanel([run({ runnerId: null, runnerName: null })], 'f1')
+
+    expect(screen.queryByTitle(/Ran on runner/)).not.toBeInTheDocument()
+  })
 })
 
 describe('RunsPanel golden runs', () => {

@@ -1,11 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BackendFlow, FlowMemoryView } from '../api/types.ts'
+import type { BackendFlow, FlowMemoryView, Runner } from '../api/types.ts'
 import { SettingsModal } from './FlowModals.tsx'
 
 const getFlowMemoryMock = vi.fn()
 const clearFlowMemoryMock = vi.fn()
 const listCredentialsMock = vi.fn()
+const listUsableRunnersMock = vi.fn()
 
 vi.mock('../api/client.ts', () => ({
   api: {
@@ -14,6 +15,8 @@ vi.mock('../api/client.ts', () => ({
     listCredentials: () => listCredentialsMock(),
     // The settings modal loads the organization variables to show as override defaults.
     listVariables: () => Promise.resolve([]),
+    // And the runners the caller may run the flow on, for the "Runs on" select.
+    listUsableRunners: () => listUsableRunnersMock(),
   },
 }))
 
@@ -29,6 +32,10 @@ const memory: FlowMemoryView = {
 }
 
 describe('SettingsModal remote approval', () => {
+  beforeEach(() => {
+    listUsableRunnersMock.mockResolvedValue([])
+  })
+
   afterEach(() => {
     vi.clearAllMocks()
   })
@@ -74,6 +81,7 @@ describe('SettingsModal agent memory', () => {
     // The settings dialog always renders the credential picker now; these tests are not about
     // it, but its load must not explode under them.
     listCredentialsMock.mockResolvedValue([])
+    listUsableRunnersMock.mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -131,5 +139,107 @@ describe('SettingsModal agent memory', () => {
 
     expect(getFlowMemoryMock).not.toHaveBeenCalled()
     expect(screen.queryByText(/Agent memory/)).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Where the flow's Claude CLI runs. The select is fed by the caller's usable runners; a flow that
+ * names one the list no longer offers keeps it on screen rather than losing it on the next Save.
+ */
+describe('SettingsModal runs on', () => {
+  beforeEach(() => {
+    listCredentialsMock.mockResolvedValue([])
+    getFlowMemoryMock.mockResolvedValue({ available: true, count: 0, notes: [] })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const runner = (over: Partial<Runner>): Runner => ({
+    id: 'rn_1',
+    organizationId: 'org',
+    name: 'office-pc',
+    scope: 'organization',
+    groupId: null,
+    groupName: null,
+    userId: null,
+    ownerEmail: null,
+    createdBy: null,
+    createdAt: 0,
+    lastSeenAt: null,
+    revokedAt: null,
+    online: false,
+    busy: 0,
+    capacity: null,
+    hostname: null,
+    os: null,
+    arch: null,
+    version: null,
+    claudeVersion: null,
+    authKind: null,
+    connectedAt: null,
+    mine: false,
+    usable: true,
+    ...over,
+  })
+
+  it('offers this server, any runner, and each usable runner with whether it is online', async () => {
+    listUsableRunnersMock.mockResolvedValue([
+      runner({ id: 'rn_1', name: 'office-pc', online: true }),
+      runner({ id: 'rn_2', name: 'nas', online: false }),
+    ])
+    render(<SettingsModal flow={flow} onClose={vi.fn()} onSave={vi.fn()} />)
+
+    const select = screen.getByLabelText(/Runs on/) as HTMLSelectElement
+    await waitFor(() => expect(select.options).toHaveLength(4))
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      'This server',
+      'Any runner',
+      'office-pc · online',
+      'nas · offline',
+    ])
+    expect(select.value).toBe('')
+    expect(select.closest('label')).toHaveAttribute('title', expect.stringMatching(/Resources → Runners/))
+  })
+
+  it('saves the chosen runner, and this server as null', async () => {
+    listUsableRunnersMock.mockResolvedValue([runner({ id: 'rn_1', name: 'office-pc' })])
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<SettingsModal flow={flow} onClose={vi.fn()} onSave={onSave} />)
+    const select = screen.getByLabelText(/Runs on/) as HTMLSelectElement
+    await waitFor(() => expect(select.options).toHaveLength(3))
+
+    fireEvent.change(select, { target: { value: 'rn_1' } })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ runner: 'rn_1' })))
+
+    fireEvent.change(select, { target: { value: '' } })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ runner: null })))
+  })
+
+  it('keeps a runner the list no longer offers, marked as not available', async () => {
+    listUsableRunnersMock.mockResolvedValue([])
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<SettingsModal flow={{ ...flow, runner: 'rn_gone' }} onClose={vi.fn()} onSave={onSave} />)
+
+    const select = screen.getByLabelText(/Runs on/) as HTMLSelectElement
+    expect(await screen.findByText('rn_gone · not available')).toBeInTheDocument()
+    expect(select.value).toBe('rn_gone')
+
+    // A Save of an unrelated field does not silently move the flow back to this server.
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ runner: 'rn_gone' })))
+  })
+
+  it('falls back to the two fixed choices when the backend has no runners route', async () => {
+    listUsableRunnersMock.mockRejectedValue(new Error('404'))
+    render(<SettingsModal flow={{ ...flow, runner: 'any' }} onClose={vi.fn()} onSave={vi.fn()} />)
+
+    const select = screen.getByLabelText(/Runs on/) as HTMLSelectElement
+    await waitFor(() => expect(listUsableRunnersMock).toHaveBeenCalled())
+    expect([...select.options].map((o) => o.textContent)).toEqual(['This server', 'Any runner'])
+    expect(select.value).toBe('any')
   })
 })

@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
-import type { BackendFlow, FlowMemoryView, Variable } from '../api/types.ts'
+import type { BackendFlow, FlowMemoryView, Runner, Variable } from '../api/types.ts'
 import { CredentialField } from './CredentialField.tsx'
 import { FlowVersions } from './FlowVersions.tsx'
 import { Modal } from './Modal.tsx'
 import { timeAgo } from './flowFormat.ts'
 import styles from './flows.module.scss'
 
-/** Flow-level settings: name, tags, schedule pause, failure webhook. */
+/** Flow-level settings: name, tags, schedule pause, where it runs, failure webhook. */
 export function SettingsModal({
   flow,
   onClose,
@@ -28,6 +28,11 @@ export function SettingsModal({
   const [slackCredential, setSlackCredential] = useState(flow.approvalSlackCredentialId ?? '')
   const [slackChannel, setSlackChannel] = useState(flow.approvalSlackChannel ?? '')
   const [teamsWebhook, setTeamsWebhook] = useState(flow.approvalTeamsWebhook ?? '')
+  // Where the flow's Claude CLI runs: '' is this server, 'any' whichever usable runner is least
+  // busy, otherwise one runner's id. The list is the caller's usable runners; null until it
+  // answers or when it cannot, in which case only the two fixed choices are offered.
+  const [runner, setRunner] = useState(flow.runner ?? '')
+  const [runners, setRunners] = useState<Runner[] | null>(null)
   const [busy, setBusy] = useState(false)
   // The flow's own {{NAME}} values. Organization variables are shown alongside as the defaults
   // being overridden; they are loaded here because this is the one place overriding happens.
@@ -37,6 +42,15 @@ export function SettingsModal({
 
   useEffect(() => {
     api.listVariables().then(setOrgVariables).catch(() => setOrgVariables([]))
+  }, [])
+
+  // Deferred to a microtask so a backend (or a test's client) without the route rejects
+  // instead of throwing during render.
+  useEffect(() => {
+    Promise.resolve()
+      .then(() => api.listUsableRunners())
+      .then(setRunners)
+      .catch(() => setRunners(null))
   }, [])
 
   const save = async () => {
@@ -55,9 +69,15 @@ export function SettingsModal({
       approvalTeamsWebhook: teamsWebhook.trim(),
       variables: savedVariables(),
       goldenAutoRun,
+      runner: runner === '' ? null : runner,
     })
     setBusy(false)
   }
+
+  // A flow may name a runner the list no longer offers — revoked, deleted, or no longer this
+  // caller's to use. Shown as it is rather than dropped, so a Save of an unrelated field does
+  // not silently move the flow back to this server.
+  const missingRunner = runner !== '' && runner !== 'any' && !(runners ?? []).some((r) => r.id === runner)
 
   // One row per name the flow could speak about: every organization variable, plus every name
   // this flow defines itself. A blank flow value means "inherit the organization's".
@@ -126,6 +146,22 @@ export function SettingsModal({
           onChange={(e) => setGoldenAutoRun(e.target.checked)}
         />
         <span>{t('Re-run the golden check after each save that changes the flow ⓘ')}</span>
+      </label>
+      <label
+        className={styles.field}
+        title={t("Where this flow's Claude CLI runs: this server, any runner registered for you, or one runner. Runners are registered under Resources → Runners.")}
+      >
+        <span>{t('Runs on ⓘ')}</span>
+        <select value={runner} onChange={(e) => setRunner(e.target.value)}>
+          <option value="">{t('This server')}</option>
+          <option value="any">{t('Any runner')}</option>
+          {(runners ?? []).map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.online ? t('{{name}} · online', { name: r.name }) : t('{{name}} · offline', { name: r.name })}
+            </option>
+          ))}
+          {missingRunner && <option value={runner}>{t('{{id}} · not available', { id: runner })}</option>}
+        </select>
       </label>
       <label className={styles.field}>
         <span>{t('Failure notification webhook')}</span>

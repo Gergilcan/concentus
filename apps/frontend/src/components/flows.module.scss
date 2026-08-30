@@ -749,7 +749,10 @@
     color: t.$muted;
   }
 
-  input {
+  // The select ("Runs on") dressed as the inputs around it, so one row of the dialog is not the
+  // browser's own widget among the app's.
+  input,
+  select {
     background: t.$bg;
     border: 1px solid t.$border;
     color: t.$text;

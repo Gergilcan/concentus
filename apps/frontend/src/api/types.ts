@@ -36,6 +36,12 @@ export interface RunSummary {
    * graph is always the run's own snapshot (`getRunFlow`); this number just names it.
    */
   flowVersion?: number
+  /**
+   * The runner this execution ran on, stamped at launch — history, not a pointer, so the name
+   * survives the runner being renamed or deleted. Absent for a run on this server.
+   */
+  runnerId?: string | null
+  runnerName?: string | null
 }
 
 /** One side of a golden comparison: headline numbers, per-node steps (priced), final answer. */
@@ -813,6 +819,12 @@ export interface BackendFlow {
   approvalSlackChannel?: string | null
   /** Teams incoming-webhook URL. Notification only — Teams cannot carry the answer back. */
   approvalTeamsWebhook?: string | null
+  /**
+   * Where this flow's Claude CLI runs: null or blank for this server (or, without a Claude
+   * login here, whichever usable runner is online), `'any'` for the least busy usable runner,
+   * or one runner's id. Only Claude CLI flows use one.
+   */
+  runner?: string | null
 }
 
 export interface FlowVersionInfo {
@@ -1156,6 +1168,64 @@ export interface ServiceAccountListing {
 export interface CreatedServiceAccount {
   account: ServiceAccount
   token: string
+}
+
+/** Who may run flows on a runner: everyone in the organization, one group's members, or its owner alone. */
+export type RunnerScope = 'organization' | 'group' | 'user'
+
+/**
+ * A machine somebody operates that executes this organization's Claude CLI turns on its own
+ * login — the hub never holds that credential. Rows are what the store knows; the live part
+ * (online, busy, what it said in `hello`) comes from the hub's registry and is null until the
+ * runner has connected once.
+ */
+export interface Runner {
+  id: string
+  organizationId: string
+  name: string
+  scope: RunnerScope
+  groupId: string | null
+  groupName: string | null
+  userId: string | null
+  ownerEmail: string | null
+  createdBy: string | null
+  createdAt: number
+  /** The last heartbeat, at minute resolution; null until the first. */
+  lastSeenAt: number | null
+  /** Set once revoked; the row stays as the record of what could execute here. */
+  revokedAt: number | null
+  online: boolean
+  /** Claude CLI turns running on it now. */
+  busy: number
+  /** The slots it allows itself, once it has said. */
+  capacity: number | null
+  hostname: string | null
+  os: string | null
+  arch: string | null
+  version: string | null
+  claudeVersion: string | null
+  /** How the CLI there is signed in: a Claude subscription, an API key, or not at all. */
+  authKind: 'subscription' | 'api-key' | 'none' | null
+  connectedAt: number | null
+  /** The caller owns it (scope user) or registered it. */
+  mine: boolean
+  /** The caller may run flows on it. */
+  usable: boolean
+}
+
+/** The list, with what the create button needs: which scopes the caller may register. */
+export interface RunnersListing {
+  runners: Runner[]
+  /** Where a runner dials in — filled into the start commands. */
+  hubUrl: string
+  mayCreate: { organization: boolean; groups: string[]; user: boolean }
+}
+
+/** The one answer that carries the registration token: shown once, stored only as a hash. */
+export interface CreatedRunner {
+  runner: Runner
+  token: string
+  hubUrl: string
 }
 
 /** One identity provider a person may sign in with, or could once it is registered. */
