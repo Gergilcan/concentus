@@ -394,7 +394,7 @@ class PublicRunControllerTest {
 
     @Test
     void aPublishedFlowAwaitingApprovalAnswersTheSame404AsAnUnpublishedOne() {
-        when(policies.publishBlocked("f1", TOKEN)).thenReturn(true);
+        when(policies.publishBlocked(any(FlowGraph.class), eq(TOKEN))).thenReturn(true);
         PublicRunController c = controller();
 
         ResponseStatusException waiting = (ResponseStatusException) org.assertj.core.api.Assertions.catchThrowable(
@@ -415,7 +415,7 @@ class PublicRunControllerTest {
 
     @Test
     void onceApprovedTheSameCallStartsTheRun() {
-        when(policies.publishBlocked("f1", TOKEN)).thenReturn(false);
+        when(policies.publishBlocked(any(FlowGraph.class), eq(TOKEN))).thenReturn(false);
         run.status = "COMPLETED";
 
         ResponseEntity<Map<String, Object>> response = controller().run("f1", input("hi"), true, null, bearing(TOKEN));

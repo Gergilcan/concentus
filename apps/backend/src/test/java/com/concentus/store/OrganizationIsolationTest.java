@@ -171,12 +171,62 @@ class OrganizationIsolationTest {
         when(runs.list()).thenReturn(List.of(ours.toSummary(), theirs.toSummary()));
         when(runs.get("run_a")).thenReturn(Optional.of(ours));
         when(runs.get("run_b")).thenReturn(Optional.of(theirs));
-        RunController asB = new RunController(runs, mock(FlowStore.class), mock(RunDiffService.class), in(B));
+        RunController asB = new RunController(runs, mock(FlowStore.class), mock(RunDiffService.class), in(B),
+                new com.concentus.groups.GroupContext(in(B), new com.concentus.groups.GroupStore(jdbc)));
 
         assertThat(asB.list()).extracting(s -> s.id()).containsExactly("run_b");
         assertThat(asB.get("run_b").run().id()).isEqualTo("run_b");
         assertThatThrownBy(() -> asB.get("run_a"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("No such run");
+    }
+
+    // ---- runs of a group: visible when the flow would be, by the run's own stamp ----
+
+    @Test
+    void a_groups_runs_are_hidden_from_a_colleague_outside_the_group_and_shown_to_its_members_and_admins() {
+        for (String table : List.of("group_memberships", "groups")) jdbc.update("delete from " + table);
+        com.concentus.groups.GroupStore groups = new com.concentus.groups.GroupStore(jdbc);
+        groups.init();
+        String group = groups.create(A, "Platform", null, null).id();
+        groups.addMember(group, "usr_alice", false);
+        AgentRun open = new AgentRun("run_open", "flow_a", "Everyone");
+        open.organizationId = A;
+        AgentRun scoped = new AgentRun("run_scoped", "flow_g", "Platform only");
+        scoped.organizationId = A;
+        scoped.groupId = group;
+        RunService runs = mock(RunService.class);
+        when(runs.list()).thenReturn(List.of(open.toSummary(), scoped.toSummary()));
+        when(runs.get("run_open")).thenReturn(Optional.of(open));
+        when(runs.get("run_scoped")).thenReturn(Optional.of(scoped));
+        // The context reads the principal from the security context, as production does.
+        OrgContext orgContext = new OrgContext(A);
+        RunController controller = new RunController(runs, mock(FlowStore.class), mock(RunDiffService.class),
+                orgContext, new com.concentus.groups.GroupContext(orgContext, groups));
+        try {
+            signIn("usr_alice", "MEMBER");
+            assertThat(controller.list()).extracting(s -> s.id()).containsExactly("run_open", "run_scoped");
+            assertThat(controller.get("run_scoped").run().groupId()).isEqualTo(group);
+
+            signIn("usr_bob", "MEMBER");
+            assertThat(controller.list()).extracting(s -> s.id()).containsExactly("run_open");
+            assertThatThrownBy(() -> controller.get("run_scoped"))
+                    .isInstanceOf(ResponseStatusException.class).hasMessageContaining("No such run");
+            assertThat(controller.get("run_open").run().id()).isEqualTo("run_open");
+
+            signIn("usr_admin", "ADMIN");
+            assertThat(controller.list()).hasSize(2);
+            assertThat(controller.get("run_scoped").run().id()).isEqualTo("run_scoped");
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    private static void signIn(String userId, String role) {
+        com.concentus.auth.ConcentusUserDetails user = new com.concentus.auth.ConcentusUserDetails(
+                userId, A, userId + "@x.test", "hash", role, true);
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated(
+                        user, null, user.getAuthorities()));
     }
 }

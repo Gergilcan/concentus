@@ -191,4 +191,33 @@ class MarketplaceStoreTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unavailable");
     }
+
+    // ---- group scope ----
+
+    @Test
+    void a_group_item_is_visible_to_the_groups_members_and_the_organizations_admins_only() {
+        long now = System.currentTimeMillis();
+        MarketplaceItem squad = store.insert(new MarketplaceItem(null, "mcp", "Squad", "one line", null, List.of(), 1,
+                "group", "org_a", "gr_1", "published", null, new MarketplaceItem.Author("usr_a", "usr_a@x.test"),
+                mapper.createObjectNode().put("name", "Squad").put("url", "https://example.test/mcp"), null, 0, false,
+                now, now, now, null), null);
+        assertThat(store.find(squad.id()).orElseThrow().groupId()).isEqualTo("gr_1");
+
+        Viewer member = new Viewer("usr_m", "org_a", false, java.util.Set.of("gr_1"), false);
+        Viewer memberElsewhere = new Viewer("usr_m2", "org_a", false, java.util.Set.of("gr_2"), false);
+        Viewer colleague = new Viewer("usr_c", "org_a", false);
+        Viewer admin = new Viewer("usr_adm", "org_a", false, java.util.Set.of(), true);
+        Viewer otherOrgAdmin = new Viewer("usr_x", "org_b", false, java.util.Set.of(), true);
+
+        for (Viewer sees : List.of(member, admin, A_MEMBER /* the author */)) {
+            assertThat(store.listVisible(sees)).extracting(MarketplaceItem::id).contains(squad.id());
+            assertThat(store.findVisible(squad.id(), sees)).isPresent();
+        }
+        // A colleague of the same organization outside the group: the clause that shows an
+        // organization its own items must not show it a group's.
+        for (Viewer blind : List.of(colleague, memberElsewhere, otherOrgAdmin, CURATOR)) {
+            assertThat(store.listVisible(blind)).isEmpty();
+            assertThat(store.findVisible(squad.id(), blind)).isEmpty();
+        }
+    }
 }

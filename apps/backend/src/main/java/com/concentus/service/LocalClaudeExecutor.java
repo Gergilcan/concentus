@@ -61,6 +61,8 @@ public class LocalClaudeExecutor {
     private final ContextFolderResolver contextFolders;
     private final GitWorkspace gitWorkspace;
     private final String permissionMode;
+    /** Per run, for the one setting a group may override that this class reads: the default permission mode. */
+    private final com.concentus.config.Settings settings;
     private final String dataDir;
     private final boolean autoRegisterMcp;
     private final ObjectMapper mapper;
@@ -142,6 +144,7 @@ public class LocalClaudeExecutor {
                                OrgContext orgContext,
                                PluginRegistry pluginRegistry,
                                ProcessCeiling ceiling,
+                               com.concentus.config.Settings settings,
                                @Value("${local.permission-mode:bypassPermissions}") String permissionMode,
                                @Value("${app.data-dir}") String dataDir,
                                @Value("${local.auto-register-mcp:true}") boolean autoRegisterMcp,
@@ -162,6 +165,7 @@ public class LocalClaudeExecutor {
         this.orgContext = orgContext;
         this.pluginRegistry = pluginRegistry;
         this.ceiling = ceiling;
+        this.settings = settings == null ? com.concentus.config.Settings.none() : settings;
         this.permissionMode = permissionMode;
         this.dataDir = dataDir;
         this.autoRegisterMcp = autoRegisterMcp;
@@ -708,7 +712,9 @@ public class LocalClaudeExecutor {
         a.add("stream-json");
         a.add("--verbose");
         a.add("--permission-mode");
-        a.add(effectivePermissionMode(run, permissionMode));
+        // The deployment default resolved for the run's own scope — its group's override when
+        // the flow belongs to one, its organization's otherwise, the environment's last.
+        a.add(effectivePermissionMode(run, settings.forRun(run).get("local.permission-mode", permissionMode)));
         a.add("--model");
         a.add(modelAlias(coord.model.id));
 

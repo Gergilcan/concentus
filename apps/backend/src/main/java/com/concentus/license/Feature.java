@@ -32,7 +32,12 @@ public enum Feature {
     /** Tokens for machines, beyond the two a Team gets. */
     SERVICE_ACCOUNTS("Unlimited service accounts"),
     /** Published endpoints without the per-token rate limit. */
-    UNLIMITED_ENDPOINT_RATE("Published endpoints without a rate limit");
+    UNLIMITED_ENDPOINT_RATE("Published endpoints without a rate limit"),
+    /**
+     * Groups inside an organization: resources visible to one group, and a policy and settings
+     * that follow the group rather than the organization. Team: one organization, one audience.
+     */
+    GROUPS("Groups inside an organization");
 
     /** How the feature is named to a person — on the panel, in a refusal, on the site. */
     public final String label;

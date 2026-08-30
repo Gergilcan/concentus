@@ -21,13 +21,30 @@ import java.util.List;
  *                       for the ordinary ones. The screen shows such a row disabled with the
  *                       refusal, so a Team admin flipping "Send traces" learns why nothing
  *                       leaves the machine from the field itself rather than from a log line.
+ * @param groupScoped    whether a group inside the organization may override it. Only the
+ *                       settings that are read per run can be — a worker's timeout, the
+ *                       permission mode — because a run knows which group its flow belongs to;
+ *                       a pool size read once into a constructor has no run to be scoped by,
+ *                       and a group override of it would be a row nothing reads.
  */
 public record SettingDef(String key, String group, String label, String help, Type type,
-                         boolean restartRequired, List<String> options, Feature enterpriseOnly) {
+                         boolean restartRequired, List<String> options, Feature enterpriseOnly,
+                         boolean groupScoped) {
+
+    /** The shape before groups existed: an organization-wide setting. */
+    public SettingDef(String key, String group, String label, String help, Type type,
+                      boolean restartRequired, List<String> options, Feature enterpriseOnly) {
+        this(key, group, label, help, type, restartRequired, options, enterpriseOnly, false);
+    }
 
     /** The same setting, held behind {@code feature} on a Team license. */
     public SettingDef requiring(Feature feature) {
-        return new SettingDef(key, group, label, help, type, restartRequired, options, feature);
+        return new SettingDef(key, group, label, help, type, restartRequired, options, feature, groupScoped);
+    }
+
+    /** The same setting, overridable per group — for a key whose reader takes the run's scope. */
+    public SettingDef perGroup() {
+        return new SettingDef(key, group, label, help, type, restartRequired, options, enterpriseOnly, true);
     }
 
     public enum Type {

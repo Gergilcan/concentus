@@ -104,6 +104,12 @@ public class FanoutExecutor {
      * constructor tests build; the same not-final arrangement as telemetry, for the same reason.
      */
     private com.concentus.policy.OrgPolicyService policies;
+    /**
+     * The settings a run reads per launch — its group's, its organization's, the deployment's.
+     * The constructor values above are what a fan-out built without settings uses, and the
+     * fallback when nobody set anything; same not-final arrangement as telemetry.
+     */
+    private com.concentus.config.Settings settings;
     private final ExecutorService pool;
     private final ScheduledExecutorService watchdogs;
 
@@ -150,6 +156,24 @@ public class FanoutExecutor {
         this.telemetry = telemetry;
         this.ceiling = ceiling;
         this.policies = policies;
+        this.settings = settings;
+    }
+
+    /** The worker timeout for this run: its group's figure, else its organization's, else the deployment's. */
+    private int timeoutFor(AgentRun run) {
+        if (settings == null) return timeoutSeconds;
+        return Math.max(1, settings.forRun(run).number("workers.timeout-seconds", timeoutSeconds));
+    }
+
+    private int retriesFor(AgentRun run) {
+        if (settings == null) return retries;
+        return Math.max(0, settings.forRun(run).number("workers.retries", retries));
+    }
+
+    /** The deployment default a worker of this run gets when its flow names no mode — resolved for the run's scope. */
+    private String permissionModeFor(AgentRun run) {
+        if (settings == null) return permissionMode;
+        return settings.forRun(run).get("local.permission-mode", permissionMode);
     }
 
     FanoutExecutor(LocalClaudeSupport support, RagContextInjector ragInjector,
@@ -236,7 +260,7 @@ public class FanoutExecutor {
 
             long waiting = jobs.stream().filter(j -> !j.dependsOn().isEmpty()).count();
             run.emit(RunEvent.of("system", "Fan-out: " + jobs.size() + " independent worker "
-                    + "process(es), up to " + timeoutSeconds + "s each. Each has its own workspace, "
+                    + "process(es), up to " + timeoutFor(run) + "s each. Each has its own workspace, "
                     + "instructions and model; none can delegate further."
                     + (waiting == 0 ? "" : " " + waiting + " of them wait for other items' reports first.")));
 
@@ -823,8 +847,9 @@ public class FanoutExecutor {
     /** The attempts loop shared by workers and the merge step. Does not settle NodeExec status. */
     private Outcome execute(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
                             String prompt, Path workdir, List<Path> dirs, String disallowedTools) {
-        // The block's own number when it set one; the deployment's otherwise.
-        int attempts = 1 + (spec.retries >= 0 ? spec.retries : retries);
+        // The block's own number when it set one; the run's scope's (group, organization,
+        // deployment) otherwise.
+        int attempts = 1 + (spec.retries >= 0 ? spec.retries : retriesFor(run));
         String lastError = null;
         for (int attempt = 1; attempt <= attempts; attempt++) {
             if ("TERMINATED".equals(run.status)) {
@@ -859,7 +884,7 @@ public class FanoutExecutor {
 
     private Attempt attempt(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
                             String userText, Path workdir, List<Path> dirs, String disallowedTools) {
-        return attempt(run, spec, exec, cmd, userText, workdir, dirs, disallowedTools, timeoutSeconds);
+        return attempt(run, spec, exec, cmd, userText, workdir, dirs, disallowedTools, timeoutFor(run));
     }
 
     private Attempt attempt(AgentRun run, AgentSpec spec, NodeExec exec, String cmd,
@@ -1172,12 +1197,13 @@ public class FanoutExecutor {
         String profileId = spec.facadeProfileId == null ? "" : spec.facadeProfileId.trim();
         if (profileId.isEmpty() && policies != null) {
             // A worker the compiler never saw — born of a plan at run time — gets the same rule
-            // the canvas workers got at compile time: the organization's default fills the blank.
-            String fallback = policies.defaultFacadeProfileId().orElse("");
+            // the canvas workers got at compile time: the default of the run's own policy (its
+            // group's over the organization's) fills the blank.
+            String fallback = policies.defaultFacadeProfileIdForGroup(run.groupId).orElse("");
             if (!fallback.isEmpty()) {
                 profileId = fallback;
                 byPolicy = true;
-            } else if (policies.requireFacade()) {
+            } else if (policies.requireFacadeForGroup(run.groupId)) {
                 // Fail closed, before the process exists: an IOException here is what stops a
                 // worker from launching at all, and the run reports it as the workspace that
                 // could not be prepared — which is exactly right, since a workspace with no
@@ -1328,7 +1354,7 @@ public class FanoutExecutor {
         a.add("--permission-mode");
         // Same mapping as the coordinator process, so a worker can never be more permissive than
         // the flow's own mode — an approval flow's workers plan, they do not act.
-        a.add(LocalClaudeExecutor.effectivePermissionMode(run, permissionMode));
+        a.add(LocalClaudeExecutor.effectivePermissionMode(run, permissionModeFor(run)));
         a.add("--model");
         a.add(LocalClaudeExecutor.modelAlias(spec.model.id));
         // Workers are separate processes, so plugin selection here is truly per-agent — this

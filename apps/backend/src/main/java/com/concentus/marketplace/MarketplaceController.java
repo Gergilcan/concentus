@@ -33,6 +33,7 @@ import static com.concentus.marketplace.MarketplaceItem.PENDING;
 import static com.concentus.marketplace.MarketplaceItem.PUBLISHED;
 import static com.concentus.marketplace.MarketplaceItem.REJECTED;
 import static com.concentus.marketplace.MarketplaceItem.SCOPE_GLOBAL;
+import static com.concentus.marketplace.MarketplaceItem.SCOPE_GROUP;
 import static com.concentus.marketplace.MarketplaceItem.SCOPE_ORGANIZATION;
 
 /**
@@ -64,10 +65,12 @@ public class MarketplaceController {
     private final OrgContext orgContext;
     private final AuditService audit;
     private final ObjectMapper mapper;
+    /** The rules of a group: who may publish to one, and the one write that scopes an installed resource to one. */
+    private final com.concentus.groups.GroupService groups;
 
     public MarketplaceController(MarketplaceStore store, MarketplacePolicy policy, MarketplaceInstaller installer,
                                  AccountStore accounts, OrgContext orgContext, AuditService audit,
-                                 ObjectMapper mapper) {
+                                 ObjectMapper mapper, com.concentus.groups.GroupService groups) {
         this.store = store;
         this.policy = policy;
         this.installer = installer;
@@ -75,18 +78,40 @@ public class MarketplaceController {
         this.orgContext = orgContext;
         this.audit = audit;
         this.mapper = mapper;
+        this.groups = groups;
     }
 
     // ------------------------------------------------------------------ request and response shapes
 
-    /** The body of publish and edit. */
+    /**
+     * The body of publish and edit.
+     *
+     * @param groupId the group, when {@code scope} is {@code group}; ignored otherwise
+     */
     public record PublishRequest(String kind, String name, String summary, String description,
-                                 List<String> tags, String icon, String scope, JsonNode payload) {
+                                 List<String> tags, String icon, String scope, JsonNode payload, String groupId) {
+
+        /** The shape before groups. */
+        public PublishRequest(String kind, String name, String summary, String description,
+                              List<String> tags, String icon, String scope, JsonNode payload) {
+            this(kind, name, summary, description, tags, icon, scope, payload, null);
+        }
     }
 
     /** "Publish this resource": the resource names the payload; the words are optional. */
     public record PublishFromRequest(String kind, String resourceId, String scope, String name,
-                                     String summary, String description, List<String> tags, String icon) {
+                                     String summary, String description, List<String> tags, String icon,
+                                     String groupId) {
+
+        /** The shape before groups. */
+        public PublishFromRequest(String kind, String resourceId, String scope, String name,
+                                  String summary, String description, List<String> tags, String icon) {
+            this(kind, resourceId, scope, name, summary, description, tags, icon, null);
+        }
+    }
+
+    /** The body of install: where the created resource lands — the organization when absent, else a group. */
+    public record InstallRequest(String groupId) {
     }
 
     public record RejectRequest(String reason) {
@@ -166,8 +191,12 @@ public class MarketplaceController {
         requirePublisher(me);
         MarketplaceItem item = itemFrom(body, me);
         MarketplaceItem saved = store.insert(item, null);
-        audit.record(AuditKinds.MARKETPLACE_PUBLISHED, "marketplace-item", saved.id(), saved.name(),
-                Map.of("kind", saved.kind(), "scope", saved.scope(), "version", saved.version()));
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("kind", saved.kind());
+        detail.put("scope", saved.scope());
+        detail.put("version", saved.version());
+        if (saved.groupId() != null) detail.put("groupId", saved.groupId());
+        audit.record(AuditKinds.MARKETPLACE_PUBLISHED, "marketplace-item", saved.id(), saved.name(), detail);
         return view(saved, me, policy.viewerFor(me), Map.of());
     }
 
@@ -185,7 +214,7 @@ public class MarketplaceController {
                 notBlank(body.summary()) ? body.summary() : built.summary(),
                 notBlank(body.description()) ? body.description() : built.description(),
                 body.tags() == null || body.tags().isEmpty() ? built.tags() : body.tags(),
-                body.icon(), body.scope(), built.payload());
+                body.icon(), body.scope(), built.payload(), body.groupId());
         MarketplaceItem.View published = publish(request);
         Map<String, Object> out = new LinkedHashMap<>(mapper.convertValue(published,
                 new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}));
@@ -226,9 +255,12 @@ public class MarketplaceController {
             if (publishedAt == null) publishedAt = System.currentTimeMillis();
         }
         long now = System.currentTimeMillis();
+        // The group comes from the edited request, already checked by itemFrom: moving an item
+        // into a group takes membership of it, and moving it out clears the column.
         MarketplaceItem toSave = new MarketplaceItem(existing.id(), existing.kind(), edited.name(),
                 edited.summary(), edited.description(), edited.tags(), version, edited.scope(),
-                existing.organizationId(), status, PENDING.equals(status) ? null : existing.rejection(),
+                existing.organizationId(), edited.groupId(), status,
+                PENDING.equals(status) ? null : existing.rejection(),
                 existing.author(), edited.payload(), edited.icon(), existing.installs(), false,
                 existing.createdAt(), now, publishedAt, approvedBy);
         store.update(toSave, null);
@@ -299,7 +331,7 @@ public class MarketplaceController {
      * there, and re-created when it was deleted.
      */
     @PostMapping("/items/{id}/install")
-    public InstallResult install(@PathVariable String id) {
+    public InstallResult install(@PathVariable String id, @RequestBody(required = false) InstallRequest body) {
         ConcentusUserDetails me = orgContext.requireUser();
         requireInstaller(me);
         MarketplaceStore.Viewer viewer = policy.viewerFor(me);
@@ -308,19 +340,45 @@ public class MarketplaceController {
         if (!item.isPublished() && !ours) {
             throw new IllegalStateException("This item is " + item.status() + " and cannot be installed yet.");
         }
+        // Into a group: checked before anything is created, so a refusal leaves nothing behind
+        // that the caller would then see and the group would not.
+        String groupId = body == null || body.groupId() == null || body.groupId().isBlank()
+                ? null : body.groupId().trim();
+        String storeKind = groupId == null ? null : storeKindOf(item.kind());
+        if (groupId != null) groups.requireMemberOf(groupId);
         String existing = store.install(item.id(), me.organizationId())
                 .map(MarketplaceStore.Install::resourceId)
                 .filter(r -> installer.resourceExists(item.kind(), r))
                 .orElse(null);
         String resourceId = installer.install(item, existing);
+        if (groupId != null && resourceId != null) groups.assign(storeKind, resourceId, groupId);
         store.recordInstall(new MarketplaceStore.Install(item.id(), me.organizationId(), resourceId,
                 item.version(), System.currentTimeMillis(), me.email()));
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("kind", item.kind());
         detail.put("version", item.version());
         if (resourceId != null) detail.put("resourceId", resourceId);
+        if (groupId != null) detail.put("groupId", groupId);
         audit.record(AuditKinds.MARKETPLACE_INSTALLED, "marketplace-item", item.id(), item.name(), detail);
         return new InstallResult(resourceId, item.kind(), item.version());
+    }
+
+    /** Into the organization — the call every caller from before groups makes. */
+    public InstallResult install(String id) {
+        return install(id, null);
+    }
+
+    /** The resource store an item's kind installs into, for scoping what was installed. */
+    private static String storeKindOf(String kind) {
+        return switch (kind) {
+            case MarketplaceItem.KIND_MCP -> "mcp";
+            case MarketplaceItem.KIND_AGENT -> "agent";
+            case MarketplaceItem.KIND_FACADE -> "facade-profile";
+            case MarketplaceItem.KIND_SKILL -> "skill";
+            case MarketplaceItem.KIND_FLOW -> "flow";
+            default -> throw new IllegalArgumentException("A " + kind + " creates no resource of the "
+                    + "organization's, so it cannot be installed into a group.");
+        };
     }
 
     /** Removes the resource the install created, if it is still there, and the record of the install. */
@@ -403,11 +461,21 @@ public class MarketplaceController {
         }
         JsonNode payload = body.payload();
         installer.validate(kind, payload);
+        // To a group: the caller must be in it (or administer the organization), and the license
+        // must allow groups — both the group service's questions. Born published, like an
+        // organization item: its audience is the group, and nobody curates inside a group.
+        String groupId = null;
+        if (SCOPE_GROUP.equals(scope)) {
+            if (body.groupId() == null || body.groupId().isBlank()) {
+                throw new IllegalArgumentException("Publishing to a group names the group (groupId).");
+            }
+            groupId = groups.requireMemberOf(body.groupId().trim()).id();
+        }
         long now = System.currentTimeMillis();
         boolean global = SCOPE_GLOBAL.equals(scope);
         return new MarketplaceItem(null, kind, name, summary,
                 body.description() == null || body.description().isBlank() ? null : body.description(),
-                tags(body.tags()), 1, scope, me.organizationId(), global ? PENDING : PUBLISHED, null,
+                tags(body.tags()), 1, scope, me.organizationId(), groupId, global ? PENDING : PUBLISHED, null,
                 new MarketplaceItem.Author(me.userId(), me.email()), payload, icon, 0, false, now, now,
                 global ? null : now, null);
     }
@@ -424,8 +492,8 @@ public class MarketplaceController {
     private static String scopeOf(String scope) {
         if (scope == null || scope.isBlank()) return SCOPE_ORGANIZATION;
         String s = scope.trim().toLowerCase(Locale.ROOT);
-        if (!SCOPE_ORGANIZATION.equals(s) && !SCOPE_GLOBAL.equals(s)) {
-            throw new IllegalArgumentException("The scope is 'organization' or 'global'.");
+        if (!SCOPE_ORGANIZATION.equals(s) && !SCOPE_GLOBAL.equals(s) && !SCOPE_GROUP.equals(s)) {
+            throw new IllegalArgumentException("The scope is 'organization', 'group' or 'global'.");
         }
         return s;
     }

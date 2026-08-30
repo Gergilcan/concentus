@@ -92,7 +92,7 @@ public class FlowCompiler {
      * rather than the service so a test compiles against a literal policy with no license, no
      * store and no principal in sight — the same reason the library is a function.
      */
-    private final java.util.function.Supplier<com.concentus.policy.OrgPolicy> policy;
+    private final java.util.function.Function<FlowGraph, com.concentus.policy.OrgPolicy> policy;
 
     /** No library, no policy: a linked block cannot compile. For tests, and for slices that never link. */
     public FlowCompiler() {
@@ -103,14 +103,21 @@ public class FlowCompiler {
         this(library, () -> com.concentus.policy.OrgPolicy.NONE);
     }
 
+    /** One policy for every flow — a test's literal one. */
     public FlowCompiler(LibraryResolver library, java.util.function.Supplier<com.concentus.policy.OrgPolicy> policy) {
+        this(library, (java.util.function.Function<FlowGraph, com.concentus.policy.OrgPolicy>) flow -> policy.get());
+    }
+
+    /** The policy per flow: the organization's with the flow's group's laid over it, in production. */
+    public FlowCompiler(LibraryResolver library,
+                        java.util.function.Function<FlowGraph, com.concentus.policy.OrgPolicy> policy) {
         this.library = library;
         this.policy = policy;
     }
 
     @Autowired
     public FlowCompiler(AgentLibraryStore store, com.concentus.policy.OrgPolicyService policies) {
-        this(store::get, policies::effective);
+        this(store::get, (java.util.function.Function<FlowGraph, com.concentus.policy.OrgPolicy>) policies::effective);
     }
 
     public CompiledFlow compile(FlowGraph flow) {
@@ -170,7 +177,7 @@ public class FlowCompiler {
         requireEveryFlowNodeIsWired(flow);
         CompiledFlow compiled = new CompiledFlow(coordinator, subAgents, merger, verifier,
                 afterFlows(flow), afterMails(flow));
-        applyFacadePolicy(compiled);
+        applyFacadePolicy(flow, compiled);
         return compiled;
     }
 
@@ -187,9 +194,9 @@ public class FlowCompiler {
      * against a rule that says it must not. The merge step counts as a worker here for the same
      * reason it does in the executor — it is an independent process with servers of its own.
      */
-    private void applyFacadePolicy(CompiledFlow compiled) {
+    private void applyFacadePolicy(FlowGraph flow, CompiledFlow compiled) {
         if (!compiled.fanout()) return;
-        com.concentus.policy.OrgPolicy rules = policy.get();
+        com.concentus.policy.OrgPolicy rules = policy.apply(flow);
         if (rules == null) return;
         String fallback = rules.defaultFacadeProfileIdOrEmpty();
         if (fallback.isEmpty() && !rules.requireFacade()) return;

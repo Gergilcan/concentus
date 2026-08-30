@@ -46,6 +46,13 @@ public class CredentialStore {
     private final JdbcTemplate jdbc;
     private final SecretCipher cipher;
     private final RowMapper<Credential> mapper;
+    /**
+     * Which group-scoped rows a person may list and find. Set by Spring, as on {@code JsonStore};
+     * a store built by hand has none and filters nothing. Only the reads a person makes — a run
+     * revealing a value has no principal and is not filtered, so a group's flow can use the
+     * group's credential.
+     */
+    private com.concentus.groups.GroupContext groupContext;
     private volatile boolean available;
 
     public CredentialStore(JdbcTemplate jdbc, SecretCipher cipher) {
@@ -59,11 +66,17 @@ public class CredentialStore {
                 rs.getString("kind"), rs.getString("hint"), rs.getLong("created_at"),
                 rs.getLong("updated_at"),
                 rs.getObject("last_used_at") == null ? null : rs.getLong("last_used_at"),
-                cipher.open(rs.getString("secret")).locked());
+                cipher.open(rs.getString("secret")).locked(), rs.getString("group_id"));
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setGroupContext(com.concentus.groups.GroupContext groupContext) {
+        this.groupContext = groupContext;
+    }
+
+    /** Public for the tests that wire this outside a container; the probe decides availability. */
     @PostConstruct
-    void init() {
+    public void init() {
         // Created by the migrations; this only checks it arrived.
         try {
             jdbc.queryForObject("select count(*) from credentials", Integer.class);
@@ -100,10 +113,18 @@ public class CredentialStore {
      *               the value being recoverable from them
      * @param locked true when the stored value is sealed under a key this installation does not
      *               have; the credential still exists, and entering its value again unlocks it
+     * @param groupId the group it is visible to, or null for the whole organization
      */
     public record Credential(String id, String organizationId, String label, String kind,
                              String hint, long createdAt, long updatedAt, Long lastUsedAt,
-                             boolean locked) {
+                             boolean locked, String groupId) {
+
+        /** The shape before groups: a credential the whole organization sees. */
+        public Credential(String id, String organizationId, String label, String kind,
+                          String hint, long createdAt, long updatedAt, Long lastUsedAt,
+                          boolean locked) {
+            this(id, organizationId, label, kind, hint, createdAt, updatedAt, lastUsedAt, locked, null);
+        }
     }
 
     /** Kinds, so a picker can offer only the credentials that make sense for a field. */
@@ -291,16 +312,45 @@ public class CredentialStore {
         sealIfClear(organizationId, id);
     }
 
+    /** The organization's credentials a person may see: every unscoped one, and those of their groups. */
     public List<Credential> list(String organizationId) {
         if (!available) return List.of();
-        return jdbc.query("select * from credentials where organization_id = ? order by lower(label)",
-                mapper, organizationId);
+        Query q = visible("select * from credentials where organization_id = ?", organizationId);
+        return jdbc.query(q.sql() + " order by lower(label)", mapper, q.args());
     }
 
+    /** Empty for a credential of a group the caller is not in, exactly as for one that does not exist. */
     public Optional<Credential> find(String organizationId, String id) {
         if (!available || id == null || id.isBlank()) return Optional.empty();
-        return jdbc.query("select * from credentials where id = ? and organization_id = ?",
-                mapper, id, organizationId).stream().findFirst();
+        Query q = visible("select * from credentials where id = ? and organization_id = ?", id, organizationId);
+        return jdbc.query(q.sql(), mapper, q.args()).stream().findFirst();
+    }
+
+    private record Query(String sql, Object[] args) {
+    }
+
+    /** {@code sql} narrowed to the group-scoped rows the caller may see; unchanged when nothing is hidden. */
+    private Query visible(String sql, Object... args) {
+        Optional<com.concentus.groups.GroupContext.Predicate> predicate = groupContext == null
+                ? Optional.empty() : groupContext.predicate("group_id");
+        if (predicate.isEmpty()) return new Query(sql, args);
+        List<Object> all = new java.util.ArrayList<>(List.of(args));
+        all.addAll(predicate.get().args());
+        return new Query(sql + " and " + predicate.get().sql(), all.toArray());
+    }
+
+    /** The group a credential is scoped to, or empty for one the whole organization sees. */
+    public Optional<String> groupOf(String organizationId, String id) {
+        if (!available || id == null || id.isBlank()) return Optional.empty();
+        return jdbc.queryForList("select group_id from credentials where id = ? and organization_id = ?",
+                String.class, id, organizationId).stream().filter(g -> g != null).findFirst();
+    }
+
+    /** Scopes a credential to a group, or to the organization with null. The rules are the group service's. */
+    public boolean assignGroup(String organizationId, String id, String groupId) {
+        requireUsable();
+        return jdbc.update("update credentials set group_id = ? where id = ? and organization_id = ?",
+                groupId, id, organizationId) > 0;
     }
 
     public boolean delete(String organizationId, String id) {

@@ -96,7 +96,10 @@ public final class SettingsCatalog {
                             + "meters that use separately from your interactive sessions and does not "
                             + "expose the figure; put here what your plan says. The Usage page then shows "
                             + "how far this machine's runs are from it, and a run that starts past 80% "
-                            + "says so in its log. 0 or blank turns the meter off.", true),
+                            + "says so in its log. 0 or blank turns the meter off.", true)
+                    // Read at every launch, against the run's scope: a group may carry its own
+                    // allowance figure for the flows it owns.
+                    .perGroup(),
 
             number("knowledge.context-tokens", GROUP_KNOWLEDGE, "Retrieved text per source (tokens)",
                     "How much of a knowledge base may reach an agent in one run, in tokens — the "
@@ -137,17 +140,20 @@ public final class SettingsCatalog {
                     "The width of a fan-out: how many independent agents may run in parallel for "
                             + "one block. Each is a process of its own, so this is a limit on the "
                             + "machine rather than on the work.", true),
+            // The three below are read per run, against the run's own scope — its organization,
+            // and its group when the flow belongs to one — so a group may set its own. The width of
+            // the pool above is read once into a constructor and cannot be.
             number("workers.timeout-seconds", GROUP_WORKERS, "Worker timeout",
                     "How long one worker may take before it is stopped and reported as failed.",
-                    true),
+                    false).perGroup(),
             number("workers.retries", GROUP_WORKERS, "Retries per worker",
                     "How many times a worker that failed is started again before the fan-out gives "
-                            + "up on that item.", true),
+                            + "up on that item.", false).perGroup(),
             choice("local.permission-mode", GROUP_WORKERS, "What agents may do unasked",
                     "The Claude CLI's permission mode. \"bypassPermissions\" is what an unattended "
                             + "run needs, because \"default\" stops to ask and there is nobody there "
-                            + "to answer.", true,
-                    "bypassPermissions", "acceptEdits", "default", "plan"),
+                            + "to answer.", false,
+                    "bypassPermissions", "acceptEdits", "default", "plan").perGroup(),
 
             number("integration.attachments.max-bytes", GROUP_ATTACHMENTS, "Largest file",
                     "In bytes. A file bigger than this is refused with its size, rather than "
@@ -201,6 +207,11 @@ public final class SettingsCatalog {
 
     public static List<SettingDef> all() {
         return ALL;
+    }
+
+    /** The settings a group may override — the ones whose reader takes the run's scope. */
+    public static List<SettingDef> groupScoped() {
+        return ALL.stream().filter(SettingDef::groupScoped).toList();
     }
 
     public static Optional<SettingDef> byKey(String key) {

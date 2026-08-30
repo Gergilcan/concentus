@@ -196,7 +196,8 @@ public class PublicRunController {
         // Published but not yet approved, where the organization requires approval: the same
         // 404 as unpublished, on purpose. The door is not open, and a different answer would tell
         // a caller that a door exists and is merely waiting.
-        if (policies.publishBlocked(flowId, trigger.publishToken())) {
+        // Asked with the flow, so a flow of a group answers under the group's policy.
+        if (policies.publishBlocked(flow, trigger.publishToken())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such flow");
         }
         if (presented == null || presented.isBlank()

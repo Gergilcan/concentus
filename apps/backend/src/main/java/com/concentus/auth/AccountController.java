@@ -65,12 +65,27 @@ public class AccountController {
     private final AuditService audit;
     /** What the organization is called, for the row the first account is created under. */
     private final String organizationName;
+    /** The caller's groups, for the session; null on a controller built without groups. */
+    private final com.concentus.groups.GroupService groups;
 
+    /** Without groups: what the tests that predate them build. */
+    public AccountController(AuthenticationManager authManager, AccountStore accounts,
+                             PasswordEncoder encoder, OrgContext orgContext,
+                             OidcSignIn oidc, BrowserSignIn browser, DeviceAccountStore devices,
+                             LicenseService licenseService, AuditService audit, String organizationName) {
+        this(authManager, accounts, encoder, orgContext, oidc, browser, devices, licenseService, audit,
+                organizationName, null);
+    }
+
+    // @Autowired is load-bearing: with two constructors and neither annotated, Spring picks none.
+    @org.springframework.beans.factory.annotation.Autowired
     public AccountController(AuthenticationManager authManager, AccountStore accounts,
                              PasswordEncoder encoder, OrgContext orgContext,
                              OidcSignIn oidc, BrowserSignIn browser, DeviceAccountStore devices,
                              LicenseService licenseService, AuditService audit,
-                             @Value("${app.organization-name:Concentus}") String organizationName) {
+                             @Value("${app.organization-name:Concentus}") String organizationName,
+                             com.concentus.groups.GroupService groups) {
+        this.groups = groups;
         this.authManager = authManager;
         this.accounts = accounts;
         this.encoder = encoder;
@@ -120,6 +135,9 @@ public class AccountController {
                 accounts.findOrganization(u.organizationId())
                         .ifPresent(org -> out.put("organizationName", org.name()));
                 out.put("organizationCount", accounts.membershipsOf(u.userId()).size());
+                // The groups this person is in, and which they manage — what the Visible-to
+                // select offers and the Groups screen opens with, without a second round trip.
+                out.put("groups", groups == null ? List.of() : groups.mine());
             } catch (DataAccessException e) {
                 log.debug("Could not read the organizations of {}: {}", u.email(), e.getMessage());
             }

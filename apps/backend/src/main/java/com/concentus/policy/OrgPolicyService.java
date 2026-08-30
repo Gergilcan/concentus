@@ -1,10 +1,15 @@
 package com.concentus.policy;
 
 import com.concentus.auth.OrgContext;
+import com.concentus.groups.GroupPolicy;
+import com.concentus.groups.GroupPolicyStore;
+import com.concentus.model.FlowGraph;
+import com.concentus.store.FlowStore;
 import com.concentus.store.OrgPolicyStore;
 import com.concentus.store.PublishApprovalStore;
 import com.concentus.license.Feature;
 import com.concentus.license.LicenseService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -31,13 +36,31 @@ public class OrgPolicyService {
     private final PublishApprovalStore approvals;
     private final LicenseService license;
     private final OrgContext orgContext;
+    /** A group's own policy, laid over the organization's; null on a service built without groups. */
+    private final GroupPolicyStore groupPolicies;
+    /** Which group a saved flow belongs to; null on a service built without groups. */
+    private final FlowStore flows;
 
+    /**
+     * Without groups: every rule answers organization-wide, which is what the tests that predate
+     * groups build and what a deployment with no group ever created gets anyway.
+     */
     public OrgPolicyService(OrgPolicyStore store, PublishApprovalStore approvals,
                             LicenseService license, OrgContext orgContext) {
+        this(store, approvals, license, orgContext, null, null);
+    }
+
+    // @Autowired is load-bearing: with two constructors and neither annotated, Spring picks none.
+    @Autowired
+    public OrgPolicyService(OrgPolicyStore store, PublishApprovalStore approvals,
+                            LicenseService license, OrgContext orgContext,
+                            GroupPolicyStore groupPolicies, FlowStore flows) {
         this.store = store;
         this.approvals = approvals;
         this.license = license;
         this.orgContext = orgContext;
+        this.groupPolicies = groupPolicies;
+        this.flows = flows;
     }
 
     /** Whether policies apply here at all — the Enterprise gate. */
@@ -73,6 +96,72 @@ public class OrgPolicyService {
     /** The policy every enforcement point applies: the record where licensed, nothing otherwise. */
     public OrgPolicy effective() {
         return enforced() ? stored() : OrgPolicy.NONE;
+    }
+
+    // ---------------------------------------------------------------- per group
+
+    /**
+     * The group a flow belongs to, or null: an unsaved flow, one the whole organization sees, or
+     * a service built without groups. Read from the flow's row rather than the graph, because
+     * the group is a property of the record — who sees it — and not of the drawing.
+     */
+    public String groupOf(FlowGraph flow) {
+        if (flows == null || flow == null || flow.id() == null || flow.id().isBlank()) return null;
+        return flows.groupOf(flow.id()).orElse(null);
+    }
+
+    /**
+     * What a flow runs under: the organization's policy with its group's laid over it, field by
+     * field — a null field in the group's inherits. The one every enforcement point asks with the
+     * flow in hand: the compiler, the doctor, the run service at launch, the public endpoint.
+     */
+    public OrgPolicy effective(FlowGraph flow) {
+        return effectiveForGroup(groupOf(flow));
+    }
+
+    /** As {@link #effective(FlowGraph)}, for a caller that holds the group id — a run does. */
+    public OrgPolicy effectiveForGroup(String groupId) {
+        if (!enforced()) return OrgPolicy.NONE;
+        OrgPolicy base = stored();
+        if (groupId == null || groupId.isBlank() || groupPolicies == null) return base;
+        return groupPolicies.get(groupId).map(g -> g.over(base)).orElse(base);
+    }
+
+    /**
+     * The group's own monthly ceiling in USD, or null for none — enforced beside the
+     * organization's, over the runs that carried the group's id. Nothing where policies are not
+     * enforced, like every other rule.
+     */
+    public Double groupBudgetUsd(String groupId) {
+        if (!enforced() || groupPolicies == null || groupId == null || groupId.isBlank()) return null;
+        return groupPolicies.get(groupId).filter(GroupPolicy::hasBudget)
+                .map(GroupPolicy::monthlyBudgetUsd).orElse(null);
+    }
+
+    /** The profile a plan-born worker of a run in {@code groupId} runs behind, when a policy names one. */
+    public Optional<String> defaultFacadeProfileIdForGroup(String groupId) {
+        String id = effectiveForGroup(groupId).defaultFacadeProfileIdOrEmpty();
+        return id.isEmpty() ? Optional.empty() : Optional.of(id);
+    }
+
+    public boolean requireFacadeForGroup(String groupId) {
+        return effectiveForGroup(groupId).requireFacade();
+    }
+
+    /** The ceiling for this flow — its group's when it names one, the organization's otherwise. */
+    public String maxPermissionMode(FlowGraph flow) {
+        return effective(flow).maxPermissionModeOrEmpty();
+    }
+
+    public boolean publishRequiresApproval(FlowGraph flow) {
+        return effective(flow).publishRequiresApproval();
+    }
+
+    /** As {@link #publishBlocked(String, String)}, under the flow's own policy. */
+    public boolean publishBlocked(FlowGraph flow, String token) {
+        if (flow == null || flow.id() == null) return false;
+        if (!publishRequiresApproval(flow)) return false;
+        return approvals.getAcrossOrganizations(flow.id()).filter(a -> a.covers(token)).isEmpty();
     }
 
     /**

@@ -143,4 +143,82 @@ class OrgPolicyServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
         verify(store, never()).save(any());
     }
+
+    // ---- groups: a flow of a group runs under the group's policy laid over the organization's ----
+
+    private final com.concentus.groups.GroupPolicyStore groupPolicies = mock(com.concentus.groups.GroupPolicyStore.class);
+    private final com.concentus.store.FlowStore flows = mock(com.concentus.store.FlowStore.class);
+
+    private OrgPolicyService serviceWithGroups(Path dir, String fixture) throws Exception {
+        if (fixture != null) TestLicenses.installFixture(dir, fixture);
+        return new OrgPolicyService(store, approvals, TestLicenses.serviceOn(dir), new OrgContext("default"),
+                groupPolicies, flows);
+    }
+
+    private static com.concentus.model.FlowGraph flow(String id) {
+        return new com.concentus.model.FlowGraph(id, "Flow", java.util.List.of(), java.util.List.of(), null,
+                java.util.List.of(), null, null);
+    }
+
+    @Test
+    void aGroupsPolicyLaysOverTheOrganizationsFieldByFieldAndANullFieldInherits(@TempDir Path dir) throws Exception {
+        when(store.getAcrossOrganizations("default")).thenReturn(Optional.of(STRICT));
+        when(flows.groupOf("flow_g")).thenReturn(Optional.of("gr_1"));
+        when(flows.groupOf("flow_x")).thenReturn(Optional.empty());
+        when(groupPolicies.get("gr_1")).thenReturn(Optional.of(
+                new com.concentus.groups.GroupPolicy(null, false, "plan", 40.0, null)));
+        OrgPolicyService s = serviceWithGroups(dir, "enterprise-test.license");
+
+        OrgPolicy inGroup = s.effective(flow("flow_g"));
+        assertThat(inGroup.defaultFacadeProfileId()).isEqualTo("fprof_reader");   // inherited
+        assertThat(inGroup.requireFacade()).isFalse();                             // the group's
+        assertThat(inGroup.maxPermissionMode()).isEqualTo("plan");                 // the group's
+        assertThat(inGroup.monthlyBudgetUsd()).isEqualTo(100.0);                   // the organization's, always
+        assertThat(inGroup.publishRequiresApproval()).isTrue();                    // inherited
+        // The group's budget is its own ceiling, beside the organization's.
+        assertThat(s.groupBudgetUsd("gr_1")).isEqualTo(40.0);
+        assertThat(s.groupBudgetUsd("gr_none")).isNull();
+        assertThat(s.groupBudgetUsd(null)).isNull();
+        // A flow of no group, and an unsaved one: the organization's policy as before.
+        assertThat(s.effective(flow("flow_x"))).isEqualTo(STRICT);
+        assertThat(s.effective(flow(null))).isEqualTo(STRICT);
+        assertThat(s.effective((com.concentus.model.FlowGraph) null)).isEqualTo(STRICT);
+        // The rule-by-rule answers the enforcement points ask.
+        assertThat(s.maxPermissionMode(flow("flow_g"))).isEqualTo("plan");
+        assertThat(s.maxPermissionMode(flow("flow_x"))).isEqualTo("acceptEdits");
+        assertThat(s.defaultFacadeProfileIdForGroup("gr_1")).contains("fprof_reader");
+        assertThat(s.requireFacadeForGroup("gr_1")).isFalse();
+        assertThat(s.requireFacadeForGroup(null)).isTrue();
+        // Approval is inherited as required, and nothing is approved: shut.
+        assertThat(s.publishBlocked(flow("flow_g"), "tok")).isTrue();
+        // The group waives approval: open.
+        when(groupPolicies.get("gr_1")).thenReturn(Optional.of(
+                new com.concentus.groups.GroupPolicy(null, null, null, null, false)));
+        assertThat(s.publishBlocked(flow("flow_g"), "tok")).isFalse();
+        assertThat(s.publishBlocked(flow("flow_x"), "tok")).isTrue();
+    }
+
+    @Test
+    void onTeamAGroupsPolicyIsNotEnforcedEither(@TempDir Path dir) throws Exception {
+        when(store.getAcrossOrganizations("default")).thenReturn(Optional.of(STRICT));
+        when(flows.groupOf("flow_g")).thenReturn(Optional.of("gr_1"));
+        when(groupPolicies.get("gr_1")).thenReturn(Optional.of(
+                new com.concentus.groups.GroupPolicy(null, null, "plan", 40.0, null)));
+        OrgPolicyService s = serviceWithGroups(dir, "team-test.license");
+
+        assertThat(s.effective(flow("flow_g"))).isEqualTo(OrgPolicy.NONE);
+        assertThat(s.groupBudgetUsd("gr_1")).isNull();
+        assertThat(s.maxPermissionMode(flow("flow_g"))).isEmpty();
+    }
+
+    // The shape before groups: a service built without them answers organization-wide.
+    @Test
+    void aServiceBuiltWithoutGroupsAnswersOrganizationWide(@TempDir Path dir) throws Exception {
+        when(store.getAcrossOrganizations("default")).thenReturn(Optional.of(STRICT));
+        OrgPolicyService s = serviceOn(dir, "enterprise-test.license");
+
+        assertThat(s.effective(flow("flow_g"))).isEqualTo(STRICT);
+        assertThat(s.groupOf(flow("flow_g"))).isNull();
+        assertThat(s.groupBudgetUsd("gr_1")).isNull();
+    }
 }

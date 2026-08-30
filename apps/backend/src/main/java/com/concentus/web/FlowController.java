@@ -149,6 +149,10 @@ public class FlowController {
                 .map(FlowGraph::name)
                 .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
         FlowGraph saved = store.save(com.concentus.service.FlowDuplicator.copyOf(source, names));
+        // The copy keeps the original's group: it is the same team's work, and a copy that
+        // quietly widened its audience to the whole organization would be a leak by duplication.
+        store.groupOf(id).ifPresent(group ->
+                store.assignGroup(orgContext.requireOrganizationId(), saved.id(), group));
         versions.snapshot(saved, currentAuthor());
         auditSave(null, saved, Map.of("copyOf", id));
         return saved;

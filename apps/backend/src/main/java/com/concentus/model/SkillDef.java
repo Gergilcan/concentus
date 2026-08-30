@@ -12,7 +12,13 @@ import java.util.List;
  * they do not occupy.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record SkillDef(String id, String name, String description, List<SkillFile> files) {
+public record SkillDef(String id, String name, String description, List<SkillFile> files, String groupId) {
+
+    /** The pre-groups shape: a skill the whole organization sees. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public SkillDef(String id, String name, String description, List<SkillFile> files) {
+        this(id, name, description, files, null);
+    }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record SkillFile(String path, String contentBase64) {

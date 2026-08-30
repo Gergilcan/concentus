@@ -22,11 +22,21 @@ public class MarketplacePolicy {
     private final Settings settings;
     private final AccountStore accounts;
     private final MarketplaceStore store;
+    /** Which groups the caller is in, for the items published to a group; null on a policy built without groups. */
+    private final com.concentus.groups.GroupContext groups;
 
+    /** Without groups: what the tests that predate them build. */
     public MarketplacePolicy(Settings settings, AccountStore accounts, MarketplaceStore store) {
+        this(settings, accounts, store, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public MarketplacePolicy(Settings settings, AccountStore accounts, MarketplaceStore store,
+                             com.concentus.groups.GroupContext groups) {
         this.settings = settings;
         this.accounts = accounts;
         this.store = store;
+        this.groups = groups;
     }
 
     /** The curating organization's id, or null on a database with no organization at all. */
@@ -51,7 +61,8 @@ public class MarketplacePolicy {
     }
 
     public MarketplaceStore.Viewer viewerFor(ConcentusUserDetails user) {
-        return new MarketplaceStore.Viewer(user.userId(), user.organizationId(), isCurator(user));
+        return new MarketplaceStore.Viewer(user.userId(), user.organizationId(), isCurator(user),
+                groups == null ? java.util.Set.of() : groups.groupIds(), isAdmin(user.role()));
     }
 
     /** MEMBER and above publish — to their organization, or as a submission to everyone. */

@@ -54,6 +54,14 @@ public class AgentRun {
      */
     public volatile String organizationId;
 
+    /**
+     * The group the flow belonged to at launch, or null for a flow the whole organization sees.
+     * Copied from the flow's row by {@code RunService} and persisted with the run: it records
+     * which group's settings and policy this run resolved against, and it is what keeps a
+     * group's runs out of the run list of somebody who is not in the group.
+     */
+    public volatile String groupId;
+
     /** How this execution was triggered: "manual" | "prompt" | "cron" | "webhook". */
     public volatile String trigger = "manual";
     /**
@@ -495,6 +503,10 @@ public class AgentRun {
     public volatile Double orgBudgetUsd;
     /** What every flow of the organization had already spent this month when this run started. */
     public volatile double orgSpentBeforeUsd;
+    /** The group's own ceiling in USD (group policy); null when the run has no group or the group no ceiling. */
+    public volatile Double groupBudgetUsd;
+    /** What the group's runs had already spent this month when this run started. */
+    public volatile double groupSpentBeforeUsd;
     /** Whether this run's backend bills per token — the only case the ceiling stops anything. */
     public volatile boolean billsPerToken;
     /** Set once, when the ceiling was reached mid-run; the turn ends as ERROR because of it. */
@@ -566,20 +578,30 @@ public class AgentRun {
      */
     private String ceilingReached() {
         double cost = estimatedCostUsd();
-        Double flowCeiling = budgetUsd != null && budgetUsd > 0 ? budgetUsd : null;
-        Double orgCeiling = orgBudgetUsd != null && orgBudgetUsd > 0 ? orgBudgetUsd : null;
-        double flowNow = spentBeforeUsd + cost;
-        double orgNow = orgSpentBeforeUsd + cost;
-        boolean flowHit = flowCeiling != null && flowNow >= flowCeiling;
-        boolean orgHit = orgCeiling != null && orgNow >= orgCeiling;
-        if (!flowHit && !orgHit) return null;
-        boolean nameTheOrg = orgHit && (!flowHit || orgCeiling - orgNow <= flowCeiling - flowNow);
-        return nameTheOrg
-                ? String.format(java.util.Locale.ROOT,
-                        "$%.2f of the organization's $%.2f monthly ceiling (organization policy)",
-                        orgNow, orgCeiling)
-                : String.format(java.util.Locale.ROOT, "$%.2f of the $%.2f monthly ceiling",
-                        flowNow, flowCeiling);
+        // Three ceilings — the flow's own, the group's, the organization's — and the one with the
+        // least room left is the one named, so the person raising a number raises the right one.
+        record Ceiling(String words, double now, Double limit) {
+            boolean hit() {
+                return limit != null && limit > 0 && now >= limit;
+            }
+
+            double headroom() {
+                return limit - now;
+            }
+        }
+        List<Ceiling> ceilings = List.of(
+                new Ceiling("$%.2f of the $%.2f monthly ceiling", spentBeforeUsd + cost, budgetUsd),
+                new Ceiling("$%.2f of the group's $%.2f monthly ceiling (group policy)",
+                        groupSpentBeforeUsd + cost, groupBudgetUsd),
+                new Ceiling("$%.2f of the organization's $%.2f monthly ceiling (organization policy)",
+                        orgSpentBeforeUsd + cost, orgBudgetUsd));
+        Ceiling tightest = null;
+        for (Ceiling c : ceilings) {
+            if (!c.hit()) continue;
+            if (tightest == null || c.headroom() <= tightest.headroom()) tightest = c;
+        }
+        if (tightest == null) return null;
+        return String.format(java.util.Locale.ROOT, tightest.words(), tightest.now(), tightest.limit());
     }
 
     /** Get or create the execution record for a node. Returns null if nodeId is unknown. */
@@ -725,7 +747,7 @@ public class AgentRun {
     public RunSummary toSummary() {
         return new RunSummary(id, flowId, flowName, status, createdAt, sessionId, agentIds, error,
                 trigger, totalInputTokens, totalOutputTokens, estimatedCostUsd(), golden, flowVersion,
-                startedBy);
+                startedBy, groupId);
     }
 
     /**

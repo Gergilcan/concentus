@@ -29,9 +29,19 @@ import java.util.List;
  */
 public record MarketplaceItem(String id, String kind, String name, String summary, String description,
                               List<String> tags, int version, String scope, String organizationId,
-                              String status, String rejection, Author author, JsonNode payload,
-                              String icon, int installs, boolean builtIn, long createdAt,
+                              String groupId, String status, String rejection, Author author,
+                              JsonNode payload, String icon, int installs, boolean builtIn, long createdAt,
                               long updatedAt, Long publishedAt, String approvedBy) {
+
+    /** The shape before groups: an item of an organization or of everyone, never of a group. */
+    public MarketplaceItem(String id, String kind, String name, String summary, String description,
+                           List<String> tags, int version, String scope, String organizationId,
+                           String status, String rejection, Author author, JsonNode payload,
+                           String icon, int installs, boolean builtIn, long createdAt,
+                           long updatedAt, Long publishedAt, String approvedBy) {
+        this(id, kind, name, summary, description, tags, version, scope, organizationId, null, status,
+                rejection, author, payload, icon, installs, builtIn, createdAt, updatedAt, publishedAt, approvedBy);
+    }
 
     public static final String KIND_MCP = "mcp";
     public static final String KIND_AGENT = "agent";
@@ -45,6 +55,8 @@ public record MarketplaceItem(String id, String kind, String name, String summar
 
     public static final String SCOPE_ORGANIZATION = "organization";
     public static final String SCOPE_GLOBAL = "global";
+    /** Visible to one group's members and the organization's admins; born published, like the organization's. */
+    public static final String SCOPE_GROUP = "group";
 
     public static final String PUBLISHED = "published";
     public static final String PENDING = "pending";
@@ -80,6 +92,11 @@ public record MarketplaceItem(String id, String kind, String name, String summar
         return PUBLISHED.equals(status);
     }
 
+    @JsonIgnore
+    public boolean isGroup() {
+        return SCOPE_GROUP.equals(scope);
+    }
+
     public List<String> tagsOrEmpty() {
         return tags == null ? List.of() : tags;
     }
@@ -105,7 +122,7 @@ public record MarketplaceItem(String id, String kind, String name, String summar
 
     public MarketplaceItem withInstalls(int count) {
         return new MarketplaceItem(id, kind, name, summary, description, tags, version, scope,
-                organizationId, status, rejection, author, payload, icon, count, builtIn, createdAt,
+                organizationId, groupId, status, rejection, author, payload, icon, count, builtIn, createdAt,
                 updatedAt, publishedAt, approvedBy);
     }
 }

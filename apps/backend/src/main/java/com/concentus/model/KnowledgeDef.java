@@ -15,5 +15,11 @@ package com.concentus.model;
  *                    uses. Blank or absent means everybody, which is what every base created
  *                    before this field existed meant and must go on meaning
  */
-public record KnowledgeDef(String id, String name, String description, String minRole) {
+public record KnowledgeDef(String id, String name, String description, String minRole, String groupId) {
+
+    /** The pre-groups shape: a base the whole organization sees. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public KnowledgeDef(String id, String name, String description, String minRole) {
+        this(id, name, description, minRole, null);
+    }
 }
