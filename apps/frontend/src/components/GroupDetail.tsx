@@ -415,14 +415,21 @@ function GroupSettingRow({
 
 /* ---------------- policy ---------------- */
 
-/** The group's own five fields, without the effective view the server bundles with them. */
+/**
+ * The group's own five fields, without the effective view the server bundles with them.
+ *
+ * Each one `?? null`: the API leaves a rule that inherits OUT of its answer rather than sending
+ * null (Jackson's non_null inclusion), and the inherit switches below compare against null. Read
+ * as undefined, a fresh group showed every rule as its own — switches off, controls editable —
+ * when it had set nothing at all.
+ */
 function ownPolicy(view: GroupPolicyView): GroupPolicy {
   return {
-    defaultFacadeProfileId: view.defaultFacadeProfileId,
-    requireFacade: view.requireFacade,
-    maxPermissionMode: view.maxPermissionMode,
-    monthlyBudgetUsd: view.monthlyBudgetUsd,
-    publishRequiresApproval: view.publishRequiresApproval,
+    defaultFacadeProfileId: view.defaultFacadeProfileId ?? null,
+    requireFacade: view.requireFacade ?? null,
+    maxPermissionMode: view.maxPermissionMode ?? null,
+    monthlyBudgetUsd: view.monthlyBudgetUsd ?? null,
+    publishRequiresApproval: view.publishRequiresApproval ?? null,
   }
 }
 
