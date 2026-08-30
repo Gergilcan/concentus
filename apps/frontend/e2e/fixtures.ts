@@ -160,7 +160,7 @@ export async function openApp(page: Page): Promise<void> {
 }
 
 /** The header navigation. `exact` matters: the Studio toolbar has a "← Flows" button too. */
-export async function goTo(page: Page, view: 'Flows' | 'Studio' | 'Resources' | 'Usage'): Promise<void> {
+export async function goTo(page: Page, view: 'Flows' | 'Studio' | 'Marketplace' | 'Resources' | 'Usage'): Promise<void> {
   await page.getByRole('button', { name: view, exact: true }).click()
 }
 
