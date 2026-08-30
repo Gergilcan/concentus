@@ -187,12 +187,22 @@ export async function cardAction(
   // second helper.
   action: string | RegExp | { name: string; exact: boolean },
 ): Promise<void> {
-  await flowCard(page, flowName).getByRole('button', { name: /More actions/ }).click()
   // The menu is rendered into the body, not the card — a card clips its own overflow — so it is
-  // found on the page rather than inside the card.
+  // found on the page rather than inside the card. Under load the dashboard's poll re-renders the
+  // cards while the menu is open and the item is never 'stable' for Playwright; opening the menu
+  // again is what a person would do, so the helper does it, up to three times.
   const item = typeof action === 'object' && 'name' in action
     ? page.getByRole('menuitem', action)
     : page.getByRole('menuitem', { name: action })
-  await item.click()
+  for (let attempt = 1; ; attempt++) {
+    await flowCard(page, flowName).getByRole('button', { name: /More actions/ }).click()
+    try {
+      await item.click({ timeout: 5_000 })
+      return
+    } catch (e) {
+      if (attempt >= 3) throw e
+      await page.keyboard.press('Escape')
+    }
+  }
 }
 
