@@ -341,6 +341,7 @@
     <a href="#versions">Versions and golden runs</a>
 
     <h4>Operate</h4>
+    <a href="#marketplace">Marketplace</a>
     <a href="#teams">Teams and sign-in</a>
     <a href="#storage">Storage</a>
     <a href="#settings">Settings</a>
@@ -1090,6 +1091,47 @@ semantic (cosine,      top 50) ─┘</code></pre>
         It replays <strong>routing, not agents</strong> — gates decide from recorded text, so
         their answers are exact, but where a decision would need output that was never recorded,
         the block says <em>cannot be decided</em> rather than guessing.
+      </p>
+    </section>
+
+    <section id="marketplace">
+      <h2>Marketplace</h2>
+      <p class="sub">Where the things a flow is built from are shared and installed.</p>
+      <p>
+        A view of its own, beside Studio. People publish MCP servers, library agents, facades,
+        skills, plugins, API definitions and flow templates; everyone else installs them into their
+        own organization with one click, and a flow uses them directly. Search is instant and local;
+        filters by kind, scope, state and tag; sort by installs, newest or name. Every card is one
+        line and a state chip — <em>Installed</em>, <em>Update</em>, <em>Pending</em> — and the
+        explanation lives in the tooltip.
+      </p>
+      <h3>Two scopes</h3>
+      <p>
+        An item published to <strong>this organization</strong> is visible to its members and needs
+        no approval — any member may publish. An item published <strong>globally</strong> is visible
+        to every organization on the deployment once a <strong>curator</strong> approves it; until
+        then only its author and the curators see it, marked pending, and a rejection carries a
+        sentence the author reads. The curators are the administrators of the organization named by
+        the setting <code>marketplace.curator-organization</code> — by default the oldest one, the
+        author's own. On a deployment with a single organization the scope control is not shown.
+      </p>
+      <h3>What install creates</h3>
+      <p>
+        The resource the item describes, in your organization: an MCP server definition (with its
+        credential slot empty and named), a library agent, a facade profile, a skill, a plugin
+        install, or a flow (paused, without secrets, like a duplicate). An API definition creates
+        nothing: the API block's inspector offers <em>Use from Marketplace…</em> and fills its fields.
+        Credentials never travel — publishing a resource strips them and says what it dropped.
+        Resources that came from an install carry a <em>Marketplace · vN</em> chip and offer
+        <em>Update</em> when the author republished; uninstall removes what the install created.
+      </p>
+      <h3>What is there on day one</h3>
+      <p>
+        The app seeds its own library as built-in items: the MCP catalogue (Linear, GitHub, the
+        Google and Microsoft servers, …), the four library agents and the eight starter flows. A
+        built-in cannot be edited; an update to the app re-seeds it, and one you deleted stays
+        deleted. Publishing, approving, rejecting, installing and uninstalling are written to the
+        <a href="#teams">audit trail</a>.
       </p>
     </section>
 

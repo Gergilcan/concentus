@@ -341,6 +341,7 @@
     <a href="#versions">Versions i execucions daurades</a>
 
     <h4>Operar</h4>
+    <a href="#marketplace">Marketplace</a>
     <a href="#teams">Equips i inici de sessió</a>
     <a href="#storage">Emmagatzematge</a>
     <a href="#settings">Configuració</a>
@@ -1107,6 +1108,49 @@ semantic (cosine,      top 50) ─┘</code></pre>
         del text gravat, així que les seves respostes són exactes, però on una decisió necessitaria
         una sortida que mai no es va gravar, el bloc diu <em>no es pot decidir</em> en comptes
         d'endevinar.
+      </p>
+    </section>
+
+    <section id="marketplace">
+      <h2>Marketplace</h2>
+      <p class="sub">On es comparteixen i s'instal·len les peces amb què es construeix un flow.</p>
+      <p>
+        Una vista pròpia, al costat de Studio. La gent publica servidors MCP, agents de biblioteca,
+        façanes, skills, plugins, definicions d'API i plantilles de flow; la resta els instal·la a la
+        seva pròpia organització amb un clic i un flow els fa servir directament. La cerca és
+        instantània i local; filtres per tipus, àmbit, estat i etiqueta; ordre per instal·lacions,
+        més recent o nom. Cada targeta és una línia i un xip d'estat — <em>Instal·lat</em>,
+        <em>Actualitzar</em>, <em>Pendent</em> — i l'explicació viu al tooltip.
+      </p>
+      <h3>Dos àmbits</h3>
+      <p>
+        Un element publicat a <strong>aquesta organització</strong> el veuen els seus membres i no
+        necessita aprovació — qualsevol membre pot publicar. Un element publicat
+        <strong>globalment</strong> el veuen totes les organitzacions del desplegament quan un
+        <strong>curador</strong> l'aprova; fins llavors només el veuen el seu autor i els curadors,
+        marcat com a pendent, i un rebuig porta una frase que l'autor llegeix. Els curadors són els
+        administradors de l'organització indicada a l'ajust
+        <code>marketplace.curator-organization</code> — per defecte la més antiga, la de l'autor. En
+        un desplegament amb una sola organització el control d'àmbit no es mostra.
+      </p>
+      <h3>Què crea instal·lar</h3>
+      <p>
+        El recurs que l'element descriu, a la teva organització: una definició de servidor MCP (amb
+        el forat de credencial buit i amb nom), un agent de biblioteca, un perfil de façana, una
+        skill, la instal·lació d'un plugin o un flow (en pausa, sense secrets, com un duplicat). Una
+        definició d'API no crea res: l'inspector del bloc API ofereix <em>Fer servir del
+        Marketplace…</em> i n'omple els camps. Les credencials no viatgen mai — publicar un recurs
+        les elimina i diu què ha tret. Els recursos que vénen d'una instal·lació porten un xip
+        <em>Marketplace · vN</em> i ofereixen <em>Actualitzar</em> quan l'autor torna a publicar;
+        desinstal·lar elimina el que la instal·lació va crear.
+      </p>
+      <h3>Què hi ha el primer dia</h3>
+      <p>
+        L'app sembra la seva pròpia biblioteca com a elements integrats: el catàleg d'MCP (Linear,
+        GitHub, els servidors de Google i Microsoft, …), els quatre agents de biblioteca i els vuit
+        flows d'inici. Un element integrat no es pot editar; una actualització de l'app el torna a
+        sembrar, i un que vas esborrar continua esborrat. Publicar, aprovar, rebutjar, instal·lar i
+        desinstal·lar s'escriuen al <a href="#teams">registre d'auditoria</a>.
       </p>
     </section>
 

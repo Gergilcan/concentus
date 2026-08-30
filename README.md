@@ -867,6 +867,28 @@ curl -X POST "http://localhost:8080/api/public/flows/{flowId}/run" \
 - The waiting call holds a server connection for as long as it waits. Fine for a script or a
   spreadsheet; a caller that fires many requests at once should use `wait=false` and poll.
 
+## Marketplace
+
+A view of its own, beside Studio, where the things a flow is built from are shared and
+installed: MCP servers, library agents, facade profiles, skills, plugins, API definitions and
+flow templates. Anyone publishes to **their organization** (no approval); publishing
+**globally** puts the item in front of every organization once a **curator** approves it — the
+administrators of the organization named by `marketplace.curator-organization`, by default the
+oldest one. Install creates the resource in your organization (an MCP definition with its
+credential slot empty, an agent, a facade, a skill, a plugin install, a paused flow); an API
+definition is picked up by the API block's *Use from Marketplace…* instead. Credentials never
+travel: publishing from a resource strips them and says what it dropped. The app seeds its own
+library as built-in items (the MCP catalogue, the four library agents, the eight starter
+flows); every publish, approval, install and uninstall lands in the audit trail.
+
+```
+GET/POST        /api/marketplace/items            list (visibility enforced server-side) · publish
+GET/PUT/DELETE  /api/marketplace/items/{id}
+POST            /api/marketplace/items/{id}/install | /uninstall | /approve | /reject {reason}
+POST            /api/marketplace/publish-from     {kind, resourceId, scope}   from an existing resource
+GET             /api/marketplace/status           {curator, pending, organizations, tags}
+```
+
 ## Sign-in and organizations
 
 **There is no mode without accounts.** There used to be one, for the desktop install — one person,

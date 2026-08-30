@@ -341,6 +341,7 @@
     <a href="#versions">Versiones y ejecuciones doradas</a>
 
     <h4>Operar</h4>
+    <a href="#marketplace">Marketplace</a>
     <a href="#teams">Equipos e inicio de sesión</a>
     <a href="#storage">Almacenamiento</a>
     <a href="#settings">Ajustes</a>
@@ -1114,6 +1115,50 @@ semantic (cosine,      top 50) ─┘</code></pre>
         Reproduce <strong>el enrutado, no los agentes</strong> — las puertas deciden a partir del
         texto grabado, así que sus respuestas son exactas, pero donde una decisión necesitaría una
         salida que nunca se grabó, el bloque dice <em>no se puede decidir</em> en vez de adivinar.
+      </p>
+    </section>
+
+    <section id="marketplace">
+      <h2>Marketplace</h2>
+      <p class="sub">Donde se comparten e instalan las piezas con las que se construye un flow.</p>
+      <p>
+        Una vista propia, junto a Studio. La gente publica servidores MCP, agentes de biblioteca,
+        fachadas, skills, plugins, definiciones de API y plantillas de flow; el resto los instala en
+        su propia organización con un clic y un flow los usa directamente. La búsqueda es
+        instantánea y local; filtros por tipo, ámbito, estado y etiqueta; orden por instalaciones,
+        más reciente o nombre. Cada tarjeta es una línea y un chip de estado —
+        <em>Instalado</em>, <em>Actualizar</em>, <em>Pendiente</em> — y la explicación vive en el
+        tooltip.
+      </p>
+      <h3>Dos ámbitos</h3>
+      <p>
+        Un elemento publicado en <strong>esta organización</strong> lo ven sus miembros y no necesita
+        aprobación — cualquier miembro puede publicar. Un elemento publicado
+        <strong>globalmente</strong> lo ven todas las organizaciones del despliegue cuando un
+        <strong>curador</strong> lo aprueba; hasta entonces solo lo ven su autor y los curadores,
+        marcado como pendiente, y un rechazo lleva una frase que el autor lee. Los curadores son los
+        administradores de la organización indicada en el ajuste
+        <code>marketplace.curator-organization</code> — por defecto la más antigua, la del autor.
+        En un despliegue con una sola organización el control de ámbito no se muestra.
+      </p>
+      <h3>Qué crea instalar</h3>
+      <p>
+        El recurso que el elemento describe, en tu organización: una definición de servidor MCP
+        (con su hueco de credencial vacío y con nombre), un agente de biblioteca, un perfil de
+        fachada, una skill, la instalación de un plugin o un flow (en pausa, sin secretos, como un
+        duplicado). Una definición de API no crea nada: el inspector del bloque API ofrece
+        <em>Usar del Marketplace…</em> y rellena sus campos. Las credenciales nunca viajan —
+        publicar un recurso las elimina y dice qué quitó. Los recursos que vienen de una
+        instalación llevan un chip <em>Marketplace · vN</em> y ofrecen <em>Actualizar</em> cuando el
+        autor vuelve a publicar; desinstalar elimina lo que la instalación creó.
+      </p>
+      <h3>Qué hay el primer día</h3>
+      <p>
+        La app siembra su propia biblioteca como elementos integrados: el catálogo de MCP (Linear,
+        GitHub, los servidores de Google y Microsoft, …), los cuatro agentes de biblioteca y los
+        ocho flows de inicio. Un elemento integrado no se puede editar; una actualización de la app
+        lo vuelve a sembrar, y uno que borraste sigue borrado. Publicar, aprobar, rechazar,
+        instalar y desinstalar se escriben en el <a href="#teams">registro de auditoría</a>.
       </p>
     </section>
 
