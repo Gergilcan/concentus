@@ -48,11 +48,22 @@ public class McpDefController {
 
     @PostMapping
     public McpDef save(@RequestBody McpDef def) {
+        return store.save(validated(def));
+    }
+
+    /**
+     * What a definition must have to be saved. The one place the rule lives: the marketplace
+     * runs a published MCP payload through this before it is stored and again before it is
+     * installed, so a definition the panel would refuse is refused everywhere.
+     *
+     * @throws IllegalArgumentException naming what is missing
+     */
+    public static McpDef validated(McpDef def) {
         boolean hasUrl = def != null && def.url() != null && !def.url().isBlank();
         if (def == null || def.name() == null || def.name().isBlank() || (!hasUrl && !def.isStdio())) {
             throw new IllegalArgumentException("name plus a url or a command are required.");
         }
-        return store.save(def);
+        return def;
     }
 
     @DeleteMapping("/{id}")
