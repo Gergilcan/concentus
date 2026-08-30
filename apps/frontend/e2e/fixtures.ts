@@ -17,7 +17,11 @@ import { startBackend, type Backend } from './backend'
 export const test = base.extend<{ page: Page }, { backend: Backend }>({
   backend: [
     async ({}, use, workerInfo) => {
-      const backend = await startBackend(8800 + workerInfo.parallelIndex)
+      // The base is overridable so two checkouts can run the suite on one machine at once — a
+      // worktree beside the main clone, say. Both on 8800 would each find the other's backend
+      // "up", politely shut it down, and fail every test after that with connection refused.
+      const portBase = Number(process.env.CONCENTUS_E2E_PORT_BASE) || 8800
+      const backend = await startBackend(portBase + workerInfo.parallelIndex)
       await use(backend)
       await backend.stop()
     },

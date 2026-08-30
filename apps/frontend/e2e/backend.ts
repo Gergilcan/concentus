@@ -1,6 +1,7 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import * as crypto from 'node:crypto'
 import * as fs from 'node:fs'
+import * as net from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -41,6 +42,11 @@ export async function startBackend(port: number, extraEnv: Record<string, string
   if (await isUp(base)) {
     await stopViaActuator(base)
   }
+  // Readiness goes away before the socket does: a JVM told to shut down stops answering the
+  // health probe first and releases the port last, and a replacement worker spawned in between
+  // died with "Port 8800 was already in use" — which turned one failed test into a cascade of
+  // connection-refused failures for every test after it on that worker.
+  await waitForPortFree(port)
 
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'concentus-e2e-'))
   const javaBin = process.env.JAVA_HOME
@@ -151,6 +157,29 @@ async function stopViaActuator(base: string): Promise<void> {
   }
   const deadline = Date.now() + 15_000
   while (Date.now() < deadline && (await isUp(base))) await sleep(250)
+}
+
+/**
+ * Waits until nothing accepts connections on the port — up to a bound, so a port held by
+ * something that is not ours still ends in the JVM's own "already in use" error, with the name
+ * of the port in it, rather than in a silent hang here.
+ */
+async function waitForPortFree(port: number): Promise<void> {
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline && (await accepts(port))) await sleep(250)
+}
+
+function accepts(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: '127.0.0.1', port })
+    const done = (open: boolean) => {
+      socket.destroy()
+      resolve(open)
+    }
+    socket.once('connect', () => done(true))
+    socket.once('error', () => done(false))
+    socket.setTimeout(1000, () => done(false))
+  })
 }
 
 async function isUp(base: string): Promise<boolean> {
