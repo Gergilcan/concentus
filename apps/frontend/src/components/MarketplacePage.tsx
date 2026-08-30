@@ -109,6 +109,7 @@ export function MarketplacePage({ pushError, onOpenResources, onOpenFlow }: Prop
             <option value="">{t('All scopes')}</option>
             <option value="organization">{t('Organization')}</option>
             <option value="global">{t('Global')}</option>
+            <option value="group">{t('Group')}</option>
           </select>
           <select
             className={fx.sort}

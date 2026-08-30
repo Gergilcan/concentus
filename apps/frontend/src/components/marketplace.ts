@@ -48,6 +48,8 @@ export const RESOURCE_TAB: Partial<Record<MarketplaceKind, ResourceTab>> = {
 export const SCOPE_LABEL: Record<MarketplaceScope, string> = {
   organization: 'Organization',
   global: 'Global',
+  /** The chip names the group instead when it can; this is what it says when it cannot. */
+  group: 'Group',
 }
 
 /** What the state chip says about an item, for this organization. Null: nothing worth a chip. */

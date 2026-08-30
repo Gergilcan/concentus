@@ -1,22 +1,29 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MarketplaceItem } from '../api/types.ts'
 import { mktItem } from '../test/marketplace.ts'
+import { resetGroupsCache } from './groups.ts'
 import { MarketplaceItemDialog } from './MarketplaceItemDialog.tsx'
 
 const installMock = vi.fn()
 const uninstallMock = vi.fn()
 const deleteMock = vi.fn()
 const approveMock = vi.fn()
+const groupsStatusMock = vi.fn()
+const listGroupsMock = vi.fn()
 
 vi.mock('../api/client.ts', () => ({
   api: {
-    installMarketplaceItem: (id: string) => installMock(id),
+    installMarketplaceItem: (id: string, options?: unknown) => installMock(id, options),
     uninstallMarketplaceItem: (id: string) => uninstallMock(id),
     deleteMarketplaceItem: (id: string) => deleteMock(id),
     approveMarketplaceItem: (id: string) => approveMock(id),
+    groupsStatus: () => groupsStatusMock(),
+    listGroups: () => listGroupsMock(),
   },
 }))
+
+const platform = { id: 'gr_1', organizationId: 'org_1', name: 'platform', description: null, createdAt: 1, createdBy: null, members: 1, resources: 0, manager: false }
 
 function renderDialog(item: MarketplaceItem) {
   const props = {
@@ -37,9 +44,77 @@ const installed = { resourceId: 'res_1', version: 1, installedAt: 1 }
 // The backend says what this person may do (canEdit, canCurate) and what their organization
 // installed; the dialog only draws the buttons those facts allow.
 describe('MarketplaceItemDialog', () => {
+  beforeEach(() => {
+    resetGroupsCache()
+    // No group unless a test says so: Install stays the one button it was.
+    groupsStatusMock.mockResolvedValue({ allowed: true, refusal: null, groups: 0, mine: [] })
+    listGroupsMock.mockResolvedValue({ groups: [], allowed: true, refusal: null })
+  })
   afterEach(() => {
     vi.clearAllMocks()
     vi.restoreAllMocks()
+  })
+
+  it('with a group to choose, Install offers where to put it and installs into the group', async () => {
+    listGroupsMock.mockResolvedValue({ groups: [platform], allowed: true, refusal: null })
+    installMock.mockResolvedValue({ resourceId: 'mcp_9', kind: 'mcp', version: 1 })
+    renderDialog(mktItem({ id: 'mkt_g' }))
+
+    const into = await screen.findByLabelText('Install into')
+    expect(into).toHaveValue('')
+    expect(screen.getByRole('option', { name: 'Into: organization' })).toBeInTheDocument()
+    fireEvent.change(into, { target: { value: 'gr_1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+
+    await waitFor(() => expect(installMock).toHaveBeenCalledWith('mkt_g', { groupId: 'gr_1' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Installed as v1')
+  })
+
+  it('without a group chosen a plain install is sent, and without any group there is nothing to choose', async () => {
+    listGroupsMock.mockResolvedValue({ groups: [platform], allowed: true, refusal: null })
+    installMock.mockResolvedValue({ resourceId: 'mcp_9', kind: 'mcp', version: 1 })
+    const { unmount } = render(
+      <MarketplaceItemDialog
+        item={mktItem({ id: 'mkt_o' })}
+        onClose={vi.fn()}
+        onChanged={vi.fn()}
+        onEdit={vi.fn()}
+        onOpenResources={vi.fn()}
+        onOpenFlow={vi.fn()}
+        pushError={vi.fn()}
+      />,
+    )
+    await screen.findByLabelText('Install into')
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+    await waitFor(() => expect(installMock).toHaveBeenCalledWith('mkt_o', undefined))
+    unmount()
+
+    resetGroupsCache()
+    listGroupsMock.mockResolvedValue({ groups: [], allowed: true, refusal: null })
+    renderDialog(mktItem())
+    await waitFor(() => expect(listGroupsMock).toHaveBeenCalledTimes(2))
+    expect(screen.queryByLabelText('Install into')).toBeNull()
+  })
+
+  it('a group-scoped item wears the group’s name as its scope chip, or "Group" when it cannot be named', async () => {
+    listGroupsMock.mockResolvedValue({ groups: [platform], allowed: true, refusal: null })
+    const { unmount } = render(
+      <MarketplaceItemDialog
+        item={mktItem({ scope: 'group', groupId: 'gr_1' })}
+        onClose={vi.fn()}
+        onChanged={vi.fn()}
+        onEdit={vi.fn()}
+        onOpenResources={vi.fn()}
+        onOpenFlow={vi.fn()}
+        pushError={vi.fn()}
+      />,
+    )
+    const chip = await screen.findByText('platform')
+    expect(chip).toHaveAttribute('title', 'Visible to the members of this group and administrators')
+    unmount()
+
+    renderDialog(mktItem({ scope: 'group', groupId: 'gr_unknown' }))
+    expect(screen.getByText('Group')).toBeInTheDocument()
   })
 
   it('a published item nobody installed offers Install and nothing else', () => {

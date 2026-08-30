@@ -795,6 +795,11 @@ export interface BackendFlow {
   /** Dashboard folder; blank/absent = root. The bundled starters live in "Samples". */
   folder?: string
   /**
+   * The group this flow is visible to — its members and the organization's administrators —
+   * or null for the whole organization. Changed through `POST /groups/assign`, never by saving.
+   */
+  groupId?: string | null
+  /**
    * Saving this flow immediately replays its golden reference against the new graph. Off unless
    * asked for: every check is a real agent run with a real bill.
    */
@@ -1001,6 +1006,8 @@ export type LibraryAgent = {
   maxTokens: number
   description?: string
   systemPrompt: string
+  /** The group it is visible to, or null for the organization. See BackendFlow.groupId. */
+  groupId?: string | null
   /**
    * Counts saves, from 1; the store assigns it. A block that links this agent stamps the version
    * it took, and is warned when the library has moved past it. Absent on a record from before
@@ -1041,6 +1048,8 @@ export type DatabaseDef = {
   jdbcUrl: string
   username: string
   credentialId: string
+  /** The group it is visible to, or null for the organization. */
+  groupId?: string | null
 }
 
 export type McpDef = {
@@ -1058,6 +1067,8 @@ export type McpDef = {
   command?: string
   args?: string[]
   env?: Record<string, string>
+  /** The group it is visible to, or null for the organization. */
+  groupId?: string | null
 }
 
 /**
@@ -1084,6 +1095,8 @@ export type FacadeProfile = {
    * read-only for that worker.
    */
   readAlso?: string[]
+  /** The group it is visible to, or null for the organization. */
+  groupId?: string | null
 }
 
 export interface McpServerInfo {
@@ -1266,6 +1279,8 @@ export interface SessionInfo {
   /** How many organizations this account is in; the header names the current one only past one. */
   organizationCount?: number
   role?: string
+  /** The groups this account is in, in the current organization, and which of them it manages. */
+  groups?: SessionGroup[]
 }
 
 /**
@@ -1304,6 +1319,8 @@ export interface Credential {
    * pointing at it; entering the value again is the whole repair.
    */
   locked: boolean
+  /** The group it is visible to, or null for the organization. */
+  groupId?: string | null
 }
 
 /**
@@ -1471,6 +1488,8 @@ export type KnowledgeDef = {
    * created before this field existed meant and must go on meaning.
    */
   minRole?: string
+  /** The group it is visible to, or null for the organization. */
+  groupId?: string | null
 }
 
 export type KnowledgeDoc = {
@@ -1617,6 +1636,8 @@ export interface SkillInfo {
   name: string
   description: string
   fileCount: number
+  /** The group it is visible to, or null for the organization. */
+  groupId?: string | null
 }
 
 /** An organization-level prompt variable: {{NAME}} in any flow's prompts becomes its value. */
@@ -1627,6 +1648,8 @@ export type Variable = {
   name: string
   value: string
   description?: string
+  /** The group it is visible to, or null for the organization. */
+  groupId?: string | null
 }
 
 /** A skill repository in the GitHub catalog. stars is -1 when GitHub could not be asked. */
@@ -1742,8 +1765,8 @@ export interface RetentionReport {
 /** What a marketplace item is: one of the things a flow is built from. */
 export type MarketplaceKind = 'mcp' | 'agent' | 'facade' | 'skill' | 'plugin' | 'api' | 'flow'
 
-/** Who an item is published to: one organization's members, or every organization. */
-export type MarketplaceScope = 'organization' | 'global'
+/** Who an item is published to: one organization's members, every organization, or one group of the organization. */
+export type MarketplaceScope = 'organization' | 'global' | 'group'
 
 /** Organization items are born published; a global one waits for a curator. */
 export type MarketplaceItemStatus = 'published' | 'pending' | 'rejected'
@@ -1767,6 +1790,8 @@ export interface MarketplaceItem {
   scope: MarketplaceScope
   /** The publishing organization; a global item keeps it as "from". */
   organizationId: string
+  /** The group a `group`-scoped item is published to; null on the other scopes. */
+  groupId: string | null
   status: MarketplaceItemStatus
   /** The curator's sentence, when status is rejected. */
   rejection: string | null
@@ -1821,6 +1846,8 @@ export interface MarketplacePublishBody {
   tags?: string[]
   icon?: string
   scope: MarketplaceScope
+  /** With scope `group`: which one. */
+  groupId?: string | null
   payload: Record<string, unknown>
 }
 
@@ -1829,6 +1856,8 @@ export interface MarketplacePublishFromBody {
   kind: MarketplaceKind
   resourceId: string
   scope: MarketplaceScope
+  /** With scope `group`: which one. */
+  groupId?: string | null
   name?: string
   summary?: string
   description?: string
@@ -1843,4 +1872,102 @@ export interface MarketplaceListFilters {
   tag?: string
   status?: MarketplaceItemStatus
   sort?: 'installs' | 'newest' | 'name'
+}
+
+// --- Groups inside an organization (Enterprise) ------------------------------
+
+/**
+ * A group: part of an organization that resources can be made visible to, and that carries its
+ * own policy and settings over the organization's. `manager` is whether the CALLER manages it —
+ * the backend's answer, so the panel never has to reproduce the membership rule.
+ */
+export interface Group {
+  id: string
+  organizationId: string
+  name: string
+  description: string | null
+  createdAt: number
+  createdBy: string | null
+  /** How many accounts are in it. */
+  members: number
+  /** How many resources are visible to it alone. */
+  resources: number
+  /** The caller may add and remove members and edit the group's settings and policy. */
+  manager: boolean
+}
+
+/** The list route's answer: the groups the caller may see, and whether the license lets any be made. */
+export interface GroupsList {
+  groups: Group[]
+  allowed: boolean
+  /** The Enterprise gate's own sentence when `allowed` is false; null otherwise. */
+  refusal: string | null
+}
+
+export interface GroupMember {
+  userId: string
+  email: string
+  /** The organization role — the ladder enforced on every request, unchanged by the group. */
+  role: string
+  manager: boolean
+  createdAt: number
+}
+
+/** The group's policy: the OrgPolicy shape, every field nullable — null inherits the organization's. */
+export interface GroupPolicy {
+  defaultFacadeProfileId: string | null
+  requireFacade: boolean | null
+  maxPermissionMode: string | null
+  monthlyBudgetUsd: number | null
+  publishRequiresApproval: boolean | null
+}
+
+/** The policy as the panel reads it: the group's own fields, and what runs under it actually get. */
+export type GroupPolicyView = GroupPolicy & { effective: OrgPolicy }
+
+/** One entry of the settings catalog — the part of a {@link SettingEntry} that is not a value. */
+export type SettingDef = Pick<SettingEntry, 'key' | 'group' | 'label' | 'help' | 'type' | 'restartRequired' | 'options'>
+
+/**
+ * The settings a group may override: the group's own values, the catalog of keys it may set, and
+ * what each key resolves to when the group leaves it alone.
+ */
+export interface GroupSettings {
+  values: Record<string, string>
+  keys: SettingDef[]
+  inherited: Record<string, string>
+}
+
+/** One group as the session names it: enough for a select and a chip. */
+export interface SessionGroup {
+  id: string
+  name: string
+  manager: boolean
+}
+
+/** What the interface asks once: may groups be used here, and which ones is the caller in. */
+export interface GroupsStatus {
+  allowed: boolean
+  refusal: string | null
+  /** How many groups the organization has. */
+  groups: number
+  mine: SessionGroup[]
+}
+
+/** The store kind `POST /groups/assign` takes — the same words the resource routes use. */
+export type AssignKind =
+  | 'flow'
+  | 'mcp'
+  | 'agent'
+  | 'facade-profile'
+  | 'knowledge'
+  | 'skill'
+  | 'variable'
+  | 'database'
+  | 'credential'
+
+export interface GroupAssignment {
+  kind: AssignKind
+  resourceId: string
+  groupId: string | null
 }

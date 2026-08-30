@@ -7,6 +7,8 @@ import { AddMcpServerModal } from './AddMcpServerModal.tsx'
 import { AuditPanel } from './AuditPanel.tsx'
 import { CredentialsPanel } from './CredentialsPanel.tsx'
 import { CrudPanel } from './CrudPanel.tsx'
+import { GroupsPanel } from './GroupsPanel.tsx'
+import { useGroups } from './groups.ts'
 import { KnowledgePanel } from './KnowledgePanel.tsx'
 import { McpCatalog, type CatalogSetup } from './McpCatalog.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
@@ -24,11 +26,12 @@ import { SettingsPanel } from './SettingsPanel.tsx'
 import { SkillsPanel } from './SkillsPanel.tsx'
 import { StoragePanel } from './StoragePanel.tsx'
 import { UpdatesPanel } from './UpdatesPanel.tsx'
+import { VisibleTo } from './VisibleTo.tsx'
 import { shellBridge } from '../api/shell.ts'
 import { usePermissions } from '../state/permissionRules.ts'
 import styles from './resources.module.scss'
 
-type Tab = 'settings' | 'members' | 'serviceAccounts' | 'audit' | 'policies' | 'organizations' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
+type Tab = 'settings' | 'members' | 'serviceAccounts' | 'audit' | 'policies' | 'organizations' | 'groups' | 'agents' | 'mcp' | 'facades' | 'databases' | 'knowledge' | 'skills' | 'plugins' | 'variables' | 'credentials' | 'storage' | 'updates'
 
 /**
  * The tab strip, in display order, in two groups: the things a flow uses, then how the
@@ -48,6 +51,8 @@ const TABS: Array<{
   startsAdmin?: boolean
   /** Shown to administrators only: the backend refuses everyone else, and a tab that only 403s is a broken tab. */
   adminOnly?: boolean
+  /** With `adminOnly`: also shown to somebody who manages a group, who has something to do there. */
+  managerToo?: boolean
 }> = [
   { id: 'agents', label: 'Agents' },
   { id: 'mcp', label: 'MCP Servers' },
@@ -109,6 +114,14 @@ const TABS: Array<{
       'Several organizations on one deployment, each with its own flows, credentials, runs and settings. Creating a second one is an Enterprise feature.',
   },
   {
+    id: 'groups',
+    label: 'Groups',
+    adminOnly: true,
+    managerToo: true,
+    title:
+      'Parts of the organization a resource can be shown to alone, each with its own policy and settings. Enterprise.',
+  },
+  {
     id: 'settings',
     label: 'Settings',
     title:
@@ -153,6 +166,8 @@ export function ResourcesPage({
 }) {
   const { t } = useTranslation()
   const { canAdminister } = usePermissions()
+  // A manager of any group gets the Groups tab too: the members and settings of what they manage.
+  const managesAny = useGroups().mine.some((g) => g.manager)
   const [tab, setTab] = useState<Tab>(initialTab ?? 'agents')
   // Which records came from the Marketplace, by resource id: one read when the page mounts.
   const installs = useMarketplaceInstalls()
@@ -179,7 +194,10 @@ export function ResourcesPage({
   return (
     <div className={styles.resources}>
       <div className={styles.tabs}>
-        {TABS.filter((td) => (!td.desktopOnly || shellBridge()) && (!td.adminOnly || canAdminister)).map((td) => (
+        {TABS.filter(
+          (td) =>
+            (!td.desktopOnly || shellBridge()) && (!td.adminOnly || canAdminister || (td.managerToo && managesAny)),
+        ).map((td) => (
           <Fragment key={td.id}>
             {td.startsAdmin && <span className={styles.tabDivider} aria-hidden="true" />}
             <button
@@ -201,6 +219,7 @@ export function ResourcesPage({
         {tab === 'audit' && <AuditPanel pushError={pushError} />}
         {tab === 'policies' && <PoliciesPanel pushError={pushError} />}
         {tab === 'organizations' && canAdminister && <OrganizationsPanel pushError={pushError} />}
+        {tab === 'groups' && (canAdminister || managesAny) && <GroupsPanel pushError={pushError} />}
 
         {tab === 'agents' && (
           <CrudPanel<LibraryAgent>
@@ -236,14 +255,23 @@ export function ResourcesPage({
             load={api.listAgents}
             save={api.saveAgent}
             remove={api.deleteAgent}
-            extra={(a) => {
+            extra={(a, apply) => {
               const id = a.id
               if (!id) return null
               return (
-                <MarketplaceOrigin
-                  item={installs.get(id)}
-                  onPublish={() => setPublishFrom({ kind: 'agent', resourceId: id, name: a.name, summary: a.description })}
-                />
+                <>
+                  <VisibleTo
+                    kind="agent"
+                    resourceId={id}
+                    groupId={a.groupId}
+                    pushError={pushError}
+                    onAssigned={(groupId) => apply({ ...a, groupId })}
+                  />
+                  <MarketplaceOrigin
+                    item={installs.get(id)}
+                    onPublish={() => setPublishFrom({ kind: 'agent', resourceId: id, name: a.name, summary: a.description })}
+                  />
+                </>
               )
             }}
           />
@@ -292,6 +320,15 @@ export function ResourcesPage({
             remove={api.deleteMcpDef}
             extra={(m, apply) => (
               <>
+                {m.id && (
+                  <VisibleTo
+                    kind="mcp"
+                    resourceId={m.id}
+                    groupId={m.groupId}
+                    pushError={pushError}
+                    onAssigned={(groupId) => apply({ ...m, groupId })}
+                  />
+                )}
                 {/* The rest of this one definition — a local server's command, args and env have
                     no fields above, and this is also where a README snippet is pasted. Scoped to
                     the selected server: the list beside it is how you choose which. */}
@@ -333,6 +370,17 @@ export function ResourcesPage({
             load={api.listVariables}
             save={api.saveVariable}
             remove={api.deleteVariable}
+            extra={(v, apply) =>
+              v.id ? (
+                <VisibleTo
+                  kind="variable"
+                  resourceId={v.id}
+                  groupId={v.groupId}
+                  pushError={pushError}
+                  onAssigned={(groupId) => apply({ ...v, groupId })}
+                />
+              ) : null
+            }
           />
         )}
 
@@ -423,14 +471,23 @@ export function ResourcesPage({
             load={api.listFacadeProfiles}
             save={api.saveFacadeProfile}
             remove={api.deleteFacadeProfile}
-            extra={(p) => {
+            extra={(p, apply) => {
               const id = p.id
               if (!id) return null
               return (
-                <MarketplaceOrigin
-                  item={installs.get(id)}
-                  onPublish={() => setPublishFrom({ kind: 'facade', resourceId: id, name: p.name, summary: p.description })}
-                />
+                <>
+                  <VisibleTo
+                    kind="facade-profile"
+                    resourceId={id}
+                    groupId={p.groupId}
+                    pushError={pushError}
+                    onAssigned={(groupId) => apply({ ...p, groupId })}
+                  />
+                  <MarketplaceOrigin
+                    item={installs.get(id)}
+                    onPublish={() => setPublishFrom({ kind: 'facade', resourceId: id, name: p.name, summary: p.description })}
+                  />
+                </>
               )
             }}
           />
@@ -451,6 +508,17 @@ export function ResourcesPage({
             load={api.listDatabases}
             save={api.saveDatabase}
             remove={api.deleteDatabase}
+            extra={(d, apply) =>
+              d.id ? (
+                <VisibleTo
+                  kind="database"
+                  resourceId={d.id}
+                  groupId={d.groupId}
+                  pushError={pushError}
+                  onAssigned={(groupId) => apply({ ...d, groupId })}
+                />
+              ) : null
+            }
           />
         )}
         {tab === 'knowledge' && <KnowledgePanel />}
@@ -458,6 +526,7 @@ export function ResourcesPage({
           <SkillsPanel
             originOf={(id) => installs.get(id)}
             onPublish={(s) => setPublishFrom({ kind: 'skill', resourceId: s.id, name: s.name, summary: s.description })}
+            pushError={pushError}
           />
         )}
 

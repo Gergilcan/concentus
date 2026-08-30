@@ -387,6 +387,8 @@ type FlowMeta = {
   variables?: Record<string, string>
   /** Dashboard folder — same deal: a canvas save must not silently move the flow to the root. */
   folder?: string
+  /** The group the flow is visible to. Echoed on save; changed only through the assign endpoint. */
+  groupId?: string | null
 }
 
 interface FlowState {
@@ -955,6 +957,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         budgetUsd: flow.budgetUsd,
         variables: flow.variables,
         folder: flow.folder,
+        groupId: flow.groupId,
       },
       nodes,
       edges: flow.edges.map((e) => ({

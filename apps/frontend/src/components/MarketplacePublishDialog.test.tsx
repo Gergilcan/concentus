@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mktItem } from '../test/marketplace.ts'
+import { resetGroupsCache } from './groups.ts'
 import { MarketplacePublishDialog } from './MarketplacePublishDialog.tsx'
 
 const statusMock = vi.fn()
@@ -10,6 +11,8 @@ const listFlowsMock = vi.fn()
 const publishFromMock = vi.fn()
 const publishItemMock = vi.fn()
 const updateItemMock = vi.fn()
+const groupsStatusMock = vi.fn()
+const listGroupsMock = vi.fn()
 
 vi.mock('../api/client.ts', () => ({
   api: {
@@ -20,8 +23,12 @@ vi.mock('../api/client.ts', () => ({
     publishMarketplaceFrom: (body: unknown) => publishFromMock(body),
     publishMarketplaceItem: (body: unknown) => publishItemMock(body),
     updateMarketplaceItem: (id: string, body: unknown) => updateItemMock(id, body),
+    groupsStatus: () => groupsStatusMock(),
+    listGroups: () => listGroupsMock(),
   },
 }))
+
+const platform = { id: 'gr_1', organizationId: 'org_1', name: 'platform', description: null, createdAt: 1, createdBy: null, members: 1, resources: 0, manager: false }
 
 function renderDialog(props: Partial<Parameters<typeof MarketplacePublishDialog>[0]> = {}) {
   const onPublished = vi.fn()
@@ -37,6 +44,10 @@ const fillWords = () => {
 
 describe('MarketplacePublishDialog', () => {
   beforeEach(() => {
+    resetGroupsCache()
+    // No group to publish to unless a test says so: the scope control stays as it was.
+    groupsStatusMock.mockResolvedValue({ allowed: true, refusal: null, groups: 0, mine: [] })
+    listGroupsMock.mockResolvedValue({ groups: [], allowed: true, refusal: null })
     statusMock.mockResolvedValue({ curator: false, pending: 0, organizations: 1, tags: [] })
     listMcpDefsMock.mockResolvedValue([{ id: 'mcp_1', name: 'linear', url: 'https://x', credentialId: '' }])
     listAgentsMock.mockResolvedValue([
@@ -169,6 +180,34 @@ describe('MarketplacePublishDialog', () => {
       ),
     )
     expect(onPublished).toHaveBeenCalledWith(expect.objectContaining({ version: 2 }), [])
+  })
+
+  it('offers Group… as soon as the caller has a group, even on one organization, and publishes to it', async () => {
+    listGroupsMock.mockResolvedValue({ groups: [platform], allowed: true, refusal: null })
+    publishFromMock.mockResolvedValue({ ...mktItem({ scope: 'group', groupId: 'gr_1' }), stripped: [] })
+    renderDialog()
+
+    const scope = await screen.findByLabelText('Scope')
+    expect(scope).toHaveValue('organization')
+    expect(screen.getByRole('option', { name: 'Group…' })).toBeInTheDocument()
+    // One organization: nothing to make global, so that option is not offered.
+    expect(screen.queryByRole('option', { name: 'Global — every organization' })).toBeNull()
+    expect(screen.queryByLabelText('Which group')).toBeNull()
+
+    fireEvent.change(scope, { target: { value: 'group' } })
+    await screen.findByRole('option', { name: 'linear' })
+    fireEvent.change(screen.getByLabelText('Resource'), { target: { value: 'mcp_1' } })
+    fireEvent.change(screen.getByLabelText('Summary (one line)'), { target: { value: 'Issues' } })
+    // A group scope without a group is refused here, before anything is sent.
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }))
+    expect(screen.getByText('Pick the group to publish to.')).toBeInTheDocument()
+    expect(publishFromMock).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('Which group'), { target: { value: 'gr_1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }))
+    await waitFor(() =>
+      expect(publishFromMock).toHaveBeenCalledWith(expect.objectContaining({ scope: 'group', groupId: 'gr_1' })),
+    )
   })
 
   it('a refusal from the server goes to the toast, a typo stays in the form', async () => {

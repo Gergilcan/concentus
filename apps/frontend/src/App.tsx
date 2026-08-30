@@ -354,6 +354,7 @@ function Workspace({ signedInAs, organizationName, onSignOut }: WorkspaceProps) 
             onOpenRun={(id) => void openRun(id)}
             onSaveFlow={saveFlowFromDashboard}
             onRetryRun={retryRun}
+            onFlowsChanged={refreshFlows}
             pushError={setToast}
           />
         )

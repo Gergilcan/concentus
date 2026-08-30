@@ -5,6 +5,7 @@ import type { MarketplaceInstallResult, MarketplaceItem } from '../api/types.ts'
 import { cx } from '../utils/cx.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { timeAgo } from './flowFormat.ts'
+import { knownGroups, useGroups } from './groups.ts'
 import { KIND_GLYPH, KIND_LABEL, RESOURCE_TAB, payloadRows, stateOf, type ResourceTab } from './marketplace.ts'
 import { KindChip, ScopeChip, StateChip } from './MarketplaceChips.tsx'
 import { MarketplaceMarkdown } from './MarketplaceMarkdown.tsx'
@@ -48,6 +49,10 @@ export function MarketplaceItemDialog({
   const [installedNow, setInstalledNow] = useState<MarketplaceInstallResult | null>(null)
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
+  // Where a fresh install lands: the organization, or one group of it. Offered only when the
+  // caller has a group to choose — otherwise there is nothing to ask.
+  const [into, setInto] = useState('')
+  const targets = knownGroups(useGroups({ all: true }))
   const state = stateOf(item)
 
   const run = async (action: () => Promise<unknown>, after?: () => void) => {
@@ -63,7 +68,12 @@ export function MarketplaceItemDialog({
     }
   }
 
-  const install = () => void run(async () => setInstalledNow(await api.installMarketplaceItem(item.id)))
+  const install = () =>
+    void run(async () =>
+      setInstalledNow(
+        into ? await api.installMarketplaceItem(item.id, { groupId: into }) : await api.installMarketplaceItem(item.id),
+      ),
+    )
   const uninstall = () => {
     if (!window.confirm(t('Uninstall "{{name}}"? The {{kind}} it created is removed.', { name: item.name, kind: t(KIND_LABEL[item.kind]) }))) return
     void run(() => api.uninstallMarketplaceItem(item.id), () => setInstalledNow(null))
@@ -192,14 +202,33 @@ export function MarketplaceItemDialog({
               {t('Uninstall')}
             </button>
           ) : (
-            <button
-              className={fx.primary}
-              disabled={busy}
-              onClick={install}
-              title={t('Creates it in this organization — the panel then says which credential to fill in, if any. An API item creates nothing; the API node reads it.')}
-            >
-              {t('Install')}
-            </button>
+            <>
+              {targets.length > 0 && item.kind !== 'api' && (
+                <select
+                  className={styles.into}
+                  aria-label={t('Install into')}
+                  title={t('Where what the install creates lives: visible to the whole organization, or to one group and the administrators.')}
+                  value={into}
+                  disabled={busy}
+                  onChange={(e) => setInto(e.target.value)}
+                >
+                  <option value="">{t('Into: organization')}</option>
+                  {targets.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {t('Into: {{name}}', { name: g.name })}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                className={fx.primary}
+                disabled={busy}
+                onClick={install}
+                title={t('Creates it in this organization — the panel then says which credential to fill in, if any. An API item creates nothing; the API node reads it.')}
+              >
+                {t('Install')}
+              </button>
+            </>
           ))}
         {item.canEdit && !item.builtIn && (
           <>

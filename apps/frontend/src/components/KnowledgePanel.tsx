@@ -15,6 +15,7 @@ import {
   pathSegments,
 } from './KnowledgeTree.ts'
 import { RetrievalModelsPanel } from './RetrievalModelsPanel.tsx'
+import { VisibleTo } from './VisibleTo.tsx'
 import panels from './panels.module.scss'
 import styles from './resources.module.scss'
 
@@ -553,9 +554,17 @@ export function KnowledgePanel() {
       // screen rather than implied by absence: a form showing only name and description reads as
       // "this is all there is", and the documents section appearing only after Save looked exactly
       // like the feature not existing.
-      extra={(draft) =>
+      extra={(draft, apply) =>
         draft.id ? (
-          <Documents baseId={draft.id} />
+          <>
+            <VisibleTo
+              kind="knowledge"
+              resourceId={draft.id}
+              groupId={draft.groupId}
+              onAssigned={(groupId) => apply({ ...draft, groupId })}
+            />
+            <Documents baseId={draft.id} />
+          </>
         ) : (
           <p className={panels.hint}>
             <b>{t('Save the base first')}</b> — {t('documents and search appear here after.')}

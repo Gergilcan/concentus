@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { MarketplaceItem, MarketplaceKind, MarketplaceScope } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
+import { knownGroups, useGroups } from './groups.ts'
 import { KIND_LABEL, KINDS } from './marketplace.ts'
 import { Modal } from './Modal.tsx'
 import fx from './flows.module.scss'
@@ -73,6 +74,10 @@ export function MarketplacePublishDialog({ onClose, onPublished, pushError, pref
   const [tags, setTags] = useState(editing?.tags.join(', ') ?? '')
   const [icon, setIcon] = useState(editing?.icon ?? '')
   const [scope, setScope] = useState<MarketplaceScope>(editing?.scope ?? 'organization')
+  // With scope "group": which one. The groups the caller may publish to are the shared answer.
+  const [groupId, setGroupId] = useState(editing?.groupId ?? '')
+  const groups = useGroups({ all: true })
+  const groupOptions = knownGroups(groups)
   // How many organizations there are decides whether scope is a choice at all.
   const [organizations, setOrganizations] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
@@ -141,14 +146,20 @@ export function MarketplacePublishDialog({ onClose, onPublished, pushError, pref
       setError(t('Pick the resource to publish.'))
       return
     }
+    if (scope === 'group' && !groupId) {
+      setError(t('Pick the group to publish to.'))
+      return
+    }
     const common = {
       name: name.trim(),
       summary: summary.trim(),
       description: description.trim() || undefined,
       tags: tags.split(',').map((s) => s.trim()).filter(Boolean),
       icon: icon.trim() || undefined,
-      // One organization: nothing to keep an item from, so everything is global.
-      scope: (organizations ?? 1) > 1 ? scope : ('global' as MarketplaceScope),
+      // A group is a choice whatever the deployment's size. Otherwise, one organization: nothing
+      // to keep an item from, so everything is global.
+      scope: scope === 'group' ? scope : (organizations ?? 1) > 1 ? scope : ('global' as MarketplaceScope),
+      ...(scope === 'group' ? { groupId } : {}),
     }
     setBusy(true)
     try {
@@ -244,16 +255,33 @@ export function MarketplacePublishDialog({ onClose, onPublished, pushError, pref
         </label>
       </div>
 
-      {(organizations ?? 1) > 1 && (
+      {/* Scope is a choice past one organization, or as soon as there is a group to publish to. */}
+      {((organizations ?? 1) > 1 || groupOptions.length > 0) && (
         <>
           <label className={styles.formField}>
             <span>{t('Scope')}</span>
             <select value={scope} onChange={(e) => setScope(e.target.value as MarketplaceScope)}>
               <option value="organization">{t('This organization')}</option>
-              <option value="global">{t('Global — every organization')}</option>
+              {(organizations ?? 1) > 1 && <option value="global">{t('Global — every organization')}</option>}
+              {groupOptions.length > 0 && <option value="group">{t('Group…')}</option>}
             </select>
           </label>
-          <p className={styles.formHint}>{t('Global items are reviewed before everyone sees them')}</p>
+          {scope === 'group' && (
+            <label className={styles.formField} title={t('Its members and the administrators see it; it is published at once, like an organization item.')}>
+              <span>{t('Which group')}</span>
+              <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                <option value="">{t('Pick one…')}</option>
+                {groupOptions.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {(organizations ?? 1) > 1 && (
+            <p className={styles.formHint}>{t('Global items are reviewed before everyone sees them')}</p>
+          )}
         </>
       )}
 

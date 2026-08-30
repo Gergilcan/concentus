@@ -5,7 +5,9 @@ import type { MarketplaceItem, SkillCatalogSkill, SkillInfo, SkillRepo } from '.
 import { errMessage } from '../utils/errMessage.ts'
 import { cx } from '../utils/cx.ts'
 import { Pager } from './fields.tsx'
+import { GroupChip } from './GroupChip.tsx'
 import { MarketplaceOrigin } from './MarketplaceOrigin.tsx'
+import { VisibleTo } from './VisibleTo.tsx'
 import panels from './panels.module.scss'
 import styles from './resources.module.scss'
 
@@ -22,11 +24,14 @@ const PAGE_SIZE = 20
 export function SkillsPanel({
   onPublish,
   originOf,
+  pushError,
 }: {
   /** Opens the Marketplace publish form for a skill. Absent simply hides the button. */
   onPublish?: (skill: SkillInfo) => void
   /** The Marketplace item a skill was installed from, when it was. */
   originOf?: (id: string) => MarketplaceItem | undefined
+  /** Where a refused "Visible to" change goes. Absent, it shows under the row's note. */
+  pushError?: (m: string) => void
 } = {}) {
   const { t } = useTranslation()
   const [skills, setSkills] = useState<SkillInfo[]>([])
@@ -82,8 +87,19 @@ export function SkillsPanel({
         .map((s) => (
           <div key={s.id} className={styles.kbDoc}>
             <span className={styles.kbDocName} title={s.description}>{s.name}</span>
+            <GroupChip groupId={s.groupId} />
             <span className={styles.muted}>{t('{{count}} file(s)', { count: s.fileCount })}</span>
             <MarketplaceOrigin inline item={originOf?.(s.id)} onPublish={onPublish ? () => onPublish(s) : undefined} />
+            {/* The bare select: a row has no room for a label, and the chip beside the name
+                already says what it is set to. */}
+            <VisibleTo
+              compact
+              kind="skill"
+              resourceId={s.id}
+              groupId={s.groupId}
+              pushError={pushError ?? setNote}
+              onAssigned={(groupId) => setSkills((prev) => prev.map((x) => (x.id === s.id ? { ...x, groupId } : x)))}
+            />
             <button
               className={styles.delBtn}
               onClick={() => void api.deleteSkill(s.id).then(refresh)}

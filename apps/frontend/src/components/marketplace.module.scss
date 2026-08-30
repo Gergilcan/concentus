@@ -576,3 +576,13 @@
     flex: 1;
   }
 }
+
+/** "Into: …" beside Install — where what the install creates lives. Styled as the toolbar's selects. */
+.into {
+  background: t.$panel;
+  border: 1px solid t.$border;
+  color: t.$text;
+  border-radius: t.$radius;
+  padding: 6px 9px;
+  font-size: 12.5px;
+}
