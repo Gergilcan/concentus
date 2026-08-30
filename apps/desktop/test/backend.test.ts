@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   killOrphans: vi.fn(async () => {}),
   spawn: vi.fn(),
   execFile: vi.fn(),
+  runnerToken: null as string | null,
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
@@ -46,6 +47,7 @@ vi.mock('../src/claude-cli', () => ({
 }))
 vi.mock('../src/secret', () => ({ dataKey: () => ({ key: null, reason: 'unreadable', detail: 'not under test' }) }))
 vi.mock('../src/api-key', () => ({ loadApiKey: () => null }))
+vi.mock('../src/runner-token', () => ({ loadRunnerToken: () => mocks.runnerToken }))
 vi.mock('../src/log', () => ({ log: mocks.log }))
 
 import {
@@ -88,9 +90,45 @@ async function backendAnswering(status: number, onShutdown?: () => void): Promis
   return (server.address() as AddressInfo).port
 }
 
+/** A port nothing is listening on right now — for a spawned "backend" to take. */
+async function freePort(): Promise<number> {
+  const server = http.createServer()
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address() as AddressInfo
+  await new Promise<void>((resolve) => server.close(() => resolve()))
+  return port
+}
+
+/**
+ * A spawn that starts no Java: it reads the port off the backend's own arguments, answers the
+ * readiness probe there, and hands back a child with the streams startBackend listens to. What
+ * the test then has is the exact env and argv the real backend would have received.
+ */
+function spawnAnsweringReady(): void {
+  mocks.spawn.mockImplementation((_cmd: string, args: string[]) => {
+    const port = Number(args.find((a) => a.startsWith('--server.port='))?.slice('--server.port='.length))
+    const server = http.createServer((req, res) => {
+      res.statusCode = req.url === '/actuator/health/readiness' ? 200 : 404
+      res.end('{}')
+    })
+    server.listen(port, '127.0.0.1')
+    servers.push(server)
+    return Object.assign(new EventEmitter(), {
+      pid: 4242, exitCode: null, signalCode: null, kill: vi.fn(),
+      stdout: new EventEmitter(), stderr: new EventEmitter(),
+    })
+  })
+}
+
+/** The environment the last spawn was given. */
+function spawnedEnv(): NodeJS.ProcessEnv {
+  return (mocks.spawn.mock.calls[0][2] as { env: NodeJS.ProcessEnv }).env
+}
+
 beforeEach(() => {
   mocks.settings = {}
   mocks.packaged = false
+  mocks.runnerToken = null
   mocks.dataDir = scratchDir('backend')
   mocks.jar = path.join(mocks.dataDir, 'no-such-concentus-backend.jar')
 })
@@ -194,6 +232,72 @@ describe('startBackend adopting a backend that is already running', () => {
     await expect(startBackend()).rejects.toThrow('Backend jar not found')
 
     expect(mocks.spawn).not.toHaveBeenCalled()
+  })
+})
+
+describe('startBackend handing the runner to the backend', () => {
+  const TOKEN = 'crn_' + 'a1b2c3d4e5'.repeat(4)
+
+  beforeEach(async () => {
+    // A jar that exists, so the start gets as far as spawning; its contents are never read.
+    mocks.jar = path.join(mocks.dataDir, 'concentus-backend.jar')
+    fs.writeFileSync(mocks.jar, 'not a jar')
+    // A port of our own as the remembered one, so nothing already running on 8734 gets adopted.
+    mocks.settings = { port: await freePort() }
+    spawnAnsweringReady()
+  })
+
+  it('passes the URL, the token and the name when all three are configured', async () => {
+    mocks.settings.runner = { url: 'https://hub.example.com', name: 'office-pc' }
+    mocks.runnerToken = TOKEN
+
+    const backend = await startBackend()
+
+    expect(backend.process).not.toBeNull()
+    const env = spawnedEnv()
+    expect(env.CONCENTUS_RUNNER_URL).toBe('https://hub.example.com')
+    expect(env.CONCENTUS_RUNNER_TOKEN).toBe(TOKEN)
+    expect(env.CONCENTUS_RUNNER_NAME).toBe('office-pc')
+    // The rest of the environment is what it always was.
+    expect(env.APP_DATA_DIR).toBe(mocks.dataDir)
+    expect(env.CONCENTUS_SHELL_TOKEN).toBe(backend.shellToken)
+  })
+
+  it('leaves the name out when none was given', async () => {
+    mocks.settings.runner = { url: 'https://hub.example.com' }
+    mocks.runnerToken = TOKEN
+
+    await startBackend()
+
+    const env = spawnedEnv()
+    expect(env.CONCENTUS_RUNNER_URL).toBe('https://hub.example.com')
+    expect(env.CONCENTUS_RUNNER_TOKEN).toBe(TOKEN)
+    expect(env).not.toHaveProperty('CONCENTUS_RUNNER_NAME')
+  })
+
+  it('passes nothing at all when no server is configured', async () => {
+    mocks.runnerToken = TOKEN
+
+    await startBackend()
+
+    const env = spawnedEnv()
+    expect(env).not.toHaveProperty('CONCENTUS_RUNNER_URL')
+    expect(env).not.toHaveProperty('CONCENTUS_RUNNER_TOKEN')
+    expect(env).not.toHaveProperty('CONCENTUS_RUNNER_NAME')
+  })
+
+  it('passes nothing — not even the URL — when the token cannot be read, and says so', async () => {
+    mocks.settings.runner = { url: 'https://hub.example.com', name: 'office-pc' }
+
+    await startBackend()
+
+    const env = spawnedEnv()
+    expect(env).not.toHaveProperty('CONCENTUS_RUNNER_URL')
+    expect(env).not.toHaveProperty('CONCENTUS_RUNNER_TOKEN')
+    expect(env).not.toHaveProperty('CONCENTUS_RUNNER_NAME')
+    expect(mocks.log.warn).toHaveBeenCalledWith(
+      'A runner URL is set (https://hub.example.com) but no token could be read; starting without the runner.',
+    )
   })
 })
 

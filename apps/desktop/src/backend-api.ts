@@ -91,8 +91,25 @@ export interface RunLite {
   error?: string | null
 }
 
+/**
+ * The backend's own runner agent, as GET /api/runners/self reports it: whether this backend was
+ * started with a server to dial, and whether it is on the line right now. The tray shows this.
+ */
+export interface RunnerSelf {
+  configured: boolean
+  connected: boolean
+  hubUrl: string | null
+  name: string | null
+  /** Why it is not connected, when it is not — the handshake's refusal, or the socket's error. */
+  error: string | null
+}
+
 export const backendApi = {
   listRuns: (port: number) => request<RunLite[]>(port, '/api/runs', 'GET'),
+  // The launch token again, not a session: the tray asks whether or not anyone is signed in, and
+  // the backend accepts the shell's token on this one route for exactly that.
+  runnerSelf: (port: number, token: string | null) =>
+    request<RunnerSelf>(port, '/api/runners/self', 'GET', undefined, token),
   getStorage: (port: number, token: string | null) =>
     request<StorageConfig>(port, '/api/storage', 'GET', undefined, token),
   testStorage: (port: number, token: string | null, draft: StorageDraft) =>
