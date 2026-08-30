@@ -194,4 +194,19 @@ class SkillCatalogServiceTest {
         return out.toByteArray();
     }
 
+
+    // A GitHub that refuses or hangs is asked once, not three times, while somebody waits for
+    // the list: the pinned repositories are the answer, served as they are.
+    @org.junit.jupiter.api.Test
+    void when_the_search_fails_the_pinned_repositories_are_served_after_one_call() {
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        SkillCatalogService.Transport down = url -> { calls.incrementAndGet(); throw new java.io.IOException("GitHub rate limit reached"); };
+        SkillCatalogService service = new SkillCatalogService(org.mockito.Mockito.mock(SkillService.class), down);
+
+        java.util.List<SkillCatalogService.CatalogRepo> repos = service.popularRepos();
+
+        org.assertj.core.api.Assertions.assertThat(repos).extracting(SkillCatalogService.CatalogRepo::fullName)
+                .containsExactlyElementsOf(SkillCatalogService.PINNED);
+        org.assertj.core.api.Assertions.assertThat(calls.get()).isEqualTo(1);
+    }
 }

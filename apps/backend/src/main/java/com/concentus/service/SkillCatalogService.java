@@ -80,7 +80,19 @@ public class SkillCatalogService {
     /** The one seam the tests replace: bytes for a URL, or an IOException with the story. */
     interface Transport {
         byte[] get(String url) throws IOException;
+
+        /**
+         * The same request with its own deadline. The catalog list is a screen someone is waiting
+         * for, so its calls get seconds; an archive download keeps the long default.
+         */
+        default byte[] get(String url, Duration timeout) throws IOException {
+            return get(url);
+        }
     }
+
+    /** What the catalog list may spend on GitHub before the pinned repositories are served as they are. */
+    static final Duration SEARCH_TIMEOUT = Duration.ofSeconds(8);
+    static final Duration META_TIMEOUT = Duration.ofSeconds(4);
 
     private record Cached<T>(T value, Instant at) {
         boolean fresh() { return Duration.between(at, Instant.now()).compareTo(CACHE_TTL) < 0; }
@@ -113,8 +125,10 @@ public class SkillCatalogService {
         for (String name : PINNED) {
             byName.put(name.toLowerCase(), new CatalogRepo(name, "", -1, true));
         }
+        boolean searched = false;
         try {
-            JsonNode found = json.readTree(transport.get(SEARCH_URL));
+            JsonNode found = json.readTree(transport.get(SEARCH_URL, SEARCH_TIMEOUT));
+            searched = true;
             for (JsonNode item : found.path("items")) {
                 String fullName = item.path("full_name").asText("");
                 if (fullName.isBlank()) continue;
@@ -128,12 +142,14 @@ public class SkillCatalogService {
             log.info("GitHub search unavailable ({}); serving the pinned repositories only.",
                     e.getMessage());
         }
-        // Fill in stars for pinned repos search did not cover — best effort, one call each.
-        for (String name : PINNED) {
+        // Fill in stars for pinned repos search did not cover — best effort, one call each, and
+        // none when the search itself failed: a GitHub that has just refused or hung is not asked
+        // twice more while someone waits for the list.
+        for (String name : searched ? PINNED : List.<String>of()) {
             CatalogRepo repo = byName.get(name.toLowerCase());
             if (repo.stars() >= 0) continue;
             try {
-                JsonNode meta = json.readTree(transport.get("https://api.github.com/repos/" + name));
+                JsonNode meta = json.readTree(transport.get("https://api.github.com/repos/" + name, META_TIMEOUT));
                 byName.put(name.toLowerCase(), new CatalogRepo(name,
                         meta.path("description").asText(""),
                         meta.path("stargazers_count").asInt(0), true));
@@ -271,12 +287,19 @@ public class SkillCatalogService {
                 .followRedirects(HttpClient.Redirect.ALWAYS)
                 .connectTimeout(Duration.ofSeconds(15))
                 .build();
-        return (url) -> {
+        return new Transport() {
+            @Override
+            public byte[] get(String url) throws IOException {
+                return get(url, Duration.ofSeconds(60));
+            }
+
+            @Override
+            public byte[] get(String url, Duration timeout) throws IOException {
             HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                     // GitHub rejects requests without a User-Agent outright.
                     .header("User-Agent", "concentus")
                     .header("Accept", "application/vnd.github+json")
-                    .timeout(Duration.ofSeconds(60))
+                    .timeout(timeout)
                     .GET()
                     .build();
             try {
@@ -292,6 +315,7 @@ public class SkillCatalogService {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IOException("Interrupted while talking to GitHub.");
+            }
             }
         };
     }

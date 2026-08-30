@@ -76,8 +76,15 @@ public class PluginRegistry {
         if (cmd == null) return List.of();
         CliProcess.Result r = CliProcess.run(List.of(cmd, "plugin", "list", "--json"), 30);
         List<PluginInfo> out = new ArrayList<>();
+        String text = r.output() == null ? "[]" : r.output().trim();
+        // The CLI answers a sentence rather than JSON when it cannot (no login, an old build); the
+        // sentence is worth a line, the parser's complaint about it is not.
+        if (!text.startsWith("[") && !text.startsWith("{")) {
+            log.info("claude plugin list --json answered: {}", text.lines().findFirst().orElse(""));
+            return out;
+        }
         try {
-            JsonNode arr = mapper.readTree(r.output() == null ? "[]" : r.output().trim());
+            JsonNode arr = mapper.readTree(text);
             if (arr.isArray()) {
                 for (JsonNode p : arr) {
                     String id = p.path("id").asText("");
@@ -97,8 +104,15 @@ public class PluginRegistry {
         if (cmd == null) return List.of();
         CliProcess.Result r = CliProcess.run(List.of(cmd, "plugin", "marketplace", "list", "--json"), 30);
         List<MarketplaceInfo> out = new ArrayList<>();
+        String text = r.output() == null ? "[]" : r.output().trim();
+        // The CLI answers a sentence rather than JSON when it cannot (no login, an old build); the
+        // sentence is worth a line, the parser's complaint about it is not.
+        if (!text.startsWith("[") && !text.startsWith("{")) {
+            log.info("claude plugin marketplace list --json answered: {}", text.lines().findFirst().orElse(""));
+            return out;
+        }
         try {
-            JsonNode arr = mapper.readTree(r.output() == null ? "[]" : r.output().trim());
+            JsonNode arr = mapper.readTree(text);
             if (arr.isArray()) {
                 for (JsonNode m : arr) {
                     String name = m.path("name").asText("");
