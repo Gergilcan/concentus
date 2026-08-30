@@ -47,9 +47,14 @@ function meansOf(role: string): string | undefined {
  * have. A service account is the honest shape: a name, a role no higher than Member, and a token
  * shown exactly once — it is not stored, only its hash, so there is no "show it again".
  *
- * <p>Admin only, like the Members roster it sits beside; unlike members, these take no seat. On a
- * Team license the backend caps working tokens at two and the listing says so, which is what
- * lets the create button be disabled honestly rather than fail after the form is filled in.
+ * <p>Laid out as the Members roster it sits beside: a count and a "+ New" in the header, one row
+ * per account, and every explanation in a tooltip rather than on the page. The first version said
+ * it all out loud — three paragraphs, a legend, two shell commands — and read as a manual with a
+ * list attached, when the list is what an admin comes here for.
+ *
+ * <p>Admin only, like Members; unlike members, these take no seat. On a Team license the backend
+ * caps working tokens and the listing says so, which is what lets the create button be disabled
+ * honestly rather than fail after the form is filled in.
  */
 export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => void }) {
   const { t } = useTranslation()
@@ -67,7 +72,7 @@ export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => 
   const [copied, setCopied] = useState(false)
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
 
-  /** What a role lets a token do, in the user's language — the picker's hint and each row's tooltip. */
+  /** What a role lets a token do, in the user's language — the picker's hint and each chip's tooltip. */
   const meansLabel = (role: string) => {
     const means = meansOf(role)
     return means ? t(means) : undefined
@@ -103,14 +108,7 @@ export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => 
   }
 
   const revoke = async (a: ServiceAccount) => {
-    if (
-      !confirm(
-        t('Revoke "{{name}}"? Every request presenting its token is refused from now on. This cannot be undone.', {
-          name: a.name,
-        }),
-      )
-    )
-      return
+    if (!confirm(t('Revoke "{{name}}"? This cannot be undone.', { name: a.name }))) return
     setBusy(a.id)
     try {
       await api.revokeServiceAccount(a.id)
@@ -122,13 +120,16 @@ export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => 
     }
   }
 
-  const rename = async () => {
-    if (!renaming || !renaming.name.trim()) return
-    setBusy(renaming.id)
+  const rename = async (a: ServiceAccount) => {
+    if (!renaming) return
+    const next = renaming.name.trim()
+    // Leaving the field with nothing changed is a cancel, not a request.
+    if (!next || next === a.name) return setRenaming(null)
+    setBusy(a.id)
     try {
-      const updated = await api.renameServiceAccount(renaming.id, renaming.name.trim())
+      const updated = await api.renameServiceAccount(a.id, next)
       setListing((prev) =>
-        prev ? { ...prev, accounts: prev.accounts.map((a) => (a.id === updated.id ? updated : a)) } : prev,
+        prev ? { ...prev, accounts: prev.accounts.map((x) => (x.id === updated.id ? updated : x)) } : prev,
       )
       setRenaming(null)
     } catch (e) {
@@ -142,53 +143,60 @@ export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => 
 
   const { accounts, active, limit, refusal } = listing
 
+  // The count as a chip; why it is what it is — the Team cap, or the refusal once it is reached —
+  // on hover, the same way the disabled "+ New" carries it.
+  const inUse =
+    limit != null ? t('{{active}} of {{limit}} in use', { active, limit }) : t('{{count}} in use', { count: active })
+  const inUseWhy =
+    refusal ??
+    (limit != null
+      ? t('Working tokens on this Team license; revoked ones do not count. Enterprise has no cap.')
+      : t('Working tokens; revoked ones do not count.'))
+
   return (
     <div className={styles.roster}>
       <div className={styles.rosterHead}>
         <div>
           <h3 className={styles.h4}>{t('Service accounts')}</h3>
           <p className={panels.hint}>
-            {t(
-              'Tokens for machines — a CI job, a cron entry, another system. Each acts as its role on every request, never as a person, and takes no seat.',
-            )}{' '}
-            {limit != null
-              ? t('{{active}} of {{limit}} in use on this Team license.', { active, limit })
-              : active === 1
-                ? t('{{count}} token in use.', { count: active })
-                : t('{{count}} tokens in use.', { count: active })}
+            <span className={panels.statusPill} title={inUseWhy}>
+              {inUse}
+            </span>{' '}
+            {t('Tokens for machines: each acts as its role, never as a person, and takes no seat.')}
           </p>
         </div>
         <button
           className={styles.newBtn}
           disabled={refusal != null && !creating}
-          title={refusal ?? undefined}
+          title={creating ? undefined : (refusal ?? t('Mint a token for a machine. It is shown once.'))}
           onClick={() => setCreating((open) => !open)}
         >
-          {creating ? t('Cancel') : t('New service account')}
+          {creating ? t('Cancel') : t('+ New')}
         </button>
       </div>
 
-      {refusal && <p className={styles.capNote}>{refusal}</p>}
-
       {minted && (
-        <div className={styles.tokenReveal} role="status">
-          <h4 className={styles.h4}>{t('Token for "{{name}}"', { name: minted.account.name })}</h4>
-          <code className={styles.tokenValue}>{minted.token}</code>
-          <div className={styles.addMemberFoot}>
-            <span className={panels.hint}>
-              {t(
-                'This is the only time it is shown: the token is not stored, only its hash. Put it where the machine keeps its secrets, and revoke it here if it ever leaks.',
-              )}
-            </span>
-            <span className={styles.tokenActs}>
-              <button className={styles.rowBtn} onClick={() => void copy()}>
-                {copied ? t('Copied ✓') : t('Copy token')}
-              </button>
-              <button className={styles.saveBtn} onClick={() => setMinted(null)}>
-                {t('Done')}
-              </button>
-            </span>
-          </div>
+        <div className={styles.redirectBox} role="status">
+          <span className={styles.redirectLabel}>
+            {t('Token for "{{name}}"', { name: minted.account.name })} — {t('Shown once.')}
+          </span>
+          <code>{minted.token}</code>
+          <button
+            className={styles.saveBtn}
+            title={t(
+              'Copy it. Send it as "Authorization: Bearer …" on any API call, or set CONCENTUS_TOKEN for the headless CLI.',
+            )}
+            onClick={() => void copy()}
+          >
+            {copied ? t('Copied') : t('Copy')}
+          </button>
+          <button
+            className={styles.newBtn}
+            title={t('Hide it. Only its hash is stored, so it cannot be shown again.')}
+            onClick={() => setMinted(null)}
+          >
+            {t('Done')}
+          </button>
         </div>
       )}
 
@@ -200,6 +208,9 @@ export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => 
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void create()
+                }}
                 placeholder="nightly-report"
                 maxLength={80}
                 autoFocus
@@ -207,7 +218,11 @@ export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => 
             </label>
             <label className={styles.field}>
               <span>{t('Role')}</span>
-              <select value={role} onChange={(e) => setRole(e.target.value)}>
+              <select
+                value={role}
+                title={t('Never Admin: a token that could administer could mint more tokens.')}
+                onChange={(e) => setRole(e.target.value)}
+              >
                 {ROLES.map((r) => (
                   <option key={r.id} value={r.id}>
                     {t(r.label)}
@@ -223,17 +238,18 @@ export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => 
               disabled={busy === 'new' || !name.trim()}
               onClick={() => void create()}
             >
-              {busy === 'new' ? t('Minting…') : t('Create token')}
+              {busy === 'new' ? t('Creating…') : t('Create')}
             </button>
           </div>
         </div>
       )}
 
       {accounts.length === 0 ? (
-        <p className={styles.emptyRoster}>
-          {t(
-            'No service accounts yet. Create one for each machine that runs flows — one token per job is what makes revoking it a small event.',
-          )}
+        <p
+          className={styles.emptyRoster}
+          title={t('One token per machine that runs flows, so revoking one is a small event.')}
+        >
+          {t('No service accounts yet.')}
         </p>
       ) : (
         <ul className={styles.memberList}>
@@ -241,25 +257,33 @@ export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => 
             const revoked = a.revokedAt != null
             const editing = renaming?.id === a.id
             return (
-              <li key={a.id} className={revoked ? `${styles.memberRow} ${styles.revokedRow}` : styles.memberRow}>
+              <li
+                key={a.id}
+                className={revoked ? `${styles.memberRow} ${styles.revokedRow}` : styles.memberRow}
+                title={revoked ? t('Revoked. Kept as the record of what could act here.') : undefined}
+              >
                 <span className={styles.memberWho}>
                   {editing ? (
                     <input
-                      className={styles.renameInput}
                       aria-label={t('New name for {{name}}', { name: a.name })}
                       value={renaming.name}
                       autoFocus
                       onChange={(e) => setRenaming({ id: a.id, name: e.target.value })}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') void rename()
+                        if (e.key === 'Enter') void rename(a)
                         if (e.key === 'Escape') setRenaming(null)
                       }}
-                      onBlur={() => void rename()}
+                      onBlur={() => void rename(a)}
                     />
                   ) : (
-                    <span className={styles.memberEmail}>{a.name}</span>
+                    <span
+                      className={styles.memberEmail}
+                      title={revoked ? undefined : t('Double-click to rename.')}
+                      onDoubleClick={revoked ? undefined : () => setRenaming({ id: a.id, name: a.name })}
+                    >
+                      {a.name}
+                    </span>
                   )}
-                  {revoked && <span className={styles.revokedTag}>{t('revoked')}</span>}
                 </span>
                 <span className={styles.memberMeta}>
                   {revoked
@@ -280,13 +304,16 @@ export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => 
                     <>
                       <button
                         className={styles.rowBtn}
+                        aria-label={t('Rename')}
+                        title={t('Rename')}
                         disabled={busy === a.id}
                         onClick={() => setRenaming({ id: a.id, name: a.name })}
                       >
-                        {t('Rename')}
+                        ✎
                       </button>
                       <button
                         className={`${styles.rowBtn} ${styles.rowBtnDanger}`}
+                        title={t('Refuse every request with this token from now on. Cannot be undone.')}
                         disabled={busy === a.id}
                         onClick={() => void revoke(a)}
                       >
@@ -300,33 +327,6 @@ export function ServiceAccountsPanel({ pushError }: { pushError: (m: string) => 
           })}
         </ul>
       )}
-
-      <div className={styles.roleLegend}>
-        <h4 className={styles.h4}>{t('Using a token')}</h4>
-        <p className={panels.hint}>
-          {t('Send it as a bearer on any API call, and the request runs as the account with its role:')}
-        </p>
-        <pre className={styles.howTo}>
-          {'curl -H "Authorization: Bearer csa_…" https://concentus.example.com/api/flows'}
-        </pre>
-        <p className={panels.hint}>
-          {t('The headless CLI reads it from CONCENTUS_TOKEN instead of an email and password:')}
-        </p>
-        <pre className={styles.howTo}>
-          {'CONCENTUS_TOKEN=csa_… node scripts/concentus-run.mjs flow.json --url https://concentus.example.com'}
-        </pre>
-        <dl>
-          {ROLES.map((r) => (
-            <div key={r.id}>
-              <dt>{t(r.label)}</dt>
-              <dd>{t(r.means)}</dd>
-            </div>
-          ))}
-        </dl>
-        <p className={panels.hint}>
-          {t('No token can be an Admin: a token that could administer could mint more tokens, so the ladder stops one rung short.')}
-        </p>
-      </div>
     </div>
   )
 }
