@@ -120,6 +120,32 @@ class LicenseServiceTest {
         assertTrue(free.refusal(Feature.AUDIT_EXPORT).contains("Install an enterprise license"));
     }
 
+    // The tenth feature: groups inside an organization. Enterprise like the other nine, and the
+    // refusal is the sentence the Groups screen and the Visible-to select show.
+    @Test
+    void groups_areTheTenthEnterpriseFeature(@TempDir Path dir) throws Exception {
+        assertEquals(10, Feature.values().length);
+        assertEquals("Groups inside an organization", Feature.GROUPS.label);
+
+        Files.writeString(dir.resolve("license.key"), TestLicenses.token("team-test.license"));
+        LicenseService team = new LicenseService(TestLicenses.verifier(), dir, "", at("2026-08-22"));
+        assertFalse(team.allows(Feature.GROUPS));
+        assertTrue(team.withheld(Feature.GROUPS));
+        assertTrue(team.refusal(Feature.GROUPS).startsWith("Groups inside an organization is an Enterprise feature"));
+        assertTrue(team.status().features().stream()
+                .anyMatch(f -> f.key().equals("GROUPS") && !f.allowed()));
+
+        Files.writeString(dir.resolve("license.key"), TestLicenses.token("enterprise-test.license"));
+        LicenseService enterprise = new LicenseService(TestLicenses.verifier(), dir, "", at("2026-08-22"));
+        assertTrue(enterprise.allows(Feature.GROUPS));
+        assertNull(enterprise.refusal(Feature.GROUPS));
+
+        Files.deleteIfExists(dir.resolve("license.key"));
+        LicenseService free = new LicenseService(TestLicenses.verifier(), dir, "", at("2026-08-22"));
+        assertFalse(free.allows(Feature.GROUPS));
+        assertFalse(free.withheld(Feature.GROUPS));
+    }
+
     @Test
     void teamLicense_unlocksTheSameGatesAsEnterprise(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("license.key"), TestLicenses.token("team-test.license"));

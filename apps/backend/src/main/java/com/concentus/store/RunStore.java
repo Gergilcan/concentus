@@ -122,6 +122,12 @@ public class RunStore {
         return sumCostUsd("created_at >= ?", sinceMillis);
     }
 
+    /** What the runs of one group have cost since a moment — the group's own budget gate. */
+    public double spendUsdSinceForGroup(String groupId, long sinceMillis) {
+        if (groupId == null || groupId.isBlank()) return 0d;
+        return sumCostUsd("group_id = ? and created_at >= ?", groupId, sinceMillis);
+    }
+
     /**
      * The cost of the runs matching {@code condition}. Zero when persistence is down: a broken
      * database must not also stop every budgeted flow.
@@ -157,8 +163,8 @@ public class RunStore {
                       session_id, local_session_id, local_started, error,
                       total_input_tokens, total_output_tokens, flow_json, events_json, node_execs_json,
                       created_at, updated_at, initial_prompt, notify_webhook, cost_usd, golden,
-                      flow_version, started_by, patches_json, organization_id)
-                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                      flow_version, started_by, patches_json, organization_id, group_id)
+                    values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     on conflict (id) do update set
                       flow_id=excluded.flow_id, flow_name=excluded.flow_name,
                       backend=excluded.backend, status=excluded.status, trigger_type=excluded.trigger_type,
@@ -174,13 +180,15 @@ public class RunStore {
                       flow_version=excluded.flow_version,
                       started_by=excluded.started_by,
                       patches_json=excluded.patches_json,
-                      organization_id=excluded.organization_id
+                      organization_id=excluded.organization_id,
+                      group_id=excluded.group_id
                     """,
                     run.id, run.flowId, run.flowName, run.backend, run.status, run.trigger,
                     run.sessionId, run.localSessionId, run.localStarted, run.error,
                     run.totalInputTokens, run.totalOutputTokens, run.flowJson, eventsJson, execsJson,
                     run.createdAt, now, run.initialPrompt, run.notifyWebhook, run.estimatedCostUsd(),
-                    run.golden, run.flowVersion, run.startedBy, patchesJson, run.organizationId);
+                    run.golden, run.flowVersion, run.startedBy, patchesJson, run.organizationId,
+                    run.groupId);
             } catch (Exception e) {
                 log.debug("persist run {} failed: {}", run.id, e.getMessage());
             }
@@ -216,7 +224,7 @@ public class RunStore {
                     rs.getString("notify_webhook"), rs.getBoolean("golden"),
                     rs.getInt("flow_version"), rs.getString("started_by"),
                     parseList(rs.getString("patches_json"), new TypeReference<List<RunPatch>>() {}),
-                    rs.getString("organization_id")),
+                    rs.getString("organization_id"), rs.getString("group_id")),
                 limit);
         } catch (Exception e) {
             log.warn("Loading persisted runs failed: {}", e.getMessage());
@@ -285,7 +293,23 @@ public class RunStore {
                          /** What the run did to its repositories — see {@link RunPatch}. */
                          List<RunPatch> patches,
                          /** Whose run this is; null only on a row written before runs were stamped. */
-                         String organizationId) {
+                         String organizationId,
+                         /** The group the flow belonged to at launch; null for an unscoped flow or an older row. */
+                         String groupId) {
+
+        /** A row from before runs carried a group. */
+        public RunRow(String id, String flowId, String flowName, String backend,
+                      String status, String trigger, String sessionId, String localSessionId,
+                      boolean localStarted, String error, long totalInputTokens,
+                      long totalOutputTokens, String flowJson, List<RunEvent> events,
+                      List<NodeExec> nodeExecs, long createdAt, String initialPrompt,
+                      String notifyWebhook, boolean golden, int flowVersion, String startedBy,
+                      List<RunPatch> patches, String organizationId) {
+            this(id, flowId, flowName, backend, status, trigger, sessionId, localSessionId,
+                    localStarted, error, totalInputTokens, totalOutputTokens, flowJson, events,
+                    nodeExecs, createdAt, initialPrompt, notifyWebhook, golden, flowVersion,
+                    startedBy, patches, organizationId, null);
+        }
 
         /**
          * A row with no author, no patches and no organization — the shape tests that predate
@@ -300,7 +324,7 @@ public class RunStore {
             this(id, flowId, flowName, backend, status, trigger, sessionId, localSessionId,
                     localStarted, error, totalInputTokens, totalOutputTokens, flowJson, events,
                     nodeExecs, createdAt, initialPrompt, notifyWebhook, golden, flowVersion,
-                    null, List.of(), null);
+                    null, List.of(), null, null);
         }
     }
 }

@@ -43,11 +43,14 @@ public class SkillController {
 
     /** One skill as the UI sees it, so listing and installing cannot describe the same skill differently. */
     private static Map<String, Object> view(SkillDef skill) {
-        return Map.of(
-                "id", skill.id(),
-                "name", skill.name(),
-                "description", skill.description() == null ? "" : skill.description(),
-                "fileCount", skill.files().size());
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("id", skill.id());
+        out.put("name", skill.name());
+        out.put("description", skill.description() == null ? "" : skill.description());
+        out.put("fileCount", skill.files().size());
+        // Null for a skill the whole organization sees; the id of the group it is scoped to otherwise.
+        out.put("groupId", skill.groupId());
+        return out;
     }
 
     @PostMapping

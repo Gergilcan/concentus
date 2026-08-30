@@ -86,6 +86,8 @@ class MarketplaceControllerTest {
     private FlowStore flows;
     private FlowVersionStore versions;
     private MarketplaceController controller;
+    private com.concentus.groups.GroupStore groupStore;
+    private com.concentus.groups.GroupService groups;
 
     @BeforeEach
     void setUp() {
@@ -99,24 +101,52 @@ class MarketplaceControllerTest {
         accounts.createOrganization("org_a", "A");
         accounts.createOrganization("org_b", "B");
 
+        for (String table : List.of("group_memberships", "groups", "group_policies", "group_settings")) {
+            jdbc.update("delete from " + table);
+        }
+
         store = new MarketplaceStore(jdbc, mapper);
         store.init();
-        Settings settings = new Settings(new SettingsStore(null, null) {
+        SettingsStore settingsStore = new SettingsStore(null, null) {
             @Override
             public Optional<String> get(String organizationId, String key) {
                 return Optional.empty();
             }
-        }, env, orgContext);
-        MarketplacePolicy policy = new MarketplacePolicy(settings, accounts, store);
+        };
+        Settings settings = new Settings(settingsStore, env, orgContext);
         mcps = TestStores.mcpDefs(jdbc, dataDir, mapper, orgContext);
         agents = TestStores.agents(jdbc, dataDir, mapper, orgContext);
         facades = TestStores.facades(jdbc, mapper, orgContext);
         skills = TestStores.skills(jdbc, mapper, orgContext);
         flows = TestStores.flows(jdbc, dataDir, mapper, orgContext);
         versions = TestStores.flowVersions(jdbc, mapper);
+        // Groups, for real, on the same database: the group-scope tests below publish to one and
+        // install into one, and the visibility they assert is the store's SQL, not a stub's.
+        groupStore = new com.concentus.groups.GroupStore(jdbc);
+        groupStore.init();
+        com.concentus.groups.GroupPolicyStore groupPolicies = new com.concentus.groups.GroupPolicyStore(jdbc, mapper);
+        groupPolicies.init();
+        com.concentus.groups.GroupContext groupContext = new com.concentus.groups.GroupContext(orgContext, groupStore);
+        for (com.concentus.store.JsonStore<?> s : List.of(mcps, agents, facades, skills, flows)) {
+            s.setGroupContext(groupContext);
+        }
+        com.concentus.license.LicenseService license;
+        try {
+            com.concentus.license.TestLicenses.installFixture(dataDir, "enterprise-test.license");
+            license = com.concentus.license.TestLicenses.serviceOn(dataDir);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        com.concentus.policy.OrgPolicyService orgPolicies = new com.concentus.policy.OrgPolicyService(
+                mock(com.concentus.store.OrgPolicyStore.class), mock(com.concentus.store.PublishApprovalStore.class),
+                license, orgContext, groupPolicies, flows);
+        groups = new com.concentus.groups.GroupService(orgContext, groupContext, groupStore, groupPolicies,
+                settingsStore, settings, license, accounts, audit, orgPolicies,
+                mock(com.concentus.secrets.CredentialStore.class), List.of(mcps, agents, facades, skills, flows), mapper);
+        MarketplacePolicy policy = new MarketplacePolicy(settings, accounts, store, groupContext);
         MarketplaceInstaller installer = new MarketplaceInstaller(mcps, agents, facades, skills, new SkillService(),
                 plugins, flows, versions, orgContext, mapper);
-        controller = new MarketplaceController(store, policy, installer, accounts, orgContext, audit, mapper);
+        controller = new MarketplaceController(store, policy, installer, accounts, orgContext, audit, mapper, groups);
     }
 
     @AfterEach
@@ -580,6 +610,86 @@ class MarketplaceControllerTest {
         assertThat(versions.currentVersion(installed)).isEqualTo(1);
     }
 
+    // ------------------------------------------------------------------ group scope
+
+    /** A group of org_a with alice in it, created by the organization's admin. */
+    private String squad() {
+        signIn("admin", "org_a", Accounts.ROLE_ADMIN);
+        String id = groups.create("Squad", null).id();
+        groupStore.addMember(id, "alice", false);
+        return id;
+    }
+
+    @Test
+    void a_member_publishes_to_a_group_and_only_the_group_and_the_admins_see_it() {
+        String squad = squad();
+
+        signIn("alice", "org_a", Accounts.ROLE_MEMBER);
+        MarketplaceItem.View published = controller.publish(new PublishRequest("mcp", "Linear", "one line", null,
+                List.of("x"), null, "group", mcpPayload("Linear"), squad));
+        assertThat(published.item().scope()).isEqualTo("group");
+        assertThat(published.item().groupId()).isEqualTo(squad);
+        assertThat(published.item().status()).isEqualTo("published");   // born published, like the organization's
+        assertThat(published.item().publishedAt()).isNotNull();
+        assertThat(controller.list(null, null, null, null, null, null).items())
+                .extracting(v -> v.item().id()).containsExactly(published.item().id());
+        verify(audit).record(eq(AuditKinds.MARKETPLACE_PUBLISHED), eq("marketplace-item"), eq(published.item().id()),
+                eq("Linear"), eq(Map.of("kind", "mcp", "scope", "group", "version", 1, "groupId", squad)));
+
+        // A colleague outside the group: nothing, and 404 by id — never 403.
+        signIn("bob", "org_a", Accounts.ROLE_MEMBER);
+        assertThat(controller.list(null, null, null, null, null, null).items()).isEmpty();
+        assertStatus(catchThrowable(() -> controller.get(published.item().id())), HttpStatus.NOT_FOUND);
+        // And publishing into a group one is not in is publishing into a group that does not exist.
+        assertStatus(catchThrowable(() -> controller.publish(new PublishRequest("mcp", "X", null, null, null, null,
+                "group", mcpPayload("X"), squad))), HttpStatus.NOT_FOUND);
+        assertThatThrownBy(() -> controller.publish(new PublishRequest("mcp", "X", null, null, null, null,
+                "group", mcpPayload("X"), null)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("groupId");
+
+        // The organization's admin sees every group's items.
+        signIn("admin", "org_a", Accounts.ROLE_ADMIN);
+        assertThat(controller.get(published.item().id()).canEdit()).isTrue();
+
+        // The scope filter and the publish-from path know the scope too.
+        signIn("alice", "org_a", Accounts.ROLE_MEMBER);
+        assertThat(controller.list(null, null, "group", null, null, null).items()).hasSize(1);
+        McpDef local = mcps.save(McpDef.http(null, "Holded", "https://holded.test/mcp", null, null));
+        Map<String, Object> fromResource = controller.publishFrom(new PublishFromRequest("mcp", local.id(), "group",
+                null, null, null, null, null, squad));
+        assertThat(fromResource.get("scope")).isEqualTo("group");
+        assertThat(fromResource.get("groupId")).isEqualTo(squad);
+    }
+
+    @Test
+    void installing_into_a_group_scopes_the_created_resource_to_it() {
+        String squad = squad();
+        signIn("usr_b", "org_b", Accounts.ROLE_MEMBER);
+        String global = controller.publish(publish("mcp", "Linear", "global", mcpPayload("Linear"))).item().id();
+        signIn("admin", "org_a", Accounts.ROLE_ADMIN);
+        controller.approve(global);   // org_a is the oldest organization, so its admin curates
+
+        signIn("alice", "org_a", Accounts.ROLE_MEMBER);
+        MarketplaceController.InstallResult installed = controller.install(global,
+                new MarketplaceController.InstallRequest(squad));
+
+        assertThat(mcps.groupOf(installed.resourceId())).contains(squad);
+        assertThat(mcps.get(installed.resourceId()).orElseThrow().groupId()).isEqualTo(squad);
+        verify(audit).record(eq(AuditKinds.RESOURCE_GROUP_CHANGED), eq("mcp"), eq(installed.resourceId()), eq("Linear"),
+                eq(Map.of("kind", "mcp", "to", squad)));
+        verify(audit).record(eq(AuditKinds.MARKETPLACE_INSTALLED), eq("marketplace-item"), eq(global), eq("Linear"),
+                eq(Map.of("kind", "mcp", "version", 1, "resourceId", installed.resourceId(), "groupId", squad)));
+        // Bob is not in the group: the server does not exist for him, and neither does the group.
+        signIn("bob", "org_a", Accounts.ROLE_MEMBER);
+        assertThat(mcps.get(installed.resourceId())).isEmpty();
+        assertStatus(catchThrowable(() -> controller.install(global, new MarketplaceController.InstallRequest(squad))),
+                HttpStatus.NOT_FOUND);
+        // Nothing was created by the refused install.
+        assertThat(store.install(global, "org_a").orElseThrow().resourceId()).isEqualTo(installed.resourceId());
+        // Into the organization, as before: no body, no group.
+        assertThat(mcps.groupOf(controller.install(global).resourceId())).isEmpty();
+    }
+
     // ------------------------------------------------------------------ validation
 
     @Test
@@ -639,9 +749,11 @@ class MarketplaceControllerTest {
         assertThat(root.fieldNames()).toIterable().containsExactly("items", "tags", "curator", "pending");
         JsonNode first = root.get("items").get(0);
         assertThat(first.fieldNames()).toIterable().containsExactlyInAnyOrder("id", "kind", "name", "summary",
-                "description", "tags", "version", "scope", "organizationId", "status", "rejection", "author",
+                "description", "tags", "version", "scope", "organizationId", "groupId", "status", "rejection", "author",
                 "payload", "icon", "installs", "builtIn", "createdAt", "updatedAt", "publishedAt", "approvedBy",
                 "installed", "mine", "canEdit", "canCurate");
+        // Null for an organization or global item; the group's id under scope 'group'.
+        assertThat(first.get("groupId").isNull()).isTrue();
         assertThat(first.get("installed").fieldNames()).toIterable().containsExactly("resourceId", "version", "installedAt");
         assertThat(first.get("author").fieldNames()).toIterable().containsExactly("userId", "email");
         assertThat(first.get("payload").get("url").asText()).isEqualTo("https://linear.test/mcp");

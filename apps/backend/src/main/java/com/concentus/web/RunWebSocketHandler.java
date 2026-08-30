@@ -25,8 +25,11 @@ public class RunWebSocketHandler extends TextWebSocketHandler {
 
     private final RunService runService;
     private final ObjectMapper mapper;
+    /** Which groups' runs the socket's principal may watch; read by principal, since a socket has no security context. */
+    private final com.concentus.groups.GroupContext groups;
 
-    public RunWebSocketHandler(RunService runService, ObjectMapper mapper) {
+    public RunWebSocketHandler(RunService runService, ObjectMapper mapper, com.concentus.groups.GroupContext groups) {
+        this.groups = groups;
         this.runService = runService;
         this.mapper = mapper;
     }
@@ -39,6 +42,9 @@ public class RunWebSocketHandler extends TextWebSocketHandler {
         // session, so the principal is on the socket, and it answers the same question the REST
         // endpoints answer with a 404.
         if (run != null && !organizationOf(session).equals(run.organizationId)) run = null;
+        // And a group's run is unknown to somebody outside the group, exactly as the run list
+        // and the run endpoints answer — the id is not a secret, but it must not be a key.
+        if (run != null && !seesGroupOf(session, run)) run = null;
         if (run == null) {
             session.close(CloseStatus.NOT_ACCEPTABLE.withReason("Unknown runId"));
             return;
@@ -94,11 +100,25 @@ public class RunWebSocketHandler extends TextWebSocketHandler {
      * nothing rather than everything.
      */
     private static String organizationOf(WebSocketSession session) {
+        com.concentus.auth.ConcentusUserDetails user = principalOf(session);
+        return user == null ? "" : user.organizationId();
+    }
+
+    /** Unscoped: everybody. Scoped: the group's members and the organization's admins. */
+    private boolean seesGroupOf(WebSocketSession session, AgentRun run) {
+        if (run.groupId == null || run.groupId.isBlank()) return true;
+        com.concentus.auth.ConcentusUserDetails user = principalOf(session);
+        if (user == null) return false;
+        if (com.concentus.auth.Accounts.ROLE_ADMIN.equalsIgnoreCase(user.role())) return true;
+        return groups.of(user.userId(), user.organizationId()).groupIds().contains(run.groupId);
+    }
+
+    private static com.concentus.auth.ConcentusUserDetails principalOf(WebSocketSession session) {
         if (session.getPrincipal() instanceof org.springframework.security.core.Authentication auth
                 && auth.getPrincipal() instanceof com.concentus.auth.ConcentusUserDetails user) {
-            return user.organizationId();
+            return user;
         }
-        return "";
+        return null;
     }
 
     private static String queryParam(WebSocketSession session, String key) {

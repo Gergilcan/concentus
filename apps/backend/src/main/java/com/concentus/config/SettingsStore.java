@@ -40,6 +40,12 @@ public class SettingsStore {
     private volatile Map<String, Map<String, String>> snapshot = Map.of();
     /** organization -> keys whose stored secret this installation cannot open. */
     private volatile Map<String, Set<String>> locked = Map.of();
+    /**
+     * group -> key -> value: what a group inside an organization overrides. Never a secret — the
+     * catalogue only lets the per-run keys be group-scoped, and none of those is one — so these
+     * rows are read and written as they are.
+     */
+    private volatile Map<String, Map<String, String>> groupSnapshot = Map.of();
     private volatile boolean available;
 
     public SettingsStore(JdbcTemplate jdbc, SecretCipher cipher) {
@@ -81,6 +87,7 @@ public class SettingsStore {
             snapshot = next;
             locked = nextLocked;
             available = true;
+            loadGroups();
         } catch (DataAccessException e) {
             // Settings are overrides; without them the environment's values stand, which is
             // exactly how this installation behaved before the table existed.
@@ -89,9 +96,65 @@ public class SettingsStore {
         }
     }
 
+    /**
+     * The group rows, apart from the organization ones: a database this migration has not reached
+     * yet still has settings, and must not lose them over a table that is not there.
+     */
+    private void loadGroups() {
+        try {
+            Map<String, Map<String, String>> next = new LinkedHashMap<>();
+            jdbc.query("select group_id, key, value from group_settings", (java.sql.ResultSet rs) -> {
+                next.computeIfAbsent(rs.getString("group_id"), k -> new LinkedHashMap<>())
+                        .put(rs.getString("key"), rs.getString("value"));
+            });
+            groupSnapshot = next;
+        } catch (DataAccessException e) {
+            groupSnapshot = Map.of();
+            log.warn("Group settings could not be read ({}); groups inherit their organization's.",
+                    e.getMessage());
+        }
+    }
+
     /** Whether the table could be read at all. False means every lookup falls through. */
     public boolean isAvailable() {
         return available;
+    }
+
+    // ---- per group ----
+
+    /** A group's own override for a key, if it has one. */
+    public Optional<String> groupSetting(String groupId, String key) {
+        if (groupId == null) return Optional.empty();
+        String value = groupSnapshot.getOrDefault(groupId, Map.of()).get(key);
+        return value == null || value.isBlank() ? Optional.empty() : Optional.of(value);
+    }
+
+    /** Every override one group holds, by key. */
+    public Map<String, String> groupSettings(String groupId) {
+        if (groupId == null) return Map.of();
+        return Map.copyOf(groupSnapshot.getOrDefault(groupId, Map.of()));
+    }
+
+    /**
+     * Replaces a group's overrides with {@code values}: a key absent from the map is cleared, a
+     * blank value clears too. "Replaces" rather than "merges" so the Settings tab of a group can
+     * send what it shows and be sure that is what the group now has.
+     */
+    public void replaceGroupSettings(String organizationId, String groupId, Map<String, String> values) {
+        jdbc.update("delete from group_settings where group_id = ?", groupId);
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, String> e : values.entrySet()) {
+            if (e.getValue() == null || e.getValue().isBlank()) continue;
+            jdbc.update("insert into group_settings (organization_id, group_id, key, value, updated_at) "
+                    + "values (?, ?, ?, ?, ?)", organizationId, groupId, e.getKey(), e.getValue().trim(), now);
+        }
+        loadGroups();
+    }
+
+    /** Forgets every override of a group — what deleting the group does. */
+    public void clearGroup(String groupId) {
+        jdbc.update("delete from group_settings where group_id = ?", groupId);
+        loadGroups();
     }
 
     /** The stored override for a key, if this organization has one. */

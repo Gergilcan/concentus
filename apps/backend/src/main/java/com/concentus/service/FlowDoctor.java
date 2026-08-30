@@ -498,13 +498,17 @@ public class FlowDoctor {
      */
     private void checkPolicy(FlowGraph flow, List<DoctorFinding> findings) {
         com.concentus.model.TriggerSpec trigger = com.concentus.model.TriggerSpec.from(flow);
-        String ceiling = policies.maxPermissionMode();
+        // The flow's own policy: its group's laid over the organization's when it belongs to one.
+        String ceiling = policies.maxPermissionMode(flow);
         if (ceiling != null && !ceiling.isBlank()) {
             String asked = trigger.permissionMode();
             // Blank on the flow means the deployment's default — usually bypassPermissions, which
             // is the mode most ceilings exist to stop, so it must be checked rather than skipped.
+            // Resolved for the flow's scope, as a run of it would resolve it.
             String effective = asked == null || asked.isBlank()
-                    ? settings.get("local.permission-mode", "bypassPermissions") : asked;
+                    ? settings.forGroup(orgContext.currentOrganizationId(), policies.groupOf(flow),
+                            "local.permission-mode").orElse("bypassPermissions")
+                    : asked;
             if (com.concentus.policy.PermissionCeiling.above(effective, ceiling)) {
                 findings.add(DoctorFinding.warn("policy",
                         (asked == null || asked.isBlank()
@@ -519,7 +523,7 @@ public class FlowDoctor {
             }
         }
         if (flow.id() != null && trigger.publishedWithToken()
-                && policies.publishBlocked(flow.id(), trigger.publishToken())) {
+                && policies.publishBlocked(flow, trigger.publishToken())) {
             findings.add(DoctorFinding.error("policy",
                     "This flow is published, but the organization requires an admin's approval "
                             + "before a published endpoint answers. Until then the endpoint answers "

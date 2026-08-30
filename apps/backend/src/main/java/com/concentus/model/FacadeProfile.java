@@ -22,13 +22,21 @@ import java.util.List;
  */
 public record FacadeProfile(String id, String name, String description,
                             List<String> tools, boolean readOnly, Boolean dryRun,
-                            List<String> readAlso) {
+                            List<String> readAlso, String groupId) {
+
+    /** The pre-groups shape: a profile the whole organization sees. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public FacadeProfile(String id, String name, String description,
+                         List<String> tools, boolean readOnly, Boolean dryRun,
+                         List<String> readAlso) {
+        this(id, name, description, tools, readOnly, dryRun, readAlso, null);
+    }
 
     /** The shape before a profile could name its own reads, kept so existing callers still build. */
     @com.fasterxml.jackson.annotation.JsonIgnore
     public FacadeProfile(String id, String name, String description,
                          List<String> tools, boolean readOnly, Boolean dryRun) {
-        this(id, name, description, tools, readOnly, dryRun, List.of());
+        this(id, name, description, tools, readOnly, dryRun, List.of(), null);
     }
 
     public List<String> toolsOrEmpty() {

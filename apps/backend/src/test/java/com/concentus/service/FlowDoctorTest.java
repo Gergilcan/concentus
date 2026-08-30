@@ -684,7 +684,7 @@ class FlowDoctorTest {
 
     @Test
     void aFlowAskingForMoreThanTheCeilingIsWarnedItWillGetTheCeiling() {
-        when(policies.maxPermissionMode()).thenReturn("acceptEdits");
+        when(policies.maxPermissionMode(org.mockito.ArgumentMatchers.any(FlowGraph.class))).thenReturn("acceptEdits");
         Map<String, Object> coord = new HashMap<>(coordinator().dataOrEmpty());
         coord.put("permissionMode", "bypassPermissions");
         FlowGraph flow = flow(List.of(input("manual", ""), new FlowNode("a-1", "agent", "coordinator", coord)));
@@ -697,7 +697,7 @@ class FlowDoctorTest {
 
     @Test
     void aFlowNamingNoModeIsMeasuredByTheDeploymentsDefaultWhichIsBypass() {
-        when(policies.maxPermissionMode()).thenReturn("plan");
+        when(policies.maxPermissionMode(org.mockito.ArgumentMatchers.any(FlowGraph.class))).thenReturn("plan");
 
         assertThat(ofArea(doctor.check(healthy()), "policy")).singleElement().satisfies(f ->
                 assertThat(f.message()).contains("names no permission mode").contains("'bypassPermissions'"));
@@ -705,7 +705,8 @@ class FlowDoctorTest {
 
     @Test
     void aPublishedFlowWaitingForApprovalIsAPolicyErrorBecauseItsEndpointIsShut() {
-        when(policies.publishBlocked("f1", "tok-1")).thenReturn(true);
+        when(policies.publishBlocked(org.mockito.ArgumentMatchers.any(FlowGraph.class),
+                org.mockito.ArgumentMatchers.eq("tok-1"))).thenReturn(true);
         Map<String, Object> in = new HashMap<>();
         in.put("mode", "manual");
         in.put("published", true);

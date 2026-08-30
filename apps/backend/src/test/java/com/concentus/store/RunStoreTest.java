@@ -96,6 +96,31 @@ class RunStoreTest {
         assertThat(args[17]).isEqualTo("hello");     // initial_prompt
         // patches_json: the review ledger goes with the run, patch text included.
         assertThat((String) args[23]).contains("\"nodeId\":\"w1\"").contains("+b");
+        // A run of no group writes null; see below for one that has a group.
+        assertThat(args[25]).isNull();
+    }
+
+    // The group a run resolved its settings and policy against goes with the row: it is what
+    // keeps the run out of an outsider's list after a restart, and what the group's budget sums.
+    @Test
+    void persistWritesTheRunsGroupAndSumsAGroupsSpendByIt() {
+        RunStore store = new RunStore(jdbc, mapper);
+        store.init();
+        AgentRun r = run("r1");
+        r.organizationId = "org_a";
+        r.groupId = "gr_1";
+
+        store.persist(r);
+
+        ArgumentCaptor<Object[]> captor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbc, timeout(2000)).update(anyString(), captor.capture());
+        assertThat(captor.getValue()[24]).isEqualTo("org_a");
+        assertThat(captor.getValue()[25]).isEqualTo("gr_1");
+
+        when(jdbc.queryForObject(anyString(), eq(Double.class), any(Object[].class))).thenReturn(12.5);
+        assertThat(store.spendUsdSinceForGroup("gr_1", 0L)).isEqualTo(12.5);
+        // No group, no sum — and no query.
+        assertThat(store.spendUsdSinceForGroup(null, 0L)).isZero();
     }
 
     @Test

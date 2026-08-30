@@ -16,17 +16,25 @@ import java.util.Map;
  * record; any other value passes through as typed.
  */
 public record McpDef(String id, String name, String url, String credentialId, String authHeader,
-                     String command, List<String> args, Map<String, String> env) {
+                     String command, List<String> args, Map<String, String> env, String groupId) {
 
     // A static factory rather than a convenience constructor, and no @JsonCreator anywhere —
     // both deliberately. Jackson's record support binds the canonical constructor by itself; a
     // second constructor derails that introspection, and annotating the canonical one switches
     // to a mode with its own demands. Either way the store silently read every row as
-    // unreadable and came back empty. A factory is invisible to Jackson.
+    // unreadable and came back empty. A factory is invisible to Jackson. The one secondary
+    // constructor below is taken out of the running with @JsonIgnore, the way FlowGraph does it.
+
+    /** The pre-groups shape: a server the whole organization sees. */
+    @JsonIgnore
+    public McpDef(String id, String name, String url, String credentialId, String authHeader,
+                  String command, List<String> args, Map<String, String> env) {
+        this(id, name, url, credentialId, authHeader, command, args, env, null);
+    }
 
     /** The original URL-server shape; the stdio fields default to none. */
     public static McpDef http(String id, String name, String url, String credentialId, String authHeader) {
-        return new McpDef(id, name, url, credentialId, authHeader, null, null, null);
+        return new McpDef(id, name, url, credentialId, authHeader, null, null, null, null);
     }
 
     // Ignored, not stored: Jackson otherwise writes this derived getter as a "stdio" property,
@@ -38,6 +46,6 @@ public record McpDef(String id, String name, String url, String credentialId, St
     }
 
     public McpDef withId(String newId) {
-        return new McpDef(newId, name, url, credentialId, authHeader, command, args, env);
+        return new McpDef(newId, name, url, credentialId, authHeader, command, args, env, groupId);
     }
 }

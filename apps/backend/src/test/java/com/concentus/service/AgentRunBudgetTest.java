@@ -112,6 +112,40 @@ class AgentRunBudgetTest {
         assertThat(run.error).contains("organization's $20.00 monthly ceiling");
     }
 
+    // ---- the group's ceiling, beside both (group policy) ----
+
+    @Test
+    void the_groups_ceiling_trips_a_run_whose_flow_and_organization_have_room_and_says_so() {
+        AgentRun run = run(true);
+        run.budgetUsd = 100.0;
+        run.orgBudgetUsd = 100.0;
+        run.groupBudgetUsd = 50.0;       // the group has $2 of room
+        run.groupSpentBeforeUsd = 48.0;
+        AtomicInteger stops = new AtomicInteger();
+        run.onBudgetExceeded = stops::incrementAndGet;
+
+        spend(run, 200_000); // $3: past the group's, nowhere near the other two
+
+        assertThat(run.budgetTripped).isTrue();
+        assertThat(stops).hasValue(1);
+        assertThat(run.error).contains("group's $50.00 monthly ceiling").contains("group policy");
+    }
+
+    @Test
+    void a_run_of_no_group_never_looks_at_a_group_ceiling() {
+        AgentRun run = run(true);
+        run.budgetUsd = null;
+        run.groupBudgetUsd = null;
+        run.groupSpentBeforeUsd = 1_000.0;   // a stale figure with no ceiling must mean nothing
+        run.onBudgetExceeded = () -> {
+            throw new AssertionError("no ceiling, no stop");
+        };
+
+        spend(run, 5_000_000);
+
+        assertThat(run.budgetTripped).isFalse();
+    }
+
     @Test
     void a_run_with_only_an_organization_ceiling_is_stopped_by_it() {
         AgentRun run = run(true);

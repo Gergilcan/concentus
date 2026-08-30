@@ -18,7 +18,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
  *                which is what restoring a backup needs.
  */
 public record LibraryAgent(String id, String name, String model, String effort,
-                           long maxTokens, String systemPrompt, String description, long version) {
+                           long maxTokens, String systemPrompt, String description, long version,
+                           String groupId) {
 
     public LibraryAgent {
         if (version < 1) version = 1;
@@ -29,10 +30,17 @@ public record LibraryAgent(String id, String name, String model, String effort,
 
     // @JsonIgnore is load-bearing, as it is on FlowGraph: faced with several record constructors,
     // Jackson can pick this one to deserialise with and silently drop the components it predates.
+    /** The pre-groups shape: an agent the whole organization sees. */
+    @JsonIgnore
+    public LibraryAgent(String id, String name, String model, String effort,
+                        long maxTokens, String systemPrompt, String description, long version) {
+        this(id, name, model, effort, maxTokens, systemPrompt, description, version, null);
+    }
+
     /** The pre-link shape, kept so the many existing constructions stay valid. */
     @JsonIgnore
     public LibraryAgent(String id, String name, String model, String effort,
                         long maxTokens, String systemPrompt) {
-        this(id, name, model, effort, maxTokens, systemPrompt, "", 1);
+        this(id, name, model, effort, maxTokens, systemPrompt, "", 1, null);
     }
 }

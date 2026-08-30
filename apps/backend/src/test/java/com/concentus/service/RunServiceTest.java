@@ -1237,7 +1237,7 @@ class RunServiceTest {
         when(compiler.compile(any(), any(), any())).thenReturn(flowOnModel("claude-opus-4-8"));
         when(clientProvider.backend()).thenReturn("cloud");
         when(policies.monthlyBudgetUsd()).thenReturn(200.0);
-        when(policies.maxPermissionMode()).thenReturn("acceptEdits");
+        when(policies.maxPermissionMode(any(com.concentus.model.FlowGraph.class))).thenReturn("acceptEdits");
         when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.anyLong())).thenReturn(120.0);
         when(runStore.spendUsdSince(eq("flow-d"), org.mockito.ArgumentMatchers.anyLong())).thenReturn(3.0);
         com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
@@ -1253,6 +1253,43 @@ class RunServiceTest {
         assertThat(run.orgSpentBeforeUsd).isEqualTo(120.0);
         // The ceiling travels with the run, so a policy edited mid-run cannot move it.
         assertThat(run.maxPermissionMode).isEqualTo("acceptEdits");
+    }
+
+    // A flow of a group: the run carries the group, arms the group's ceiling beside the others,
+    // and is refused at start once the group's runs have spent it.
+    @org.junit.jupiter.api.Test
+    void aFlowOfAGroupStampsTheGroupOnTheRunAndArmsTheGroupsCeiling() {
+        when(compiler.compile(any(), any(), any())).thenReturn(flowOnModel("claude-opus-4-8"));
+        when(clientProvider.backend()).thenReturn("cloud");
+        FlowStore flows = mock(FlowStore.class);
+        when(flows.groupOf("flow-g")).thenReturn(java.util.Optional.of("gr_1"));
+        when(policies.groupBudgetUsd("gr_1")).thenReturn(50.0);
+        when(policies.maxPermissionMode(any(FlowGraph.class))).thenReturn("plan");
+        when(runStore.spendUsdSinceForGroup(eq("gr_1"), org.mockito.ArgumentMatchers.anyLong())).thenReturn(20.0);
+        RunService s = new RunService(clientProvider, compiler, launcher, backends(),
+                new PricingTable("", 3.0, 15.0),
+                new CloudStreamEventHandler(), runStore, flowVersions, mapper,
+                notifier, remoteApprovals, mock(SubflowService.class), mock(MailHandOffService.class), variableStore(),
+                com.concentus.config.Settings.of(java.util.Map.of("runs.max-concurrent", "2",
+                        "runs.queue-capacity", "4", "runs.max-retained", "10")),
+                com.concentus.telemetry.Telemetry.none(), new ToolCallLoopGuard(),
+                mock(ClaudeUsageService.class), audit, policies, new OrgContext("default"), flows);
+        created.add(s);
+        FlowGraph flow = new FlowGraph("flow-g", "Grupo", List.of(), List.of(), null, List.of(), null, null);
+
+        RunSummary summary = s.start(flow);
+
+        AgentRun run = s.get(summary.id()).orElseThrow();
+        assertThat(run.groupId).isEqualTo("gr_1");
+        assertThat(summary.groupId()).isEqualTo("gr_1");
+        assertThat(run.groupBudgetUsd).isEqualTo(50.0);
+        assertThat(run.groupSpentBeforeUsd).isEqualTo(20.0);
+        assertThat(run.maxPermissionMode).isEqualTo("plan");
+
+        when(runStore.spendUsdSinceForGroup(eq("gr_1"), org.mockito.ArgumentMatchers.anyLong())).thenReturn(50.0);
+        assertThatThrownBy(() -> s.start(flow))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("the group has spent $50.00 of its $50.00 monthly ceiling");
     }
 
     // The gate: a Team deployment's policy service answers "no budget", and the organization's

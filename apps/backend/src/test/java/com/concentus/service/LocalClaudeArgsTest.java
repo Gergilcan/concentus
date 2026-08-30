@@ -26,7 +26,8 @@ class LocalClaudeArgsTest {
     private static LocalClaudeExecutor executor(PluginRegistry plugins) {
         return new LocalClaudeExecutor(null, null, null, null, null, null,
                 new com.fasterxml.jackson.databind.ObjectMapper(), null, null, null, null, null,
-                plugins, ProcessCeiling.unlimited(), "bypassPermissions", "data", true, true, 8734);
+                plugins, ProcessCeiling.unlimited(), com.concentus.config.Settings.none(),
+                "bypassPermissions", "data", true, true, 8734);
     }
 
     /** A registry with a fixed installed list — the CLI is never shelled from a unit test. */

@@ -35,22 +35,26 @@ public class RunController {
     private final FlowStore flows;
     private final RunDiffService diffs;
     private final com.concentus.auth.OrgContext orgContext;
+    /** Which groups' runs the caller may see — a run is visible when its flow would be. */
+    private final com.concentus.groups.GroupContext groups;
 
     public RunController(RunService runService, FlowStore flows, RunDiffService diffs,
-                         com.concentus.auth.OrgContext orgContext) {
+                         com.concentus.auth.OrgContext orgContext, com.concentus.groups.GroupContext groups) {
         this.runService = runService;
         this.flows = flows;
         this.diffs = diffs;
         this.orgContext = orgContext;
+        this.groups = groups;
     }
 
-    /** The caller's organization's runs. Runs live in one registry for the deployment; this is where it is partitioned. */
+    /**
+     * The caller's organization's runs — minus those of groups they are not in. Runs live in one
+     * registry for the deployment; this is where it is partitioned.
+     */
     @GetMapping
     public List<RunSummary> list() {
-        String mine = orgContext.requireOrganizationId();
         return runService.list().stream()
-                .filter(summary -> runService.get(summary.id())
-                        .map(run -> mine.equals(run.organizationId)).orElse(false))
+                .filter(summary -> runService.get(summary.id()).map(this::mine).orElse(false))
                 .toList();
     }
 
@@ -267,7 +271,8 @@ public class RunController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such run"));
     }
 
+    /** The caller's organization, and a group they are in (or none, or they administer) — by the run's own stamp. */
     private boolean mine(AgentRun run) {
-        return orgContext.requireOrganizationId().equals(run.organizationId);
+        return orgContext.requireOrganizationId().equals(run.organizationId) && groups.sees(run.groupId);
     }
 }

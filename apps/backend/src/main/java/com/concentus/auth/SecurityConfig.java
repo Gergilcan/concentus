@@ -234,6 +234,13 @@ public class SecurityConfig {
                             // which is OPERATOR's; the controller checks the role again.
                             "/api/marketplace/items/*/install", "/api/marketplace/items/*/uninstall")
                             .hasAnyRole(Accounts.ROLE_OPERATOR, Accounts.ROLE_MEMBER, Accounts.ROLE_ADMIN)
+                    // Groups (/api/groups/**): reading them, their members, settings and policy
+                    // is every signed-in role through the GET rule above — a member has to see
+                    // the groups they are in. Creating, renaming or deleting one, its members,
+                    // its settings, its policy and moving a resource into one are writes:
+                    // MEMBER and above here, and the group service then asks the real question
+                    // — an administrator, or a manager of that group.
+                    .requestMatchers("/api/groups/**").hasAnyRole(Accounts.ROLE_MEMBER, Accounts.ROLE_ADMIN)
                     // Everything left changes what the work IS — flows, agents, servers,
                     // credentials, knowledge. Denied by default rather than listed: a route added
                     // next month is a write until someone says otherwise, which is the direction

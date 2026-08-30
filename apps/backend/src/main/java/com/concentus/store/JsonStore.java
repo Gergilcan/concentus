@@ -1,11 +1,13 @@
 package com.concentus.store;
 
 import com.concentus.auth.OrgContext;
+import com.concentus.groups.GroupContext;
 import com.concentus.support.Ids;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -42,6 +44,15 @@ import java.util.stream.Stream;
  * {@link #getAcrossOrganizations}. A caller that knows which organization it acts for without
  * having a principal (a run's own threads) names it: {@link #getIn}, {@link #saveIn}.
  *
+ * <p><b>And, within an organization, a row may belong to one group.</b> {@code group_id} is null
+ * for a row the whole organization sees and a group's id for one only its members and the
+ * organization's admins see. Every organization-scoped read and write adds that condition from
+ * {@link GroupContext} — for a signed-in person; a thread with no principal is the machine's own
+ * (a cron, a run's threads) and is not filtered, or a group could not own a flow that runs. The
+ * two cross-organization escapes stay unfiltered for the same reason. A save never touches the
+ * column: a row keeps its group until {@link #assignGroup} moves it, so an edit cannot silently
+ * widen who sees the thing edited.
+ *
  * <p><b>What this costs.</b> A file-backed store worked whether or not the database did; this does
  * not. An unreachable database now means no flows rather than a degraded feature, so every read
  * fails soft — an empty list and a logged reason — while writes fail loudly, because silently
@@ -64,9 +75,21 @@ public abstract class JsonStore<T> {
     private final Path legacyDir;
     /** Whose records a call without an explicit organization reads and writes. */
     private final OrgContext orgContext;
+    /**
+     * Which group-scoped rows the caller may see. Injected by setter rather than by constructor
+     * so the thirteen stores' constructors — and every test that builds one by hand — keep their
+     * shape; a store built outside a container has none and filters nothing, which is the
+     * pre-groups behaviour those tests assert.
+     */
+    private GroupContext groupContext;
     private volatile boolean available;
-    /** Every read selects the same single column; {@code parse} may return null, hence the filters. */
-    private final RowMapper<T> jsonRow = (rs, i) -> parse(rs.getString("json"));
+    /**
+     * Every read selects the same two columns — the record, and the group it is scoped to, which
+     * is stamped onto the record on the way out; {@code parse} may return null, hence the filters.
+     */
+    private final RowMapper<T> jsonRow = (rs, i) -> parse(rs.getString("json"), rs.getString("group_id"));
+    /** The property the group column is echoed as, on every record that has it. */
+    private static final String GROUP_PROPERTY = "groupId";
 
     protected JsonStore(JdbcTemplate jdbc, ObjectMapper mapper, Class<T> type, String kind,
                         String idPrefix, Path legacyDir, OrgContext orgContext) {
@@ -98,6 +121,17 @@ public abstract class JsonStore<T> {
         return available;
     }
 
+    /** Spring wires it on every store; a test that is about group visibility calls it by hand. */
+    @Autowired
+    public void setGroupContext(GroupContext groupContext) {
+        this.groupContext = groupContext;
+    }
+
+    /** The discriminator this store's rows carry: "flow", "mcp", "facade-profile", … */
+    public String kind() {
+        return kind;
+    }
+
     protected abstract String idOf(T item);
 
     protected abstract T withId(T item, String id);
@@ -109,12 +143,33 @@ public abstract class JsonStore<T> {
         return orgContext.currentOrganizationId();
     }
 
+    /** A condition and its arguments, so the group predicate can be appended to any of them. */
+    private record Where(String sql, Object[] args) {
+    }
+
+    /**
+     * {@code condition} narrowed to the group-scoped rows the caller may see — unchanged when
+     * nothing is hidden from them (an admin, no principal, or a store built outside a container).
+     */
+    private Where visible(String condition, Object... args) {
+        Optional<GroupContext.Predicate> predicate = groupContext == null
+                ? Optional.empty() : groupContext.predicate("group_id");
+        if (predicate.isEmpty()) return new Where(condition, args);
+        Object[] all = new Object[args.length + predicate.get().args().size()];
+        System.arraycopy(args, 0, all, 0, args.length);
+        for (int i = 0; i < predicate.get().args().size(); i++) {
+            all[args.length + i] = predicate.get().args().get(i);
+        }
+        return new Where(condition + " and " + predicate.get().sql(), all);
+    }
+
     public List<T> list() {
         return listIn(scope());
     }
 
     public List<T> listIn(String organizationId) {
-        return listWhere("kind = ? and organization_id = ?", kind, organizationId);
+        Where where = visible("kind = ? and organization_id = ?", kind, organizationId);
+        return listWhere(where.sql(), where.args());
     }
 
     /**
@@ -130,11 +185,15 @@ public abstract class JsonStore<T> {
         return getIn(scope(), id);
     }
 
-    /** Empty for an id that exists in another organization, exactly as for one that does not exist. */
+    /**
+     * Empty for an id that exists in another organization — or in a group the caller is not in —
+     * exactly as for one that does not exist.
+     */
     public Optional<T> getIn(String organizationId, String id) {
         if (!available) return Optional.empty();
         String safe = Ids.sanitize(id, BAD_ID);
-        return getWhere(safe, "kind = ? and id = ? and organization_id = ?", kind, safe, organizationId);
+        Where where = visible("kind = ? and id = ? and organization_id = ?", kind, safe, organizationId);
+        return getWhere(safe, where.sql(), where.args());
     }
 
     /**
@@ -153,7 +212,7 @@ public abstract class JsonStore<T> {
         if (!available) return List.of();
         try {
             // Sorted in SQL, case-insensitively, to match what the file-backed version did.
-            return jdbc.query("select json from resources where " + condition
+            return jdbc.query("select json, group_id from resources where " + condition
                             + " order by lower(coalesce(sort_key, '')), id", jsonRow, args)
                     .stream().filter(Objects::nonNull).toList();
         } catch (RuntimeException e) {
@@ -164,7 +223,7 @@ public abstract class JsonStore<T> {
 
     private Optional<T> getWhere(String id, String condition, Object... args) {
         try {
-            return jdbc.query("select json from resources where " + condition, jsonRow, args)
+            return jdbc.query("select json, group_id from resources where " + condition, jsonRow, args)
                     .stream().findFirst().filter(Objects::nonNull);
         } catch (RuntimeException e) {
             log.warn("Could not read {} {}: {}", kind, id, e.getMessage());
@@ -211,22 +270,65 @@ public abstract class JsonStore<T> {
 
     public boolean deleteIn(String organizationId, String id) {
         requireAvailable();
-        return jdbc.update("delete from resources where kind = ? and id = ? and organization_id = ?",
-                kind, Ids.sanitize(id, BAD_ID), organizationId) > 0;
+        Where where = visible("kind = ? and id = ? and organization_id = ?",
+                kind, Ids.sanitize(id, BAD_ID), organizationId);
+        return jdbc.update("delete from resources where " + where.sql(), where.args()) > 0;
+    }
+
+    // ---- groups ----
+
+    /**
+     * The group a record is scoped to, or empty for one the whole organization sees — and for an
+     * id that names nothing, which a caller tells apart with {@link #get} first. Unfiltered: the
+     * question is asked of a row the caller has already been allowed to see, or by the run
+     * service for the flow it is launching.
+     */
+    public Optional<String> groupOf(String id) {
+        if (!available || id == null || id.isBlank()) return Optional.empty();
+        try {
+            return jdbc.queryForList("select group_id from resources where kind = ? and id = ?",
+                            String.class, kind, Ids.sanitize(id, BAD_ID))
+                    .stream().filter(Objects::nonNull).findFirst();
+        } catch (RuntimeException e) {
+            log.warn("Could not read the group of {} {}: {}", kind, id, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Scopes a record to a group, or to the whole organization with a null {@code groupId}. The
+     * one write that changes who sees a row; the rules of who may ask for it are the group
+     * service's, which checks membership and the license before calling this.
+     *
+     * @return false when the organization has no such record
+     */
+    public boolean assignGroup(String organizationId, String id, String groupId) {
+        requireAvailable();
+        return jdbc.update("update resources set group_id = ? where kind = ? and id = ? and organization_id = ?",
+                groupId, kind, Ids.sanitize(id, BAD_ID), organizationId) > 0;
     }
 
     private void write(String organizationId, String id, T item) {
         String json;
         try {
-            json = mapper.writeValueAsString(item);
+            // Without the group: the column is the one truth about who sees a row, and a record
+            // that arrived from a browser carrying a group it does not belong to — or lost the
+            // one it has — must change nothing about that on save.
+            com.fasterxml.jackson.databind.JsonNode tree = mapper.valueToTree(item);
+            if (tree instanceof com.fasterxml.jackson.databind.node.ObjectNode object) object.remove(GROUP_PROPERTY);
+            json = mapper.writeValueAsString(tree);
         } catch (Exception e) {
             throw new IllegalStateException("Could not save " + kind + " " + id + ": " + e.getMessage(), e);
         }
         int written;
         try {
-            // The update half applies only to a row this organization owns: with the guard, an id
-            // that collides with another organization's record touches nothing and is reported
-            // below, instead of quietly becoming that organization's record.
+            // The update half applies only to a row this organization owns — and, for a person,
+            // to one they may see: with the guard, an id that collides with another organization's
+            // record, or with a record of a group the caller is not in, touches nothing and is
+            // reported below, instead of quietly becoming the caller's record. The group column is
+            // not in the statement at all: a new row is the organization's, an existing one keeps
+            // the group it had.
+            Where guard = visible("resources.organization_id = excluded.organization_id");
             written = jdbc.update("""
                     insert into resources (kind, id, sort_key, json, updated_at, organization_id)
                     values (?, ?, ?, ?, ?, ?)
@@ -234,21 +336,41 @@ public abstract class JsonStore<T> {
                        set sort_key = excluded.sort_key,
                            json = excluded.json,
                            updated_at = excluded.updated_at
-                     where resources.organization_id = excluded.organization_id
-                    """, kind, id, sortKey(item), json, System.currentTimeMillis(), organizationId);
+                    """ + " where " + guard.sql().replace("group_id", "resources.group_id"),
+                    withArgs(new Object[] {kind, id, sortKey(item), json, System.currentTimeMillis(), organizationId},
+                            guard.args()));
         } catch (Exception e) {
             throw new IllegalStateException("Could not save " + kind + " " + id + ": " + e.getMessage(), e);
         }
         if (written == 0) {
             throw new IllegalArgumentException("The id " + id + " already names a " + kind
-                    + " in another organization. Save it under a new id.");
+                    + " in another organization, or in a group you are not in. Save it under a new id.");
         }
     }
 
-    /** Null rather than throwing, so one unreadable row cannot hide every other record. */
-    private T parse(String json) {
+    private static Object[] withArgs(Object[] first, Object[] rest) {
+        Object[] all = new Object[first.length + rest.length];
+        System.arraycopy(first, 0, all, 0, first.length);
+        System.arraycopy(rest, 0, all, first.length, rest.length);
+        return all;
+    }
+
+    /**
+     * The record, with the row's group stamped onto it as {@code groupId} — the records that can
+     * be scoped carry the component; for the rest the property is simply absent. Null rather
+     * than throwing, so one unreadable row cannot hide every other record.
+     */
+    private T parse(String json, String groupId) {
         try {
-            return mapper.readValue(json, type);
+            com.fasterxml.jackson.databind.JsonNode tree = mapper.readTree(json);
+            if (tree instanceof com.fasterxml.jackson.databind.node.ObjectNode object) {
+                if (groupId == null) {
+                    object.remove(GROUP_PROPERTY);
+                } else {
+                    object.put(GROUP_PROPERTY, groupId);
+                }
+            }
+            return mapper.treeToValue(tree, type);
         } catch (Exception e) {
             log.warn("Skipping an unreadable {} record: {}", kind, e.getMessage());
             return null;

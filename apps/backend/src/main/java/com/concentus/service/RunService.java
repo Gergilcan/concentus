@@ -189,7 +189,7 @@ public class RunService {
      * being right about whether money is involved is worth more than which of two actionable
      * messages arrives first, and a compile error names the box to fix.
      */
-    private void enforceBudget(FlowGraph flow, String backend) {
+    private void enforceBudget(FlowGraph flow, String backend, String groupId) {
         // An unregistered backend is the hosted API path, which bills. Unknown means billed on
         // purpose: forgetting to declare a new backend must not quietly disable everyone's ceiling.
         if (!billsPerToken(backend)) return;
@@ -200,6 +200,19 @@ public class RunService {
                         "Budget reached: '%s' has spent $%.2f of its $%.2f monthly ceiling. "
                                 + "Raise the budget in the flow's settings, or wait for next month.",
                         flow.name(), spent, flow.budgetUsd()));
+            }
+        }
+        // The group's ceiling, summed over the runs that carried the group's id: the flow's group
+        // policy, beside the organization's rather than instead of it.
+        Double groupCeiling = groupCeiling(groupId);
+        if (groupCeiling != null) {
+            double spent = runStore.spendUsdSinceForGroup(groupId, monthStart());
+            if (spent >= groupCeiling) {
+                throw new IllegalStateException(String.format(java.util.Locale.ROOT,
+                        "Budget reached: the group has spent $%.2f of its $%.2f monthly ceiling "
+                                + "(group policy). A manager of the group or an admin can raise it "
+                                + "under Resources → Groups, or wait for next month.",
+                        spent, groupCeiling));
             }
         }
         // The organization's ceiling, summed over every flow: the same gate, one level up. Checked
@@ -340,17 +353,29 @@ public class RunService {
         return ceiling != null && ceiling > 0 ? ceiling : null;
     }
 
+    /** The group's own monthly ceiling, or null: no group, no group policy, or none set. */
+    private Double groupCeiling(String groupId) {
+        Double ceiling = policies == null || groupId == null ? null : policies.groupBudgetUsd(groupId);
+        return ceiling != null && ceiling > 0 ? ceiling : null;
+    }
+
     /**
-     * Arms the ceiling on a run that is about to execute. The month's spend so far is read
-     * once, here: reading it on every usage report would be a database query per token count.
+     * Arms the ceilings on a run that is about to execute — the flow's, its group's, the
+     * organization's. The month's spend so far is read once, here: reading it on every usage
+     * report would be a database query per token count.
      */
     private void armBudget(AgentRun run, FlowGraph flow) {
         boolean flowCeiling = flow.id() != null && flow.budgetUsd() != null && flow.budgetUsd() > 0;
         Double orgCeiling = orgCeiling();
-        if (!flowCeiling && orgCeiling == null) return;
+        Double groupCeiling = groupCeiling(run.groupId);
+        if (!flowCeiling && orgCeiling == null && groupCeiling == null) return;
         if (flowCeiling) {
             run.budgetUsd = flow.budgetUsd();
             run.spentBeforeUsd = runStore.spendUsdSince(flow.id(), monthStart());
+        }
+        if (groupCeiling != null) {
+            run.groupBudgetUsd = groupCeiling;
+            run.groupSpentBeforeUsd = runStore.spendUsdSinceForGroup(run.groupId, monthStart());
         }
         if (orgCeiling != null) {
             run.orgBudgetUsd = orgCeiling;
@@ -360,11 +385,14 @@ public class RunService {
         run.onBudgetExceeded = () -> stop(run.id);
     }
 
-    /** The fallback to apply at start, or null: the coordinator names one and the meter says spent. */
-    private String fallbackTheMeterAsksFor(CompiledFlow compiled) {
+    /**
+     * The fallback to apply at start, or null: the coordinator names one and the meter says
+     * spent. The meter is read for the run's own scope — a group may carry its own allowance.
+     */
+    private String fallbackTheMeterAsksFor(CompiledFlow compiled, String organizationId, String groupId) {
         String policy = compiled.coordinator() == null ? "" : compiled.coordinator().allowanceFallback;
         if (policy == null || policy.isBlank() || usage == null) return null;
-        ClaudeUsageService.Allowance a = usage.allowance();
+        ClaudeUsageService.Allowance a = usage.allowance(organizationId, groupId);
         return a != null && a.exhausted() ? policy : null;
     }
 
@@ -441,7 +469,7 @@ public class RunService {
      */
     private void warnAboutAllowance(AgentRun run) {
         if (usage == null || billsPerToken(run.backend)) return;
-        ClaudeUsageService.Allowance a = usage.allowance();
+        ClaudeUsageService.Allowance a = usage.allowance(run.organizationId, run.groupId);
         if (a == null || !a.nearlyGone()) return;
         String figures = String.format(java.util.Locale.ROOT, "$%.2f of $%.2f", a.runsUsd(), a.allowanceUsd());
         run.emit(RunEvent.of("system", a.exhausted()
@@ -551,14 +579,20 @@ public class RunService {
         // Compile synchronously so validation errors surface to the caller immediately.
         CompiledFlow compiled = compiler.compile(flow, variableValues, unresolvedVariables);
         TriggerSpec trigger = TriggerSpec.from(flow);
-        String fallback = forcedFallback != null ? forcedFallback : fallbackTheMeterAsksFor(compiled);
+        // Whose run, and which group's: resolved before anything reads a setting or a policy,
+        // because from here on both are read for the run's own scope rather than the thread's.
+        String organizationId = organizationFor(flow);
+        String groupId = groupOf(flow);
+        String fallback = forcedFallback != null ? forcedFallback
+                : fallbackTheMeterAsksFor(compiled, organizationId, groupId);
         String fallbackNote = fallback == null ? null : applyFallback(compiled, fallback);
         String backend = "api-key".equals(fallback) && fallbackNote == null ? "cloud" : chooseBackend(compiled);
-        enforceBudget(flow, backend);
+        enforceBudget(flow, backend, groupId);
 
         String runId = Ids.generate("run_", 12);
         AgentRun run = new AgentRun(runId, flow.id(), flow.name());
-        run.organizationId = organizationFor(flow);
+        run.organizationId = organizationId;
+        run.groupId = groupId;
         run.backend = backend;
         run.compiled = compiled;
         run.flowJson = toJson(flow);
@@ -590,9 +624,10 @@ public class RunService {
         // context, so this stays null there and the trigger already says what they were.
         run.startedBy = signedInEmail();
         run.permissionMode = trigger.permissionMode();
-        // The organization's ceiling, stamped at launch like the mode it clamps: the executors
-        // apply it on every turn, and a policy edited mid-run must not move a running agent.
-        String ceiling = policies == null ? null : policies.maxPermissionMode();
+        // The ceiling — the flow's group's over the organization's — stamped at launch like the
+        // mode it clamps: the executors apply it on every turn, and a policy edited mid-run must
+        // not move a running agent.
+        String ceiling = policies == null ? null : policies.maxPermissionMode(flow);
         run.maxPermissionMode = ceiling == null ? "" : ceiling;
         // Shadow mode: a triggered run plans but never acts, so you can watch what a trigger
         // WOULD have done for a few days before trusting it. Manual runs stay real — you are
@@ -663,6 +698,15 @@ public class RunService {
                 .map(com.concentus.auth.ConcentusUserDetails::organizationId)
                 .or(() -> flows.organizationOf(flow.id()))
                 .orElseGet(orgContext::defaultOrganizationId);
+    }
+
+    /**
+     * The group a saved flow belongs to, or null: an ad-hoc flow, or one the whole organization
+     * sees. Read from the flow's row, not the graph — the group is a fact about the record.
+     */
+    private String groupOf(FlowGraph flow) {
+        if (flow.id() == null || flow.id().isBlank()) return null;
+        return flows.groupOf(flow.id()).orElse(null);
     }
 
     /**
@@ -1224,6 +1268,7 @@ public class RunService {
                 // had then, which is the default one — the same reading the migration applied.
                 run.organizationId = row.organizationId() != null
                         ? row.organizationId() : orgContext.defaultOrganizationId();
+                run.groupId = row.groupId();
                 run.backend = row.backend();
                 // A run that was mid-flight when the server stopped cannot be continued in place
                 // — the process is gone — so it lands as IDLE, and is told: Resume starts it

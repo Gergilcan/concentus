@@ -250,4 +250,62 @@ class SettingsTest {
         assertThat(SettingsCatalog.isKnown("runs.max-concurrent")).isTrue();
         assertThat(SettingsCatalog.isKnown("app.data-dir")).isFalse();
     }
+
+    // ---- per group: a group's override, else the organization's, else the deployment's ----
+
+    @Test
+    void a_groups_override_beats_the_organizations_which_beats_the_deployments() {
+        Fixture f = on("settings_groups_1");
+        f.environment().setProperty("workers.retries", "1");
+        f.store().put("default", "workers.retries", "2", false, null);
+
+        assertThat(f.settings().forGroup("default", "gr_1", "workers.retries")).contains("2");
+        f.store().replaceGroupSettings("default", "gr_1", java.util.Map.of("workers.retries", "5"));
+        assertThat(f.settings().forGroup("default", "gr_1", "workers.retries")).contains("5");
+        assertThat(f.settings().forGroup("default", "gr_2", "workers.retries")).contains("2");
+        assertThat(f.settings().forGroup("default", null, "workers.retries")).contains("2");
+        // What a run reads, resolved for its own scope.
+        assertThat(f.settings().forRun("default", "gr_1").number("workers.retries", 9)).isEqualTo(5);
+        assertThat(f.settings().forRun("default", "gr_2").number("workers.retries", 9)).isEqualTo(2);
+        assertThat(f.settings().forRun("default", "gr_1").get("workers.timeout-seconds", "900")).isEqualTo("900");
+        // And the organization's own reads are unchanged by a group's override.
+        assertThat(f.settings().number("workers.retries", 9)).isEqualTo(2);
+    }
+
+    // "Replaces": a key absent from the new map is back to inherited, and blanks clear.
+    @Test
+    void replacing_a_groups_settings_forgets_what_the_new_map_does_not_name() {
+        Fixture f = on("settings_groups_2");
+        f.store().replaceGroupSettings("default", "gr_1", java.util.Map.of("workers.retries", "5",
+                "local.permission-mode", "plan"));
+        assertThat(f.store().groupSettings("gr_1")).hasSize(2);
+
+        f.store().replaceGroupSettings("default", "gr_1", java.util.Map.of("workers.timeout-seconds", "60",
+                "workers.retries", " "));
+
+        assertThat(f.store().groupSettings("gr_1")).containsExactly(java.util.Map.entry("workers.timeout-seconds", "60"));
+        assertThat(f.settings().forGroup("default", "gr_1", "workers.retries")).isEmpty();
+        f.store().clearGroup("gr_1");
+        assertThat(f.store().groupSettings("gr_1")).isEmpty();
+    }
+
+    // A stubbed Settings has no store and answers every scope with the one value it knows — what a
+    // test about a limit wants, and why forRun must not silently answer "unset" there.
+    @Test
+    void a_stubbed_settings_answers_every_scope_with_what_it_knows() {
+        Settings stub = Settings.of(java.util.Map.of("workers.retries", "3"));
+
+        assertThat(stub.forRun("org", "gr_1").number("workers.retries", 1)).isEqualTo(3);
+        assertThat(stub.forGroup("org", "gr_1", "workers.retries")).contains("3");
+        assertThat(Settings.none().forRun("org", "gr_1").number("workers.retries", 1)).isEqualTo(1);
+    }
+
+    // The keys a group may override are exactly the ones whose reader takes the run's scope.
+    @Test
+    void the_group_scoped_keys_are_the_ones_read_per_run() {
+        assertThat(SettingsCatalog.groupScoped()).extracting(SettingDef::key).containsExactlyInAnyOrder(
+                "usage.weekly-allowance-usd", "workers.timeout-seconds", "workers.retries", "local.permission-mode");
+        assertThat(SettingsCatalog.byKey("workers.max-concurrent").orElseThrow().groupScoped()).isFalse();
+        assertThat(SettingsCatalog.byKey("workers.retries").orElseThrow().restartRequired()).isFalse();
+    }
 }

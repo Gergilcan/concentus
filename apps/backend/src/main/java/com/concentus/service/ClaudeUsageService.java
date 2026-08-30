@@ -112,7 +112,19 @@ public class ClaudeUsageService {
      */
     public Allowance allowance() {
         if (settings == null || runStore == null) return null;
-        double allowance = settings.decimal("usage.weekly-allowance-usd", 0d);
+        return allowanceOf(settings.decimal("usage.weekly-allowance-usd", 0d));
+    }
+
+    /**
+     * The meter as one run sees it: the allowance figure of the run's own scope — its group's
+     * when the flow belongs to one, its organization's otherwise — over the same measured spend.
+     */
+    public Allowance allowance(String organizationId, String groupId) {
+        if (settings == null || runStore == null) return null;
+        return allowanceOf(settings.forRun(organizationId, groupId).decimal("usage.weekly-allowance-usd", 0d));
+    }
+
+    private Allowance allowanceOf(double allowance) {
         if (allowance <= 0) return null;
         long since = System.currentTimeMillis() - WEEK_MILLIS;
         double runs = runStore.spendUsdOnBackendSince("local", since);

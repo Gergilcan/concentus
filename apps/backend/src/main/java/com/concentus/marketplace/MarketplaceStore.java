@@ -41,8 +41,23 @@ public class MarketplaceStore {
 
     private static final Logger log = LoggerFactory.getLogger(MarketplaceStore.class);
 
-    /** Who is asking, reduced to what the visibility query needs. */
-    public record Viewer(String userId, String organizationId, boolean curator) {
+    /**
+     * Who is asking, reduced to what the visibility query needs.
+     *
+     * @param groupIds the groups the viewer is in — a group item is visible to its group's members
+     * @param orgAdmin whether the viewer administers their organization — and so sees every group's items in it
+     */
+    public record Viewer(String userId, String organizationId, boolean curator, java.util.Set<String> groupIds,
+                         boolean orgAdmin) {
+
+        /** A viewer in no group and not an admin: what the tests that predate groups build. */
+        public Viewer(String userId, String organizationId, boolean curator) {
+            this(userId, organizationId, curator, java.util.Set.of(), false);
+        }
+
+        public java.util.Set<String> groupIdsOrEmpty() {
+            return groupIds == null ? java.util.Set.of() : groupIds;
+        }
     }
 
     /** One organization's install of one item. */
@@ -106,11 +121,30 @@ public class MarketplaceStore {
         return jdbc.query(sql.toString(), this::row, args.toArray()).stream().findFirst();
     }
 
-    /** The four clauses of "what this person may see", as one OR the SQL binds. */
+    /**
+     * The clauses of "what this person may see", as one OR the SQL binds: published global items;
+     * their organization's items whatever their status — except those of a group, which only the
+     * group's members and the organization's admins see; their own submissions; and, for a
+     * curator, every global item still waiting.
+     */
     private static void visibility(Viewer viewer, StringBuilder sql, List<Object> args) {
         sql.append("((i.scope = 'global' and i.status = 'published')");
-        sql.append(" or i.organization_id = ?");
+        sql.append(" or (i.organization_id = ? and i.scope <> 'group')");
         args.add(viewer.organizationId());
+        if (!viewer.groupIdsOrEmpty().isEmpty()) {
+            sql.append(" or (i.scope = 'group' and i.group_id in (");
+            boolean first = true;
+            for (String groupId : viewer.groupIdsOrEmpty()) {
+                sql.append(first ? "?" : ", ?");
+                args.add(groupId);
+                first = false;
+            }
+            sql.append("))");
+        }
+        if (viewer.orgAdmin()) {
+            sql.append(" or (i.scope = 'group' and i.organization_id = ?)");
+            args.add(viewer.organizationId());
+        }
         sql.append(" or i.author_user_id = ?");
         args.add(viewer.userId());
         if (viewer.curator()) {
@@ -147,20 +181,20 @@ public class MarketplaceStore {
                 : Ids.sanitize(item.id(), "Invalid marketplace id: ");
         MarketplaceItem toSave = new MarketplaceItem(id, item.kind(), item.name(), item.summary(),
                 item.description(), item.tagsOrEmpty(), item.version(), item.scope(),
-                item.organizationId(), item.status(), item.rejection(), item.author(), item.payload(),
-                item.icon(), 0, item.builtIn(), item.createdAt(), item.updatedAt(), item.publishedAt(),
-                item.approvedBy());
+                item.organizationId(), item.groupId(), item.status(), item.rejection(), item.author(),
+                item.payload(), item.icon(), 0, item.builtIn(), item.createdAt(), item.updatedAt(),
+                item.publishedAt(), item.approvedBy());
         jdbc.update("""
                 insert into marketplace_items
-                  (id, kind, name, summary, description, tags, version, scope, organization_id, status,
-                   rejection, author_user_id, author_email, payload, icon, built_in, built_in_hash,
+                  (id, kind, name, summary, description, tags, version, scope, organization_id, group_id,
+                   status, rejection, author_user_id, author_email, payload, icon, built_in, built_in_hash,
                    created_at, updated_at, published_at, approved_by)
-                values (?,?,?,?,?,?::jsonb,?,?,?,?,?,?,?,?::jsonb,?,?,?,?,?,?,?)
+                values (?,?,?,?,?,?::jsonb,?,?,?,?,?,?,?,?,?::jsonb,?,?,?,?,?,?,?)
                 """,
                 toSave.id(), toSave.kind(), toSave.name(), toSave.summary(), toSave.description(),
                 json(toSave.tagsOrEmpty()), toSave.version(), toSave.scope(), toSave.organizationId(),
-                toSave.status(), toSave.rejection(), toSave.author().userId(), toSave.author().email(),
-                json(toSave.payload()), toSave.icon(), toSave.builtIn(), builtInHash,
+                toSave.groupId(), toSave.status(), toSave.rejection(), toSave.author().userId(),
+                toSave.author().email(), json(toSave.payload()), toSave.icon(), toSave.builtIn(), builtInHash,
                 toSave.createdAt(), toSave.updatedAt(), toSave.publishedAt(), toSave.approvedBy());
         return toSave;
     }
@@ -171,15 +205,15 @@ public class MarketplaceStore {
         jdbc.update("""
                 update marketplace_items
                    set kind = ?, name = ?, summary = ?, description = ?, tags = ?::jsonb, version = ?,
-                       scope = ?, organization_id = ?, status = ?, rejection = ?, payload = ?::jsonb,
-                       icon = ?, built_in = ?, built_in_hash = ?, updated_at = ?, published_at = ?,
-                       approved_by = ?
+                       scope = ?, organization_id = ?, group_id = ?, status = ?, rejection = ?,
+                       payload = ?::jsonb, icon = ?, built_in = ?, built_in_hash = ?, updated_at = ?,
+                       published_at = ?, approved_by = ?
                  where id = ?
                 """,
                 item.kind(), item.name(), item.summary(), item.description(), json(item.tagsOrEmpty()),
-                item.version(), item.scope(), item.organizationId(), item.status(), item.rejection(),
-                json(item.payload()), item.icon(), item.builtIn(), builtInHash, item.updatedAt(),
-                item.publishedAt(), item.approvedBy(), item.id());
+                item.version(), item.scope(), item.organizationId(), item.groupId(), item.status(),
+                item.rejection(), json(item.payload()), item.icon(), item.builtIn(), builtInHash,
+                item.updatedAt(), item.publishedAt(), item.approvedBy(), item.id());
     }
 
     /** Removes the item and every organization's record of installing it. The resources those installs created stay where they are. */
@@ -255,8 +289,8 @@ public class MarketplaceStore {
         return new MarketplaceItem(
                 rs.getString("id"), rs.getString("kind"), rs.getString("name"), rs.getString("summary"),
                 rs.getString("description"), tags(rs.getString("tags")), rs.getInt("version"),
-                rs.getString("scope"), rs.getString("organization_id"), rs.getString("status"),
-                rs.getString("rejection"),
+                rs.getString("scope"), rs.getString("organization_id"), rs.getString("group_id"),
+                rs.getString("status"), rs.getString("rejection"),
                 new MarketplaceItem.Author(rs.getString("author_user_id"), rs.getString("author_email")),
                 payload(rs.getString("payload")), rs.getString("icon"), rs.getInt("installs"),
                 rs.getBoolean("built_in"), rs.getLong("created_at"), rs.getLong("updated_at"),
