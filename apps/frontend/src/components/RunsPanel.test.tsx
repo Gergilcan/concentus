@@ -24,7 +24,6 @@ function run(overrides: Partial<RunSummary> = {}): RunSummary {
     id: 'r1',
     flowId: 'f1',
     flowName: 'Flow one',
-    mode: 'local',
     status: 'IDLE',
     createdAt: 0,
     ...overrides,

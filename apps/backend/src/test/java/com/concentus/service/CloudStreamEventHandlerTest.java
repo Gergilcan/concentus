@@ -42,7 +42,7 @@ class CloudStreamEventHandlerTest {
     @BeforeEach
     void setUp() {
         handler = new CloudStreamEventHandler();
-        run = new AgentRun("run1", "f1", "Flow", "managed");
+        run = new AgentRun("run1", "f1", "Flow");
         run.compiled = new CompiledFlow(agent(COORD_NODE, "Coordinator"), List.of(agent(SUB_NODE, "Researcher")));
     }
 

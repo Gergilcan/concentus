@@ -71,7 +71,7 @@ class RunDiffServiceTest {
     void reads_the_working_tree_now_including_what_the_agent_committed_since_the_clone() throws Exception {
         assumeTrue(gitAvailable(), "git is not on the PATH");
         Path repo = checkout("repo");
-        AgentRun run = new AgentRun("run-1", "flow", "Flow", "local");
+        AgentRun run = new AgentRun("run-1", "flow", "Flow");
         run.recordPatch(RunPatch.registered("coord", "Coordinator", "repo", "https://x/repo.git",
                 repo, git.headOf(repo)));
 
@@ -115,7 +115,7 @@ class RunDiffServiceTest {
 
     @Test
     void a_checkout_whose_directory_is_gone_serves_the_recorded_patch_and_says_so() {
-        AgentRun run = new AgentRun("run-2", "flow", "Flow", "local");
+        AgentRun run = new AgentRun("run-2", "flow", "Flow");
         Path gone = dir.resolve("vanished");
         String patch = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n";
         run.recordPatch(RunPatch.registered("w1", "Worker", "repo", "https://x/repo.git", gone, null)

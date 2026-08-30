@@ -52,7 +52,7 @@ public final class FlowDuplicator {
         // fire at 07:00 too, from tomorrow, doing whatever the original does to whatever the
         // original does it to — twice. Nobody duplicating a flow to try something meant that. The
         // trigger is kept, so enabling it is one click once the copy says what it should.
-        return new FlowGraph(null, uniqueName(source.name(), existingNames), source.mode(),
+        return new FlowGraph(null, uniqueName(source.name(), existingNames),
                 nodes, source.edgesOrEmpty(), Boolean.FALSE, source.tagsOrEmpty(), Boolean.FALSE,
                 source.notifyWebhook(), source.budgetUsd(), source.approvalSlackCredentialId(),
                 source.approvalSlackChannel(), source.approvalTeamsWebhook(), source.variables(),

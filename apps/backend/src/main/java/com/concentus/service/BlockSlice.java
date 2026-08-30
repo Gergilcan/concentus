@@ -108,7 +108,7 @@ public final class BlockSlice {
         // No flow nodes either — a hand-off fires when the FLOW finishes, and re-running one block
         // is not the flow finishing. Chaining onward from a block someone is still tuning would
         // send real work downstream on the strength of a draft.
-        return new FlowGraph(null, sliceName(flow, target), flow.modeOrDefault(), nodes, edges,
+        return new FlowGraph(null, sliceName(flow, target), nodes, edges,
                 Boolean.TRUE, List.of(), Boolean.FALSE, null, flow.budgetUsd(),
                 flow.approvalSlackCredentialId(), flow.approvalSlackChannel(),
                 flow.approvalTeamsWebhook(), flow.variables(), null, Boolean.FALSE);

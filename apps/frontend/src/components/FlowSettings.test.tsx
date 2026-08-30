@@ -17,7 +17,6 @@ vi.mock('../api/client.ts', () => ({
 const FLOW: BackendFlow = {
   id: 'flow_1',
   name: 'Daily briefing',
-  mode: 'local',
   nodes: [],
   edges: [],
 }

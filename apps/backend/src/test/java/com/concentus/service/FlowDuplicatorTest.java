@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FlowDuplicatorTest {
 
     private static FlowGraph source() {
-        return new FlowGraph("flow_1", "Daily briefing", "local",
+        return new FlowGraph("flow_1", "Daily briefing",
                 List.of(new FlowNode("in-1", "input", null,
                                 Map.of("mode", "cron", "cron", "0 7 * * 1-5", "secret", "whsec_abc",
                                         "prompt", "Run the daily cycle.")),

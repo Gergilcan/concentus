@@ -10,7 +10,6 @@ vi.mock('../api/client.ts', () => ({ api: { generateFlow: (d: string) => generat
 const draft: BackendFlow = {
   // No id: the whole promise of this dialog is that nothing was saved.
   name: 'Overnight Sentry digest',
-  mode: 'local',
   nodes: [],
   edges: [],
 } as unknown as BackendFlow

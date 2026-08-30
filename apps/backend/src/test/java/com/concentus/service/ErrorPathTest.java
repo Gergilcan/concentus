@@ -26,7 +26,7 @@ class ErrorPathTest {
 
     /** Only the two components this cares about; a graph carries a dozen more that do not matter here. */
     private static FlowGraph graph(List<FlowNode> nodes, List<FlowEdge> edges) {
-        return new FlowGraph("f1", "Flow", "managed", nodes, edges,
+        return new FlowGraph("f1", "Flow", nodes, edges,
                 null, null, null, null, null, null, null, null, null, null, null);
     }
 

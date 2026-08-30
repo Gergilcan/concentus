@@ -13,7 +13,7 @@ vi.mock('../api/client.ts', () => ({
 }))
 
 const flow = (id: string, name: string): BackendFlow =>
-  ({ id, name, mode: 'managed', nodes: [], edges: [] }) as BackendFlow
+  ({ id, name, nodes: [], edges: [] }) as BackendFlow
 
 const data: FlowRunNodeData = { kind: 'flow', label: 'child', flowId: '', waitForResult: true }
 

@@ -240,7 +240,7 @@ class FlowStudioToolsTest {
     }
 
     private static FlowGraph flow(String id, FlowNode... nodes) {
-        return new FlowGraph(id, "Flow", "local", List.of(nodes), List.of(),
+        return new FlowGraph(id, "Flow", List.of(nodes), List.of(),
                 null, List.of(), null, null);
     }
 

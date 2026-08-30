@@ -43,7 +43,7 @@ class PreRunSubflowsTest {
     }
 
     private static AgentRun run() {
-        AgentRun run = new AgentRun("run-1", "flow-parent", "Parent", "local");
+        AgentRun run = new AgentRun("run-1", "flow-parent", "Parent");
         run.initialPrompt = "Haz el informe de la semana";
         return run;
     }

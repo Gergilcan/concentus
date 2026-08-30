@@ -18,7 +18,6 @@ export interface RunSummary {
   id: string
   flowId: string | null
   flowName: string | null
-  mode: string
   status: RunStatus
   createdAt: number
   sessionId?: string | null
@@ -778,7 +777,6 @@ interface BackendFlowEdge {
 export interface BackendFlow {
   id?: string
   name: string
-  mode: 'managed' | 'local'
   nodes: BackendFlowNode[]
   edges: BackendFlowEdge[]
   /** false pauses scheduled (cron) execution without removing the trigger */

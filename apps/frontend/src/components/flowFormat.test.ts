@@ -7,7 +7,6 @@ function run(overrides: Partial<RunSummary> = {}): RunSummary {
     id: 'r1',
     flowId: 'f1',
     flowName: 'Flow',
-    mode: 'local',
     status: 'IDLE',
     createdAt: 0,
     ...overrides,
@@ -15,7 +14,7 @@ function run(overrides: Partial<RunSummary> = {}): RunSummary {
 }
 
 function flow(nodes: BackendFlowNode[]): BackendFlow {
-  return { name: 'Flow', mode: 'local', nodes, edges: [] }
+  return { name: 'Flow', nodes, edges: [] }
 }
 
 function node(type: BackendFlowNode['type'], data: Record<string, unknown> = {}): BackendFlowNode {

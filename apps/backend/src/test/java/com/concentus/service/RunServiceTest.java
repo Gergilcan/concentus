@@ -131,13 +131,13 @@ class RunServiceTest {
     }
 
     private static FlowGraph flow(String id) {
-        return new FlowGraph(id, "Flow", "managed",
+        return new FlowGraph(id, "Flow",
                 List.of(agentNode("c1", "coordinator"), inputNode("manual", null)),
                 List.of(), null, List.of(), null, null);
     }
 
     private static FlowGraph flowWithPrompt(String id, String mode, String prompt) {
-        return new FlowGraph(id, "Flow", "managed",
+        return new FlowGraph(id, "Flow",
                 List.of(agentNode("c1", "coordinator"), inputNode(mode, prompt)),
                 List.of(), null, List.of(), null, null);
     }
@@ -762,13 +762,13 @@ class RunServiceTest {
         when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         String validFlowJson = toJson(flow("f1"));
         RunStore.RunRow runningRow = new RunStore.RunRow(
-                "run_a", "f1", "Flow", "managed", "local", "RUNNING", "manual", "sess1", null, false,
+                "run_a", "f1", "Flow", "local", "RUNNING", "manual", "sess1", null, false,
                 null, 10L, 20L, validFlowJson, List.of(), List.of(), 111L, "hello", null, false, 7);
         RunStore.RunRow startingRow = new RunStore.RunRow(
-                "run_b", "f1", "Flow", "managed", "local", "STARTING", "manual", null, null, false,
+                "run_b", "f1", "Flow", "local", "STARTING", "manual", null, null, false,
                 null, 0L, 0L, null, List.of(), List.of(), 222L, null, null, false, 0);
         RunStore.RunRow terminatedRow = new RunStore.RunRow(
-                "run_c", "f1", "Flow", "managed", "local", "TERMINATED", "manual", null, null, false,
+                "run_c", "f1", "Flow", "local", "TERMINATED", "manual", null, null, false,
                 null, 0L, 0L, null, List.of(), List.of(), 333L, null, null, true, 0);
         when(runStore.loadAll(anyInt())).thenReturn(List.of(runningRow, startingRow, terminatedRow));
         when(runStore.isAvailable()).thenReturn(true);
@@ -791,10 +791,10 @@ class RunServiceTest {
     @Test
     void restoreSkipsRowsThatFailToReconstructButKeepsTheOthers() {
         RunStore.RunRow badRow = new RunStore.RunRow(
-                "run_bad", "f2", "Flow2", "managed", "local", "TERMINATED", "manual", null, null, false,
+                "run_bad", "f2", "Flow2", "local", "TERMINATED", "manual", null, null, false,
                 null, 0L, 0L, "{ not valid json", List.of(), List.of(), 222L, null, null, false, 0);
         RunStore.RunRow goodRow = new RunStore.RunRow(
-                "run_good", "f1", "Flow", "managed", "local", "ERROR", "manual", null, null, false,
+                "run_good", "f1", "Flow", "local", "ERROR", "manual", null, null, false,
                 "boom", 0L, 0L, null, List.of(), List.of(), 333L, null, null, false, 0);
         when(runStore.loadAll(anyInt())).thenReturn(List.of(badRow, goodRow));
         when(runStore.isAvailable()).thenReturn(false);
@@ -886,7 +886,7 @@ class RunServiceTest {
         // Stands in for the flow as saved NOW — renamed so it is a different value from the
         // reference's own graph and the verify below can single it out (FlowGraph is a record;
         // two flow("f1") calls build EQUAL values).
-        FlowGraph editedFlow = new FlowGraph("f1", "Flow v2", "managed",
+        FlowGraph editedFlow = new FlowGraph("f1", "Flow v2",
                 List.of(agentNode("c1", "coordinator"), inputNode("manual", null)),
                 List.of(), null, List.of(), null, null);
         RunSummary check = svc.startGoldenCheck(editedFlow, reference.id());
@@ -977,7 +977,7 @@ class RunServiceTest {
     void approvalChannelConfigIsCopiedOntoTheRunAtStart() {
         when(compiler.compile(any(), any(), any())).thenReturn(compiledFlow());
         when(clientProvider.backend()).thenReturn("local");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+        FlowGraph flow = new FlowGraph("f1", "Flow",
                 List.of(agentNode("c1", "coordinator"), inputNode("manual", null)),
                 List.of(), null, List.of(), null, null, null,
                 "cred_slack", "C0123456789", "https://example.webhook.office.com/x");
@@ -1075,7 +1075,7 @@ class RunServiceTest {
         when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.eq("flow-b"),
                 org.mockito.ArgumentMatchers.anyLong())).thenReturn(25.10);
         com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
-                "flow-b", "Presupuestos", "local", List.of(), List.of(),
+                "flow-b", "Presupuestos", List.of(), List.of(),
                 null, List.of(), null, null, 25.0);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> newService(2, 4, 10).start(flow))
@@ -1093,7 +1093,7 @@ class RunServiceTest {
         when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyLong())).thenReturn(25.10);
         com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
-                "flow-b", "Presupuestos", "local", List.of(), List.of(),
+                "flow-b", "Presupuestos", List.of(), List.of(),
                 null, List.of(), null, null, 25.0);
 
         RunSummary summary = newService(2, 4, 10).start(flow);
@@ -1106,7 +1106,7 @@ class RunServiceTest {
         when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyLong())).thenReturn(3.0);
         com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
-                "flow-ok", "Barato", "local", List.of(), List.of(),
+                "flow-ok", "Barato", List.of(), List.of(),
                 null, List.of(), null, null, 25.0);
 
         // Reaching the compiler is the assertion: the gate let it through and the (mocked)
@@ -1124,7 +1124,7 @@ class RunServiceTest {
         com.concentus.model.FlowNode input = new com.concentus.model.FlowNode("in1", "input", null,
                 java.util.Map.of("mode", "webhook", "secret", "s", "shadow", true));
         com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
-                "flow-s", "Sombra", "local", List.of(input), List.of(), null, List.of(), null, null);
+                "flow-s", "Sombra", List.of(input), List.of(), null, List.of(), null, null);
 
         // A webhook delivery passes the payload as the prompt override — the triggered path.
         RunSummary summary = newService(2, 4, 10).start(flow, "event payload");
@@ -1142,7 +1142,7 @@ class RunServiceTest {
         com.concentus.model.FlowNode input = new com.concentus.model.FlowNode("in1", "input", null,
                 java.util.Map.of("mode", "webhook", "secret", "s", "shadow", true));
         com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
-                "flow-s2", "Sombra", "local", List.of(input), List.of(), null, List.of(), null, null);
+                "flow-s2", "Sombra", List.of(input), List.of(), null, List.of(), null, null);
 
         // No prompt override = someone pressed Run themselves. They are present; shadow is for
         // the unattended path, and silently plan-only-ing a manual run would read as broken.
@@ -1222,7 +1222,7 @@ class RunServiceTest {
         when(policies.monthlyBudgetUsd()).thenReturn(200.0);
         when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.anyLong())).thenReturn(200.5);
         com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
-                "flow-c", "Sin techo propio", "local", List.of(), List.of(),
+                "flow-c", "Sin techo propio", List.of(), List.of(),
                 null, List.of(), null, null, null);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> newService(2, 4, 10).start(flow))
@@ -1241,7 +1241,7 @@ class RunServiceTest {
         when(runStore.spendUsdSince(org.mockito.ArgumentMatchers.anyLong())).thenReturn(120.0);
         when(runStore.spendUsdSince(eq("flow-d"), org.mockito.ArgumentMatchers.anyLong())).thenReturn(3.0);
         com.concentus.model.FlowGraph flow = new com.concentus.model.FlowGraph(
-                "flow-d", "Con techo", "local", List.of(), List.of(),
+                "flow-d", "Con techo", List.of(), List.of(),
                 null, List.of(), null, null, 25.0);
 
         RunSummary summary = newService(2, 4, 10).start(flow);

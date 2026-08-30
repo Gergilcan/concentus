@@ -18,7 +18,6 @@ function sample(): BackendFlow {
   return {
     id: 'daily-briefing',
     name: 'Daily briefing (cron)',
-    mode: 'local',
     enabled: false,
     folder: 'Samples',
     nodes: [

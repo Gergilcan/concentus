@@ -51,7 +51,7 @@ class TelegramApprovalTest {
     }
 
     private static AgentRun awaiting(String id, String status) {
-        AgentRun run = new AgentRun(id, "f1", "Presupuestos", "local");
+        AgentRun run = new AgentRun(id, "f1", "Presupuestos");
         run.status = status;
         run.emit(RunEvent.of("agent_message", "PLAN: create three draft estimates in Holded."));
         return run;

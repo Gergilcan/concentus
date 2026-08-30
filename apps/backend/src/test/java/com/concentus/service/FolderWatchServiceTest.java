@@ -83,7 +83,7 @@ class FolderWatchServiceTest {
         when(states.get(anyString())).thenReturn(Optional.empty());
         when(runService.hasActiveRun(anyString())).thenReturn(false);
         when(runService.start(any(FlowGraph.class), anyString())).thenReturn(
-                new RunSummary("run_1", "f1", "Flow", "local", "RUNNING", 0L, null, List.of(), null,
+                new RunSummary("run_1", "f1", "Flow", "RUNNING", 0L, null, List.of(), null,
                         "watch", 0L, 0L, 0.0, false, 1));
     }
 
@@ -99,7 +99,7 @@ class FolderWatchServiceTest {
         data.put("watchPath", dir.toString());
         data.put("watchGlob", glob);
         data.put("watchDebounceSeconds", debounceSeconds);
-        FlowGraph flow = new FlowGraph("f1", "Flow", "local",
+        FlowGraph flow = new FlowGraph("f1", "Flow",
                 List.of(new FlowNode("in-1", "input", null, data)), List.of(), null, List.of(), null, null);
         when(flows.getAcrossOrganizations("f1")).thenReturn(Optional.of(flow));
     }

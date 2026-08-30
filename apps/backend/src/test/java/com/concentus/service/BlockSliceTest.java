@@ -27,7 +27,7 @@ class BlockSliceTest {
 
     /** Lead delegates to Writer, Writer to Reviewer; Writer alone holds an MCP server. */
     private static FlowGraph team() {
-        return new FlowGraph("flow_1", "Newsroom", "local",
+        return new FlowGraph("flow_1", "Newsroom",
                 List.of(node("in-1", "input", null, Map.of("mode", "cron", "cron", "0 7 * * *",
                                 "prompt", "Write the daily briefing.")),
                         node("lead", "agent", "coordinator", Map.of("name", "Lead")),

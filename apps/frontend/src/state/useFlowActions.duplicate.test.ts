@@ -31,7 +31,6 @@ function actions(pushError = vi.fn(), refreshFlows = vi.fn()) {
 const flow = (over: Partial<BackendFlow> = {}): BackendFlow => ({
   id: 'flow_1',
   name: 'Daily briefing',
-  mode: 'local',
   nodes: [],
   edges: [],
   ...over,

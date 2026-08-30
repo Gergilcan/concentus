@@ -52,7 +52,6 @@ describe('flow nodes (sub-flows)', () => {
     loadBackendFlow({
       id: 'flow_old',
       name: 'Old',
-      mode: 'local',
       nodes: [
         { id: 'agent-1', type: 'agent', role: 'coordinator', data: { name: 'Lead' } },
         { id: 'sub-1', type: 'flow', role: null, data: { label: 'child', flowId: 'flow_b', mode: 'tool', waitForResult: true } },
@@ -70,7 +69,6 @@ describe('flow nodes (sub-flows)', () => {
     loadBackendFlow({
       id: 'flow_old',
       name: 'Old',
-      mode: 'local',
       nodes: [
         { id: 'sub-1', type: 'flow', role: null, data: { label: 'child', flowId: 'flow_b', mode: 'after', waitForResult: true } },
       ],

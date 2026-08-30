@@ -43,7 +43,6 @@ describe('useFlowStore canvas <-> backend flow transform', () => {
     const flow: BackendFlow = {
       id: 'flow-1',
       name: 'Loaded flow',
-      mode: 'local',
       nodes: [
         {
           id: 'agent-1',
@@ -60,7 +59,6 @@ describe('useFlowStore canvas <-> backend flow transform', () => {
 
     expect(state.flowId).toBe('flow-1')
     expect(state.name).toBe('Loaded flow')
-    expect(state.mode).toBe('local')
     expect(state.nodes).toHaveLength(1)
     expect(state.nodes[0].position).toEqual({ x: 42, y: 7 })
     expect(state.nodes[0].data.kind).toBe('coordinator')
@@ -249,7 +247,7 @@ describe('useFlowStore node/edge mutations', () => {
     loadBackendFlow({ ...toBackendFlow(), id: 'f1' })
     expect(useFlowStore.getState().selectedId).toBe(agent.id)
 
-    loadBackendFlow({ id: 'f2', name: 'Other', mode: 'managed', nodes: [], edges: [] })
+    loadBackendFlow({ id: 'f2', name: 'Other', nodes: [], edges: [] })
     expect(useFlowStore.getState().selectedId).toBeNull()
   })
 
@@ -319,14 +317,6 @@ describe('useFlowStore node/edge mutations', () => {
 
     selectNode(null)
     expect(useFlowStore.getState().selectedId).toBeNull()
-  })
-
-  it('setMode switches between managed and local', () => {
-    useFlowStore.getState().setMode('local')
-    expect(useFlowStore.getState().mode).toBe('local')
-
-    useFlowStore.getState().setMode('managed')
-    expect(useFlowStore.getState().mode).toBe('managed')
   })
 })
 
@@ -513,7 +503,6 @@ describe('useFlowStore flow metadata round-trip', () => {
     const flow: BackendFlow = {
       id: 'flow-9',
       name: 'Meta flow',
-      mode: 'managed',
       nodes: [],
       edges: [],
       enabled: false,

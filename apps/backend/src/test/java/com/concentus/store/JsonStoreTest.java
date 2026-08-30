@@ -35,7 +35,7 @@ class JsonStoreTest {
     }
 
     private static FlowGraph flow(String id, String name) {
-        return new FlowGraph(id, name, "managed", List.of(), List.of(), null, List.of(), null, null);
+        return new FlowGraph(id, name, List.of(), List.of(), null, List.of(), null, null);
     }
 
     @Test
@@ -49,7 +49,6 @@ class JsonStoreTest {
         assertThat(all).hasSize(1);
         assertThat(all.get(0).id()).isEqualTo(saved.id());
         assertThat(all.get(0).name()).isEqualTo("My Flow");
-        assertThat(all.get(0).mode()).isEqualTo("managed");
     }
 
     @Test
@@ -60,6 +59,26 @@ class JsonStoreTest {
 
         assertThat(found).isPresent();
         assertThat(found.get().name()).isEqualTo("Gettable");
+    }
+
+    /**
+     * A flow saved before the flow-level {@code mode} was removed carries it in its stored JSON,
+     * and this store reads with a strict mapper: the property has to be skipped, not refused.
+     */
+    @Test
+    void aFlowStoredWithTheOldModeFieldStillLoads() {
+        FlowGraph saved = store.save(flow(null, "Old flow"));
+        String withMode = "{\"id\":\"" + saved.id() + "\",\"name\":\"Old flow\",\"mode\":\"local\","
+                + "\"nodes\":[],\"edges\":[],\"enabled\":true,\"tags\":[\"ops\"],\"folder\":\"Samples\"}";
+        TestDatabase.jdbc().update("update resources set json = ? where kind = 'flow' and id = ?",
+                withMode, saved.id());
+
+        var found = store.get(saved.id());
+
+        assertThat(found).isPresent();
+        assertThat(found.get().name()).isEqualTo("Old flow");
+        assertThat(found.get().folder()).isEqualTo("Samples");
+        assertThat(store.list()).extracting(FlowGraph::name).containsExactly("Old flow");
     }
 
     @Test

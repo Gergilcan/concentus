@@ -94,7 +94,7 @@ public class FlowStudioTools implements StudioToolset {
                                 + "first and refused if it would not run, so a rejection is a fixable "
                                 + "message rather than a broken flow on someone's dashboard.",
                         Schema.of(mapper)
-                                .object("flow", "The whole flow graph: name, mode, nodes, edges. Any id "
+                                .object("flow", "The whole flow graph: name, nodes, edges. Any id "
                                         + "you put here is ignored — a new one is assigned. See flow_schema.", true)
                                 .build(),
                         this::createFlow),
@@ -209,9 +209,6 @@ public class FlowStudioTools implements StudioToolset {
 
                   id        assigned on first save — never invent one
                   name      short human name
-                  mode      "local"   the claude CLI on the user's own subscription (the default,
-                                      and the only mode that can reach local folders and repos)
-                            "managed" Anthropic-hosted agents, needs an API key
                   nodes     [{id, type, role, data}]
                   edges     [{id, source, target}] joining node ids
                   enabled   false pauses cron/mail triggers without deleting them
@@ -362,7 +359,7 @@ public class FlowStudioTools implements StudioToolset {
     private String describe(FlowGraph flow) {
         TriggerSpec trigger = TriggerSpec.from(flow);
         StringBuilder line = new StringBuilder(flow.id() + "  " + flow.name());
-        line.append("  [").append(flow.modeOrDefault()).append(", trigger ")
+        line.append("  [trigger ")
                 .append(trigger.mode() == null || trigger.mode().isBlank() ? "manual" : trigger.mode())
                 .append(", ").append(flow.nodesOrEmpty().size()).append(" nodes, ")
                 .append(flow.edgesOrEmpty().size()).append(" edges");
@@ -589,7 +586,7 @@ public class FlowStudioTools implements StudioToolset {
 
     /** The flow with a new node list. Canonical constructor — see {@code FlowGraph.withId}. */
     private static FlowGraph withNodes(FlowGraph flow, List<FlowNode> nodes) {
-        return new FlowGraph(flow.id(), flow.name(), flow.mode(), nodes, flow.edges(),
+        return new FlowGraph(flow.id(), flow.name(), nodes, flow.edges(),
                 flow.enabled(), flow.tags(), flow.favorite(), flow.notifyWebhook(), flow.budgetUsd(),
                 flow.approvalSlackCredentialId(), flow.approvalSlackChannel(),
                 flow.approvalTeamsWebhook(), flow.variables(), flow.folder(), flow.goldenAutoRun());

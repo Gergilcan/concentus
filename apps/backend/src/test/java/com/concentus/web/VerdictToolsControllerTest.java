@@ -29,7 +29,7 @@ class VerdictToolsControllerTest {
     private AgentRun run;
 
     private VerdictToolsController controller(boolean fanout) {
-        run = new AgentRun("run-1", "flow-1", "Flow", "local");
+        run = new AgentRun("run-1", "flow-1", "Flow");
         run.verdictToken = "tok-verdict";
         run.toolToken = "tok-plan";
         run.verdictExpected.add("n1");

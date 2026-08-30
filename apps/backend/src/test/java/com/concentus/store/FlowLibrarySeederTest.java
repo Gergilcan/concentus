@@ -107,7 +107,7 @@ class FlowLibrarySeederTest {
     void seedingTwiceDoesNotDuplicateOrOverwrite(@TempDir Path dataDir) {
         FlowStore flows = seedInto(dataDir);
         FlowGraph edited = flows.get(FLOW_ID).orElseThrow();
-        flows.save(new FlowGraph(edited.id(), "My edited name", edited.mode(), edited.nodes(),
+        flows.save(new FlowGraph(edited.id(), "My edited name", edited.nodes(),
                 edited.edges(), edited.enabled(), edited.tags(), edited.favorite(),
                 edited.notifyWebhook()));
 
@@ -136,7 +136,7 @@ class FlowLibrarySeederTest {
         TestDatabase.reset(TestDatabase.jdbc());
         FlowStore flows = new FlowStore(TestDatabase.jdbc(), dataDir.toString(), mapper, new OrgContext("default"));
         flows.init();
-        flows.save(new FlowGraph("existing", "Something else", "local", java.util.List.of(),
+        flows.save(new FlowGraph("existing", "Something else", java.util.List.of(),
                 java.util.List.of(), true, java.util.List.of(), false, null));
 
         new FlowLibrarySeeder(TestDatabase.jdbc(), flows, mapper).seed();

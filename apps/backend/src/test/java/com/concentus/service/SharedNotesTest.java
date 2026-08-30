@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SharedNotesTest {
 
-    private final AgentRun run = new AgentRun("run1", "flow1", "Flow", "managed");
+    private final AgentRun run = new AgentRun("run1", "flow1", "Flow");
 
     @Test
     void aWorkerReadsWhatTheOthersFoundAndNotItsOwn() {

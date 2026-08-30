@@ -38,7 +38,7 @@ class FlowCompilerTest {
                 Map.of("name", "Careful", "retries", 2));
         FlowNode none = new FlowNode("w2", "agent", "subagent",
                 Map.of("name", "Once", "retries", 0));
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(lead, counted, none),
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(lead, counted, none),
                 List.of(edge("a1", "w1"), edge("a1", "w2")), null, List.<String>of(), null, null);
 
         CompiledFlow compiled = compiler.compile(flow);
@@ -55,7 +55,7 @@ class FlowCompilerTest {
     @Test
     void compilesAValidSingleAgentFlow() {
         FlowNode a = agent("a1", "coordinator", "Solo");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(a), List.<FlowEdge>of(),
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(a), List.<FlowEdge>of(),
                 null, List.<String>of(), null, null);
 
         CompiledFlow compiled = compiler.compile(flow);
@@ -75,7 +75,7 @@ class FlowCompilerTest {
         FlowNode note = new FlowNode("n1", "note", null, Map.of("text", "Runs nightly", "color", "yellow"));
         FlowNode frame = new FlowNode("g1", "group", null, Map.of("label", "Ingest", "color", "blue",
                 "_size", Map.of("w", 480, "h", 260)));
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(frame, a, note), List.<FlowEdge>of(),
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(frame, a, note), List.<FlowEdge>of(),
                 null, List.<String>of(), null, null);
 
         CompiledFlow compiled = compiler.compile(flow);
@@ -90,7 +90,7 @@ class FlowCompilerTest {
     void singleAgentWithNoRoleIsTreatedAsCoordinator() {
         // No agent is explicitly marked "coordinator", but since there's only one agent it's used as such.
         FlowNode a = agent("a1", null, "Solo");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(a), List.<FlowEdge>of(),
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(a), List.<FlowEdge>of(),
                 null, List.<String>of(), null, null);
 
         CompiledFlow compiled = compiler.compile(flow);
@@ -104,20 +104,20 @@ class FlowCompilerTest {
     void coordinatorAccessPassesThroughAndTyposLandOnAuto() {
         // Absent → auto (the derived rule decides at run time).
         FlowNode absent = agent("a1", "coordinator", "Coord");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(absent),
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(absent),
                 List.<FlowEdge>of(), null, List.<String>of(), null, null);
         assertThat(compiler.compile(flow).coordinator().coordinatorAccess).isEmpty();
 
         FlowNode forced = new FlowNode("a1", "agent", "coordinator",
                 Map.of("name", "Coord", "coordinatorAccess", "read-only"));
-        FlowGraph flow2 = new FlowGraph("f1", "Flow", "managed", List.of(forced),
+        FlowGraph flow2 = new FlowGraph("f1", "Flow", List.of(forced),
                 List.<FlowEdge>of(), null, List.<String>of(), null, null);
         assertThat(compiler.compile(flow2).coordinator().coordinatorAccess).isEqualTo("read-only");
 
         // A typo can only ever land back on auto — it must never force a widening.
         FlowNode typo = new FlowNode("a1", "agent", "coordinator",
                 Map.of("name", "Coord", "coordinatorAccess", "mayact"));
-        FlowGraph flow3 = new FlowGraph("f1", "Flow", "managed", List.of(typo),
+        FlowGraph flow3 = new FlowGraph("f1", "Flow", List.of(typo),
                 List.<FlowEdge>of(), null, List.<String>of(), null, null);
         assertThat(compiler.compile(flow3).coordinator().coordinatorAccess).isEmpty();
     }
@@ -129,7 +129,7 @@ class FlowCompilerTest {
         FlowNode a = agent("a1", "coordinator", "Coord");
         FlowNode m = new FlowNode("m1", "merge", null,
                 Map.of("name", "Merge", "model", "claude-sonnet-5", "systemPrompt", "reconcile"));
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(a, m), List.<FlowEdge>of(),
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(a, m), List.<FlowEdge>of(),
                 null, List.<String>of(), null, null);
 
         CompiledFlow compiled = compiler.compile(flow);
@@ -145,7 +145,7 @@ class FlowCompilerTest {
     @Test
     void aFlowWithoutAMergeNodeHasNoMerger() {
         FlowNode a = agent("a1", "coordinator", "Solo");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(a), List.<FlowEdge>of(),
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(a), List.<FlowEdge>of(),
                 null, List.<String>of(), null, null);
 
         assertThat(compiler.compile(flow).merger()).isNull();
@@ -156,7 +156,7 @@ class FlowCompilerTest {
         FlowNode a = agent("a1", "coordinator", "Coord");
         FlowNode m1 = new FlowNode("m1", "merge", null, Map.of("name", "Merge"));
         FlowNode m2 = new FlowNode("m2", "merge", null, Map.of("name", "Merge 2"));
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(a, m1, m2),
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(a, m1, m2),
                 List.<FlowEdge>of(), null, List.<String>of(), null, null);
 
         assertThatThrownBy(() -> compiler.compile(flow))
@@ -171,7 +171,7 @@ class FlowCompilerTest {
         FlowNode a = agent("a1", "coordinator", "Coord");
         FlowNode v = new FlowNode("v1", "verifier", null,
                 Map.of("name", "Verifier", "model", "claude-sonnet-5", "systemPrompt", "be harsh"));
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(a, v), List.<FlowEdge>of(),
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(a, v), List.<FlowEdge>of(),
                 null, List.<String>of(), null, null);
 
         CompiledFlow compiled = compiler.compile(flow);
@@ -190,7 +190,7 @@ class FlowCompilerTest {
         FlowNode a = agent("a1", "coordinator", "Coord");
         FlowNode v1 = new FlowNode("v1", "verifier", null, Map.of("name", "V1"));
         FlowNode v2 = new FlowNode("v2", "verifier", null, Map.of("name", "V2"));
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(a, v1, v2),
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(a, v1, v2),
                 List.<FlowEdge>of(), null, List.<String>of(), null, null);
 
         assertThatThrownBy(() -> compiler.compile(flow))
@@ -205,7 +205,7 @@ class FlowCompilerTest {
         FlowNode coord = agent("c1", "coordinator", "Coordinator");
         FlowNode wired = agent("s1", "subagent", "Wired");
         FlowNode unwired = agent("s2", "subagent", "Unwired");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+        FlowGraph flow = new FlowGraph("f1", "Flow",
                 List.of(coord, wired, unwired),
                 List.of(edge("c1", "s1")),
                 null, List.<String>of(), null, null);
@@ -223,7 +223,7 @@ class FlowCompilerTest {
         // The coordinator<->subagent edge direction shouldn't matter for whether the agent is wired in.
         FlowNode coord = agent("c1", "coordinator", "Coordinator");
         FlowNode sub = agent("s1", "subagent", "Sub");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+        FlowGraph flow = new FlowGraph("f1", "Flow",
                 List.of(coord, sub),
                 List.of(edge("s1", "c1")), // reversed direction
                 null, List.<String>of(), null, null);
@@ -238,7 +238,7 @@ class FlowCompilerTest {
         FlowNode coord = agent("c1", "coordinator", "Coordinator");
         FlowNode sub = agent("s1", "subagent", "Sub");
         FlowNode mcpNode = mcp("m1", "github", "https://example.com/mcp");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+        FlowGraph flow = new FlowGraph("f1", "Flow",
                 List.of(coord, sub, mcpNode),
                 List.of(edge("c1", "s1"), edge("s1", "m1")),
                 null, List.<String>of(), null, null);
@@ -255,7 +255,7 @@ class FlowCompilerTest {
 
     @Test
     void flowWithNoAgentNodesThrows() {
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.<FlowNode>of(), List.<FlowEdge>of(),
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.<FlowNode>of(), List.<FlowEdge>of(),
                 null, List.<String>of(), null, null);
 
         assertThatThrownBy(() -> compiler.compile(flow))
@@ -267,7 +267,7 @@ class FlowCompilerTest {
     void multipleAgentsWithoutACoordinatorThrows() {
         FlowNode a1 = agent("a1", "subagent", "One");
         FlowNode a2 = agent("a2", "subagent", "Two");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(a1, a2), List.<FlowEdge>of(),
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(a1, a2), List.<FlowEdge>of(),
                 null, List.<String>of(), null, null);
 
         assertThatThrownBy(() -> compiler.compile(flow))
@@ -279,7 +279,7 @@ class FlowCompilerTest {
     void multipleCoordinatorsThrows() {
         FlowNode a1 = agent("a1", "coordinator", "One");
         FlowNode a2 = agent("a2", "coordinator", "Two");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed", List.of(a1, a2), List.<FlowEdge>of(),
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(a1, a2), List.<FlowEdge>of(),
                 null, List.<String>of(), null, null);
 
         assertThatThrownBy(() -> compiler.compile(flow))
@@ -293,7 +293,7 @@ class FlowCompilerTest {
         // FlowCompiler surfaces that as a compile-time failure rather than a silently broken agent.
         FlowNode coord = agent("c1", "coordinator", "Coordinator");
         FlowNode badMcp = new FlowNode("m1", "mcp", null, Map.of("name", "broken")); // no url
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+        FlowGraph flow = new FlowGraph("f1", "Flow",
                 List.of(coord, badMcp),
                 List.of(edge("c1", "m1")),
                 null, List.<String>of(), null, null);
@@ -311,7 +311,7 @@ class FlowCompilerTest {
         FlowNode coord = agent("c1", "coordinator", "Tech Lead");
         FlowNode backend = agent("s1", "subagent", "Backend Engineer");
         FlowNode reviewer = agent("s2", "subagent", "Code Reviewer");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+        FlowGraph flow = new FlowGraph("f1", "Flow",
                 List.of(coord, backend, reviewer),
                 List.of(edge("c1", "s1"), edge("s1", "s2")),
                 null, List.<String>of(), null, null);
@@ -330,7 +330,7 @@ class FlowCompilerTest {
         FlowNode frontend = agent("s2", "subagent", "Frontend Engineer");
         FlowNode backendReviewer = agent("s3", "subagent", "Backend Reviewer");
         FlowNode frontendReviewer = agent("s4", "subagent", "Frontend Reviewer");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+        FlowGraph flow = new FlowGraph("f1", "Flow",
                 List.of(coord, backend, frontend, backendReviewer, frontendReviewer),
                 List.of(edge("c1", "s1"), edge("c1", "s2"),
                         edge("s1", "s3"), edge("s2", "s4")),
@@ -355,7 +355,7 @@ class FlowCompilerTest {
         FlowNode frontend = agent("s2", "subagent", "Frontend Engineer");
         FlowNode r1 = agent("s3", "subagent", "Code Reviewer");
         FlowNode r2 = agent("s4", "subagent", "Code Reviewer");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+        FlowGraph flow = new FlowGraph("f1", "Flow",
                 List.of(coord, backend, frontend, r1, r2),
                 List.of(edge("c1", "s1"), edge("c1", "s2"),
                         edge("s1", "s3"), edge("s2", "s4")),
@@ -377,7 +377,7 @@ class FlowCompilerTest {
         FlowNode coord = agent("c1", "coordinator", "Tech Lead");
         FlowNode a1 = agent("s1", "subagent", "A");
         FlowNode a2 = agent("s2", "subagent", "B");
-        FlowGraph flow = new FlowGraph("f1", "Flow", "managed",
+        FlowGraph flow = new FlowGraph("f1", "Flow",
                 List.of(coord, a1, a2),
                 List.of(edge("c1", "s1"), edge("s1", "s2"), edge("s2", "s1")),
                 null, List.<String>of(), null, null);
@@ -398,7 +398,7 @@ class FlowCompilerTest {
         FlowNode sub = new FlowNode("s", "agent", "subagent", Map.of(
                 "name", "Reviewer", "systemPrompt", "x",
                 "tools", java.util.List.of("Read", "Grep", "Glob")));
-        FlowGraph flow = new FlowGraph("f", "F", "local", java.util.List.of(coord, sub),
+        FlowGraph flow = new FlowGraph("f", "F", java.util.List.of(coord, sub),
                 java.util.List.of(new FlowEdge("e1", "c", "s")), null, java.util.List.of(), null, null);
 
         CompiledFlow compiled = new FlowCompiler().compile(flow);
@@ -437,7 +437,7 @@ class FlowCompilerTest {
     }
 
     private static FlowGraph leadWith(FlowNode worker) {
-        return new FlowGraph("f1", "Flow", "managed", List.of(agent("a1", "coordinator", "Lead"), worker),
+        return new FlowGraph("f1", "Flow", List.of(agent("a1", "coordinator", "Lead"), worker),
                 List.of(edge("a1", "w1")), null, List.<String>of(), null, null);
     }
 
@@ -501,7 +501,7 @@ class FlowCompilerTest {
         FlowNode wired = new FlowNode("w1", "agent", "subagent", w);
         FlowNode lonely = agent("w2", "subagent", "Thinker");
         FlowNode mcpNode = mcp("m1", "linear", "https://mcp.linear.app/mcp");
-        return new FlowGraph("f1", "Flow", "managed", List.of(lead, wired, lonely, mcpNode),
+        return new FlowGraph("f1", "Flow", List.of(lead, wired, lonely, mcpNode),
                 List.of(edge("c1", "w1"), edge("c1", "w2"), edge("w1", "m1")),
                 null, List.<String>of(), null, null);
     }
@@ -557,7 +557,7 @@ class FlowCompilerTest {
         FlowNode lead = agent("c1", "coordinator", "Lead");
         FlowNode sub = agent("s1", "subagent", "Sub");
         FlowNode mcpNode = mcp("m1", "linear", "https://mcp.linear.app/mcp");
-        FlowGraph shared = new FlowGraph("f1", "Flow", "managed", List.of(lead, sub, mcpNode),
+        FlowGraph shared = new FlowGraph("f1", "Flow", List.of(lead, sub, mcpNode),
                 List.of(edge("c1", "s1"), edge("s1", "m1")), null, List.<String>of(), null, null);
 
         // A sub-agent of a shared session has no facade to run behind, so nothing is filled or refused.

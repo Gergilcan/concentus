@@ -138,7 +138,6 @@ export function FlowCard({
         <h3 className={styles.cardName} title={flow.name}>
           {flow.name}
         </h3>
-        <span className={styles.mode}>{flow.mode}</span>
       </div>
 
       <div className={styles.badges}>

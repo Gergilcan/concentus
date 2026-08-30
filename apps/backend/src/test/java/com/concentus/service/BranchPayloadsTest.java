@@ -26,7 +26,7 @@ class BranchPayloadsTest {
     }
 
     private static AgentRun run() {
-        AgentRun run = new AgentRun("run-1", "flow_1", "Ads campaign", "local");
+        AgentRun run = new AgentRun("run-1", "flow_1", "Ads campaign");
         run.compiled = new CompiledFlow(spec("coord", "Planner"),
                 List.of(spec("w1", "Ads writer"), spec("w2", "Ads reviewer")),
                 null, spec("v", "Judge"), List.of());

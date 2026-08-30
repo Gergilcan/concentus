@@ -102,7 +102,6 @@ describe('annotations on the canvas', () => {
     const flow: BackendFlow = {
       id: 'f1',
       name: 'Orphan',
-      mode: 'local',
       nodes: [
         { id: 'a1', type: 'agent', role: 'coordinator', data: { name: 'Lead', _pos: { x: 30, y: 40 }, _parent: 'gone' } },
       ],

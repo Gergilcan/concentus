@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AgentRunBudgetTest {
 
     private static AgentRun run(boolean bills) {
-        AgentRun run = new AgentRun("run-1", "flow_1", "Ads", "local");
+        AgentRun run = new AgentRun("run-1", "flow_1", "Ads");
         // $3 per million input tokens, $15 per million output: one million output tokens is $15.
         run.pricing = new PricingTable("", 3.0, 15.0);
         run.budgetUsd = 10.0;

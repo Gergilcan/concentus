@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PermissionModeTest {
 
     private static FlowGraph flowWith(FlowNode... nodes) {
-        return new FlowGraph("f1", "Flow", "managed", List.of(nodes), List.of(),
+        return new FlowGraph("f1", "Flow", List.of(nodes), List.of(),
                 null, List.of(), null, null);
     }
 

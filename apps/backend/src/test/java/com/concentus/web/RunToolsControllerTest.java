@@ -47,7 +47,7 @@ class RunToolsControllerTest {
     }
 
     private RunToolsController controller(String flowId) {
-        run = new AgentRun("run-1", flowId, "Flow", "local");
+        run = new AgentRun("run-1", flowId, "Flow");
         run.toolToken = "tok-secret";
         AgentSpec coord = new AgentSpec();
         coord.name = "Coordinator";

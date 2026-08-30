@@ -26,8 +26,6 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, onOpenRun
   const name = useFlowStore((s) => s.name)
   const permissions = usePermissions()
   const setName = useFlowStore((s) => s.setName)
-  const mode = useFlowStore((s) => s.mode)
-  const setMode = useFlowStore((s) => s.setMode)
   const newFlow = useFlowStore((s) => s.newFlow)
   const loadBackendFlow = useFlowStore((s) => s.loadBackendFlow)
   const flowId = useFlowStore((s) => s.flowId)
@@ -72,16 +70,6 @@ export function Toolbar({ onFlowsChanged, onRunStarted, onBackToFlows, onOpenRun
         onChange={(e) => setName(e.target.value)}
         aria-label={t('Flow name')}
       />
-
-      <select
-        className={styles.select}
-        value={mode}
-        onChange={(e) => setMode(e.target.value as 'managed' | 'local')}
-        title={t('managed = multi-agent execution')}
-      >
-        <option value="managed">{t('managed')}</option>
-        <option value="local">{t('local')}</option>
-      </select>
 
       <div className={styles.spacer} />
 

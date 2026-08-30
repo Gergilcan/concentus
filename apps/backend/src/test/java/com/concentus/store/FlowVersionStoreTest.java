@@ -34,7 +34,7 @@ class FlowVersionStoreTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private static FlowGraph flow(String id) {
-        return new FlowGraph(id, "My Flow", "managed", List.of(), List.of(), null, List.of(), null, null);
+        return new FlowGraph(id, "My Flow", List.of(), List.of(), null, List.of(), null, null);
     }
 
     // ---------------------------------------------------------------- unavailable gating

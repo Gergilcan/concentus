@@ -51,7 +51,7 @@ class RemoteApprovalServiceTest {
             new RemoteApprovalService(credentials, MAPPER, transport);
 
     private AgentRun awaitingRun() {
-        AgentRun run = new AgentRun("run-1", "f1", "Presupuestos", "local");
+        AgentRun run = new AgentRun("run-1", "f1", "Presupuestos");
         run.status = "AWAITING_APPROVAL";
         run.emit(RunEvent.of("agent_message", "PLAN: create three draft estimates in Holded."));
         return run;
@@ -263,7 +263,7 @@ class RemoteApprovalServiceTest {
     // ---------------------------------------------------------------- questions (AWAITING_ANSWER)
 
     private AgentRun askingRun() {
-        AgentRun run = new AgentRun("run-2", "f1", "Presupuestos", "local");
+        AgentRun run = new AgentRun("run-2", "f1", "Presupuestos");
         run.status = "AWAITING_ANSWER";
         run.approvalSlackCredentialId = "cred_slack";
         run.approvalSlackChannel = "C0123456789";
@@ -360,7 +360,7 @@ class RemoteApprovalServiceTest {
 
     @Test
     void aQuestionOnAFlowWithNoSlackChannelStaysInTheApp() {
-        AgentRun run = new AgentRun("run-3", "f1", "Flow", "local");
+        AgentRun run = new AgentRun("run-3", "f1", "Flow");
         run.status = "AWAITING_ANSWER";
 
         service.runAwaitingAnswer(run, reply -> {});
@@ -371,7 +371,7 @@ class RemoteApprovalServiceTest {
 
     @Test
     void teamsIsToldAboutAQuestionButCannotCarryTheAnswer() {
-        AgentRun run = new AgentRun("run-4", "f1", "Presupuestos", "local");
+        AgentRun run = new AgentRun("run-4", "f1", "Presupuestos");
         run.status = "AWAITING_ANSWER";
         run.approvalTeamsWebhook = "https://example.webhook.office.com/x";
         run.emit(RunEvent.of("agent_message", "Which client should I invoice first?"));

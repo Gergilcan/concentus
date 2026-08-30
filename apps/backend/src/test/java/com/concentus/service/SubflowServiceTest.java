@@ -38,7 +38,7 @@ class SubflowServiceTest {
     }
 
     private static AgentRun parentRun(String flowId, List<String> ancestors) {
-        AgentRun run = new AgentRun("run-parent", flowId, "Parent", "local");
+        AgentRun run = new AgentRun("run-parent", flowId, "Parent");
         run.organizationId = "default";
         run.flowChain = ancestors;
         return run;
@@ -54,13 +54,13 @@ class SubflowServiceTest {
     }
 
     private void childExists(String id) {
-        FlowGraph child = new FlowGraph(id, "Child", "local", List.of(), List.of(),
+        FlowGraph child = new FlowGraph(id, "Child", List.of(), List.of(),
                 null, null, null, null, null, null, null, null, null, null, null);
         when(flows.getIn("default", id)).thenReturn(Optional.of(child));
     }
 
     private static RunSummary summary(String id, String status) {
-        return new RunSummary(id, "flow_child", "Child", "local", status, 0L, null,
+        return new RunSummary(id, "flow_child", "Child", status, 0L, null,
                 List.of(), null, "subflow", 0, 0, 0, false, 0);
     }
 
@@ -81,7 +81,7 @@ class SubflowServiceTest {
     void waiting_returns_what_the_child_answered() {
         childExists("flow_child");
         when(runs.startSubflow(any(), anyString(), any())).thenReturn(summary("run-child", "RUNNING"));
-        AgentRun childRun = new AgentRun("run-child", "flow_child", "Child", "local");
+        AgentRun childRun = new AgentRun("run-child", "flow_child", "Child");
         childRun.status = "COMPLETED";
         childRun.restoreEvents(List.of(
                 com.concentus.model.RunEvent.of("agent_message", "Eleven leads this week.")));
@@ -183,7 +183,7 @@ class SubflowServiceTest {
 
     /** agent → hand-off, where the hand-off hangs off the agent's error output. */
     private static FlowGraph graphWithErrorHandOff(String flowId, String childId) {
-        return new FlowGraph(flowId, "Parent", "local",
+        return new FlowGraph(flowId, "Parent",
                 List.of(
                         new com.concentus.model.FlowNode("a", "agent", "coordinator", java.util.Map.of()),
                         new com.concentus.model.FlowNode("sub-1", "flow", null,
@@ -262,7 +262,7 @@ class SubflowServiceTest {
      * {@code source}.
      */
     private static FlowGraph fanoutGraph(String source, String handle) {
-        return new FlowGraph("flow_parent", "Parent", "managed",
+        return new FlowGraph("flow_parent", "Parent",
                 List.of(
                         new com.concentus.model.FlowNode("a", "agent", "coordinator", java.util.Map.of()),
                         new com.concentus.model.FlowNode("w1", "agent", "subagent", java.util.Map.of()),

@@ -39,7 +39,7 @@ class FlowControllerTest {
     private final FlowMemoryStore memory = mock(FlowMemoryStore.class);
 
     private static FlowGraph flow(String id, String name) {
-        return new FlowGraph(id, name, "managed", List.of(), List.of(), null, List.of(), null, null);
+        return new FlowGraph(id, name, List.of(), List.of(), null, List.of(), null, null);
     }
 
     private final com.concentus.service.GoldenStatusService goldenStatus =
@@ -120,7 +120,7 @@ class FlowControllerTest {
         when(store.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(store.get("f1")).thenReturn(Optional.of(flow("f1", "Before")));
         com.concentus.service.AgentRun golden =
-                new com.concentus.service.AgentRun("run_g", "f1", "Flow", "local");
+                new com.concentus.service.AgentRun("run_g", "f1", "Flow");
         when(goldenStatus.autoCheckAfterSave(any(), any())).thenReturn(Optional.of(golden));
 
         controller().save(flow("f1", "After"));
@@ -135,7 +135,7 @@ class FlowControllerTest {
         when(store.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(store.get("f1")).thenReturn(Optional.of(flow("f1", "Before")));
         com.concentus.service.AgentRun golden =
-                new com.concentus.service.AgentRun("run_g", "f1", "Flow", "local");
+                new com.concentus.service.AgentRun("run_g", "f1", "Flow");
         when(goldenStatus.autoCheckAfterSave(any(), any())).thenReturn(Optional.of(golden));
         when(runService.startGoldenCheck(any(), eq("run_g")))
                 .thenThrow(new IllegalStateException("Monthly budget reached."));
@@ -158,7 +158,7 @@ class FlowControllerTest {
     // ---------------------------------------------------------------- audit trail
 
     private static FlowGraph published(String id, boolean published, String token) {
-        return new FlowGraph(id, "Endpoint flow", "managed",
+        return new FlowGraph(id, "Endpoint flow",
                 List.of(new com.concentus.model.FlowNode("in", "input", null,
                         java.util.Map.of("mode", "manual", "published", published, "publishToken", token))),
                 List.of(), null, List.of(), null, null);

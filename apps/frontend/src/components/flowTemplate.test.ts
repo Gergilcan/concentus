@@ -7,7 +7,6 @@ function flow(): BackendFlow {
   return {
     id: 'flow-1',
     name: 'Presupuestos por correo',
-    mode: 'local',
     enabled: false,
     favorite: true,
     tags: ['mail', 'holded'],

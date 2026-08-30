@@ -72,7 +72,7 @@ class OrganizationIsolationTest {
     }
 
     private static FlowGraph flow(String id, String name) {
-        return new FlowGraph(id, name, "managed", List.of(), List.of(), null, List.of(), null, null);
+        return new FlowGraph(id, name, List.of(), List.of(), null, List.of(), null, null);
     }
 
     // ---- resources (flows stand for every JsonStore kind) ----
@@ -163,9 +163,9 @@ class OrganizationIsolationTest {
 
     @Test
     void the_run_list_and_a_run_by_id_answer_for_the_callers_organization_only() {
-        AgentRun ours = new AgentRun("run_a", "flow_a", "Ads", "local");
+        AgentRun ours = new AgentRun("run_a", "flow_a", "Ads");
         ours.organizationId = A;
-        AgentRun theirs = new AgentRun("run_b", "flow_b", "Theirs", "local");
+        AgentRun theirs = new AgentRun("run_b", "flow_b", "Theirs");
         theirs.organizationId = B;
         RunService runs = mock(RunService.class);
         when(runs.list()).thenReturn(List.of(ours.toSummary(), theirs.toSummary()));

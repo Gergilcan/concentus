@@ -17,7 +17,7 @@ vi.mock('../api/client.ts', () => ({
   },
 }))
 
-const flow: BackendFlow = { id: 'f1', name: 'Mail triage', mode: 'local', nodes: [], edges: [] }
+const flow: BackendFlow = { id: 'f1', name: 'Mail triage', nodes: [], edges: [] }
 
 const memory: FlowMemoryView = {
   available: true,

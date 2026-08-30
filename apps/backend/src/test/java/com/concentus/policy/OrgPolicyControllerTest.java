@@ -56,7 +56,7 @@ class OrgPolicyControllerTest {
         data.put("mode", "manual");
         data.put("published", true);
         data.put("publishToken", token);
-        return new FlowGraph(id, "Flow", "local", List.of(new FlowNode("in1", "input", null, data)),
+        return new FlowGraph(id, "Flow", List.of(new FlowNode("in1", "input", null, data)),
                 List.of(), null, List.of(), null, null);
     }
 
@@ -135,7 +135,7 @@ class OrgPolicyControllerTest {
     void approvingAnUnpublishedFlowIsRefusedAndAMemberCannotApproveAtAll(@TempDir Path dir) throws Exception {
         when(store.getAcrossOrganizations("default")).thenReturn(Optional.of(new OrgPolicy("default", "", false, "", null, true)));
         Map<String, Object> unpublished = new HashMap<>(Map.of("mode", "manual", "published", false));
-        when(flows.get("f2")).thenReturn(Optional.of(new FlowGraph("f2", "Flow", "local",
+        when(flows.get("f2")).thenReturn(Optional.of(new FlowGraph("f2", "Flow",
                 List.of(new FlowNode("in1", "input", null, unpublished)), List.of(), null, List.of(), null, null)));
         when(flows.get("f1")).thenReturn(Optional.of(published("f1", "tok")));
 

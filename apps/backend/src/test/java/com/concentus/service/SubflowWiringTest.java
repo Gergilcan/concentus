@@ -27,7 +27,7 @@ class SubflowWiringTest {
     }
 
     private static FlowGraph flow(List<FlowNode> nodes, List<FlowEdge> edges) {
-        return new FlowGraph("parent", "Parent", "local", nodes, edges,
+        return new FlowGraph("parent", "Parent", nodes, edges,
                 null, null, null, null, null, null, null, null, null, null, null);
     }
 

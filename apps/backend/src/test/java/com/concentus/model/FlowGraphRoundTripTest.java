@@ -22,7 +22,7 @@ class FlowGraphRoundTripTest {
 
     @Test
     void everyComponentSurvivesTheStoreRoundTrip() throws Exception {
-        FlowGraph flow = new FlowGraph("flow_1", "Triage", "local",
+        FlowGraph flow = new FlowGraph("flow_1", "Triage",
                 List.of(new FlowNode("n1", "agent", "coordinator", Map.of("name", "Coord"))),
                 List.of(new FlowEdge("e1", "n1", "n1")),
                 false, List.of("ops"), true,
@@ -50,7 +50,7 @@ class FlowGraphRoundTripTest {
         // constructor strips the newest components from EVERY stored flow — which is exactly
         // how `folder` and `variables` were being lost at save time. Equality on an id-aligned
         // copy catches the next stale shortcut before it ships.
-        FlowGraph flow = new FlowGraph("flow_1", "Triage", "local",
+        FlowGraph flow = new FlowGraph("flow_1", "Triage",
                 List.of(new FlowNode("n1", "agent", "coordinator", Map.of("name", "Coord"))),
                 List.of(new FlowEdge("e1", "n1", "n1")),
                 false, List.of("ops"), true,
@@ -65,5 +65,25 @@ class FlowGraphRoundTripTest {
         assertThat(flow.withId("flow_2").withId("flow_1")).isEqualTo(flow);
         // withFolder is the other copy every seeded flow goes through, and it strips the same way.
         assertThat(flow.withFolder("Other").goldenAutoRun()).isTrue();
+    }
+
+    /**
+     * Flows saved before the flow-level {@code mode} was removed still carry it — in the store, in
+     * every flow version and in every exported .flow.json. The property must be skipped, not
+     * refused, and under the strictest reader this JSON will ever meet.
+     */
+    @Test
+    void aFlowSavedWithTheOldModeFieldStillLoads() throws Exception {
+        String legacy = """
+                {"id":"flow_1","name":"Triage","mode":"local","nodes":[],"edges":[],
+                 "enabled":true,"tags":["ops"],"folder":"Samples"}
+                """;
+
+        FlowGraph back = new ObjectMapper().readValue(legacy, FlowGraph.class);
+
+        assertThat(back.name()).isEqualTo("Triage");
+        assertThat(back.folder()).isEqualTo("Samples");
+        assertThat(back.enabledOrDefault()).isTrue();
+        assertThat(back.tagsOrEmpty()).containsExactly("ops");
     }
 }

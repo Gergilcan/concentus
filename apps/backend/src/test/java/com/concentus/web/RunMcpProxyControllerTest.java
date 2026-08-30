@@ -69,7 +69,7 @@ class RunMcpProxyControllerTest {
         });
         remote.start();
 
-        run = new AgentRun("run-1", "flow-1", "Google Ads — Tecnovent", "local");
+        run = new AgentRun("run-1", "flow-1", "Google Ads — Tecnovent");
         run.organizationId = "default";
         AgentSpec coordinator = new AgentSpec();
         coordinator.name = "Estratega";
