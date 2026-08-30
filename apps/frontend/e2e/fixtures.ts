@@ -1,5 +1,5 @@
 import { expect, test as base, type APIRequestContext, type Page } from '@playwright/test'
-import { startBackend, type Backend } from './backend'
+import { PORT_BASE, startBackend, type Backend } from './backend'
 
 /**
  * The shared test, carrying two things.
@@ -17,7 +17,7 @@ import { startBackend, type Backend } from './backend'
 export const test = base.extend<{ page: Page }, { backend: Backend }>({
   backend: [
     async ({}, use, workerInfo) => {
-      const backend = await startBackend(8800 + workerInfo.parallelIndex)
+      const backend = await startBackend(PORT_BASE + workerInfo.parallelIndex)
       await use(backend)
       await backend.stop()
     },

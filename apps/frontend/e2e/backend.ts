@@ -24,6 +24,16 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.join(here, '..', '..', '..')
 const jar = path.join(repoRoot, 'apps', 'backend', 'target', 'concentus-backend.jar')
 
+/**
+ * Where the per-worker backends listen: this base plus the worker's slot. Overridable because two
+ * checkouts of this repository running their suites on one machine would otherwise claim the same
+ * ports — and a worker finding a backend already on its port politely shuts it down, which is the
+ * other suite's backend dying mid-test. The scratch directories carry the base too, so the sweep
+ * of leftover postmasters below only ever reaches this suite's own.
+ */
+export const PORT_BASE = Number(process.env.CONCENTUS_E2E_PORT_BASE ?? 8800)
+const SCRATCH_PREFIX = `concentus-e2e_${PORT_BASE}-`
+
 const BUILD_HINT =
   'Build it first (frontend first — it is baked into the jar):\n' +
   '  pnpm --filter frontend build\n' +
@@ -42,7 +52,7 @@ export async function startBackend(port: number, extraEnv: Record<string, string
     await stopViaActuator(base)
   }
 
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'concentus-e2e-'))
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), SCRATCH_PREFIX))
   const javaBin = process.env.JAVA_HOME
     ? path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java')
     : 'java'
@@ -56,7 +66,7 @@ export async function startBackend(port: number, extraEnv: Record<string, string
   // -Duser.home rather than an environment variable on purpose: on Windows the JVM reads the home
   // directory from the OS and ignores HOME/USERPROFILE entirely.
   const noCli = process.env.CONCENTUS_E2E_NO_CLI === '1'
-  const emptyHome = noCli ? fs.mkdtempSync(path.join(os.tmpdir(), 'concentus-e2e-home-')) : null
+  const emptyHome = noCli ? fs.mkdtempSync(path.join(os.tmpdir(), `${SCRATCH_PREFIX}home-`)) : null
 
   const child = spawn(
     javaBin,
@@ -124,7 +134,8 @@ export async function startBackend(port: number, extraEnv: Record<string, string
 
 /**
  * Kills postmasters left by CRASHED runs — the polite stop above never ran for those. Called once
- * from global setup, never while workers are alive: the pattern matches every worker's database.
+ * from global setup, never while workers are alive: the pattern matches every worker's database —
+ * of this suite; another checkout's suite, on another port base, keeps its own.
  */
 export function sweepLeftoverPostgres(): void {
   try {
@@ -132,11 +143,11 @@ export function sweepLeftoverPostgres(): void {
       spawnSync('powershell', [
         '-NoProfile', '-Command',
         "Get-CimInstance Win32_Process -Filter \"Name='postgres.exe'\" | " +
-          "Where-Object { $_.CommandLine -match 'concentus-e2e-' } | " +
+          `Where-Object { $_.CommandLine -match '${SCRATCH_PREFIX}' } | ` +
           'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }',
       ])
     } else {
-      spawnSync('pkill', ['-f', 'concentus-e2e-.*postgres'])
+      spawnSync('pkill', ['-f', `${SCRATCH_PREFIX}.*postgres`])
     }
   } catch {
     /* best effort — a sweep that cannot run just means yesterday's leak survives another day */
