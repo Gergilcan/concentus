@@ -72,6 +72,13 @@ import type {
   SkillRepo,
   UsageSummary,
   Variable,
+  MarketplaceInstallResult,
+  MarketplaceItem,
+  MarketplaceList,
+  MarketplaceListFilters,
+  MarketplacePublishBody,
+  MarketplacePublishFromBody,
+  MarketplaceStatus,
 } from './types.ts'
 
 export interface SqlSourceInput {
@@ -779,6 +786,40 @@ export const api = {
   // rag
   ragPreview: (source: SqlSourceInput) =>
     req<SqlPreview>('/rag/preview', { method: 'POST', body: JSON.stringify(source) }),
+
+  // marketplace. The server decides what the caller may SEE; the page filters what it got.
+  listMarketplaceItems: (filters: MarketplaceListFilters = {}) =>
+    req<MarketplaceList>(
+      `/marketplace/items${query({
+        q: filters.q || undefined,
+        kind: filters.kind,
+        scope: filters.scope,
+        tag: filters.tag || undefined,
+        status: filters.status,
+        sort: filters.sort,
+      })}`,
+    ),
+  getMarketplaceItem: (id: string) => req<MarketplaceItem>(`/marketplace/items/${id}`),
+  publishMarketplaceItem: (body: MarketplacePublishBody) =>
+    req<MarketplaceItem>('/marketplace/items', { method: 'POST', body: JSON.stringify(body) }),
+  updateMarketplaceItem: (id: string, body: MarketplacePublishBody) =>
+    req<MarketplaceItem>(`/marketplace/items/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteMarketplaceItem: (id: string) => req<void>(`/marketplace/items/${id}`, { method: 'DELETE' }),
+  installMarketplaceItem: (id: string) =>
+    req<MarketplaceInstallResult>(`/marketplace/items/${id}/install`, { method: 'POST' }),
+  uninstallMarketplaceItem: (id: string) =>
+    req<void>(`/marketplace/items/${id}/uninstall`, { method: 'POST' }),
+  approveMarketplaceItem: (id: string) =>
+    req<void>(`/marketplace/items/${id}/approve`, { method: 'POST' }),
+  rejectMarketplaceItem: (id: string, reason: string) =>
+    req<void>(`/marketplace/items/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  /** Publishes a resource this organization already has; `stripped` names the credentials left behind. */
+  publishMarketplaceFrom: (body: MarketplacePublishFromBody) =>
+    req<MarketplaceItem & { stripped: string[] }>('/marketplace/publish-from', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  marketplaceStatus: () => req<MarketplaceStatus>('/marketplace/status'),
 }
 
 export type RunSocketStatus = 'connecting' | 'open' | 'reconnecting' | 'disconnected'

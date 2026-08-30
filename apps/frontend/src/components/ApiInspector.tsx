@@ -1,9 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
-import type { ApiNodeData, ApiOperationView } from '../api/types.ts'
+import type { ApiNodeData, ApiOperationView, MarketplaceItem } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { CheckboxField, Field, FineTuning, SelectField, TextArea } from './fields.tsx'
+import { apiNodeFieldsFrom, KIND_GLYPH } from './marketplace.ts'
+import { Modal } from './Modal.tsx'
+import { Spinner } from './Spinner.tsx'
+import mkt from './marketplace.module.scss'
 import styles from './panels.module.scss'
 
 interface Props {
@@ -23,6 +27,8 @@ export function ApiInspector({ data, set }: Props) {
   const [ops, setOps] = useState<ApiOperationView[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The Marketplace picker: an API somebody published fills this node's fields in one click.
+  const [picking, setPicking] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -68,6 +74,25 @@ export function ApiInspector({ data, set }: Props) {
         <option value="spec">{t('an API described by an OpenAPI spec')}</option>
         <option value="endpoint">{t('a single endpoint I type here')}</option>
       </SelectField>
+
+      <div className={styles.mcpBtns}>
+        <button
+          className={styles.linkBtn}
+          onClick={() => setPicking(true)}
+          title={t('Fills this node from an API published on the Marketplace: its URL, its spec and what it does. Nothing is created; the install is counted.')}
+        >
+          {t('Use from Marketplace…')}
+        </button>
+      </div>
+      {picking && (
+        <MarketplaceApiPicker
+          onClose={() => setPicking(false)}
+          onPick={(fields) => {
+            set(fields)
+            setPicking(false)
+          }}
+        />
+      )}
 
       {endpoint && <EndpointFields data={data} set={set} />}
 
@@ -158,6 +183,66 @@ export function ApiInspector({ data, set }: Props) {
         </p>
       )}
     </>
+  )
+}
+
+/**
+ * The APIs published on the Marketplace, one row each, and the one action: fill this node from
+ * it. The install is recorded so the item's count is honest, but a count that could not be
+ * recorded never keeps the fields from being filled.
+ */
+function MarketplaceApiPicker({
+  onClose,
+  onPick,
+}: {
+  onClose: () => void
+  onPick: (fields: Record<string, unknown>) => void
+}) {
+  const { t } = useTranslation()
+  const [items, setItems] = useState<MarketplaceItem[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    api
+      .listMarketplaceItems({ kind: 'api' })
+      .then((list) => alive && setItems(list.items.filter((i) => i.kind === 'api' && i.status === 'published')))
+      .catch((e) => alive && setError(errMessage(e)))
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const use = (item: MarketplaceItem) => {
+    onPick(apiNodeFieldsFrom(item.payload))
+    void api.installMarketplaceItem(item.id).catch(() => {})
+  }
+
+  return (
+    <Modal title={t('Use from Marketplace')} onClose={onClose}>
+      {items === null && !error && <Spinner />}
+      {error && <p className={styles.hint}>{error}</p>}
+      {items && items.length === 0 && <p className={styles.hint}>{t('No API has been published yet.')}</p>}
+      {items && items.length > 0 && (
+        <div className={mkt.pickList}>
+          {items.map((item) => (
+            <div key={item.id} className={mkt.pickRow}>
+              <span aria-hidden="true">{item.icon ?? KIND_GLYPH.api}</span>
+              <span className={mkt.summary} title={item.summary}>
+                <strong>{item.name}</strong> · {item.summary}
+              </span>
+              <button
+                className={styles.linkBtn}
+                onClick={() => use(item)}
+                title={t('Fills the URL, the spec and the description from this item.')}
+              >
+                {t('Use')}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
   )
 }
 
