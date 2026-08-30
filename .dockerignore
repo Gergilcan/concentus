@@ -1,0 +1,29 @@
+# What `docker build` sends to the daemon when the context is the repository root, which is how
+# packaging/docker/Dockerfile expects to be built:
+#
+#   docker build -f packaging/docker/Dockerfile --target runner -t concentus-runner .
+#
+# Everything below is either build output the image rebuilds for itself, or something that has no
+# business inside an image (a checkout's history, its secrets, a machine's data). Leaving
+# node_modules in alone turns a ten-megabyte context into a gigabyte one, and a Windows
+# node_modules copied into a Linux build breaks the install it was meant to save.
+.git
+.claude
+.env
+.env.local
+
+node_modules
+**/node_modules
+**/target
+**/dist
+**/data
+**/playwright-report
+**/test-results
+apps/desktop/release
+apps/desktop/resources
+
+# Not part of the jar: the site, the docs, the package-manager manifests and CI.
+apps/website
+docs
+bucket
+.github

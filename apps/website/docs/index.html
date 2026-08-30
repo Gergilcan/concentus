@@ -343,6 +343,7 @@
     <h4>Operate</h4>
     <a href="#marketplace">Marketplace</a>
     <a href="#teams">Teams and sign-in</a>
+    <a href="#runners">Runners</a>
     <a href="#storage">Storage</a>
     <a href="#settings">Settings</a>
     <a href="#updates">Updates</a>
@@ -1241,6 +1242,90 @@ semantic (cosine,      top 50) ─┘</code></pre>
       </p>
     </section>
 
+    <section id="runners">
+      <h2>Runners</h2>
+      <p class="sub">Execution on a machine somebody operates, for a hub somebody deployed.</p>
+      <p>
+        The desktop app is one backend that is both the control plane and the place flows execute:
+        the <code>claude</code> CLI runs on the machine the window is on, against the login already
+        there. A <strong>runner</strong> is that execution half on its own — a process on a machine
+        you operate (a laptop that stays on, a NAS, a container on your own cluster) that connects
+        <em>out</em> to a Concentus backend, the <strong>hub</strong>, registers with a token minted
+        there, and runs the CLI turns the hub hands it. The hub keeps flows, runs, approvals,
+        credentials, groups, policies and the interface; the runner keeps the login, the folders,
+        the clones and the processes. The app on its own is unchanged — runners are for the shape
+        where a hub runs somewhere (<code>java -jar</code>, or the Docker image) and is reached in
+        a browser.
+      </p>
+
+      <h3>Where the login lives</h3>
+      <p>
+        Anthropic's terms do not allow a subscription's credentials to be routed through a third
+        party, and a hub holding your <code>claude setup-token</code> would be exactly that. So the
+        hub never holds a Claude login: a runner is registered <em>by</em> whoever operates it, on a
+        machine they operate, and carries its own auth — the CLI's login there,
+        <code>CLAUDE_CODE_OAUTH_TOKEN</code> from <code>claude setup-token</code>, or
+        <code>ANTHROPIC_API_KEY</code>. The hub only learns which kind it is, and the roster shows
+        it.
+      </p>
+
+      <h3>Scopes</h3>
+      <p>
+        Whoever registers a runner chooses who may run flows on it. <strong>Organization</strong>:
+        everyone in it; an admin registers these. <strong>Group</strong>: its members, an admin,
+        and a schedule or webhook of a flow that belongs to the group; a group's manager may
+        register one, and it needs groups, so Enterprise. <strong>Only me</strong>: the owner and
+        nobody else — not an admin who is not the owner, never a schedule or a webhook. It is
+        somebody's machine and somebody's login; any member may register one for themselves.
+        Admins see every runner; everybody else the organization's, their groups' and their own.
+      </p>
+
+      <h3>Starting one</h3>
+      <p>
+        <strong>Resources → Runners → + New</strong> asks a name and a scope and answers with the
+        token (<code>crn_…</code>), shown once and stored hashed, and the three ways to start it
+        with the hub's URL filled in:
+      </p>
+      <pre><code>java -jar concentus-backend.jar runner --url https://hub.example.com --token crn_…
+
+docker run -d -v concentus-runner:/data \
+  -e CONCENTUS_RUNNER_URL=https://hub.example.com -e CONCENTUS_RUNNER_TOKEN=crn_… \
+  -e CLAUDE_CODE_OAUTH_TOKEN=… ghcr.io/gergilcan/concentus-runner:latest</code></pre>
+      <p>
+        Or the desktop app itself, under <em>Settings → Connect to a server</em>: it keeps
+        working as it does and also executes for that hub. In <code>runner</code> mode the jar
+        never starts Spring — no database, no port — and exits <code>3</code> on a refused token
+        rather than retrying. What it needs on its side: <code>git</code>, the <code>claude</code>
+        CLI, <code>LOCAL_CONTEXT_ROOTS</code> for the folders flows may read there (empty rejects
+        every one, as on a hub), and <code>EXECUTION_MAX_PROCESSES</code> for how many turns at
+        once — it enforces its own ceiling, not the hub's. A hub and a runner together, with
+        compose, are in <code>packaging/docker</code> of the repository.
+      </p>
+
+      <h3>Which runner a flow uses</h3>
+      <p>
+        <em>Runs on</em>, in the flow's Settings. <strong>This server</strong> (the default): here
+        when the CLI is logged in on this backend, otherwise the least busy online runner you may
+        use — the log says so — otherwise an API key or the refusal. <strong>Any runner</strong>:
+        the least busy usable runner that is online; none online and the launch fails at once,
+        there is no queue. <strong>A runner by name</strong>: that one; offline, revoked or not
+        yours to use, and the launch is refused naming it. Only Claude CLI flows go to runners; a
+        self-hosted model stays on the hub. The run's first line names the runner, the runs list
+        carries a chip with its name, and the run is billed the way a local one is — on that
+        runner's subscription.
+      </p>
+      <div class="note">
+        <b>Not in this version</b>
+        <p>
+          A turn does not survive the runner disconnecting: after 45 s without a heartbeat the
+          hub ends it as <em>disconnected</em>, and what the runner was running finishes on its
+          side with its output lost. The runner reconnects on its own; nothing is resumed.
+          Finished workspaces are not cleaned up on the runner, and no queue waits for a runner
+          to come online.
+        </p>
+      </div>
+    </section>
+
     <section id="storage">
       <h2>Storage</h2>
       <p class="sub">Embedded by default; a company database when you want one.</p>
@@ -1535,6 +1620,8 @@ echo $?                                                # 0 completed · 1 failed
             <tr><td>GET/POST</td><td><code>/api/retention</code></td><td>The window in force · <code>/run-now</code> purges today <span class="pill">admin</span></td></tr>
             <tr><td>GET/POST</td><td><code>/api/organizations</code></td><td>Organizations · <code>/{id}/members</code> · <code>/{id}/switch</code> <span class="pill">admin</span></td></tr>
             <tr><td>GET/POST</td><td><code>/api/service-accounts</code></td><td>Tokens for machines · <code>/{id}/revoke</code> <span class="pill">admin</span></td></tr>
+            <tr><td>GET/POST</td><td><code>/api/runners</code></td><td>Runners · <code>/{id}/revoke</code> · <code>/usable</code> — the ones you may run flows on · <code>/self</code> — this backend's own agent</td></tr>
+            <tr><td>WS</td><td><code>/ws/runner</code></td><td>A runner's connection, with its <code>crn_…</code> token as a bearer</td></tr>
             <tr><td>GET/PUT</td><td><code>/api/org-policy</code></td><td>The organization’s rules · <code>/publish/{flowId}/approve</code> <span class="pill">admin</span></td></tr>
             <tr><td>POST</td><td><code>/api/public/flows/{id}/run</code></td><td>A published endpoint, with its bearer token · <code>/runs/{runId}</code> polls it</td></tr>
             <tr><td>GET/POST</td><td><code>/api/license</code></td><td>The license in force, with what it unlocks · install a token <span class="pill">admin</span></td></tr>
@@ -1569,6 +1656,14 @@ echo $?                                                # 0 completed · 1 failed
             <tr>
               <td><code>APP_DATA_DIR</code> · <code>SERVER_PORT</code></td>
               <td>Where data lives and which port to bind.</td>
+            </tr>
+            <tr>
+              <td><code>CONCENTUS_RUNNER_URL</code><br /><code>CONCENTUS_RUNNER_TOKEN</code><br /><code>CONCENTUS_RUNNER_NAME</code></td>
+              <td>Starting the jar as a runner (with <code>runner</code> as its first argument), or making a full backend also act as one.</td>
+            </tr>
+            <tr>
+              <td><code>CONCENTUS_RUNNER_DATA_DIR</code> · <code>CLAUDE_COMMAND</code> · <code>LOCAL_CONTEXT_ROOTS</code> · <code>EXECUTION_MAX_PROCESSES</code></td>
+              <td>What a runner keeps on its side: run workspaces and clones, the CLI, the folders it may read, how many CLI processes at once.</td>
             </tr>
           </tbody>
         </table>
