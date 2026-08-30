@@ -295,27 +295,27 @@ public class SkillCatalogService {
 
             @Override
             public byte[] get(String url, Duration timeout) throws IOException {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                    // GitHub rejects requests without a User-Agent outright.
-                    .header("User-Agent", "concentus")
-                    .header("Accept", "application/vnd.github+json")
-                    .timeout(timeout)
-                    .GET()
-                    .build();
-            try {
-                HttpResponse<byte[]> response =
-                        client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-                if (response.statusCode() == 403 || response.statusCode() == 429) {
-                    throw new IOException("GitHub rate limit reached — try again in a few minutes.");
+                HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                        // GitHub rejects requests without a User-Agent outright.
+                        .header("User-Agent", "concentus")
+                        .header("Accept", "application/vnd.github+json")
+                        .timeout(timeout)
+                        .GET()
+                        .build();
+                try {
+                    HttpResponse<byte[]> response =
+                            client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+                    if (response.statusCode() == 403 || response.statusCode() == 429) {
+                        throw new IOException("GitHub rate limit reached — try again in a few minutes.");
+                    }
+                    if (response.statusCode() >= 400) {
+                        throw new IOException("GitHub answered " + response.statusCode() + ".");
+                    }
+                    return response.body();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Interrupted while talking to GitHub.");
                 }
-                if (response.statusCode() >= 400) {
-                    throw new IOException("GitHub answered " + response.statusCode() + ".");
-                }
-                return response.body();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IOException("Interrupted while talking to GitHub.");
-            }
             }
         };
     }
