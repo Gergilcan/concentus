@@ -183,20 +183,33 @@ describe('annotations on the canvas', () => {
     expect(s().nodes[0].position).toEqual({ x: 150, y: 160 })
   })
 
-  it('tidy leaves annotations and framed blocks where they are', () => {
+  it('tidy leaves notes where they are, lays a frame’s members out inside it and sizes the frame to fit', () => {
     s().addNode('group', { x: 100, y: 100 })
     s().addNode('coordinator', { x: 150, y: 160 })
+    s().addNode('agent', { x: 150, y: 170 })
     s().addNode('note', { x: 900, y: 900 })
-    s().addNode('agent', { x: 2000, y: 2000 })
     s().addNode('mcp', { x: 3000, y: 3000 })
-    const before = new Map(s().nodes.map((n) => [n.id, n.position]))
+    const group = s().nodes.find((n) => n.data.kind === 'group')!
+    const noteBefore = s().nodes.find((n) => n.data.kind === 'note')!.position
 
     s().autoLayout()
 
-    for (const n of s().nodes) {
-      const moved = n.position !== before.get(n.id)
-      if (n.data.kind === 'note' || n.data.kind === 'group' || n.parentId) expect(moved).toBe(false)
+    const after = s()
+    expect(after.nodes.find((n) => n.data.kind === 'note')!.position).toEqual(noteBefore)
+    const members = after.nodes.filter((n) => n.parentId === group.id)
+    expect(members.map((n) => n.data.kind).sort()).toEqual(['agent', 'coordinator'])
+    // Inside the frame: below the label band, off the left edge, and not on top of each other.
+    for (const m of members) {
+      expect(m.position.x).toBeGreaterThanOrEqual(16)
+      expect(m.position.y).toBeGreaterThanOrEqual(36)
     }
-    expect(s().nodes.find((n) => n.data.kind === 'mcp')!.position).not.toEqual({ x: 3000, y: 3000 })
+    expect(members[0].position).not.toEqual(members[1].position)
+    // The frame wraps them, and is a block of the outer layout rather than a fixed point.
+    const frame = after.nodes.find((n) => n.id === group.id)!
+    for (const m of members) {
+      expect(m.position.x + 214).toBeLessThanOrEqual(frame.width!)
+      expect(m.position.y + 110).toBeLessThanOrEqual(frame.height!)
+    }
+    expect(after.nodes.find((n) => n.data.kind === 'mcp')!.position).not.toEqual({ x: 3000, y: 3000 })
   })
 })

@@ -61,6 +61,10 @@ const PASTE_OFFSET = 40
 const GROUP_W = 480
 const GROUP_H = 260
 
+/** What a tidied frame keeps around its members: the label band above, a margin elsewhere. */
+const FRAME_TOP = 36
+const FRAME_PAD = 16
+
 function sizeOf(n: AppNode): { w: number; h: number } {
   return {
     w: n.width ?? n.measured?.width ?? NODE_W,
@@ -647,19 +651,62 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   autoLayout: () => {
     const s = get()
     if (s.nodes.length < 2) return
-    // Annotations stay put, and so does whatever is framed. A frame is a grouping the author
-    // drew on purpose; a tidy-up that scattered its members across dagre's ranks would undo the
-    // one thing it was drawn for, and a note has no wires for dagre to rank it by anyway.
-    const placed = tidyLayout(
-      s.nodes.filter((n) => !isAnnotation(n.data.kind) && !n.parentId),
-      s.edges,
+    const byId = new Map(s.nodes.map((n) => [n.id, n]))
+    const placed = new Map<string, { x: number; y: number }>()
+    const resized = new Map<string, { w: number; h: number }>()
+
+    // Inside each frame first. A frame is a grouping the author drew on purpose, so its members
+    // are tidied against the frame's own origin — never scattered across the canvas — and the
+    // frame then grows or shrinks to fit what it holds, label band included.
+    for (const g of s.nodes) {
+      if (g.data.kind !== 'group') continue
+      const members = s.nodes.filter((n) => n.parentId === g.id && !isAnnotation(n.data.kind))
+      if (members.length === 0) continue
+      const inner = members.length > 1 ? tidyLayout(members, s.edges) : new Map([[members[0].id, { x: 0, y: 0 }]])
+      let minX = Infinity
+      let minY = Infinity
+      for (const m of members) {
+        const at = inner.get(m.id) ?? m.position
+        minX = Math.min(minX, at.x)
+        minY = Math.min(minY, at.y)
+      }
+      let w = 0
+      let h = 0
+      for (const m of members) {
+        const at = inner.get(m.id) ?? m.position
+        const p = { x: at.x - minX + FRAME_PAD, y: at.y - minY + FRAME_TOP }
+        placed.set(m.id, p)
+        const size = sizeOf(m)
+        w = Math.max(w, p.x + size.w)
+        h = Math.max(h, p.y + size.h)
+      }
+      resized.set(g.id, { w: w + FRAME_PAD, h: h + FRAME_PAD })
+    }
+
+    // Then the top level, frames included as the blocks they are: a wire into a member ranks
+    // its frame, so a frame lands downstream of what feeds anything inside it. Notes stay put —
+    // they have no wires for dagre to rank them by.
+    const topOf = (id: string) => byId.get(id)?.parentId ?? id
+    const outer = tidyLayout(
+      s.nodes
+        .filter((n) => !n.parentId && n.data.kind !== 'note')
+        .map((n) => {
+          const size = resized.get(n.id)
+          return size ? { ...n, measured: { width: size.w, height: size.h } } : n
+        }),
+      s.edges
+        .map((e) => ({ source: topOf(e.source), target: topOf(e.target) }))
+        .filter((e) => e.source !== e.target),
     )
-    if (placed.size === 0) return
+    for (const [id, at] of outer) placed.set(id, at)
+    if (placed.size === 0 && resized.size === 0) return
     s.checkpoint()
     set({
       nodes: s.nodes.map((n) => {
         const at = placed.get(n.id)
-        return at ? { ...n, position: at } : n
+        const size = resized.get(n.id)
+        if (!at && !size) return n
+        return { ...n, ...(at ? { position: at } : {}), ...(size ? { width: size.w, height: size.h } : {}) }
       }),
       layoutAnimating: true,
     })
