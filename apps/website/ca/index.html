@@ -346,7 +346,7 @@
   .trade h3 { font-size: clamp(20px, 2.2vw, 27px); line-height: 1.25; max-width: 34ch; }
 
   /* ---------------------------- install ---------------------------- */
-  .methods { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; margin-top: 40px; }
+  .methods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 40px; }
   .method { padding: 22px 24px; display: flex; flex-direction: column; }
   .method h3 { font-size: 16.5px; font-weight: 600; margin-top: 12px; }
   .method p { font-size: 14.5px; color: var(--muted); margin-top: 10px; line-height: 1.55; }
@@ -996,12 +996,7 @@
           <!-- Filled in by the script below; empty until then, rather than showing a version that
                would be wrong the moment one is released. -->
           <p class="note" id="release-line" style="margin-top:8px"></p>
-          <p class="note" style="margin-top:10px">O des d'un gestor de paquets — sense el mur de l'SmartScreen:
-          <code>scoop bucket add concentus https://github.com/Gergilcan/concentus &amp;&amp; scoop install concentus</code>
-          · <code>winget install concentus</code>
-          · <code>brew tap gergilcan/concentus &amp;&amp; brew install --cask concentus</code>
-          · <code>npx concentus</code></p>
-          <p class="note" style="margin-top:10px">La interfície parla anglès, castellà i català — segueix l'idioma del teu sistema a la primera arrencada.</p>
+
         </div>
       </div>
 
@@ -1056,6 +1051,7 @@ sudo apt install ./concentus_*_amd64.deb</code></pre>
           <p>Per executar flows amb la teva subscripció, inicia sessió a Claude Code un cop des d'un terminal. Concentus troba la CLI tot sol.</p>
           <pre><code>claude          # then /login</code></pre>
           <p class="note" style="margin-top:12px">Prefereixes l'API al núvol? Defineix <code>ANTHROPIC_API_KEY</code> en comptes d'això.</p>
+          <p class="note" style="margin-top:8px">La interfície parla anglès, castellà i català — segueix l'idioma del sistema en la primera arrencada.</p>
         </div>
 
         <div class="method panel" data-reveal>
@@ -1067,6 +1063,15 @@ pnpm desktop            # build + launch
 
 # or produce an installer:
 cd apps/desktop &amp;&amp; pnpm package</code></pre>
+        </div>
+        <div class="method panel" data-reveal>
+          <span class="eyebrow" style="color:var(--text)">Qualsevol sistema</span>
+          <h3>Gestors de paquets</h3>
+          <p>Sense l'avís de SmartScreen, i les actualitzacions arriben com les de la resta de les teves eines.</p>
+          <pre><code>scoop bucket add concentus https://github.com/Gergilcan/concentus &amp;&amp; scoop install concentus
+winget install concentus
+brew tap gergilcan/concentus &amp;&amp; brew install --cask concentus
+npx concentus</code></pre>
         </div>
       </div>
 
