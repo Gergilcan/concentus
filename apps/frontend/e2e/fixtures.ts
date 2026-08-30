@@ -1,5 +1,5 @@
 import { expect, test as base, type APIRequestContext, type Page } from '@playwright/test'
-import { startBackend, type Backend } from './backend'
+import { PORT_BASE, startBackend, type Backend } from './backend'
 
 /**
  * The shared test, carrying two things.
@@ -20,8 +20,7 @@ export const test = base.extend<{ page: Page }, { backend: Backend }>({
       // The base is overridable so two checkouts can run the suite on one machine at once — a
       // worktree beside the main clone, say. Both on 8800 would each find the other's backend
       // "up", politely shut it down, and fail every test after that with connection refused.
-      const portBase = Number(process.env.CONCENTUS_E2E_PORT_BASE) || 8800
-      const backend = await startBackend(portBase + workerInfo.parallelIndex)
+      const backend = await startBackend(PORT_BASE + workerInfo.parallelIndex)
       await use(backend)
       await backend.stop()
     },
