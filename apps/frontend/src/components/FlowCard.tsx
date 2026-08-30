@@ -32,6 +32,7 @@ export function FlowCard({
   setDoctorFor,
   setTagFilter,
   onDragStart,
+  onPublish,
   golden,
   onGoldenCheck,
   goldenChecking = false,
@@ -59,6 +60,8 @@ export function FlowCard({
   setTagFilter: (tag: string) => void
   /** When set, the card can be dragged (onto a dashboard folder). The handler fills the payload. */
   onDragStart?: (e: DragEvent) => void
+  /** Opens the Marketplace publish form for this flow. Absent simply hides the item. */
+  onPublish?: (flow: BackendFlow) => void
 }) {
   const { t } = useTranslation()
   // Copy-as-template feedback: a ✓ for a moment, then back. Clipboard writes are invisible,
@@ -266,6 +269,13 @@ export function FlowCard({
               hint: t('Credentials, accounts and private endpoints are stripped, so it is safe to share. See docs/templates.md to propose it for the gallery.'),
               onSelect: () => void copyTemplate(),
             },
+            flow.id &&
+              onPublish && {
+                label: t('Publish to Marketplace'),
+                icon: '⇪',
+                hint: t('Shares this flow as a template on the Marketplace. Credentials, accounts and private endpoints are stripped and named.'),
+                onSelect: () => onPublish(flow),
+              },
             {
               label: t('Duplicate'),
               icon: '⧉',

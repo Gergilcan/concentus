@@ -1736,3 +1736,111 @@ export interface RetentionReport {
   versions: number
   auditEvents: number
 }
+
+/* ---------------- marketplace ---------------- */
+
+/** What a marketplace item is: one of the things a flow is built from. */
+export type MarketplaceKind = 'mcp' | 'agent' | 'facade' | 'skill' | 'plugin' | 'api' | 'flow'
+
+/** Who an item is published to: one organization's members, or every organization. */
+export type MarketplaceScope = 'organization' | 'global'
+
+/** Organization items are born published; a global one waits for a curator. */
+export type MarketplaceItemStatus = 'published' | 'pending' | 'rejected'
+
+/**
+ * One item of the internal marketplace, as the list and detail routes return it.
+ *
+ * The three booleans at the end are the backend's answer to "what may THIS caller do with it",
+ * so the interface never has to reproduce the role ladder and the curator setting to decide
+ * which buttons to draw. `installed` is what this organization made of the item, when it did.
+ */
+export interface MarketplaceItem {
+  id: string
+  kind: MarketplaceKind
+  name: string
+  summary: string
+  description: string | null
+  tags: string[]
+  /** Bumped by the author on re-publish; an install remembers which one it took. */
+  version: number
+  scope: MarketplaceScope
+  /** The publishing organization; a global item keeps it as "from". */
+  organizationId: string
+  status: MarketplaceItemStatus
+  /** The curator's sentence, when status is rejected. */
+  rejection: string | null
+  author: { userId: string; email: string }
+  /** The definition of the thing, shaped by `kind` — credentials never travel in it. */
+  payload: Record<string, unknown>
+  icon: string | null
+  /** Deployment-wide. */
+  installs: number
+  /** Seeded by the app; cannot be edited or deleted, only re-seeded. */
+  builtIn: boolean
+  createdAt: number
+  updatedAt: number
+  publishedAt: number | null
+  approvedBy: string | null
+  /** What the caller's organization installed, and which resource it became. */
+  installed: { resourceId: string; version: number; installedAt: number } | null
+  mine: boolean
+  canEdit: boolean
+  canCurate: boolean
+}
+
+/** The list route's answer: the items the caller may see, plus what the toolbar needs. */
+export interface MarketplaceList {
+  items: MarketplaceItem[]
+  tags: string[]
+  curator: boolean
+  /** Global submissions waiting for a curator — meaningful when `curator` is true. */
+  pending: number
+}
+
+export interface MarketplaceStatus {
+  curator: boolean
+  pending: number
+  /** How many organizations the deployment has: past one, global scope is a choice. */
+  organizations: number
+  tags: string[]
+}
+
+export interface MarketplaceInstallResult {
+  resourceId: string
+  kind: MarketplaceKind
+  version: number
+}
+
+/** What a publish (or an edit) sends: the item without what the server decides. */
+export interface MarketplacePublishBody {
+  kind: MarketplaceKind
+  name: string
+  summary: string
+  description?: string
+  tags?: string[]
+  icon?: string
+  scope: MarketplaceScope
+  payload: Record<string, unknown>
+}
+
+/** Publishing an existing resource: the backend reads the payload from the resource itself. */
+export interface MarketplacePublishFromBody {
+  kind: MarketplaceKind
+  resourceId: string
+  scope: MarketplaceScope
+  name?: string
+  summary?: string
+  description?: string
+  tags?: string[]
+  icon?: string
+}
+
+export interface MarketplaceListFilters {
+  q?: string
+  kind?: MarketplaceKind
+  scope?: MarketplaceScope
+  tag?: string
+  status?: MarketplaceItemStatus
+  sort?: 'installs' | 'newest' | 'name'
+}

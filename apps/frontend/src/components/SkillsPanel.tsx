@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
-import type { SkillCatalogSkill, SkillInfo, SkillRepo } from '../api/types.ts'
+import type { MarketplaceItem, SkillCatalogSkill, SkillInfo, SkillRepo } from '../api/types.ts'
 import { errMessage } from '../utils/errMessage.ts'
 import { cx } from '../utils/cx.ts'
 import { Pager } from './fields.tsx'
+import { MarketplaceOrigin } from './MarketplaceOrigin.tsx'
 import panels from './panels.module.scss'
 import styles from './resources.module.scss'
 
@@ -18,7 +19,15 @@ const PAGE_SIZE = 20
  * this panel only has to store them and put them into each run's workspace. That inheritance is
  * the moat: a competitor without the CLI underneath has to build the whole mechanism.
  */
-export function SkillsPanel() {
+export function SkillsPanel({
+  onPublish,
+  originOf,
+}: {
+  /** Opens the Marketplace publish form for a skill. Absent simply hides the button. */
+  onPublish?: (skill: SkillInfo) => void
+  /** The Marketplace item a skill was installed from, when it was. */
+  originOf?: (id: string) => MarketplaceItem | undefined
+} = {}) {
   const { t } = useTranslation()
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [note, setNote] = useState<string | null>(null)
@@ -74,6 +83,7 @@ export function SkillsPanel() {
           <div key={s.id} className={styles.kbDoc}>
             <span className={styles.kbDocName} title={s.description}>{s.name}</span>
             <span className={styles.muted}>{t('{{count}} file(s)', { count: s.fileCount })}</span>
+            <MarketplaceOrigin inline item={originOf?.(s.id)} onPublish={onPublish ? () => onPublish(s) : undefined} />
             <button
               className={styles.delBtn}
               onClick={() => void api.deleteSkill(s.id).then(refresh)}

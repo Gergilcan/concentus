@@ -11,6 +11,9 @@ import { KnowledgePanel } from './KnowledgePanel.tsx'
 import { McpCatalog, type CatalogSetup } from './McpCatalog.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
 import { McpServerJson } from './McpServerJson.tsx'
+import { MarketplaceOrigin } from './MarketplaceOrigin.tsx'
+import { MarketplacePublishDialog, type PublishPrefill } from './MarketplacePublishDialog.tsx'
+import { useMarketplaceInstalls } from './marketplace.ts'
 import { MembersPanel } from './MembersPanel.tsx'
 import { OrganizationsPanel } from './OrganizationsPanel.tsx'
 import { ModelField } from './ModelField.tsx'
@@ -140,10 +143,31 @@ function LinesTextarea({
   )
 }
 
-export function ResourcesPage({ pushError }: { pushError: (m: string) => void }) {
+export function ResourcesPage({
+  pushError,
+  initialTab,
+}: {
+  pushError: (m: string) => void
+  /** The tab to open on: the Marketplace links an install to the tab holding what it created. */
+  initialTab?: Tab
+}) {
   const { t } = useTranslation()
   const { canAdminister } = usePermissions()
-  const [tab, setTab] = useState<Tab>('agents')
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'agents')
+  // Which records came from the Marketplace, by resource id: one read when the page mounts.
+  const installs = useMarketplaceInstalls()
+  // A resource being published to the Marketplace, from the Publish button under its form.
+  const [publishFrom, setPublishFrom] = useState<PublishPrefill | null>(null)
+  const published = (_item: unknown, stripped: string[]) => {
+    setPublishFrom(null)
+    if (stripped.length > 0) {
+      pushError(
+        t('Published without its credentials ({{names}}). Whoever installs it fills them in on their side.', {
+          names: stripped.join(', '),
+        }),
+      )
+    }
+  }
   // Remounts the MCP CrudPanel after a catalog add, so the new definition appears in its list —
   // the panel loads on mount and has no other way to be told.
   const [mcpListVersion, setMcpListVersion] = useState(0)
@@ -212,6 +236,16 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
             load={api.listAgents}
             save={api.saveAgent}
             remove={api.deleteAgent}
+            extra={(a) => {
+              const id = a.id
+              if (!id) return null
+              return (
+                <MarketplaceOrigin
+                  item={installs.get(id)}
+                  onPublish={() => setPublishFrom({ kind: 'agent', resourceId: id, name: a.name, summary: a.description })}
+                />
+              )
+            }}
           />
         )}
 
@@ -268,6 +302,12 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
                   credentialId={m.credentialId}
                   authHeader={m.authHeader}
                 />
+                {m.id && (
+                  <MarketplaceOrigin
+                    item={installs.get(m.id)}
+                    onPublish={() => m.id && setPublishFrom({ kind: 'mcp', resourceId: m.id, name: m.name })}
+                  />
+                )}
               </>
             )}
           />
@@ -383,6 +423,16 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
             load={api.listFacadeProfiles}
             save={api.saveFacadeProfile}
             remove={api.deleteFacadeProfile}
+            extra={(p) => {
+              const id = p.id
+              if (!id) return null
+              return (
+                <MarketplaceOrigin
+                  item={installs.get(id)}
+                  onPublish={() => setPublishFrom({ kind: 'facade', resourceId: id, name: p.name, summary: p.description })}
+                />
+              )
+            }}
           />
         )}
 
@@ -404,7 +454,12 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
           />
         )}
         {tab === 'knowledge' && <KnowledgePanel />}
-        {tab === 'skills' && <SkillsPanel />}
+        {tab === 'skills' && (
+          <SkillsPanel
+            originOf={(id) => installs.get(id)}
+            onPublish={(s) => setPublishFrom({ kind: 'skill', resourceId: s.id, name: s.name, summary: s.description })}
+          />
+        )}
 
         {tab === 'credentials' && <CredentialsPanel pushError={pushError} />}
 
@@ -413,6 +468,15 @@ export function ResourcesPage({ pushError }: { pushError: (m: string) => void })
         {tab === 'storage' && <StoragePanel pushError={pushError} />}
         {tab === 'updates' && <UpdatesPanel />}
       </div>
+
+      {publishFrom && (
+        <MarketplacePublishDialog
+          prefill={publishFrom}
+          onClose={() => setPublishFrom(null)}
+          onPublished={published}
+          pushError={pushError}
+        />
+      )}
     </div>
   )
 }

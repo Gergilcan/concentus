@@ -21,6 +21,7 @@ import {
   visibleFlows,
 } from './flowsDashboard.ts'
 import { FlowsToolbar } from './FlowsToolbar.tsx'
+import { MarketplacePublishDialog } from './MarketplacePublishDialog.tsx'
 import { RecipesModal } from './RecipesModal.tsx'
 import { RecentRunsList } from './RecentRunsList.tsx'
 import styles from './flows.module.scss'
@@ -97,6 +98,8 @@ export function FlowsPage({
   const [describing, setDescribing] = useState(false)
   const [doctorFor, setDoctorFor] = useState<BackendFlow | null>(null)
   const [pickingRecipe, setPickingRecipe] = useState(false)
+  // The flow being published to the Marketplace, from its card's menu.
+  const [publishFor, setPublishFor] = useState<BackendFlow | null>(null)
   // Which flows have a golden reference and whether they drifted from it. Derived server-side, so
   // this is a read: re-fetched whenever the flow list changes, which is what a save produces.
   const [goldenStatuses, setGoldenStatuses] = useState<GoldenStatus[]>([])
@@ -312,6 +315,7 @@ export function FlowsPage({
       golden={flow.id ? goldenByFlow.get(flow.id) : undefined}
       onGoldenCheck={startGoldenCheck}
       goldenChecking={!!checking && checking.flowId === flow.id}
+      onPublish={setPublishFor}
     />
   )
 
@@ -533,6 +537,24 @@ export function FlowsPage({
           referenceId={comparing.referenceId}
           candidateId={comparing.candidateId}
           onClose={() => setComparing(null)}
+        />
+      )}
+
+      {publishFor?.id && (
+        <MarketplacePublishDialog
+          prefill={{ kind: 'flow', resourceId: publishFor.id, name: publishFor.name }}
+          onClose={() => setPublishFor(null)}
+          onPublished={(_item, stripped) => {
+            setPublishFor(null)
+            if (stripped.length > 0) {
+              pushError(
+                t('Published without its credentials ({{names}}). Whoever installs it fills them in on their side.', {
+                  names: stripped.join(', '),
+                }),
+              )
+            }
+          }}
+          pushError={pushError}
         />
       )}
 

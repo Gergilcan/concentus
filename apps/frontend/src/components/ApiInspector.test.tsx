@@ -1,13 +1,18 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ApiNodeData, ApiOperationView } from '../api/types.ts'
+import { mktItem } from '../test/marketplace.ts'
 import { ApiInspector } from './ApiInspector.tsx'
 
 const previewMock = vi.fn()
+const listMarketplaceMock = vi.fn()
+const installMarketplaceMock = vi.fn()
 
 vi.mock('../api/client.ts', () => ({
   api: {
     previewApiSpec: (...args: unknown[]) => previewMock(...args),
+    listMarketplaceItems: (...args: unknown[]) => listMarketplaceMock(...args),
+    installMarketplaceItem: (id: string) => installMarketplaceMock(id),
   },
 }))
 
@@ -130,5 +135,40 @@ describe('ApiInspector', () => {
   it('counts the operations already allowed while the spec is not loaded, so they are not invisible', () => {
     render(<ApiInspector data={{ ...base, ops: ['GET /pets', 'POST /pets'] }} set={vi.fn()} />)
     expect(screen.getByText('2 operation(s) currently allowed. Load the spec to review them.')).toBeInTheDocument()
+  })
+
+  it('"Use from Marketplace…" fills the node from a published API item and counts the install', async () => {
+    listMarketplaceMock.mockResolvedValue({
+      items: [
+        mktItem({
+          id: 'mkt_pet',
+          kind: 'api',
+          name: 'Petstore',
+          summary: 'Pets by REST',
+          payload: { name: 'Petstore', baseUrl: 'https://api.pet.com', specUrl: 'https://api.pet.com/openapi.json', description: 'Pets' },
+        }),
+      ],
+      tags: [],
+      curator: false,
+      pending: 0,
+    })
+    installMarketplaceMock.mockResolvedValue({ resourceId: '', kind: 'api', version: 1 })
+    const set = vi.fn()
+    render(<ApiInspector data={base} set={set} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use from Marketplace…' }))
+    expect(listMarketplaceMock).toHaveBeenCalledWith({ kind: 'api' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Use' }))
+
+    expect(set).toHaveBeenCalledWith({
+      mode: 'spec',
+      label: 'Petstore',
+      baseUrl: 'https://api.pet.com',
+      url: 'https://api.pet.com',
+      specUrl: 'https://api.pet.com/openapi.json',
+      description: 'Pets',
+    })
+    expect(installMarketplaceMock).toHaveBeenCalledWith('mkt_pet')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })

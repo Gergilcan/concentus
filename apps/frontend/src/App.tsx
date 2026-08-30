@@ -14,6 +14,8 @@ import { blockCommands, type Command } from './components/commandPalette.ts'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { timeAgo } from './components/flowFormat.ts'
 import { FlowsPage } from './components/FlowsPage.tsx'
+import { MarketplacePage } from './components/MarketplacePage.tsx'
+import type { ResourceTab } from './components/marketplace.ts'
 import { NodeDetailsDialog } from './components/NodeDetailsDialog.tsx'
 import { Palette } from './components/Palette.tsx'
 import { ResourcesPage } from './components/ResourcesPage.tsx'
@@ -215,6 +217,9 @@ function Workspace({ signedInAs, organizationName, onSignOut }: WorkspaceProps) 
   const { t } = useTranslation()
   const [view, setView] = useState<View>('flows')
   const [commandsOpen, setCommandsOpen] = useState(false)
+  // Where Resources opens next: an install on the Marketplace links to the tab holding what it
+  // created, and the page reads this once, when it mounts.
+  const [resourcesTab, setResourcesTab] = useState<ResourceTab | null>(null)
   // The executions panel sits under the flow being edited, so it shows that flow's runs only.
   const openFlowId = useFlowStore((s) => s.flowId)
   const requestFocus = useFlowStore((s) => s.requestFocus)
@@ -354,8 +359,19 @@ function Workspace({ signedInAs, organizationName, onSignOut }: WorkspaceProps) 
         )
       case 'usage':
         return <UsagePage />
+      case 'marketplace':
+        return (
+          <MarketplacePage
+            pushError={setToast}
+            onOpenResources={(tab) => {
+              setResourcesTab(tab)
+              setView('resources')
+            }}
+            onOpenFlow={(id) => void openFlow(id)}
+          />
+        )
       case 'resources':
-        return <ResourcesPage pushError={setToast} />
+        return <ResourcesPage pushError={setToast} initialTab={resourcesTab ?? undefined} />
       case 'studio':
         return (
           <>
