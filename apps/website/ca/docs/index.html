@@ -1203,6 +1203,22 @@ semantic (cosine,      top 50) ─┘</code></pre>
         permís es compleix de debò. Dos comptes <em>actius</em> alhora necessiten dues finestres,
         perquè una sessió és una cookie.
       </p>
+      <h3>Grups</h3>
+      <p>
+        Una organització es pot dividir en grups — l'equip de plataforma, el de suport, el d'un
+        client — a <strong>Recursos → Grups</strong>. Dues coses segueixen el grup: un recurs (un
+        flow, un servidor MCP, un agent, una façana, una base de coneixement, una credencial, …)
+        pot ser <em>visible per a un sol grup</em> en comptes de per a tota l'organització, triat
+        amb <em>Visible per a</em> al recurs o a la targeta del flow, i el veuen només els membres
+        del grup i els administradors; i un grup té la seva pròpia política i les seves pròpies
+        sobreescriptures dels ajustos que s'apliquen per execució, en capa sobre els de
+        l'organització per als flows que conté. Els administradors creen grups; els
+        <em>gestors</em> d'un grup hi afegeixen i en treuen membres i n'editen els ajustos. Esborrar
+        un grup retorna els seus recursos a l'organització. El Marketplace pot publicar en un grup
+        i instal·lar-hi. Enterprise; amb una llicència Team la pantalla explica per què i el que un
+        grup ja acota continua acotat.
+      </p>
+
       <h3>Comptes de servei</h3>
       <p>
         Tokens per a màquines — un job de CI, una entrada de cron, un altre sistema — a
@@ -1452,7 +1468,7 @@ echo $?                                                # 0 completed · 1 failed
         <strong>Enterprise</strong> és escala i governança — qualsevol nombre de seients, factura
         en comptes de targeta, o un contracte: escriu a
         <a href="mailto:gila791@hotmail.com?subject=Concentus%20enterprise">gila791@hotmail.com</a>.
-        Nou coses són només Enterprise, i cadascuna es diu igual al lloc web, al panell de
+        Deu coses són només Enterprise, i cadascuna es diu igual al lloc web, al panell de
         llicència i a la frase que veus quan una llicència Team no la cobreix:
       </p>
       <ul>
@@ -1465,6 +1481,7 @@ echo $?                                                # 0 completed · 1 failed
         <li><strong>Diverses organitzacions</strong> en un desplegament.</li>
         <li><strong>Comptes de servei il·limitats</strong> — Team en té dos.</li>
         <li><strong>Endpoints publicats sense límit de peticions</strong> — Team: 60 peticions per minut i token.</li>
+        <li><strong>Grups dins d'una organització</strong> — recursos visibles per a un sol grup, i ajustos i política propis del grup.</li>
       </ul>
       <p>
         Enterprise és també el nivell per a un desplegament darrere d’un proxy o sense internet:

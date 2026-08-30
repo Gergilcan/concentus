@@ -1030,6 +1030,29 @@ somebody into organization B takes an administrator *of B*. Whoever creates an o
 administers it, so there is somebody to invite the rest. Nothing an organization already has is
 gated — a second team does not lose its flows the day a renewal is late.
 
+### Groups (Enterprise)
+
+An organization can be split into groups under **Resources → Groups**. A resource — a flow, an
+MCP server, an agent, a facade, a knowledge base, a credential, … — can be made *visible to one
+group* instead of the whole organization (*Visible to* on the resource, or on the flow card);
+its members and the administrators see it, nobody else does. A group carries its own policy
+(default facade, permission ceiling, monthly budget, publish approval) and its own overrides of
+the settings that apply per run, layered over the organization's for the flows it holds.
+Administrators create groups; a group's *managers* add and remove members and edit its
+settings and policy; deleting a group returns its resources to the organization. The
+Marketplace publishes to a group and installs into one. Every change is audited. On a Team
+license the screen shows the refusal and nothing can change; what a group already scopes stays
+scoped.
+
+```
+GET/POST        /api/groups                       list · create (admin)
+PUT/DELETE      /api/groups/{id}
+GET/POST/DELETE /api/groups/{id}/members[/{userId}]
+GET/PUT         /api/groups/{id}/settings | /policy
+POST            /api/groups/assign                {kind, resourceId, groupId|null}
+GET             /api/groups/status
+```
+
 ### Isolation
 
 **Every table is partitioned by `organization_id`**, and the id always comes from the authenticated
@@ -1134,6 +1157,7 @@ panel and the site print its labels:
 | Several organizations on one deployment | — | ✓ |
 | Unlimited service accounts | 2 | ✓ |
 | Published endpoints without a rate limit | 60/min per token | ✓ |
+| Groups inside an organization | — | ✓ |
 
 On a Team license a withheld feature says so where it lives — the providers panel marks a custom
 issuer "Enterprise — inactive", an unknown address arriving through a directory is told to ask an

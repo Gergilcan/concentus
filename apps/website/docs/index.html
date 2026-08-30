@@ -1184,6 +1184,21 @@ semantic (cosine,      top 50) ─┘</code></pre>
         role shown beside it — which is also the practical way to check that a permission actually
         holds. Two accounts <em>active</em> at once needs two windows, because a session is a cookie.
       </p>
+      <h3>Groups</h3>
+      <p>
+        An organization can be split into groups — a platform team, a support crew, a client's
+        squad — under <strong>Resources → Groups</strong>. Two things follow the group: a resource
+        (a flow, an MCP server, an agent, a facade, a knowledge base, a credential, …) can be
+        <em>visible to one group</em> instead of the whole organization, chosen with <em>Visible
+        to</em> on the resource or the flow card, and seen by the group's members and the
+        administrators only; and a group carries its own policy and its own overrides of the
+        settings that apply per run, layered over the organization's for the flows it holds.
+        Administrators create groups; a group's <em>managers</em> add and remove its members and
+        edit its settings. Deleting a group returns its resources to the organization. The
+        Marketplace can publish to a group and install into one. Enterprise; on a Team license
+        the screen shows why and what a group already scopes stays scoped.
+      </p>
+
       <h3>Service accounts</h3>
       <p>
         Tokens for machines — a CI job, a cron entry, another system — under
@@ -1429,7 +1444,7 @@ echo $?                                                # 0 completed · 1 failed
         <strong>Enterprise</strong> is scale and governance — any number of seats, an invoice
         instead of a card, or a contract: write to
         <a href="mailto:gila791@hotmail.com?subject=Concentus%20enterprise">gila791@hotmail.com</a>.
-        Nine things are Enterprise-only, and each is named the same way on the site, in the
+        Ten things are Enterprise-only, and each is named the same way on the site, in the
         License panel and in the sentence you see when a Team license does not cover it:
       </p>
       <ul>
@@ -1442,6 +1457,7 @@ echo $?                                                # 0 completed · 1 failed
         <li><strong>Several organizations</strong> on one deployment.</li>
         <li><strong>Unlimited service accounts</strong> — Team gets two.</li>
         <li><strong>Published endpoints without a rate limit</strong> — Team: 60 requests a minute per token.</li>
+        <li><strong>Groups inside an organization</strong> — resources visible to one group, and a group's own settings and policy.</li>
       </ul>
       <p>
         Enterprise is also the tier for a deployment behind a proxy or without internet: the

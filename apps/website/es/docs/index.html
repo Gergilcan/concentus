@@ -1212,6 +1212,22 @@ semantic (cosine,      top 50) ─┘</code></pre>
         permiso se cumple de verdad. Dos cuentas <em>activas</em> a la vez necesitan dos ventanas,
         porque una sesión es una cookie.
       </p>
+      <h3>Grupos</h3>
+      <p>
+        Una organización puede dividirse en grupos — el equipo de plataforma, el de soporte, el
+        de un cliente — en <strong>Recursos → Grupos</strong>. Dos cosas siguen al grupo: un
+        recurso (un flow, un servidor MCP, un agente, una fachada, una base de conocimiento, una
+        credencial, …) puede ser <em>visible para un solo grupo</em> en vez de para toda la
+        organización, elegido con <em>Visible para</em> en el recurso o en la tarjeta del flow, y
+        lo ven solo los miembros del grupo y los administradores; y un grupo tiene su propia
+        política y sus propias sobrescrituras de los ajustes que aplican por ejecución, en capa
+        sobre los de la organización para los flows que contiene. Los administradores crean
+        grupos; los <em>gestores</em> de un grupo añaden y quitan miembros y editan sus ajustes.
+        Borrar un grupo devuelve sus recursos a la organización. El Marketplace puede publicar
+        en un grupo e instalar en uno. Enterprise; con una licencia Team la pantalla explica por
+        qué y lo que un grupo ya acota sigue acotado.
+      </p>
+
       <h3>Cuentas de servicio</h3>
       <p>
         Tokens para máquinas — un job de CI, una entrada de cron, otro sistema — en
@@ -1463,7 +1479,7 @@ echo $?                                                # 0 completed · 1 failed
         <strong>Enterprise</strong> es escala y gobernanza — cualquier número de asientos, factura
         en vez de tarjeta, o un contrato: escribe a
         <a href="mailto:gila791@hotmail.com?subject=Concentus%20enterprise">gila791@hotmail.com</a>.
-        Nueve cosas son solo Enterprise, y cada una se llama igual en el sitio, en el panel de
+        Diez cosas son solo Enterprise, y cada una se llama igual en el sitio, en el panel de
         licencia y en la frase que ves cuando una licencia Team no la cubre:
       </p>
       <ul>
@@ -1476,6 +1492,7 @@ echo $?                                                # 0 completed · 1 failed
         <li><strong>Varias organizaciones</strong> en un despliegue.</li>
         <li><strong>Cuentas de servicio ilimitadas</strong> — Team tiene dos.</li>
         <li><strong>Endpoints publicados sin límite de peticiones</strong> — Team: 60 peticiones por minuto y token.</li>
+        <li><strong>Grupos dentro de una organización</strong> — recursos visibles para un solo grupo, y ajustes y política propios del grupo.</li>
       </ul>
       <p>
         Enterprise es también el nivel para un despliegue detrás de un proxy o sin internet: la
