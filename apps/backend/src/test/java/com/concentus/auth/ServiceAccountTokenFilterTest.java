@@ -6,7 +6,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -114,6 +113,21 @@ class ServiceAccountTokenFilterTest {
 
         assertThat(((ConcentusUserDetails) out.seen().getPrincipal()).role()).isEqualTo(Accounts.ROLE_MEMBER);
         assertThat(out.seen().getAuthorities()).extracting(Object::toString).containsExactly("ROLE_MEMBER");
+    }
+
+    // Anything downstream that creates a session during a token request (a CSRF store, say)
+    // would hand the machine a cookie that outlives the token; the filter drops such a session.
+    @Test
+    void a_token_request_leaves_no_session_behind() throws Exception {
+        when(store.findByTokenHash(anyString())).thenReturn(Optional.of(account("OPERATOR", null)));
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/flows");
+        request.addHeader("Authorization", "Bearer " + TOKEN);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = (req, res) -> ((jakarta.servlet.http.HttpServletRequest) req).getSession(true);
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(request.getSession(false)).isNull();
     }
 
     @Test
