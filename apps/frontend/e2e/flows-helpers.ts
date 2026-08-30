@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test'
-import { cardAction, flowCard } from './fixtures'
+import { flowCard } from './fixtures'
 
 /**
  * The gestures the 15-flows-* specs share: a flow born in the Studio, a block's dialog opened
@@ -142,8 +142,20 @@ export async function apiWrite(
 }
 
 /** Deletes a flow from its card. The caller has already armed `page.on('dialog')` to confirm. */
+/**
+ * Cleanup through the API rather than the card menu: under load the dashboard re-renders while
+ * the menu is open and Playwright waits forever for a 'stable' menu item. The menu itself is
+ * exercised by 02-flows-page; what a lifecycle test needs here is the flow gone, reliably.
+ */
 export async function deleteFlow(page: Page, name: string): Promise<void> {
-  await cardAction(page, name, 'Delete')
+  const flows = (await page.request.get('/api/flows').then((r) => r.json())) as { id: string; name: string }[]
+  const cookies = await page.context().cookies()
+  const xsrf = cookies.find((c) => c.name === 'XSRF-TOKEN')?.value ?? ''
+  for (const flow of flows.filter((f) => f.name === name)) {
+    const res = await page.request.delete(`/api/flows/${flow.id}`, { headers: { 'X-XSRF-TOKEN': xsrf } })
+    expect(res.ok(), `delete ${name}: ${res.status()}`).toBe(true)
+  }
+  await page.reload()
   await expect(flowCard(page, name)).toHaveCount(0)
 }
 
