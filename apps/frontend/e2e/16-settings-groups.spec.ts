@@ -1,4 +1,4 @@
-import { expect, goTo, test } from './fixtures'
+import { cardAction, expect, flowCard, goTo, test } from './fixtures'
 import {
   addMember,
   apiCall,
@@ -11,13 +11,17 @@ import {
 } from './16-settings.helpers'
 
 /**
- * A group's Settings and Policy sub-tabs, beyond what 13-groups.spec.ts covers (visibility):
- * every group-scoped key inherits until overridden, an override persists without touching the
- * organization's value, a policy rule has an inherit switch — and a manager who is not an admin
- * edits the group but cannot make one.
+ * What a group is: every group-scoped key inherits until overridden, an override persists without
+ * touching the organization's value, a policy rule has an inherit switch, a flow scoped to the
+ * group is seen by its members and by nobody else — and a manager who is not an admin edits the
+ * group but cannot make one.
+ *
+ * One backend and one group for all of it, on purpose: each of these questions costs a JVM and an
+ * initdb to ask on its own, and they are all about the same group.
  */
 
 const MANAGER = 'manager-e2e@e2e.test'
+const OUTSIDE = 'outside-e2e@e2e.test'
 const GROUP = 'E2E squad'
 
 interface GroupSettings {
@@ -26,8 +30,10 @@ interface GroupSettings {
   inherited: Record<string, string>
 }
 
-test("a group's settings inherit until overridden, its policy has inherit switches, and a manager edits but cannot create", async ({ browser }, testInfo) => {
-  test.setTimeout(240_000)
+test("a group's settings inherit until overridden, its policy has inherit switches, its flow is seen by its members alone, and a manager edits but cannot create", async ({ browser }, testInfo) => {
+  // The suite's longest: one backend boot, three signed-in contexts, and every question a group
+  // answers. Cheaper than the extra JVM a second spec would cost to ask any of them apart.
+  test.setTimeout(300_000)
   await onLicensed(browser, 'enterprise', ENTERPRISE_PORT + testInfo.parallelIndex, async (s) => {
     const { page } = s
     await openTab(page, 'Members')
@@ -102,6 +108,21 @@ test("a group's settings inherit until overridden, its policy has inherit switch
     // Inherited again: the rule is left out of the answer (non_null), which is what null looks like over the wire.
     expect((await apiJson<{ maxPermissionMode?: string | null }>(page, `/api/groups/${groupId}/policy`)).maxPermissionMode ?? null).toBeNull()
 
+    // Visibility: one of the seeded flows becomes the group's, which the card says with its chip.
+    await goTo(page, 'Flows')
+    const flowName = (await page.getByRole('article').first().getByRole('heading').first().textContent())?.trim() ?? ''
+    expect(flowName, 'a seeded flow to scope').not.toBe('')
+    await cardAction(page, flowName, 'Visible to…')
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('combobox', { name: 'Visible to' }).selectOption({ label: GROUP })
+    // The chip first: it only appears once the assignment came back, and closing before that puts
+    // the dialog straight back on screen — FlowsPage's onAssigned sets the dialog's flow again,
+    // after onClose has cleared it — over everything clicked next. Then its own button, not
+    // Escape: the select keeps the focus after selectOption.
+    await expect(flowCard(page, flowName).getByTestId('group-chip')).toBeVisible()
+    await dialog.getByRole('button', { name: 'Close' }).last().click()
+    await expect(dialog).toHaveCount(0)
+
     // The manager: sees the tab, edits the group, cannot make or delete one.
     const manager = await signInAs(s, MANAGER)
     try {
@@ -128,8 +149,23 @@ test("a group's settings inherit until overridden, its policy has inherit switch
       expect(((await create.json()) as { error: string }).error).toContain('This action requires an organization administrator.')
       expect((await apiCall(manager, 'DELETE', `/api/groups/${groupId}`)).status()).toBe(403)
       await expect(manager.getByRole('button', { name: 'Organizations', exact: true })).toHaveCount(0)
+      // In the group, so the group's flow is on their dashboard like any other.
+      await goTo(manager, 'Flows')
+      await expect(manager.getByRole('heading', { name: flowName, exact: true })).toBeVisible()
     } finally {
       await manager.context().close()
+    }
+
+    // In the organization, outside the group: the same dashboard, without that flow. Waiting for
+    // the other cards first — an empty page also has none of it.
+    await openTab(page, 'Members')
+    await addMember(page, OUTSIDE)
+    const outsider = await signInAs(s, OUTSIDE)
+    try {
+      await expect(outsider.getByText('No flows yet').or(outsider.getByRole('article')).first()).toBeVisible()
+      await expect(outsider.getByRole('heading', { name: flowName, exact: true })).toHaveCount(0)
+    } finally {
+      await outsider.context().close()
     }
   })
 })

@@ -12,7 +12,7 @@ import { openApp, goTo } from './fixtures'
  * The per-worker backend (fixtures.ts) is unlicensed by construction, and most administration
  * panels only DO something under a license. The license spec explains why the shared backend
  * cannot become licensed (11-license.spec.ts); these specs start one the same way, on the 8960+
- * range for Enterprise and 8970+ for Team so nothing collides with 11 (8900+) and 13 (8950+).
+ * range for Enterprise and 8970+ for Team so nothing collides with 11 (8900+).
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url))
