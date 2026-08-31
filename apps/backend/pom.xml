@@ -329,6 +329,29 @@
                 </configuration>
             </plugin>
             <!--
+                Tests run from target/, not from the module root, so they never read the developer's
+                repo-root .env.
+
+                application.properties imports `optional:file:../../.env[.properties]` on purpose —
+                it is what makes `mvn spring-boot:run` pick up a local database and credentials. In
+                a test that same line is a trap: a machine with a .env ran the whole suite against
+                that person's real Neon URL and their real API key, while CI (which has no .env)
+                ran against the embedded database. Four @SpringBootTest classes failed here and
+                nowhere else, with a licensing message that named no cause.
+
+                Anchoring the working directory one level deeper resolves both relative imports to
+                files that do not exist, so a test sees the same configuration on every machine.
+                It also keeps ./data — the default app.data-dir for a test that does not override
+                it — inside target/ instead of leaving run folders in the source tree.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <workingDirectory>${project.build.directory}</workingDirectory>
+                </configuration>
+            </plugin>
+            <!--
                 onnxruntime loads its native library with System.load, which Java 24+ flags with a
                 startup WARNING unless native access is granted. The manifest entry grants it for
                 `java -jar`; the desktop shell passes the equivalent CLI flag because the manifest
