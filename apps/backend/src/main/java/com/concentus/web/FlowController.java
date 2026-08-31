@@ -212,6 +212,19 @@ public class FlowController {
         return flowDoctor.check(requireFlow(id));
     }
 
+    /**
+     * The same check on a flow that was never saved — the file in a repository, from CI.
+     *
+     * <p>A build that wants to know whether a flow still holds should not have to create one,
+     * check it and delete it again: that leaves a version row, a schedule and, when the job is
+     * killed halfway, a flow nobody meant to keep. The doctor reads the graph and the deployment
+     * around it, so a body is all it ever needed.
+     */
+    @PostMapping("/doctor")
+    public List<DoctorFinding> doctor(@RequestBody FlowGraph flow) {
+        return flowDoctor.check(flow);
+    }
+
     /** Revision history for a flow (newest first). */
     @GetMapping("/{id}/versions")
     public List<FlowVersionInfo> versions(@PathVariable String id) {

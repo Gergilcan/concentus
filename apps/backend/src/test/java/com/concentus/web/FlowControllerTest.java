@@ -45,13 +45,27 @@ class FlowControllerTest {
     private final com.concentus.service.GoldenStatusService goldenStatus =
             mock(com.concentus.service.GoldenStatusService.class);
     private final AuditService audit = mock(AuditService.class);
+    private final com.concentus.service.FlowDoctor doctor =
+            mock(com.concentus.service.FlowDoctor.class);
 
     private FlowController controller() {
         return new FlowController(store, runService, scheduler, mailTriggers, versions, memory,
                 new OrgContext("default"),
-                mock(com.concentus.service.FlowGenerator.class), goldenStatus,
-                mock(com.concentus.service.FlowDoctor.class),
+                mock(com.concentus.service.FlowGenerator.class), goldenStatus, doctor,
                 mock(com.concentus.service.FolderWatchService.class), audit);
+    }
+
+    // The CI shape: a flow file that was never saved is checked and nothing is created for it.
+    @Test
+    void doctoringAnUnsavedFlowChecksItWithoutStoringAnything() {
+        FlowGraph unsaved = flow("f9", "from-the-repository");
+        when(doctor.check(unsaved)).thenReturn(List.of(
+                com.concentus.model.DoctorFinding.error("mcp", "Server unreachable", "Fix it", "n1")));
+
+        assertThat(controller().doctor(unsaved)).hasSize(1);
+
+        verify(store, never()).save(any());
+        verify(versions, never()).snapshot(any(), any());
     }
 
     // A wrong name on a revision is worse than no name: it is the field people read to work out

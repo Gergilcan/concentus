@@ -82,6 +82,26 @@ test('runs a flow against a live backend and exits with what really happened', a
   }
 })
 
+test('--doctor checks a flow file and says so in its exit code, running nothing', async ({ baseURL }) => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'concentus-doctor-spec-')), 'flow.json')
+  fs.writeFileSync(file, JSON.stringify(FLOW))
+
+  const result = await runCli([
+    file,
+    '--doctor',
+    '--url', baseURL!,
+    '--email', E2E_EMAIL,
+    '--password', E2E_PASSWORD,
+  ])
+
+  // Which findings this flow has depends on the machine (a signed-in claude CLI or not), so the
+  // assertion is on the shape of the gate: a count on stderr, no run started, and an exit code of
+  // 0 or 1 — never 2, because nothing here waits for a human.
+  expect(result.stderr, result.stderr).toMatch(/error\(s\), \d+ warning\(s\)/)
+  expect(result.stderr).not.toContain('Run ')
+  expect([0, 1]).toContain(result.code)
+})
+
 test('refuses a flow file that is not there, without booting anything', async () => {
   const result = await runCli(['definitely-not-a-flow.json', '--url', 'http://127.0.0.1:1'])
 

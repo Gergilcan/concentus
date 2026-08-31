@@ -79,6 +79,8 @@ export function parseArgs(argv) {
     jar: DEFAULT_JAR,
     timeoutSeconds: 1800,
     quiet: false,
+    /** Check the flow and exit, without running anything. */
+    doctor: false,
     // Credentials default to the environment, because a CI job that must pass a password on the
     // command line is a CI job with a password in its logs.
     email: process.env.CONCENTUS_EMAIL ?? null,
@@ -99,6 +101,7 @@ export function parseArgs(argv) {
     else if (arg === '--email') args.email = next()
     else if (arg === '--password') args.password = next()
     else if (arg === '--quiet') args.quiet = true
+    else if (arg === '--doctor') args.doctor = true
     else if (arg === '--help' || arg === '-h') args.help = true
     else if (arg.startsWith('--')) throw new Error(`Unknown option ${arg}`)
     else if (args.flowPath === null) args.flowPath = arg
@@ -115,6 +118,9 @@ const USAGE = `Usage: node scripts/concentus-run.mjs <flow.json> [options]
 
   --input "text"   First message for the run. Without it, a flow whose trigger is manual has
                    nothing to do and exits ${EXIT.needsHuman} (needs a human).
+  --doctor         Check the flow and exit without running it: prints every finding and exits
+                   ${EXIT.failed} if any of them is an error. Warnings print and pass. This is the
+                   gate for a repository that keeps its flows as files.
   --url URL        Use a backend that is already running instead of booting the jar.
   --jar PATH       Backend jar to boot (default apps/backend/target/concentus-backend.jar).
   --timeout SECS   Give up waiting and exit ${EXIT.timedOut} (default 1800).
@@ -407,6 +413,7 @@ async function main(argv) {
   }
 
   try {
+    if (args.doctor) return await doctor(base, flow, log)
     // The flow travels in the request rather than being saved first: a headless run should not
     // leave a flow behind in whatever database it happened to use.
     const run = await api(base, '/runs', { method: 'POST', body: JSON.stringify(flow) })
@@ -424,6 +431,28 @@ async function main(argv) {
   } finally {
     if (backend) await backend.stop()
   }
+}
+
+/**
+ * Checks the flow without running it and returns the exit code the findings deserve.
+ *
+ * <p>Errors fail the job, warnings do not. A warning is "this may work oddly" — a flow with three
+ * of them is a flow somebody should look at, not a build somebody should be woken for, and a gate
+ * that fails on both is a gate a team turns off within a week.
+ *
+ * <p>Findings go to stdout as one line each so a job's log is greppable, and the count goes to
+ * stderr with everything else.
+ */
+async function doctor(base, flow, log) {
+  const findings = (await api(base, '/flows/doctor', { method: 'POST', body: JSON.stringify(flow) })) ?? []
+  for (const f of findings) {
+    const where = f.where ? ` (${f.where})` : ''
+    process.stdout.write(`${f.level.toUpperCase()} ${f.area}${where}: ${f.message} → ${f.fix}\n`)
+  }
+  const errors = findings.filter((f) => f.level === 'error').length
+  const warnings = findings.length - errors
+  log(`${flow.name ?? 'flow'}: ${errors} error(s), ${warnings} warning(s).`)
+  return errors > 0 ? EXIT.failed : EXIT.completed
 }
 
 /** Prints the run's events as they arrive and returns the exit code its outcome deserves. */
