@@ -15,7 +15,7 @@ vi.mock('../api/client.ts', () => ({
 /** Two of the backend's nine, enough to tell a tick from a lock. */
 const FEATURES = (allowed: boolean) => [
   { key: 'GENERIC_OIDC', label: 'Custom identity providers (any OpenID Connect issuer)', allowed },
-  { key: 'OTEL_EXPORT', label: 'OpenTelemetry export to your collector', allowed },
+  { key: 'OTEL_EXPORT', label: 'OpenTelemetry metrics export to your collector', allowed },
 ]
 
 const NONE = {
@@ -142,7 +142,7 @@ describe('LicensePanel', () => {
     render(<LicensePanel />)
 
     expect(await screen.findByText('What this license unlocks')).toBeInTheDocument()
-    const line = screen.getByText('OpenTelemetry export to your collector').closest('li')
+    const line = screen.getByText('OpenTelemetry metrics export to your collector').closest('li')
     expect(line).not.toBeNull()
     expect(within(line as HTMLElement).getByText('🔒')).toBeInTheDocument()
     expect(screen.getAllByText('🔒')).toHaveLength(2)

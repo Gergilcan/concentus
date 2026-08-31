@@ -19,8 +19,14 @@ public enum Feature {
     GENERIC_OIDC("Custom identity providers (any OpenID Connect issuer)"),
     /** Accounts created on first sign-in for an allowed email domain. Team: invitations only. */
     DOMAIN_JIT("Automatic accounts for an email domain"),
-    /** Traces and metrics sent to a collector of yours. */
-    OTEL_EXPORT("OpenTelemetry export to your collector"),
+    /**
+     * Metrics — counters and timers — sent to a collector of yours. Traces are not gated: OTLP
+     * tracing is table stakes for anything that runs agents, and a deployment that cannot send a
+     * span to its own Tempo, Langfuse or Phoenix is a deployment nobody debugs. Metrics are the
+     * fleet-wide view (runs by outcome across organizations, spend, queue depth), which is what
+     * the tier this gate belongs to is actually about.
+     */
+    OTEL_EXPORT("OpenTelemetry metrics export to your collector"),
     /** Organization-wide rules: mandatory facades, a permission ceiling, a global budget, publishing approval. */
     ORG_POLICIES("Organization policies"),
     /** The audit trail exported as a file, and kept without limit. */

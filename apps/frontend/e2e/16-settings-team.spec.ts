@@ -19,12 +19,14 @@ import {
  * one pass over every panel that changes shape under it.
  */
 
-const OTEL = ['management.otlp.tracing.export.enabled', 'management.otlp.metrics.export.enabled']
+// Metrics alone: traces export on every tier, so only this key carries a refusal.
+const OTEL = ['management.otlp.metrics.export.enabled']
 
 test('a Team license: the Enterprise-only rows say so, the caps bite, and retention is ninety days', async ({ browser }, testInfo) => {
   test.setTimeout(240_000)
   await onLicensed(browser, 'team', TEAM_PORT + testInfo.parallelIndex, async ({ page }) => {
-    // Settings: the license line, ten locks, and the two export flags disabled with the sentence.
+    // Settings: the license line, ten locks, and the metrics export flag disabled with the
+    // sentence — while the traces switch beside it stays usable, because traces are not gated.
     await openTab(page, 'Settings')
     await expect(page.getByText(/Licensed to Test Team · team · 3 seats/)).toBeVisible()
     const features = page.getByRole('list').filter({ hasText: 'Organization policies' })
@@ -33,9 +35,10 @@ test('a Team license: the Enterprise-only rows say so, the caps bite, and retent
     for (const key of OTEL) {
       await expect(settingControl(page, key), key).toBeDisabled()
       await expect(settingText(page, key), key).toContainText(
-        'OpenTelemetry export to your collector is an Enterprise feature — the Team license covers everything a team of up to ten needs to work together',
+        'OpenTelemetry metrics export to your collector is an Enterprise feature — the Team license covers everything a team of up to ten needs to work together',
       )
     }
+    await expect(settingControl(page, 'management.otlp.tracing.export.enabled')).toBeEnabled()
     await expect(settingControl(page, 'management.otlp.tracing.endpoint')).toBeEnabled()
     const { settings } = await apiJson<{ settings: { key: string; refusal: string | null }[] }>(page, '/api/settings')
     expect(settings.filter((s) => s.refusal != null).map((s) => s.key).sort()).toEqual([...OTEL].sort())

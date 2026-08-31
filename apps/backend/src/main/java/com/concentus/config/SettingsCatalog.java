@@ -163,14 +163,12 @@ public final class SettingsCatalog {
             number("integration.attachments.max-count", GROUP_ATTACHMENTS, "Most files per message",
                     "How many attachments one message may carry.", true),
 
-            // Export, not tracing, is what the Team license withholds: the spans are created
-            // either way, and the gate (TelemetryLicenseGate) forces these two switches off before
-            // the exporter is built. Marked here so the screen disables the rows and says why,
-            // instead of offering a switch that saves and then does nothing.
+            // Traces export on every tier, licensed or not: a run that took eleven minutes is
+            // debugged from its spans, and a collector of your own is nobody's business but
+            // yours. Only the metrics switch below carries a feature gate.
             flag("management.otlp.tracing.export.enabled", GROUP_TELEMETRY, "Send traces",
                     "Whether anything leaves this machine. Off, the spans are still created — a run "
-                            + "behaves identically either way — and simply go nowhere.", true)
-                    .requiring(Feature.OTEL_EXPORT),
+                            + "behaves identically either way — and simply go nowhere.", true),
             text("management.otlp.tracing.endpoint", GROUP_TELEMETRY, "Collector address",
                     "Where to send them, as an OTLP HTTP endpoint — an OpenTelemetry Collector, "
                             + "Tempo, Jaeger, Honeycomb. Read only when the switch above is on.",
@@ -183,6 +181,9 @@ public final class SettingsCatalog {
                     "1.0 traces every run, which is right for a handful a day. A busy deployment "
                             + "wants less: one run's trace carries every model and tool call "
                             + "underneath it.", true),
+            // The gate (TelemetryLicenseGate) forces this one off before the exporter is built.
+            // Marked here so the screen disables the row and says why, instead of offering a
+            // switch that saves and then does nothing.
             flag("management.otlp.metrics.export.enabled", GROUP_TELEMETRY, "Send metrics too",
                     "Counters and timers — runs by outcome, workers, tool calls — alongside the "
                             + "traces.", true)

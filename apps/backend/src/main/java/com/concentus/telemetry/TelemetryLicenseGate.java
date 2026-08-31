@@ -17,18 +17,20 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * Keeps traces and metrics on the machine when the license does not cover sending them.
+ * Keeps metrics on the machine when the license does not cover sending them.
  *
- * <p>{@link Feature#OTEL_EXPORT} is the export, not the tracing: every span is still created, a
- * run behaves identically, and the {@code Telemetry} vocabulary is unchanged. What a Team license
- * does not include is the collector on the other end — so on Team the two export switches read
+ * <p>{@link Feature#OTEL_EXPORT} is the <em>metrics</em> export alone. Traces leave on any tier,
+ * free installations included: sending a span to your own collector — Tempo, Jaeger, Langfuse,
+ * LangSmith, Phoenix — is how anybody debugs a run that took eleven minutes, and charging for it
+ * would only mean the run stays undebuggable. Metrics are the fleet view (runs by outcome, spend,
+ * queue depth over time), which is the thing the tier is about — so on Team that one switch reads
  * false whatever the environment or the settings screen says, and one line at startup says why.
  *
  * <p>An {@link EnvironmentPostProcessor} rather than a bean, because the exporter is one: Spring
  * Boot's OTLP auto-configuration builds it from {@code management.otlp.*.export.enabled} while the
  * context is assembling, and a check made afterwards would be arguing with an exporter that
  * already exists. Overriding the properties before any bean reads them is the one place the
- * decision holds for both the tracing and the metrics exporter without touching either. It runs
+ * decision holds without touching the exporter itself. It runs
  * after the config data has loaded — the property it overrides has to have been read first — and
  * adds its own source in front of everything, which is what "whatever the setting says" means.
  *
@@ -39,7 +41,6 @@ import java.util.Map;
  */
 public class TelemetryLicenseGate implements EnvironmentPostProcessor, Ordered {
 
-    static final String TRACES = "management.otlp.tracing.export.enabled";
     static final String METRICS = "management.otlp.metrics.export.enabled";
     /** The name of the property source this adds, so a test (or a curious operator) can find it. */
     static final String SOURCE = "concentus-license-gate";
@@ -64,10 +65,8 @@ public class TelemetryLicenseGate implements EnvironmentPostProcessor, Ordered {
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
-        boolean traces = environment.getProperty(TRACES, Boolean.class, false);
-        boolean metrics = environment.getProperty(METRICS, Boolean.class, false);
         // Nothing was going to leave anyway: no license to read, nothing to say.
-        if (!traces && !metrics) return;
+        if (!environment.getProperty(METRICS, Boolean.class, false)) return;
 
         Path dataDir = Path.of(environment.getProperty("app.data-dir", "./data"));
         String teamKey = environment.getProperty(LicenseVerifier.PROPERTY_TEAM_PUBLIC_KEY, "");
@@ -75,9 +74,10 @@ public class TelemetryLicenseGate implements EnvironmentPostProcessor, Ordered {
         if (!license.withheld(Feature.OTEL_EXPORT)) return;
 
         environment.getPropertySources().addFirst(
-                new MapPropertySource(SOURCE, Map.of(TRACES, "false", METRICS, "false")));
-        log.info("Traces and metrics stay on this machine: " + license.refusal(Feature.OTEL_EXPORT)
-                + " Spans are still created locally; nothing is sent to the collector.");
+                new MapPropertySource(SOURCE, Map.of(METRICS, "false")));
+        log.info("Metrics stay on this machine: " + license.refusal(Feature.OTEL_EXPORT)
+                + " Counters are still recorded locally, and traces are unaffected — those export "
+                + "on every tier.");
     }
 
     @Override

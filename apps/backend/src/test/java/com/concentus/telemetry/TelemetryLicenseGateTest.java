@@ -18,12 +18,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Feature.OTEL_EXPORT at the one place it can be enforced: before the exporter exists.
  *
- * <p>Three licenses, one switch turned on. Team: the switch reads false afterwards and one line
- * says why. Enterprise: untouched. Free: untouched — a person's own collector on their own machine
- * is nobody's business here. And with both switches already off, nothing happens at all, not even
- * a license read: there is nothing to withhold and nothing to say.
+ * <p>Metrics are the whole of what it withholds. Team: the metrics switch reads false afterwards
+ * and one line says why, while the traces switch is left exactly as configured. Enterprise and
+ * free: untouched. And with the metrics export already off, nothing happens at all, not even a
+ * license read: there is nothing to withhold and nothing to say.
  */
 class TelemetryLicenseGateTest {
+
+    /** Traces are not gated on any tier; the test asserts on the property by its own name. */
+    private static final String TRACES = "management.otlp.tracing.export.enabled";
 
     private final List<String> logged = new ArrayList<>();
 
@@ -48,37 +51,38 @@ class TelemetryLicenseGateTest {
     private static MockEnvironment environmentOn(Path dataDir, boolean traces, boolean metrics) {
         return new MockEnvironment()
                 .withProperty("app.data-dir", dataDir.toString())
-                .withProperty(TelemetryLicenseGate.TRACES, String.valueOf(traces))
+                .withProperty(TRACES, String.valueOf(traces))
                 .withProperty(TelemetryLicenseGate.METRICS, String.valueOf(metrics));
     }
 
     @Test
-    void on_a_team_license_both_exports_are_forced_off_and_the_reason_is_logged_once(@TempDir Path dir)
+    void on_a_team_license_metrics_are_forced_off_and_traces_are_left_alone(@TempDir Path dir)
             throws Exception {
         TestLicenses.installFixture(dir, "team-test.license");
         MockEnvironment env = environmentOn(dir, true, true);
 
         gate().postProcessEnvironment(env, null);
 
-        assertThat(env.getProperty(TelemetryLicenseGate.TRACES, Boolean.class)).isFalse();
         assertThat(env.getProperty(TelemetryLicenseGate.METRICS, Boolean.class)).isFalse();
+        // The point of the split: a Team deployment still ships its traces to its own collector.
+        assertThat(env.getProperty(TRACES, Boolean.class)).isTrue();
         // In front of everything, which is what "whatever the setting says" has to mean.
         assertThat(env.getPropertySources().iterator().next().getName())
                 .isEqualTo(TelemetryLicenseGate.SOURCE);
         assertThat(logged).hasSize(1);
         assertThat(logged.getFirst())
                 .contains(Feature.OTEL_EXPORT.label + " is an Enterprise feature")
-                .contains("still created locally");
+                .contains("traces are unaffected");
     }
 
     @Test
     void on_an_enterprise_license_the_switches_are_left_alone(@TempDir Path dir) throws Exception {
         TestLicenses.installFixture(dir, "enterprise-test.license");
-        MockEnvironment env = environmentOn(dir, true, false);
+        MockEnvironment env = environmentOn(dir, true, true);
 
         gate().postProcessEnvironment(env, null);
 
-        assertThat(env.getProperty(TelemetryLicenseGate.TRACES, Boolean.class)).isTrue();
+        assertThat(env.getProperty(TelemetryLicenseGate.METRICS, Boolean.class)).isTrue();
         assertThat(env.getPropertySources().contains(TelemetryLicenseGate.SOURCE)).isFalse();
         assertThat(logged).isEmpty();
     }
@@ -89,20 +93,23 @@ class TelemetryLicenseGateTest {
 
         gate().postProcessEnvironment(env, null);
 
-        assertThat(env.getProperty(TelemetryLicenseGate.TRACES, Boolean.class)).isTrue();
+        assertThat(env.getProperty(TRACES, Boolean.class)).isTrue();
         assertThat(env.getProperty(TelemetryLicenseGate.METRICS, Boolean.class)).isTrue();
         assertThat(logged).isEmpty();
     }
 
     @Test
-    void with_both_exports_off_the_license_is_not_even_read(@TempDir Path dir) {
-        MockEnvironment env = environmentOn(dir, false, false);
+    void tracing_alone_never_reads_the_license(@TempDir Path dir) throws Exception {
+        // A Team license installed, traces on, metrics off: the gate has nothing to withhold.
+        TestLicenses.installFixture(dir, "team-test.license");
+        MockEnvironment env = environmentOn(dir, true, false);
         TelemetryLicenseGate gate = new TelemetryLicenseGate(logs, (dataDir, key) -> {
             throw new AssertionError("no license should have been read");
         });
 
         gate.postProcessEnvironment(env, null);
 
+        assertThat(env.getProperty(TRACES, Boolean.class)).isTrue();
         assertThat(env.getPropertySources().contains(TelemetryLicenseGate.SOURCE)).isFalse();
         assertThat(logged).isEmpty();
     }
