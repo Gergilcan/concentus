@@ -1510,7 +1510,28 @@ docker run -d -v concentus-runner:/data \
         No se exporta nada hasta que se nombra un colector, y está apagado por un interruptor y no
         por una dirección en blanco — un endpoint vacío no es «ninguna parte» para un exportador
         OTLP, es una URL inválida. Configúralo en Ajustes, o con <code>OTLP_ENABLED</code> y
-        <code>OTLP_ENDPOINT</code>.
+        <code>OTLP_ENDPOINT</code>. <b>Las trazas se exportan en cualquier plan</b>, instalaciones
+        gratuitas incluidas; solo la exportación de métricas es una función Enterprise.
+      </p>
+      <h3>Enviar las trazas a una herramienta de observabilidad LLM</h3>
+      <p>
+        Cualquier cosa que hable OTLP/HTTP las lee, y las orientadas a agentes agrupan solas los
+        spans de una ejecución. El endpoint y una cabecera son toda la integración.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Dónde</th><th>Endpoint</th><th>Cabecera</th></tr></thead>
+          <tbody>
+            <tr><td>Langfuse (cloud)</td><td><code>https://cloud.langfuse.com/api/public/otel/v1/traces</code></td><td><code>authorization: Basic &lt;base64 de pública:secreta&gt;</code></td></tr>
+            <tr><td>LangSmith</td><td><code>https://api.smith.langchain.com/otel/v1/traces</code></td><td><code>x-api-key: &lt;clave&gt;</code></td></tr>
+            <tr><td>Phoenix (autoalojado)</td><td><code>http://localhost:6006/v1/traces</code></td><td>ninguna en local</td></tr>
+            <tr><td>Collector · Tempo · Jaeger</td><td><code>http://localhost:4318/v1/traces</code></td><td>la que pida</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        La cabecera <code>authorization</code> tiene su propia fila en Ajustes. Cualquier otra es
+        una propiedad de Spring: <code>management.otlp.tracing.headers.x-api-key=…</code>.
       </p>
     </section>
 
@@ -1575,7 +1596,7 @@ echo $?                                                # 0 completed · 1 failed
       <ul>
         <li><strong>Proveedores de identidad personalizados</strong> — cualquier emisor OpenID Connect (Okta, Keycloak, una app de Entra propia). Team tiene los preajustes de Google y Microsoft.</li>
         <li><strong>Cuentas automáticas para un dominio de correo</strong> — el primer inicio de sesión crea la cuenta. En Team se invita.</li>
-        <li><strong>Exportación OpenTelemetry</strong> a tu colector.</li>
+        <li><strong>Exportación de métricas OpenTelemetry</strong> a tu colector. Las trazas se exportan en cualquier plan.</li>
         <li><strong>Políticas de organización</strong> — ver <a href="#teams">Equipos e inicio de sesión</a>.</li>
         <li><strong>Exportación del registro de auditoría</strong> como CSV o JSON.</li>
         <li><strong>Retención ilimitada</strong> — Team conserva noventa días.</li>

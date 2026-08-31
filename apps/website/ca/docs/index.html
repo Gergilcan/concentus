@@ -1499,7 +1499,28 @@ docker run -d -v concentus-runner:/data \
         No s'exporta res fins que s'anomena un col·lector, i està apagat per un interruptor i no per
         una adreça en blanc — un endpoint buit no és «enlloc» per a un exportador OTLP, és una URL
         invàlida. Configura-ho a Configuració, o amb <code>OTLP_ENABLED</code> i
-        <code>OTLP_ENDPOINT</code>.
+        <code>OTLP_ENDPOINT</code>. <b>Les traces s'exporten en qualsevol pla</b>, instal·lacions
+        gratuïtes incloses; només l'exportació de mètriques és una funció Enterprise.
+      </p>
+      <h3>Enviar les traces a una eina d'observabilitat LLM</h3>
+      <p>
+        Qualsevol cosa que parli OTLP/HTTP les llegeix, i les orientades a agents agrupen soles els
+        spans d'una execució. L'endpoint i una capçalera són tota la integració.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>On</th><th>Endpoint</th><th>Capçalera</th></tr></thead>
+          <tbody>
+            <tr><td>Langfuse (cloud)</td><td><code>https://cloud.langfuse.com/api/public/otel/v1/traces</code></td><td><code>authorization: Basic &lt;base64 de pública:secreta&gt;</code></td></tr>
+            <tr><td>LangSmith</td><td><code>https://api.smith.langchain.com/otel/v1/traces</code></td><td><code>x-api-key: &lt;clau&gt;</code></td></tr>
+            <tr><td>Phoenix (autoallotjat)</td><td><code>http://localhost:6006/v1/traces</code></td><td>cap en local</td></tr>
+            <tr><td>Collector · Tempo · Jaeger</td><td><code>http://localhost:4318/v1/traces</code></td><td>la que demani</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        La capçalera <code>authorization</code> té la seva pròpia fila a Configuració. Qualsevol
+        altra és una propietat de Spring: <code>management.otlp.tracing.headers.x-api-key=…</code>.
       </p>
     </section>
 
@@ -1563,7 +1584,7 @@ echo $?                                                # 0 completed · 1 failed
       <ul>
         <li><strong>Proveïdors d’identitat personalitzats</strong> — qualsevol emissor OpenID Connect (Okta, Keycloak, una app d’Entra pròpia). Team té els preajustos de Google i Microsoft.</li>
         <li><strong>Comptes automàtics per a un domini de correu</strong> — el primer inici de sessió crea el compte. En Team es convida.</li>
-        <li><strong>Exportació OpenTelemetry</strong> al teu col·lector.</li>
+        <li><strong>Exportació de mètriques OpenTelemetry</strong> al teu col·lector. Les traces s'exporten en qualsevol pla.</li>
         <li><strong>Polítiques d’organització</strong> — vegeu <a href="#teams">Equips i inici de sessió</a>.</li>
         <li><strong>Exportació del registre d’auditoria</strong> com a CSV o JSON.</li>
         <li><strong>Retenció il·limitada</strong> — Team conserva noranta dies.</li>

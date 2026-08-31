@@ -1471,6 +1471,28 @@ docker run -d -v concentus-runner:/data \
         Nothing is exported until a collector is named, and it is off by a switch rather than by a
         blank address — an empty endpoint is not "nowhere" to an OTLP exporter, it is an invalid URL.
         Configure it under Settings, or with <code>OTLP_ENABLED</code> and <code>OTLP_ENDPOINT</code>.
+        <b>Traces export on every tier</b>, free installations included; only the metrics export is
+        an Enterprise feature.
+      </p>
+      <h3>Sending traces to an LLM observability tool</h3>
+      <p>
+        Anything that speaks OTLP/HTTP reads them, and the agent-shaped ones group a run's spans by
+        trace on their own. The endpoint and one header are the whole integration.
+      </p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Where</th><th>Endpoint</th><th>Header</th></tr></thead>
+          <tbody>
+            <tr><td>Langfuse (cloud)</td><td><code>https://cloud.langfuse.com/api/public/otel/v1/traces</code></td><td><code>authorization: Basic &lt;base64 of public:secret&gt;</code></td></tr>
+            <tr><td>LangSmith</td><td><code>https://api.smith.langchain.com/otel/v1/traces</code></td><td><code>x-api-key: &lt;key&gt;</code></td></tr>
+            <tr><td>Phoenix (self-hosted)</td><td><code>http://localhost:6006/v1/traces</code></td><td>none locally</td></tr>
+            <tr><td>Collector · Tempo · Jaeger</td><td><code>http://localhost:4318/v1/traces</code></td><td>whatever it wants</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The <code>authorization</code> header has its own row in Settings. Any other header is a
+        Spring property: <code>management.otlp.tracing.headers.x-api-key=…</code>.
       </p>
     </section>
 
@@ -1535,7 +1557,7 @@ echo $?                                                # 0 completed · 1 failed
       <ul>
         <li><strong>Custom identity providers</strong> — any OpenID Connect issuer (Okta, Keycloak, a custom Entra app). Team has the Google and Microsoft presets.</li>
         <li><strong>Automatic accounts for an email domain</strong> — first sign-in creates the account. Team invites people.</li>
-        <li><strong>OpenTelemetry export</strong> to your collector.</li>
+        <li><strong>OpenTelemetry metrics export</strong> to your collector. Traces export on every tier.</li>
         <li><strong>Organization policies</strong> — see <a href="#teams">Teams and sign-in</a>.</li>
         <li><strong>Audit trail export</strong> as CSV or JSON.</li>
         <li><strong>Unlimited retention</strong> — Team keeps ninety days.</li>

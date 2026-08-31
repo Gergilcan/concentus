@@ -74,6 +74,21 @@ concentus/
 │           └── styles/      # SASS theme + globals
 ```
 
+## Changelog, roadmap and issues
+
+- **[Changelog](https://www.concentus-ai.com/changelog)** — what changed in each release, newest
+  first: the same notes that ship with the installers, in one page.
+- **[Issues](https://github.com/Gergilcan/concentus/issues)** — open to anyone. Bugs, questions and
+  feature requests all land there; the bug template asks for the version and the log line, because
+  those are what makes a report actionable.
+- **[Milestones](https://github.com/Gergilcan/concentus/milestones)** — what is being worked on
+  next. A milestone with a name and dated issues is a roadmap that cannot silently rot, which a
+  hand-written list in this file would.
+
+The license is [PolyForm Noncommercial](LICENSE.md): free for personal, educational and other
+noncommercial use, with the source here for anyone to read, build and self-host. Commercial use
+needs a license — see [Paying for runs](#paying-for-runs) and the licensing section of the site.
+
 ## Concepts
 
 - A **flow** is a multi-agent orchestration graph. a **Coordinator** node (exactly one — the agent the trigger addresses) and the **Agent** nodes it delegates to,
@@ -1284,7 +1299,7 @@ panel and the site print its labels:
 | Google, Microsoft and Discord sign-in | ✓ | ✓ |
 | Custom identity providers (any OpenID Connect issuer) | — | ✓ |
 | Automatic accounts for an email domain | — | ✓ |
-| OpenTelemetry export to your collector | — | ✓ |
+| OpenTelemetry metrics export to your collector (traces: every tier) | — | ✓ |
 | Organization policies | — | ✓ |
 | Audit trail export | — | ✓ |
 | Unlimited retention of runs and versions | 90 days | ✓ |
@@ -1544,6 +1559,33 @@ endpoint is not "nowhere" to the OTLP exporter, it is an invalid URL, and it ref
 rather than staying quiet. The spans are created either way, so a run behaves identically on a
 machine that exports and one that does not. Configure it under *Resources → Settings*, or with
 `OTLP_ENABLED` and `OTLP_ENDPOINT`.
+
+**Traces export on every tier**, free installations included — a run that took eleven minutes is
+debugged from its spans, and a collector of your own is nobody's business but yours. Only the
+metrics export is an Enterprise feature (`Feature.OTEL_EXPORT`), because the fleet view across
+organizations is what that tier is about.
+
+### Sending them to an LLM observability tool
+
+Anything that speaks OTLP/HTTP reads these spans, and the agent-shaped ones — Langfuse, LangSmith,
+Phoenix — group them by trace on their own. Nothing here is vendor-specific: the endpoint and one
+header are the whole integration.
+
+| Where | `management.otlp.tracing.endpoint` | Header |
+| --- | --- | --- |
+| **Langfuse** (cloud) | `https://cloud.langfuse.com/api/public/otel/v1/traces` | `authorization: Basic <base64 of public-key:secret-key>` |
+| **LangSmith** | `https://api.smith.langchain.com/otel/v1/traces` | `x-api-key: <your key>` |
+| **Phoenix** (self-hosted) | `http://localhost:6006/v1/traces` | none locally; `api_key: <key>` on Phoenix Cloud |
+| **Collector / Tempo / Jaeger** | `http://localhost:4318/v1/traces` | whatever it wants |
+
+The `authorization` header has its own row in *Resources → Settings*. Anything else is a Spring
+property — `management.otlp.tracing.headers.x-api-key=…` in `application.properties`, or the
+environment variable `MANAGEMENT_OTLP_TRACING_HEADERS_X-API-KEY`.
+
+Spans carry identifiers, counts and outcomes and never prompts or outputs (see above), so what
+lands in a hosted tool is the shape of a run — which block was slow, which tool call hung, what the
+third worker spent — not its content. That is deliberate, and it is the reason these tools can be
+pointed at a production deployment at all.
 
 ## Background jobs
 
@@ -1861,6 +1903,7 @@ you the answer and nothing else.
 | Option | |
 |---|---|
 | `--input "text"` | the run's first message. Without it a manual-trigger flow has nothing to do. |
+| `--doctor` | check the flow and exit without running it. See below. |
 | `--url URL` | use a backend that is already running instead of booting one. |
 | `--jar PATH` | a different jar (default `apps/backend/target/concentus-backend.jar`). |
 | `--timeout SECS` | give up waiting (default 1800) and exit 3. |
@@ -1882,6 +1925,26 @@ Deliberate limits: it **never answers for you** — approval mode and questions 
 guessing — and the flow travels in the request rather than being saved, so a headless run leaves no
 flow behind in whatever database it used. It polls the run rather than opening the UI's WebSocket:
 nobody watches a terminal for sub-second latency, and polling needs no client to keep alive.
+
+### The doctor as a build step
+
+`--doctor` runs the same checks the app's Doctor button runs — missing credentials, an MCP server
+that will not answer, a trigger the deployment's permission ceiling forbids, a budget that cannot
+be met — and exits without starting anything:
+
+```bash
+node scripts/concentus-run.mjs flows/nightly-digest.json --doctor --url https://concentus.example.com
+echo $?      # 0 nothing wrong (warnings may have printed) · 1 at least one error
+```
+
+Every finding prints as one line — `ERROR mcp (a-3): Server unreachable → …` — so a job's log is
+greppable, and the count goes to stderr with the rest of the progress. **Errors fail the build,
+warnings do not:** a warning is "this may work oddly", and a gate that fails on both is a gate a
+team turns off within a week.
+
+The flow is checked unsaved (`POST /api/flows/doctor`), so a repository that keeps its flows as
+files can check them on every pull request without creating, checking and deleting one — which
+leaves a version row and a schedule behind whenever the job is killed halfway.
 
 ## Concentus as an MCP server
 
