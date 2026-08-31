@@ -196,6 +196,11 @@ public class AgentRun {
      */
     public final Map<String, String> workerToolTokens = new ConcurrentHashMap<>();
     /**
+     * Which worker-and-server pairs have already said what they can reach, so the line lands once
+     * per run instead of on every {@code tools/list} of every turn.
+     */
+    public final java.util.Set<String> facadeReachSaid = ConcurrentHashMap.newKeySet();
+    /**
      * The plan the coordinator submitted this turn via {@code plan_submit}, already validated
      * and with profile names resolved. Null until it arrives; cleared before each planning turn
      * so a stale plan from the previous turn can never run twice.

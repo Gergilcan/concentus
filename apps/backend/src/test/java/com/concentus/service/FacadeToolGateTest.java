@@ -171,4 +171,16 @@ class FacadeToolGateTest {
         assertThat(FacadeToolGate.decide("ads_RUN_GAQL_query", readingAlso("run_gaql")))
                 .isEqualTo(FacadeToolGate.CallDecision.EXECUTE);
     }
+
+    @Test
+    void theReachLineCarriesBothNumbersAndWhatHappensToAWrite() {
+        assertThat(FacadeToolGate.reachLine("Backend", "holded",
+                profile(List.of("get_"), true, false), 31, 4))
+                .isEqualTo("Facade: Backend reaches 4 of 31 tools on 'holded' — profile 'test', "
+                        + "writes are blocked.");
+        assertThat(FacadeToolGate.reachLine("Backend", "holded",
+                profile(List.of(), false, true), 31, 31)).endsWith("writes are simulated.");
+        assertThat(FacadeToolGate.reachLine("Backend", "holded",
+                profile(List.of(), false, false), 31, 31)).endsWith("writes execute.");
+    }
 }

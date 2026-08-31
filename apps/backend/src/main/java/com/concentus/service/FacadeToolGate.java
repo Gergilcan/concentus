@@ -95,6 +95,26 @@ public final class FacadeToolGate {
                 profile.toolsOrEmpty()).isEmpty();
     }
 
+    /**
+     * What this worker can reach on one server, in one sentence, for the run's transcript.
+     *
+     * <p>The enforcement was already here and already silent: a worker saw a shorter list and
+     * nobody watching the run could tell whether that was a profile doing its job or a server
+     * with nothing on it. Both numbers say it — "4 of 31" is the narrowing, and the rest of the
+     * line names what happens to a write — so a reviewer reads the proof instead of taking the
+     * feature's word for it.
+     *
+     * @param offered how many tools the server itself advertised, before any filter
+     * @param visible how many survived the node's filter, the profile's allowlist and read-only
+     */
+    public static String reachLine(String worker, String server, FacadeProfile profile,
+                                   int offered, int visible) {
+        String writes = profile.readOnly() ? "writes are blocked"
+                : profile.dryRunEnabled() ? "writes are simulated" : "writes execute";
+        return "Facade: " + worker + " reaches " + visible + " of " + offered + " tools on '"
+                + server + "' — profile '" + profile.name() + "', " + writes + ".";
+    }
+
     /** What a call to this tool does under this profile. */
     public enum CallDecision { EXECUTE, DRY_RUN, BLOCK }
 
