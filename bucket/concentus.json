@@ -1,5 +1,5 @@
 {
-    "version": "0.1.15",
+    "version": "0.1.16",
     "description": "Visual multi-agent AI orchestration that runs on your Claude subscription. The drawing is the program.",
     "homepage": "https://github.com/Gergilcan/concentus",
     "license": "PolyForm-Noncommercial-1.0.0",
@@ -14,8 +14,8 @@
     ],
     "architecture": {
         "64bit": {
-            "url": "https://github.com/Gergilcan/concentus/releases/download/v0.1.15/Concentus-Setup-0.1.15.exe#/dl.7z",
-            "hash": "08fe6d0c230b5536cf2b04d4963736e86d36ec12fddd3aa5db123df8ef3dc47a"
+            "url": "https://github.com/Gergilcan/concentus/releases/download/v0.1.16/Concentus-Setup-0.1.16.exe#/dl.7z",
+            "hash": "f4b5af68ccc86c5ea52a121941265663d975aac660172a2add3092fe117549fd"
         }
     },
     "pre_install": [
