@@ -41,6 +41,9 @@ interface Props {
   onSandbox?: (flow: BackendFlow) => Promise<void> | void
   onDelete: (id: string) => void
   onNew: () => void
+  /** Opens the Marketplace. Offered on an empty dashboard, where a blank canvas is the worst
+   *  first screen: the seeded servers and flows are one click away and nothing said so. */
+  onBrowseMarketplace?: () => void
   /** Puts a generated draft on the canvas and opens Studio. Nothing has been saved. */
   onGenerated: (flow: BackendFlow) => void
   onOpenRun: (runId: string) => void
@@ -60,6 +63,7 @@ export function FlowsPage({
   onSandbox,
   onDelete,
   onNew,
+  onBrowseMarketplace,
   onGenerated,
   onOpenRun,
   onSaveFlow,
@@ -364,13 +368,22 @@ export function FlowsPage({
                 <h3>{flows.length === 0 ? t('No flows yet') : t('Nothing matches those filters')}</h3>
                 <p>
                   {flows.length === 0
-                    ? t('Create a flow, drop in a coordinator and a couple of sub-agents, and run it.')
+                    ? t('Create a flow, drop in a coordinator and a couple of sub-agents, and run it — or start from something already built.')
                     : t('Try a different name or tag.')}
                 </p>
                 {flows.length === 0 && (
-                  <button className={styles.primary} onClick={onNew}>
-                    {t('+ New flow')}
-                  </button>
+                  <div className={styles.emptyActions}>
+                    <button className={styles.primary} onClick={onNew}>
+                      {t('+ New flow')}
+                    </button>
+                    {/* The seeded servers and flows sit one tab away and a fresh install never
+                        finds them: an empty dashboard is exactly where that click belongs. */}
+                    {onBrowseMarketplace && (
+                      <button className={styles.ghost} onClick={onBrowseMarketplace}>
+                        {t('Browse the Marketplace')}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             ) : filtering ? (

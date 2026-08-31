@@ -561,6 +561,14 @@
   color: t.$accent;
 }
 
+/* Two ways out of an empty dashboard, side by side and wrapping on a narrow window. */
+.emptyActions {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
 /* ---------------- recent executions ---------------- */
 
 .sideCol {

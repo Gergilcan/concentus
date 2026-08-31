@@ -350,6 +350,7 @@ function Workspace({ signedInAs, organizationName, onSignOut }: WorkspaceProps) 
             onSandbox={sandboxFlowCopy}
             onDelete={deleteFlow}
             onNew={newFlow}
+            onBrowseMarketplace={() => setView('marketplace')}
             onGenerated={openGeneratedFlow}
             onOpenRun={(id) => void openRun(id)}
             onSaveFlow={saveFlowFromDashboard}
