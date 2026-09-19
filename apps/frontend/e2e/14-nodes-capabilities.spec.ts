@@ -50,7 +50,9 @@ test('mcp: remote and command transports, token header, env lines; it feeds an a
   await env.fill('GOOGLE_ADS_DEVELOPER_TOKEN=credential:abc\nLOGIN_CUSTOMER_ID=123')
   await env.fill('GOOGLE_ADS_DEVELOPER_TOKEN=credential:abc')
   await expect(second.getByText(/^Launched by the run itself/)).toBeVisible()
-  await expect(part(local, 'snippet')).toHaveText('no url')
+  // The command, not "no url": a stdio server has no URL to show — the command is where it lives,
+  // and a correctly wired one used to read as unconfigured on the canvas.
+  await expect(part(local, 'snippet')).toHaveText('npx -y @googleads/google-ads-mcp')
   await closeInspector(page)
 
   await refuse(page, handle(agent, 'source'), handle(remote, 'target'))
