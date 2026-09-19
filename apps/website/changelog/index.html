@@ -305,6 +305,32 @@
   <h1>What changed</h1>
   <p class="sub">Every release, newest first — the same notes that ship with the installers. The app updates itself from these releases; package-manager installs update through their manager.</p>
 
+  <section id="v0.1.17">
+    <h2>v0.1.17 <span class="date">2026-09-19</span></h2>
+<h3>What's new in 0.1.17</h3>
+<h4>The verifier's <em>on rejected</em> output runs an agent</h4>
+<p>The adversarial verifier of a fan-out flow could already hand what it killed to another flow or to a mail block. An <strong>agent</strong> drawn on that output was accepted by the canvas, saved, and then never run — the flow looked wired and the branch was silent. It runs now, and it is the block for the job: "tell me what was rejected and why" is work, and work is what an agent is for.</p>
+<ul>
+<li><strong>Any rejection fires it.</strong> One killed output of five is still a cycle somebody has to look at; a branch that only fired when everything died would be the alarm that rings after the building is gone.</li>
+<li><strong>It runs the moment the verdict is final</strong> — after the escalation to the stronger model, before the merge — and also when <em>every</em> output was rejected, which is the case somebody most needs told about.</li>
+<li><strong>It receives the whole verification report</strong>: each worker's verdict, its output and its own console, rejected ones first, then the accepted, then any that crashed, and the verifier's log. The same payload a flow or a mail on that output receives.</li>
+<li><strong>It works for a living</strong> — every tool but delegation, with the MCP servers drawn onto it, so it can send the mail, open the ticket or call the webhook itself. Its facade profile is enforced like any other independent worker.</li>
+<li><strong>It never fails the run.</strong> This is the branch that reports trouble; a run that died because its alarm could not ring would lose the answer and the warning. A failure here is red on its own block and a line in the log, and the merge still produces the run's answer.</li>
+</ul>
+<h4>The canvas</h4>
+<ul>
+<li><strong>An agent block nothing runs is reported by the doctor</strong>, pointed at the block. An agent runs as the coordinator, as one another agent delegates to, as the merge step, as the verifier, or on the verifier's <em>on rejected</em> output — anywhere else it is drawn, saved, shown, and never executed. That used to be said nowhere at all.</li>
+<li><strong>A local MCP block shows its command.</strong> A server that speaks over stdin/stdout has no URL — the <code>npx</code> line is where it lives — and reading "no url" on a correctly wired server described it as broken.</li>
+</ul>
+<h4>Tests</h4>
+<ul>
+<li>The rejected branch end to end against fake processes: fired by one rejection of two, carrying the whole report, quiet when everything was accepted.</li>
+<li>A group's visibility end to end, against the real application: a flow scoped to a group is seen by its members and by nobody else.</li>
+</ul>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.16...v0.1.17">https://github.com/Gergilcan/concentus/compare/v0.1.16...v0.1.17</a></p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.17">Installers and notes on GitHub →</a></p>
+  </section>
+
   <section id="v0.1.15">
     <h2>v0.1.15 <span class="date">2026-08-30</span></h2>
 <h3>What's new in 0.1.15</h3>
