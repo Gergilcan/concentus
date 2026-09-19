@@ -11,17 +11,30 @@ import java.util.Map;
 
 /**
  * A flow reduced to executable specs: one coordinator plus its sub-agent roster, and — for
- * fan-out flows — an optional adversarial verifier and an optional merge step.
+ * fan-out flows — an optional adversarial verifier, an optional merge step, and the agent the
+ * verifier's rejected output hands its report to.
+ *
+ * @param rejectedAgent the agent block wired to the verifier's "on rejected" output, run when the
+ *                      verifier's final word on ANY worker was a rejection. Null when nothing is
+ *                      wired there, or when what is wired is a flow or a mail block — those are
+ *                      hand-offs and travel in {@code afterFlows} / {@code afterMails}
  */
 public record CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger,
                            AgentSpec verifier, List<AgentSpec.SubflowSpec> afterFlows,
-                           List<MailHandOffSpec> afterMails) {
+                           List<MailHandOffSpec> afterMails, AgentSpec rejectedAgent) {
 
     public CompiledFlow {
         // Never null downstream: the hand-off lists are walked at the end of every run, and a null
         // there would turn "this flow chains nothing" into an exception at the worst moment.
         afterFlows = afterFlows == null ? List.of() : List.copyOf(afterFlows);
         afterMails = afterMails == null ? List.of() : List.copyOf(afterMails);
+    }
+
+    /** The shape every caller had before an agent could hang off the verifier's rejected output. */
+    public CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, AgentSpec merger,
+                        AgentSpec verifier, List<AgentSpec.SubflowSpec> afterFlows,
+                        List<MailHandOffSpec> afterMails) {
+        this(coordinator, subAgents, merger, verifier, afterFlows, afterMails, null);
     }
 
     /** The shape every caller had before the merge node existed: no merger, no verifier. */
@@ -70,6 +83,7 @@ public record CompiledFlow(AgentSpec coordinator, List<AgentSpec> subAgents, Age
         List<AgentSpec> all = allAgents();
         if (merger != null) all.add(merger);
         if (verifier != null) all.add(verifier);
+        if (rejectedAgent != null) all.add(rejectedAgent);
         return all;
     }
 

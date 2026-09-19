@@ -115,8 +115,10 @@ public class FlowDoctor {
     private void checkGraph(FlowGraph flow, List<DoctorFinding> findings) {
         Set<String> unresolved = new LinkedHashSet<>();
         try {
-            checkFanout(compiler.compile(flow, variables.merged(flow.variables()), unresolved),
-                    findings);
+            CompiledFlow compiled =
+                    compiler.compile(flow, variables.merged(flow.variables()), unresolved);
+            checkFanout(compiled, findings);
+            checkAgentsNothingRuns(flow, compiled, findings);
         } catch (FlowCompiler.MissingLibraryAgent e) {
             // The compiler's own message, pointed at the block: the fix is on the block (unlink)
             // or under Resources → Agents, and "fix the flow on the canvas" would send someone
@@ -144,6 +146,36 @@ public class FlowDoctor {
             findings.add(DoctorFinding.warn("variables",
                     "No value for {{" + name + "}} — prompts using it keep the placeholder.",
                     "Set it in the flow's settings, or under Resources → Variables.", null));
+        }
+    }
+
+    /**
+     * Agent blocks the compiler found no place for.
+     *
+     * <p>An agent block runs as exactly one of five things: the coordinator, an agent another
+     * agent delegates to, the merge step, the verifier, or the block on the verifier's "on
+     * rejected" output. Drawn anywhere else it is wired, saved, shown on the canvas — and never
+     * executed. That is a silence worth an error, because the flow looks right.
+     */
+    private static void checkAgentsNothingRuns(FlowGraph flow, CompiledFlow compiled,
+                                               List<DoctorFinding> findings) {
+        Set<String> runs = new LinkedHashSet<>();
+        runs.add(compiled.coordinator().nodeId);
+        for (com.concentus.config.AgentSpec spec : compiled.subAgents()) runs.add(spec.nodeId);
+        if (compiled.merger() != null) runs.add(compiled.merger().nodeId);
+        if (compiled.verifier() != null) runs.add(compiled.verifier().nodeId);
+        if (compiled.rejectedAgent() != null) runs.add(compiled.rejectedAgent().nodeId);
+
+        for (FlowNode node : flow.nodesOrEmpty()) {
+            if (!"agent".equalsIgnoreCase(node.type() == null ? "" : node.type())) continue;
+            if (runs.contains(node.id())) continue;
+            findings.add(DoctorFinding.error("graph",
+                    "\"" + label(node) + "\" is wired into the flow, but nothing runs it: an "
+                            + "agent block runs as the coordinator, as an agent another agent "
+                            + "delegates to, as the merge step, as the verifier, or on the "
+                            + "verifier's \"on rejected\" output — nowhere else.",
+                    "Wire it to an agent to make it part of the run, or to the verifier's \"on "
+                            + "rejected\" output to have it report what was killed.", node.id()));
         }
     }
 

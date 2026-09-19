@@ -77,12 +77,18 @@ class FanoutExecutorTest {
     }
 
     private static AgentRun runWith(AgentSpec merger, AgentSpec verifier, AgentSpec... workers) {
+        return runWithRejectedAgent(merger, verifier, null, workers);
+    }
+
+    private static AgentRun runWithRejectedAgent(AgentSpec merger, AgentSpec verifier,
+                                                 AgentSpec rejectedAgent, AgentSpec... workers) {
         AgentRun run = new AgentRun("run-1", "flow-1", "Flow");
         AgentSpec coord = new AgentSpec();
         coord.nodeId = "c1";
         coord.name = "Coordinator";
         coord.execution = "fanout";
-        run.compiled = new CompiledFlow(coord, List.of(workers), merger, verifier);
+        run.compiled = new CompiledFlow(coord, List.of(workers), merger, verifier,
+                List.of(), List.of(), rejectedAgent);
         return run;
     }
 
@@ -737,6 +743,81 @@ class FanoutExecutorTest {
     }
 
     // ------------------------------------------------------------------ verifier step
+
+    @Test
+    void anAgentOnTheVerifiersRejectedOutputRunsOnAnyRejectionWithTheWholeReport() throws Exception {
+        AgentSpec a = spec("n1", "Worker A", "worker-a", "");
+        AgentSpec b = spec("n2", "Worker B", "worker-b", "");
+        AgentSpec verifier = spec("v1", "Verifier", "verifier", "Reject unverified numbers.");
+        AgentSpec merger = spec("m1", "Merge", "merge", "");
+        AgentSpec onRejected = spec("r1", "Redactor de incidencias", "redactor", "Mail the report.");
+        AgentRun run = runWithRejectedAgent(merger, verifier, onRejected, a, b);
+
+        List<List<String>> spawned = new CopyOnWriteArrayList<>();
+        FanoutExecutor.ProcessStarter starter = (args, workdir) -> {
+            spawned.add(args);
+            String dir = workdir.toString();
+            if (dir.endsWith("verifier")) {
+                // One of two rejected: ANY rejection is what fires the branch.
+                run.submittedVerdict = new com.concentus.model.WorkVerdict("B invents", List.of(
+                        new com.concentus.model.WorkVerdict.Item("n1", "accept", null),
+                        new com.concentus.model.WorkVerdict.Item("n2", "reject", "invented numbers")));
+                return new FakeProcess(okStream("Veredicto emitido", "Veredicto emitido"), 0);
+            }
+            if (dir.endsWith("rejected")) {
+                return new FakeProcess(okStream("Incidencia enviada", "Incidencia enviada"), 0);
+            }
+            if (dir.endsWith("merge")) {
+                return new FakeProcess(okStream("Resultado final", "Resultado final"), 0);
+            }
+            return new FakeProcess(okStream(
+                    "Informe " + workdir.getFileName(), "Informe " + workdir.getFileName()), 0);
+        };
+
+        executor(starter, 900, 0).runTurn(run, run.compiled, "Revisa el cambio");
+
+        // Two workers, the verifier, the rejected branch, then the merge — the branch runs on the
+        // verdict, not after the run.
+        assertThat(spawned).hasSize(5);
+        String prompt = String.join(" ", spawned.get(3));
+        assertThat(prompt).contains("Verification report")
+                .contains("Rejected 1 of 2 worker(s).")
+                .contains("Worker B").contains("invented numbers")
+                // The whole picture, not only the bad half: what survived travels with it.
+                .contains("Worker A").contains("Informe worker-a");
+        // It works for a living — everything but delegation, like the merge step. (Skill too: it
+        // was assigned none, and that is every block's rule here, not this one's.)
+        assertThat(spawned.get(3)).containsSequence("--disallowedTools", "Task,Skill");
+
+        assertThat(exec(run, "r1").status).isEqualTo("passed");
+        // The merge still produces the run's answer; the branch reports alongside it.
+        assertThat(run.finalOutput()).contains("Resultado final");
+        assertThat(run.status).isEqualTo("IDLE");
+    }
+
+    @Test
+    void theRejectedBranchStaysQuietWhenTheVerifierAcceptedEverything() throws Exception {
+        AgentSpec a = spec("n1", "Worker A", "worker-a", "");
+        AgentSpec verifier = spec("v1", "Verifier", "verifier", "");
+        AgentSpec merger = spec("m1", "Merge", "merge", "");
+        AgentSpec onRejected = spec("r1", "Redactor de incidencias", "redactor", "");
+        AgentRun run = runWithRejectedAgent(merger, verifier, onRejected, a);
+
+        List<String> dirs = new CopyOnWriteArrayList<>();
+        FanoutExecutor.ProcessStarter starter = (args, workdir) -> {
+            dirs.add(workdir.getFileName().toString());
+            if (workdir.toString().endsWith("verifier")) {
+                run.submittedVerdict = new com.concentus.model.WorkVerdict("all good", List.of(
+                        new com.concentus.model.WorkVerdict.Item("n1", "accept", null)));
+            }
+            return new FakeProcess(okStream("ok", "ok"), 0);
+        };
+
+        executor(starter, 900, 0).runTurn(run, run.compiled, "Revisa el cambio");
+
+        assertThat(dirs).doesNotContain("rejected");
+        assertThat(exec(run, "r1")).isNull();
+    }
 
     @Test
     void theVerifierJudgesBetweenWorkersAndMergeAndARejectionNeverReachesTheMerge() throws Exception {

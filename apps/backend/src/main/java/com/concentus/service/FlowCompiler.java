@@ -174,9 +174,15 @@ public class FlowCompiler {
         // most one, because a worker's output must get ONE verdict, not a committee's.
         AgentSpec verifier = singleAgentNode(flow, "verifier", resources);
 
+        // The agent the verifier hands its report to when it rejected anything. Found by the wire
+        // rather than by a role, because the block is an ordinary agent: what makes it this one is
+        // where it hangs.
+        AgentSpec rejectedAgent = rejectedAgentOf(flow, resources, verifier, coordinator, subAgents,
+                merger);
+
         requireEveryFlowNodeIsWired(flow);
         CompiledFlow compiled = new CompiledFlow(coordinator, subAgents, merger, verifier,
-                afterFlows(flow), afterMails(flow));
+                afterFlows(flow), afterMails(flow), rejectedAgent);
         applyFacadePolicy(flow, compiled);
         return compiled;
     }
@@ -203,6 +209,10 @@ public class FlowCompiler {
 
         List<AgentSpec> workers = new ArrayList<>(compiled.subAgents());
         if (compiled.merger() != null) workers.add(compiled.merger());
+        // The rejected branch counts too, and for the same reason: it is an independent process
+        // with servers of its own, and the one that reaches OUT — mail, a ticket, a webhook. A
+        // rule that covered every worker except the one that tells the world would be no rule.
+        if (compiled.rejectedAgent() != null) workers.add(compiled.rejectedAgent());
         for (AgentSpec worker : workers) {
             if (worker.mcpServers.isEmpty()) continue;
             if (worker.facadeProfileId != null && !worker.facadeProfileId.isBlank()) continue;
@@ -429,6 +439,38 @@ public class FlowCompiler {
      * becomes its delegator. That gives an unambiguous tree from any drawing, and each node is
      * visited once, so a cycle terminates rather than looping forever.
      */
+    /**
+     * The agent block on the verifier's "on rejected" output, compiled like any other.
+     *
+     * <p>Only an agent: a flow or a mail block on that output is a hand-off and already travels as
+     * one. And only one that is not already part of the run — an agent that a worker delegates to
+     * is that worker's, and running it twice for being wired here as well would double its bill.
+     *
+     * <p>At most one, taking the first wire drawn. Two agents on one output would each receive the
+     * same report and each act on it, which for a branch whose job is usually "tell somebody" is
+     * two messages about one rejection; the doctor says so on the canvas.
+     */
+    private AgentSpec rejectedAgentOf(FlowGraph flow, Resources resources, AgentSpec verifier,
+                                      AgentSpec coordinator, List<AgentSpec> subAgents,
+                                      AgentSpec merger) {
+        if (verifier == null || verifier.nodeId == null) return null;
+        Set<String> taken = new HashSet<>();
+        taken.add(coordinator.nodeId);
+        for (AgentSpec s : subAgents) taken.add(s.nodeId);
+        if (merger != null) taken.add(merger.nodeId);
+
+        for (FlowEdge e : flow.edgesOrEmpty()) {
+            if (!verifier.nodeId.equals(e.source()) || !e.is(FlowEdge.REJECTED)) continue;
+            for (FlowNode node : flow.nodesOrEmpty()) {
+                if (!node.id().equals(e.target())) continue;
+                if (!"agent".equalsIgnoreCase(node.type() == null ? "" : node.type())) break;
+                if (taken.contains(node.id())) break;
+                return buildAgentSpec(node, flow, resources);
+            }
+        }
+        return null;
+    }
+
     private static Delegation delegationTree(FlowNode coordinator, List<FlowNode> agents,
                                              List<FlowEdge> edges) {
         Map<String, FlowNode> byId = new LinkedHashMap<>();

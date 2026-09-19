@@ -186,6 +186,37 @@ class FlowCompilerTest {
     }
 
     @Test
+    void anAgentOnTheVerifiersRejectedOutputCompilesIntoItsOwnSpecAndNotIntoTheRoster() {
+        FlowNode a = agent("a1", "coordinator", "Coord");
+        FlowNode w = agent("w1", "subagent", "Analista");
+        FlowNode v = new FlowNode("v1", "verifier", null, Map.of("name", "Verifier"));
+        FlowNode r = agent("r1", "subagent", "Redactor de incidencias");
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(a, w, v, r),
+                List.of(edge("a1", "w1"), edge("w1", "v1"),
+                        new FlowEdge("v1-r1", "v1", "r1", FlowEdge.REJECTED)),
+                null, List.<String>of(), null, null);
+
+        CompiledFlow compiled = compiler.compile(flow);
+
+        assertThat(compiled.rejectedAgent()).isNotNull();
+        assertThat(compiled.rejectedAgent().name).isEqualTo("Redactor de incidencias");
+        // It is the branch, not a worker: judging it would be judging a report of the judgment.
+        assertThat(compiled.subAgents()).extracting(s -> s.nodeId).containsExactly("w1");
+    }
+
+    /** On the MAIN output it is an ordinary agent nobody delegates to — and stays out of the run. */
+    @Test
+    void anAgentOnTheVerifiersMainOutputIsNotTheRejectedBranch() {
+        FlowNode a = agent("a1", "coordinator", "Coord");
+        FlowNode v = new FlowNode("v1", "verifier", null, Map.of("name", "Verifier"));
+        FlowNode r = agent("r1", "subagent", "Redactor de incidencias");
+        FlowGraph flow = new FlowGraph("f1", "Flow", List.of(a, v, r),
+                List.of(edge("v1", "r1")), null, List.<String>of(), null, null);
+
+        assertThat(compiler.compile(flow).rejectedAgent()).isNull();
+    }
+
+    @Test
     void twoVerifierNodesAreRejected() {
         FlowNode a = agent("a1", "coordinator", "Coord");
         FlowNode v1 = new FlowNode("v1", "verifier", null, Map.of("name", "V1"));

@@ -58,6 +58,12 @@ describe('McpNode', () => {
     expect(screen.getByText('no url')).toBeInTheDocument()
   })
 
+  it('shows the command of a stdio server, which has no url to show', () => {
+    renderMcpNode({ data: mcpData({ url: '', command: 'npx', args: ['-y', 'mcp-google-ads'] }) })
+    expect(screen.getByText('npx -y mcp-google-ads')).toBeInTheDocument()
+    expect(screen.queryByText('no url')).not.toBeInTheDocument()
+  })
+
   it('applies the mcp variant class to the root', () => {
     const { container } = renderMcpNode()
     expect(container.firstChild).toHaveClass(styles.mcp)

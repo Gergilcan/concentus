@@ -516,6 +516,50 @@ class FlowDoctorTest {
         });
     }
 
+    /** The ads flow's shape: an agent on the verifier's rejected output is run, so it is fine. */
+    @Test
+    void anAgentOnTheVerifiersRejectedOutputIsNothingToReportBecauseTheRunFiresIt() {
+        assertThat(ofArea(doctor.check(rejectedBranchFlow("r-1")), "graph")).isEmpty();
+    }
+
+    /**
+     * The same agent, wired to nothing that runs it. It is drawn, saved and shown on the canvas,
+     * and no run would ever start it — which used to be said nowhere at all.
+     */
+    @Test
+    void anAgentNothingRunsIsAnErrorNamingTheBlock() {
+        Map<String, Object> verifier = new HashMap<>();
+        verifier.put("name", "Verificador");
+        FlowGraph flow = fanoutFlow(
+                List.of(worker("w-1", "Analista", null),
+                        new FlowNode("v-1", "verifier", null, verifier),
+                        worker("r-1", "Redactor de informes", null)),
+                // The wire that would have run it, on the verifier's ERROR output instead: that
+                // one fires when the verifier process dies, and runs a flow or a mail, not this.
+                List.of(new FlowEdge("e2", "a-1", "w-1"),
+                        new FlowEdge("e3", "w-1", "v-1"),
+                        new FlowEdge("e4", "v-1", "r-1", FlowEdge.ERROR)));
+
+        assertThat(ofArea(doctor.check(flow), "graph")).singleElement().satisfies(f -> {
+            assertThat(f.level()).isEqualTo("error");
+            assertThat(f.message()).contains("Redactor de informes").contains("nothing runs it");
+            assertThat(f.where()).isEqualTo("r-1");
+        });
+    }
+
+    /** Coordinator → worker → verifier, with one agent on the verifier's "on rejected" output. */
+    private static FlowGraph rejectedBranchFlow(String rejectedAgentId) {
+        Map<String, Object> verifier = new HashMap<>();
+        verifier.put("name", "Verificador");
+        return fanoutFlow(
+                List.of(worker("w-1", "Analista", null),
+                        new FlowNode("v-1", "verifier", null, verifier),
+                        worker(rejectedAgentId, "Redactor de informes", null)),
+                List.of(new FlowEdge("e2", "a-1", "w-1"),
+                        new FlowEdge("e3", "w-1", "v-1"),
+                        new FlowEdge("e4", "v-1", rejectedAgentId, FlowEdge.REJECTED)));
+    }
+
     @Test
     void aRepositoryInAFanOutFlowIsNoLongerAFinding() {
         // Repositories are cloned into the worker they are wired to, and their changes reach the

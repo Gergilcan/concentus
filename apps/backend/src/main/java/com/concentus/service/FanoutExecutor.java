@@ -288,6 +288,10 @@ public class FanoutExecutor {
             // The verifier's word is final here — after the escalation, never before — so what is
             // wired to its rejected output runs now, not after the merge.
             run.settled(verifier.nodeId);
+            // Before the "nothing survived" exit below, deliberately: a run where EVERY output was
+            // killed is the one somebody most needs told about.
+            runRejectedAgent(run, flow, cmd);
+            if (ended(run)) return;
             if (surviving.stream().noneMatch(Outcome::ok)) {
                 run.fail("The verifier rejected every worker's output — nothing survived to "
                         + "merge. Each rejection's reason is on its worker's box.");
@@ -301,6 +305,65 @@ public class FanoutExecutor {
             if (ended(run)) return;
         }
         LocalClaudeExecutor.settleIdle(run);
+    }
+
+    /**
+     * The agent wired to the verifier's "on rejected" output: one more process, started the moment
+     * the verifier's word is final and only when something was actually rejected.
+     *
+     * <p>It receives the same verification report a flow or a mail on that output receives — every
+     * worker's verdict, its output and its own console, rejected ones first — because "tell me
+     * what was killed and why" is work, and work is what an agent is for. ANY rejection fires it:
+     * one killed output in five is still a cycle somebody has to look at, and a branch that only
+     * fired when everything died would be the alarm that rings after the building is gone.
+     *
+     * <p>Never fails the run. This is the branch that reports trouble; a run that died because its
+     * alarm could not ring would lose the answer AND the warning. A failure here is red on its own
+     * box and a line in the log, and the merge still produces the run's answer.
+     */
+    private void runRejectedAgent(AgentRun run, CompiledFlow flow, String cmd) {
+        AgentSpec spec = flow.rejectedAgent();
+        if (spec == null || !run.anyRejected() || "TERMINATED".equals(run.status)) return;
+
+        NodeExec exec = run.nodeExec(spec.nodeId, "agent", spec.name);
+        String prompt = BranchPayloads.verificationReport(run);
+        if (exec != null) {
+            exec.appendInput(prompt);
+            exec.status = "running";
+        }
+        run.emit(RunEvent.of("system", "On rejected: '" + spec.name + "' runs with the "
+                + "verification report — every worker's verdict, output and log.",
+                spec.name, spec.nodeId));
+
+        Path workdir = runWorkspace(run, "rejected");
+        try {
+            Files.createDirectories(workdir);
+        } catch (IOException e) {
+            failRejectedAgent(run, spec, exec, "its workspace could not be prepared: " + e.getMessage());
+            return;
+        }
+
+        Path workersRoot = runWorkspace(run, "workers");
+        List<String> dirs = new ArrayList<>();
+        // It reads what the workers actually produced, not only what the report quotes of it.
+        if (Files.isDirectory(workersRoot)) dirs.add(workersRoot.toString());
+        dirs.addAll(contextFoldersFor(run, spec));
+
+        // Everything but delegation, like the merge: this block reports, files and notifies, which
+        // is real work with real tools — and its MCP servers are the ones drawn onto it.
+        Outcome outcome = execute(run, spec, exec, cmd, prompt, workdir, dirs, "Task");
+        if (outcome.ok()) {
+            markPassed(exec);
+        } else {
+            failRejectedAgent(run, spec, exec, outcome.error());
+        }
+    }
+
+    private static void failRejectedAgent(AgentRun run, AgentSpec spec, NodeExec exec, String error) {
+        markFailed(exec, error);
+        run.emit(RunEvent.of("system", "'" + spec.name + "', on the verifier's rejected output, "
+                + "did not run to the end: " + error + " The rejections themselves stand — they "
+                + "are on each worker's box and in this run's report.", spec.name, spec.nodeId));
     }
 
     /** Whether a step ended the run — failed it, or a human stopped it — so nothing after it runs. */
