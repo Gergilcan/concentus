@@ -305,10 +305,10 @@
   <h1>What changed</h1>
   <p class="sub">Every release, newest first — the same notes that ship with the installers. The app updates itself from these releases; package-manager installs update through their manager.</p>
 
-  <section id="v0.1.18">
-    <h2>v0.1.18 <span class="date">2026-09-20</span></h2>
-<h3>What's new in 0.1.18</h3>
-<p><strong>This release carries 0.1.17 as well.</strong> That one was tagged and built, but one of the four installers failed to sign, so nothing was published and no app ever saw it. Everything listed under 0.1.17 below ships here.</p>
+  <section id="v0.1.19">
+    <h2>v0.1.19 <span class="date">2026-09-20</span></h2>
+<h3>What's new in 0.1.19</h3>
+<p><strong>This release carries 0.1.17 and 0.1.18 as well.</strong> Both were tagged and built, and both lost the macOS arm64 installer to a signing failure — electron-builder unlocking its own keychain with the wrong password, which macOS 26.6 stopped tolerating. The publish step needs all four installers, so neither version was ever released and no app saw either. Everything listed under 0.1.17 below ships here.</p>
 <h4>Adding an MCP server to Claude Code</h4>
 <ul>
 <li><strong>A name with a space in it works.</strong> <code>claude mcp add</code> takes letters, digits, hyphens and underscores and nothing else, so a block called "Ryze Google Ads" was refused outright — and the panel said "Not yet in Claude Code" without ever showing the CLI's reason. The name is now mapped rather than refused: a run of characters the CLI will not take becomes one separator, an underscore where a space was. The block keeps the name you gave it.</li>
@@ -316,8 +316,8 @@
 <li><strong>A refused registration says so and stops.</strong> It used to fall through to the sign-in, opening a terminal for a server that was never added and writing that terminal's status over the refusal — three presses of the button, three silences.</li>
 <li><strong>The status dot no longer lies</strong> about a server that is registered under a mapped name: the panel matches on the URL first, which is the same on both sides.</li>
 </ul>
-<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.16...v0.1.18">https://github.com/Gergilcan/concentus/compare/v0.1.16...v0.1.18</a></p>
-    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.18">Installers and notes on GitHub →</a></p>
+<p><strong>Full Changelog</strong>: <a href="https://github.com/Gergilcan/concentus/compare/v0.1.16...v0.1.19">https://github.com/Gergilcan/concentus/compare/v0.1.16...v0.1.18</a></p>
+    <p class="meta"><a href="https://github.com/Gergilcan/concentus/releases/tag/v0.1.19">Installers and notes on GitHub →</a></p>
   </section>
 
   <section id="v0.1.17">
