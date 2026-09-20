@@ -256,6 +256,8 @@ jobs:
           # (codesign only reads identities out of keychains, and the runner's has nothing).
           KEYCHAIN="$RUNNER_TEMP/jar-sign.keychain-db"
           KC_PW=$(openssl rand -hex 16)
+          # The search list as the runner had it, to be put back before electron-builder runs.
+          KEYCHAINS_BEFORE=$(security list-keychains -d user | tr -d '"' | xargs)
           printf '%s' "$CSC_LINK" | base64 --decode > "$RUNNER_TEMP/jar-sign-cert.p12"
           security create-keychain -p "$KC_PW" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
@@ -271,6 +273,16 @@ jobs:
             exit 1
           fi
           node scripts/sign-jar-natives.mjs "$IDENTITY"
+
+          # Put the search list back, and do it BEFORE electron-builder: it makes a throwaway
+          # keychain of its own and runs `security set-key-partition-list -s`, which walks EVERY
+          # keychain in the list and unlocks each one with ITS password. Ours has a different
+          # password, so the whole build died on "SecKeychainUnlock: The user name or passphrase
+          # you entered is not correct" — twice, once per keychain it could not open — after the
+          # jar natives had already been signed. The signing above needs the list (codesign reads
+          # identities out of it); nothing after it does.
+          # shellcheck disable=SC2086
+          security list-keychains -d user -s $KEYCHAINS_BEFORE
 
           if [ -z "${APPLE_API_KEY_CONTENT}" ]; then
             echo "::warning::APPLE_API_KEY_CONTENT is not set — signed but NOT notarized, so Gatekeeper will still refuse it on other machines."
