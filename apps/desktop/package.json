@@ -32,7 +32,7 @@
     "@playwright/test": "^1.62.1",
     "@types/node": "^24.10.1",
     "electron": "^43.3.0",
-    "electron-builder": "^26.15.3",
+    "electron-builder": "^26.16.1",
     "typescript": "^5.9.3",
     "vitest": "4.1.10"
   }
