@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client.ts'
 import type { McpDef, McpNodeData, McpServerInfo } from '../api/types.ts'
+import { mcpDisplayName } from '../utils/mcpName.ts'
 import { CredentialField } from './CredentialField.tsx'
 import { Field, FineTuning, SelectField, TextArea } from './fields.tsx'
 import { McpClaudeActions } from './McpClaudeActions.tsx'
@@ -56,7 +57,9 @@ export function McpInspector({ data, set }: Props) {
 
   const selectExisting = (name: string) => {
     const s = servers.find((x) => x.name === name)
-    if (s) set({ name: s.name, url: s.url })
+    // The block takes the readable name, not the CLI's spelling of it: registering it again maps
+    // it straight back, so the round trip is the same server either way.
+    if (s) set({ name: mcpDisplayName(s.name), url: s.url })
   }
 
   return (
@@ -82,7 +85,7 @@ export function McpInspector({ data, set }: Props) {
           <option value="">{t('— choose a configured server —')}</option>
           {servers.map((s) => (
             <option key={s.name} value={s.name}>
-              {s.name}
+              {mcpDisplayName(s.name)}
             </option>
           ))}
         </SelectField>

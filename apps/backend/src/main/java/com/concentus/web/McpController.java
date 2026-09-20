@@ -62,7 +62,9 @@ public class McpController {
             throw new IllegalArgumentException("name and url are required.");
         }
         String status = registry.add(spec.name, spec.url, spec.resolveToken(), spec.authHeader);
-        return Map.of("name", spec.name, "status", status);
+        // The name the CLI now knows it by, which is not always the block's: a label with a space
+        // in it is mapped to the CLI's charset. The caller needs THIS one to sign it in.
+        return Map.of("name", McpRegistry.cliName(spec.name), "status", status);
     }
 
     /**

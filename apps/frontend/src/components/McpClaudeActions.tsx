@@ -89,7 +89,16 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
     }
   }, [])
 
-  const current = servers.find((s) => s.name.toLowerCase() === name.trim().toLowerCase())
+  // Found by URL first, by name second. The CLI's list is a registry of identifiers — it refuses
+  // spaces — so a block called "Ryze Google Ads" is registered as "Ryze-Google-Ads", and matching
+  // on the label alone reported "Not yet in Claude Code" for a server sitting right there. The URL
+  // is the same on both sides, which is why it is asked first; the name still answers for a stdio
+  // entry and for one Claude's own connectors put in the list.
+  const endpointOf = (s: McpServerInfo) => (s.url ?? '').trim()
+  const wanted = (url ?? '').trim()
+  const current =
+    (wanted ? servers.find((s) => endpointOf(s) === wanted) : undefined) ??
+    servers.find((s) => s.name.toLowerCase() === name.trim().toLowerCase())
   const state = claudeState(current)
   const listed = state !== 'absent'
   const failed = state === 'failed'
@@ -120,11 +129,21 @@ export function McpClaudeActions({ name, url, credentialId, authHeader }: Props)
 
   const authorize = () =>
     act(async () => {
-      if (!listed) await api.addMcpServer({ name, url: endpoint, credentialId, authHeader })
-      return api.loginMcpServer(name)
+      // The CLI's name for it: the one the list reports, or the one the registration answered with
+      // — never the block's label, which the CLI may never have accepted.
+      let cliName = current?.name ?? name
+      if (!listed) {
+        const added = await api.addMcpServer({ name, url: endpoint, credentialId, authHeader })
+        // A refused registration stops here. It used to fall through to the sign-in, which opened
+        // a terminal for a server that was never added and reported the sign-in's status over the
+        // reason — three presses of this button said nothing about "Invalid name".
+        if (!/^(added|already configured)/i.test(added.status)) return added
+        cliName = added.name
+      }
+      return api.loginMcpServer(cliName)
     }, t('Starting sign-in…'))
 
-  const removeSrv = () => act(() => api.removeMcpServer(name))
+  const removeSrv = () => act(() => api.removeMcpServer(current?.name ?? name))
 
   return (
     <div className={styles.mcpActions}>

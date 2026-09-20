@@ -1,13 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { McpNodeData } from '../api/types.ts'
+import { api } from '../api/client.ts'
 import { McpInspector } from './McpInspector.tsx'
 
 const statusMock = vi.fn()
 
 vi.mock('../api/client.ts', () => ({
   api: {
-    listMcpServers: () => Promise.resolve([]),
+    listMcpServers: vi.fn(() => Promise.resolve([])),
     listMcpDefs: () => Promise.resolve([]),
     listModels: () => Promise.resolve({}),
     mcpCapabilities: () => Promise.resolve({ interactiveLogin: true, hint: '' }),
@@ -49,5 +50,32 @@ describe('McpInspector token fields vs OAuth', () => {
     expect(screen.queryByText(/Send token in/)).not.toBeInTheDocument()
     // The tool picker stays — it reads the server through the grant now.
     expect(screen.getByText('Choose tools…')).toBeInTheDocument()
+  })
+})
+
+// The CLI spells a space as an underscore because `claude mcp add` refuses spaces. That is the
+// CLI's problem, not something to read on a canvas.
+describe('McpInspector: the CLI list, read as names', () => {
+  it('shows a registered server with its spaces back, and gives the block that name', async () => {
+    statusMock.mockResolvedValue({ connected: false })
+    vi.mocked(api.listMcpServers).mockResolvedValue([
+      { name: 'Ryze_Google_Ads', url: 'https://connector.get-ryze.ai/mcp', status: '✔ Connected' },
+    ])
+    const set = vi.fn()
+
+    render(<McpInspector data={data} set={set} />)
+
+    const option = await screen.findByRole('option', { name: 'Ryze Google Ads' })
+    expect(option).toBeInTheDocument()
+    // The value stays the CLI's own spelling: that is what the list is keyed by.
+    expect(option).toHaveValue('Ryze_Google_Ads')
+
+    fireEvent.change(screen.getByLabelText('Select existing (from Claude Code)'), {
+      target: { value: 'Ryze_Google_Ads' },
+    })
+    expect(set).toHaveBeenCalledWith({
+      name: 'Ryze Google Ads',
+      url: 'https://connector.get-ryze.ai/mcp',
+    })
   })
 })

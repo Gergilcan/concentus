@@ -31,8 +31,48 @@ public class McpRegistry {
      */
     private static final Pattern SAFE_NAME = Pattern.compile("[A-Za-z0-9 ._-]{1,64}");
 
+    /** What {@code claude mcp add} refuses, a run at a time — see {@link #cliName}. */
+    private static final Pattern ILLEGAL = Pattern.compile("[^A-Za-z0-9_-]+");
+
     public static boolean isSafeName(String name) {
         return name != null && SAFE_NAME.matcher(name).matches();
+    }
+
+    /**
+     * The name this server takes in the CLI's own list.
+     *
+     * <p>A block on the canvas is named by a person — "Ryze Google Ads" — and the CLI's list is a
+     * registry of identifiers: {@code claude mcp add} refuses anything but letters, digits,
+     * hyphens and underscores, so every block whose name had a space in it was refused with
+     * "Invalid name", three words the panel never showed. The name is mapped rather than rejected
+     * because the block's name belongs to the person who drew it, and "rename your block to make
+     * an unrelated CLI happy" is not an answer.
+     *
+     * <p>Deterministic, so the same block always finds its own entry back, and applied on every
+     * path that reaches the CLI — add, login, remove — because a registration under one name and
+     * a sign-in under another is a server that is there and cannot be authorized.
+     *
+     * <p>Not the same rule as {@link #isSafeName}: that one is the shell-injection boundary and
+     * admits spaces and dots, because names like "claude.ai Google Drive" ARE in the CLI's list —
+     * put there by Claude's own connector mechanism, which is not bound by what {@code mcp add}
+     * accepts. Those stay readable and removable; only what WE register is mapped.
+     */
+    public static String cliName(String displayName) {
+        if (displayName == null) return "";
+        // Run by run, because one run is one gap: a stretch of characters the CLI refuses becomes
+        // ONE separator, and it is an underscore when a space was in it. That is what makes the
+        // mapping reversible where it matters — the interface turns underscores back into spaces
+        // and reads the block's own name — while "Google Ads (lectura)" collapses to
+        // "Google_Ads_lectura" instead of keeping a hyphen where the bracket used to be.
+        Matcher gaps = ILLEGAL.matcher(displayName.trim());
+        StringBuilder sb = new StringBuilder();
+        while (gaps.find()) {
+            gaps.appendReplacement(sb, gaps.group().indexOf(' ') >= 0 ? "_" : "-");
+        }
+        gaps.appendTail(sb);
+        String mapped = sb.toString().replaceAll("^[-_]+|[-_]+$", "");
+        if (mapped.isEmpty()) return "mcp";
+        return mapped.length() > 64 ? mapped.substring(0, 64) : mapped;
     }
     // "Rovo: https://mcp.atlassian.com/v1/mcp - ! Needs authentication"
     // "Linear: https://mcp.linear.app/mcp (HTTP) - ✔ Connected"   (note the "(HTTP)" transport marker)
@@ -85,8 +125,10 @@ public class McpRegistry {
         String cmd = support.command().orElse(null);
         if (cmd == null) return "claude CLI not found";
         if (name == null || name.isBlank() || url == null || url.isBlank()) return "missing name/url";
+        // Registered under the CLI's charset, not the block's label — see cliName.
+        String cli = cliName(name);
 
-        List<String> args = new ArrayList<>(List.of(cmd, "mcp", "add", "--transport", "http", name, url, "-s", "user"));
+        List<String> args = new ArrayList<>(List.of(cmd, "mcp", "add", "--transport", "http", cli, url, "-s", "user"));
         boolean hasToken = token != null && !token.isBlank();
         if (hasToken) {
             String header = authHeader == null || authHeader.isBlank() ? DEFAULT_AUTH_HEADER : authHeader.trim();
@@ -100,9 +142,12 @@ public class McpRegistry {
             return "already configured";
         }
         if (r.exit() == 0) {
-            return hasToken ? "added" : "added — run `claude mcp login \"" + name + "\"` to authorize";
+            // Named as the CLI knows it: a person told to run `claude mcp login "Ryze Google Ads"`
+            // would be told there is no such server.
+            return hasToken ? "added" : "added as \"" + cli + "\" — run `claude mcp login \"" + cli
+                    + "\"` to authorize";
         }
-        log.warn("claude mcp add failed for {}: {}", name, out);
+        log.warn("claude mcp add failed for {} (as {}): {}", name, cli, out);
         return "add failed: " + CliProcess.lastLine(out);
     }
 
@@ -133,6 +178,8 @@ public class McpRegistry {
         String cmd = support.command().orElse(null);
         if (cmd == null) return "claude CLI not found";
         if (name == null || name.isBlank()) return "missing name";
+        // The CLI's own name for the server, as the caller read it from the list (or as add()
+        // reported registering it) — never a block's label, which the CLI may not know.
         // Defence in depth: the controller rejects unsafe names, but never build a terminal
         // command around one that slipped through another caller.
         if (!isSafeName(name)) return "invalid server name";
